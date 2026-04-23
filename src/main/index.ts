@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PtyManager } from './ptyManager'
 import { FileSystemHandler } from './fileSystemHandler'
 import { HistoryStore } from './historyStore'
+import { SettingsStore } from './settingsStore'
 import { registerIpcHandlers } from './ipcHandlers'
 
 let ptyManager: PtyManager
@@ -34,11 +35,12 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
-  ptyManager = new PtyManager(win)
+  const settingsStore = new SettingsStore()
+  ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])

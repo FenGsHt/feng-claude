@@ -4,16 +4,26 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { PtyManager } from './ptyManager'
 import type { FileSystemHandler } from './fileSystemHandler'
 import type { HistoryStore } from './historyStore'
+import type { SettingsStore } from './settingsStore'
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   fsHandler: FileSystemHandler,
-  historyStore: HistoryStore
+  historyStore: HistoryStore,
+  settingsStore: SettingsStore
 ): void {
+  // ── Settings ─────────────────────────────────────────────────
+  ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
+  ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {
+    settingsStore.set(settings)
+    return { success: true }
+  })
+
   // ── Session management ──────────────────────────────────────
   ipcMain.handle(IPC.SESSION_CREATE, async (_e, payload) => {
     const sessionId = uuidv4()
-    const result = ptyManager.createSession(sessionId, payload.workdir)
+    const settings = settingsStore.get()
+    const result = ptyManager.createSession(sessionId, payload.workdir, settings)
     return { sessionId, pid: result.pid }
   })
 

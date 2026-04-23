@@ -2,6 +2,8 @@
  * Mock electronAPI for browser preview (not used in actual Electron runtime).
  * Injected only when window.electronAPI is not defined.
  */
+import { DEFAULT_SETTINGS } from './types/settings'
+
 export function injectMockElectronAPI(): void {
   if (typeof window !== 'undefined' && !window.electronAPI) {
     const noop = () => {}
@@ -36,6 +38,10 @@ export function injectMockElectronAPI(): void {
         save: async () => {},
         delete: async () => {},
         get: async () => undefined
+      },
+      settings: {
+        get: async () => ({ ...DEFAULT_SETTINGS }),
+        set: async () => ({ success: true })
       },
       appMinimize: noop,
       appMaximize: noop,

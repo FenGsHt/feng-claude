@@ -1,11 +1,17 @@
 import * as pty from 'node-pty'
+import { join } from 'path'
+import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import { CLAUDE_ENV } from './claudeEnv'
+import type { ClaudeSettings, SettingsStore } from './settingsStore'
 
 // Detect cmd.exe shell prompt: any path ending with ">"
 // e.g. "E:\git3\claude-gui>" or "C:\Users\foo>"
 const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
+
+// Isolated config dir: <userData>/claude-session
+// Prevents conflict with the user's global ~/.claude OAuth login
+const CLAUDE_CONFIG_DIR = join(app.getPath('userData'), 'claude-session')
 
 interface PtySession {
   id: string
@@ -18,12 +24,17 @@ interface PtySession {
 export class PtyManager {
   private sessions = new Map<string, PtySession>()
   private win: BrowserWindow
+  private settingsStore: SettingsStore
 
-  constructor(win: BrowserWindow) {
+  constructor(win: BrowserWindow, settingsStore: SettingsStore) {
     this.win = win
+    this.settingsStore = settingsStore
   }
 
-  createSession(sessionId: string, workdir: string): { pid: number } {
+  createSession(sessionId: string, workdir: string, settings?: ClaudeSettings): { pid: number } {
+    const s = settings ?? this.settingsStore.get()
+    const claudeEnv = this.settingsStore.toEnv(s)
+
     const isWindows = process.platform === 'win32'
     const shell = isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash')
 
@@ -34,7 +45,8 @@ export class PtyManager {
       cwd: workdir,
       env: {
         ...process.env,
-        ...CLAUDE_ENV,
+        ...claudeEnv,
+        CLAUDE_CONFIG_DIR,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         PATH: process.env.PATH

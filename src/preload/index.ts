@@ -3,6 +3,7 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
+import type { ClaudeSettings } from '../renderer/src/types/settings'
 
 const electronAPI = {
   // Session
@@ -48,6 +49,13 @@ const electronAPI = {
     delete: (id: string): Promise<void> => ipcRenderer.invoke(IPC.HISTORY_DELETE, { id }),
     get: (id: string): Promise<HistoryRecord | undefined> =>
       ipcRenderer.invoke(IPC.HISTORY_GET, { id })
+  },
+
+  // Settings
+  settings: {
+    get: (): Promise<ClaudeSettings> => ipcRenderer.invoke(IPC.SETTINGS_GET),
+    set: (s: ClaudeSettings): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.SETTINGS_SET, s)
   },
 
   // Window controls
