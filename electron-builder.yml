@@ -1,0 +1,30 @@
+appId: com.claudegui.app
+productName: Claude GUI
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**/*
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+asarUnpack:
+  - resources/**
+  - node_modules/node-pty/**
+win:
+  executableName: claude-gui
+  target:
+    - nsis
+nsis:
+  artifactName: '${name}-${version}-setup.${ext}'
+  shortcutName: '${productName}'
+  uninstallDisplayName: '${productName}'
+  createDesktopShortcut: always
+mac:
+  target:
+    - dmg
+linux:
+  target:
+    - AppImage
