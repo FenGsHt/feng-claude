@@ -8,7 +8,7 @@ export function InputArea(): React.ReactElement {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const isRunning = activeSession?.status === 'running'
-  const canSend = !isRunning && text.trim().length > 0 && !!activeSessionId
+  const canSend = text.trim().length > 0 && !!activeSessionId
 
   const handleSend = useCallback(() => {
     if (!canSend || !activeSessionId) return
@@ -39,11 +39,9 @@ export function InputArea(): React.ReactElement {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isRunning
-              ? 'Claude is thinking...'
-              : !activeSessionId
-                ? 'Create or select a session to start'
-                : 'Message Claude... (Enter to send, Shift+Enter for newline)'
+            !activeSessionId
+              ? 'Create or select a session to start'
+              : 'Message Claude... (Enter to send, Shift+Enter for newline)'
           }
           disabled={!activeSessionId}
           rows={1}
@@ -68,12 +66,15 @@ export function InputArea(): React.ReactElement {
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
               canSend
                 ? 'bg-amber-600 text-white hover:bg-amber-500'
                 : 'bg-claude-border text-claude-muted cursor-not-allowed'
             }`}
           >
+            {isRunning && (
+              <span className="w-2 h-2 rounded-full bg-white/70 animate-pulse inline-block" />
+            )}
             Send
           </button>
         </div>

@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
+import { CLAUDE_ENV } from './claudeEnv'
 
 interface PtySession {
   id: string
@@ -27,9 +28,9 @@ export class PtyManager {
       cwd: workdir,
       env: {
         ...process.env,
+        ...CLAUDE_ENV,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
-        // Ensure claude is found even if PATH is minimal
         PATH: process.env.PATH
       } as Record<string, string>
     })
