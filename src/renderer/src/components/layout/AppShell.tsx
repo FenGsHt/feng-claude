@@ -2,7 +2,7 @@ import React from 'react'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from '../sidebar/Sidebar'
 import { TabBar } from '../tabs/TabBar'
-import { ChatPanel } from '../chat/ChatPanel'
+import { TerminalPanel } from '../terminal/TerminalPanel'
 
 export function AppShell(): React.ReactElement {
   return (
@@ -12,7 +12,7 @@ export function AppShell(): React.ReactElement {
         <Sidebar />
         <main className="flex flex-col flex-1 overflow-hidden min-w-0">
           <TabBar />
-          <ChatPanel />
+          <TerminalPanel />
         </main>
       </div>
     </div>

@@ -10,9 +10,7 @@ export default function App(): React.ReactElement {
 
   useEffect(() => {
     if (sessions.length === 0) {
-      // Start with current working directory or home
-      const defaultDir = '.'
-      createSession(defaultDir)
+      createSession('.')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

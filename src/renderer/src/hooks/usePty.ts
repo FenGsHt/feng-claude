@@ -1,16 +1,17 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
+import { writeToTerminal } from '../components/terminal/XTerminal'
 
 /**
- * Global hook that subscribes to PTY output and status events from the main process.
- * Should be mounted once at the App root level.
+ * Global hook — subscribes to PTY output and routes data directly to
+ * the matching xterm.js instance. Should be mounted once at the App root.
  */
 export function usePty(): void {
-  const { appendRawOutput, updateSessionStatus } = useSessionStore()
+  const { updateSessionStatus } = useSessionStore()
 
   useEffect(() => {
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
-      appendRawOutput(payload.sessionId, payload.data, payload.timestamp)
+      writeToTerminal(payload.sessionId, payload.data)
     })
 
     const unsubStatus = window.electronAPI.onPtyStatus((payload) => {
@@ -21,5 +22,5 @@ export function usePty(): void {
       unsubOutput()
       unsubStatus()
     }
-  }, [appendRawOutput, updateSessionStatus])
+  }, [updateSessionStatus])
 }
