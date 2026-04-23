@@ -3,10 +3,16 @@ import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 import { CLAUDE_ENV } from './claudeEnv'
 
+// Detect cmd.exe shell prompt: any path ending with ">"
+// e.g. "E:\git3\claude-gui>" or "C:\Users\foo>"
+const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
+
 interface PtySession {
   id: string
   ptyProcess: pty.IPty
   workdir: string
+  claudeRunning: boolean
+  buffer: string
 }
 
 export class PtyManager {
@@ -40,13 +46,32 @@ export class PtyManager {
       ptyProcess.write('claude\r')
     }, 300)
 
+    const session: PtySession = { id: sessionId, ptyProcess, workdir, claudeRunning: true, buffer: '' }
+
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return
+
+      // Forward to renderer
       this.win.webContents.send(IPC.PTY_OUTPUT, {
         sessionId,
         data,
         timestamp: Date.now()
       })
+
+      // Detect if we've dropped back to the shell prompt (claude exited)
+      // Keep a rolling buffer of recent output to match multi-chunk prompts
+      session.buffer = (session.buffer + data).slice(-256)
+      if (session.claudeRunning && SHELL_PROMPT_RE.test(session.buffer)) {
+        session.claudeRunning = false
+        session.buffer = ''
+        // Re-launch claude after a short delay
+        setTimeout(() => {
+          if (this.sessions.has(sessionId)) {
+            session.claudeRunning = true
+            ptyProcess.write('claude\r')
+          }
+        }, 500)
+      }
     })
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -60,7 +85,7 @@ export class PtyManager {
       this.sessions.delete(sessionId)
     })
 
-    this.sessions.set(sessionId, { id: sessionId, ptyProcess, workdir })
+    this.sessions.set(sessionId, session)
     return { pid: ptyProcess.pid }
   }
 
