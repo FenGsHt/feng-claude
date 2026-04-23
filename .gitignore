@@ -4,3 +4,9 @@ out
 .DS_Store
 *.local
 src/main/claudeEnv.ts
+
+# 仓库内个人覆盖（复制 example 为 claude.local.json 并填写密钥；勿提交 claude.local.json）
+local/claude.local.json
+
+.claude-session/
+.claude/settings.local.json
