@@ -14,7 +14,7 @@ export function SettingsPanel(): React.ReactElement {
     })
   }, [])
 
-  const handleChange = (key: keyof ClaudeSettings, value: string | boolean) => {
+  const handleChange = <K extends keyof ClaudeSettings>(key: K, value: ClaudeSettings[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
     setSaved(false)
   }
@@ -60,6 +60,29 @@ export function SettingsPanel(): React.ReactElement {
             placeholder="https://api.anthropic.com"
             className="field-input"
           />
+        </Field>
+
+        <div className="pt-1 pb-1 border-t border-claude-border">
+          <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider pt-2 pb-1">
+            Permissions / 权限
+          </div>
+        </div>
+
+        <Field label="默认权限模式" hint="claude --permission-mode">
+          <select
+            value={form.permissionPreset}
+            onChange={(e) =>
+              handleChange('permissionPreset', e.target.value as ClaudeSettings['permissionPreset'])
+            }
+            className="field-input"
+          >
+            <option value="acceptEdits">
+              大部分自动批准（编辑与常用文件命令；其余仍会询问）
+            </option>
+            <option value="bypassPermissions">
+              允许几乎所有操作（跳过绝大多数确认；慎用）
+            </option>
+          </select>
         </Field>
 
         <div className="pt-1 pb-1 border-t border-claude-border">

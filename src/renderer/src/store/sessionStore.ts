@@ -7,6 +7,57 @@ import {
   replaceLeafWithSplit
 } from '../lib/paneLayout'
 import { destroyTerminal } from '../components/terminal/XTerminal'
+import { useTokenUsageStore } from './tokenUsageStore'
+import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeTokenUsageParse'
+import type { PersistedWorkspace } from '../types/workspace'
+import { persistedPaneToLive, persistedSlotsValid } from '../lib/workspaceSerialize'
+
+/** 自动记录时跳过无信息量的单行（与 shell 噪音区分） */
+const SKIP_TERMINAL_LINES = new Set(['claude', 'clear', 'exit', 'cls'])
+
+function normalizeCommittedTerminalLine(raw: string): string | null {
+  const s0 = raw.replace(/\r/g, '').trim()
+  if (!s0) return null
+  const capped = s0.length > 200 ? s0.slice(0, 200) : s0
+  const lower = capped.toLowerCase()
+  if (SKIP_TERMINAL_LINES.has(lower)) return null
+  return capped
+}
+
+/* [2026-04-23] 原 upsert 未保留 topic/lastUserPrompt，重写为可选覆盖 lastUserPrompt、其余字段从 prev 合并
+async function upsertWorkdirHistory(session: Pick<Session, 'title' | 'workdir'>): Promise<void> {
+  const hid = `wd:${session.workdir.replace(/\\/g, '/').toLowerCase()}`
+  const prev = await window.electronAPI.history.get(hid)
+  const now = Date.now()
+  await window.electronAPI.history.save({
+    id: hid,
+    title: session.title,
+    workdir: session.workdir,
+    messages: prev?.messages ?? [],
+    createdAt: prev?.createdAt ?? now,
+    updatedAt: now
+  })
+}
+*/
+/** [2026-04-23] 将工作目录同步到 electron-store；合并 topic、lastUserPrompt */
+async function upsertWorkdirHistory(
+  session: Pick<Session, 'title' | 'workdir'>,
+  opts?: { lastUserPrompt?: string }
+): Promise<void> {
+  const hid = `wd:${session.workdir.replace(/\\/g, '/').toLowerCase()}`
+  const prev = await window.electronAPI.history.get(hid)
+  const now = Date.now()
+  await window.electronAPI.history.save({
+    id: hid,
+    title: session.title,
+    workdir: session.workdir,
+    messages: prev?.messages ?? [],
+    createdAt: prev?.createdAt ?? now,
+    updatedAt: now,
+    topic: prev?.topic,
+    lastUserPrompt: opts?.lastUserPrompt ?? prev?.lastUserPrompt
+  })
+}
 
 interface SessionStore {
   sessions: Session[]
@@ -15,7 +66,10 @@ interface SessionStore {
   layoutRoot: PaneNode | null
   history: HistoryRecord[]
 
-  createSession: (workdir: string, mode?: CreateSessionMode) => Promise<void>
+  /**
+   * @param splitFromSessionId 分屏时从该 session 所在格拆出；缺省则使用当前 active（与点哪个窗格上的分屏一致）
+   */
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
 
@@ -23,6 +77,16 @@ interface SessionStore {
 
   loadHistory: () => Promise<void>
   deleteHistory: (id: string) => Promise<void>
+  /** History 面板：在新标签打开该历史条目的工作目录 */
+  restoreFromHistory: (record: HistoryRecord) => Promise<void>
+
+  /** 终端提交完整一行后更新 lastUserPrompt（经规范化过滤） */
+  notifyTerminalCommittedLine: (sessionId: string, rawLine: string) => Promise<void>
+  /** 侧栏右键：保存/清除自定义主题 */
+  updateHistoryTopic: (recordId: string, topic: string | null) => Promise<void>
+
+  /** 从磁盘快照恢复：按顺序建 PTY，再按 slot 还原分屏与 active */
+  restoreWorkspace: (pw: PersistedWorkspace) => Promise<void>
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -31,11 +95,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   layoutRoot: null,
   history: [],
 
-  createSession: async (workdir: string, mode: CreateSessionMode = 'fullscreen') => {
+  createSession: async (
+    workdir: string,
+    mode: CreateSessionMode = 'fullscreen',
+    splitFromSessionId?: string
+  ) => {
     const state = get()
+    const splitAnchor = splitFromSessionId ?? state.activeSessionId
     const cwd =
-      mode !== 'fullscreen' && state.activeSessionId
-        ? state.sessions.find((x) => x.id === state.activeSessionId)?.workdir ?? workdir
+      mode !== 'fullscreen' && splitAnchor
+        ? state.sessions.find((x) => x.id === splitAnchor)?.workdir ?? workdir
         : workdir
 
     const result = await window.electronAPI.createSession(cwd)
@@ -57,14 +126,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         layoutRoot = { type: 'leaf', sessionId: result.sessionId }
       } else if (!layoutRoot) {
         layoutRoot = { type: 'leaf', sessionId: result.sessionId }
-      } else if (mode === 'split-right' && s.activeSessionId) {
-        layoutRoot =
-          replaceLeafWithSplit(layoutRoot, s.activeSessionId, 'horizontal', result.sessionId) ??
-          ({ type: 'leaf', sessionId: result.sessionId } satisfies PaneNode)
-      } else if (mode === 'split-down' && s.activeSessionId) {
-        layoutRoot =
-          replaceLeafWithSplit(layoutRoot, s.activeSessionId, 'vertical', result.sessionId) ??
-          ({ type: 'leaf', sessionId: result.sessionId } satisfies PaneNode)
+      } else if (mode === 'split-right') {
+        const anchor = splitFromSessionId ?? s.activeSessionId
+        if (anchor) {
+          layoutRoot =
+            replaceLeafWithSplit(layoutRoot, anchor, 'horizontal', result.sessionId) ??
+            ({ type: 'leaf', sessionId: result.sessionId } satisfies PaneNode)
+        }
+      } else if (mode === 'split-down') {
+        const anchor = splitFromSessionId ?? s.activeSessionId
+        if (anchor) {
+          layoutRoot =
+            replaceLeafWithSplit(layoutRoot, anchor, 'vertical', result.sessionId) ??
+            ({ type: 'leaf', sessionId: result.sessionId } satisfies PaneNode)
+        }
       }
 
       return {
@@ -73,10 +148,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         layoutRoot
       }
     })
+
+    await upsertWorkdirHistory(newSession)
+    await get().loadHistory()
   },
 
   closeSession: (id: string) => {
     destroyTerminal(id)
+    clearTokenUsageBuffer(id)
+    useTokenUsageStore.getState().clearSession(id)
     window.electronAPI.closeSession(id)
     set((s) => {
       const remaining = s.sessions.filter((sess) => sess.id !== id)
@@ -125,5 +205,76 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   deleteHistory: async (id: string) => {
     await window.electronAPI.history.delete(id)
     set((s) => ({ history: s.history.filter((r) => r.id !== id) }))
+  },
+
+  restoreFromHistory: async (record: HistoryRecord) => {
+    await get().createSession(record.workdir, 'fullscreen')
+  },
+
+  notifyTerminalCommittedLine: async (sessionId: string, rawLine: string) => {
+    const line = normalizeCommittedTerminalLine(rawLine)
+    if (!line) return
+    const sess = get().sessions.find((s) => s.id === sessionId)
+    if (!sess) return
+    await upsertWorkdirHistory(sess, { lastUserPrompt: line })
+    await get().loadHistory()
+  },
+
+  updateHistoryTopic: async (recordId: string, topic: string | null) => {
+    const prev = await window.electronAPI.history.get(recordId)
+    if (!prev) return
+    const t = topic?.trim()
+    await window.electronAPI.history.save({
+      ...prev,
+      topic: t ? t : undefined,
+      updatedAt: Date.now()
+    })
+    await get().loadHistory()
+  },
+
+  restoreWorkspace: async (pw: PersistedWorkspace) => {
+    useTokenUsageStore.getState().resetAll()
+    resetAllTokenUsageParsing()
+
+    const sessions: Session[] = []
+    for (const wd of pw.sessionWorkdirs) {
+      const result = await window.electronAPI.createSession(wd)
+      sessions.push({
+        id: result.sessionId,
+        title: wd.split(/[/\\]/).pop() ?? wd,
+        workdir: wd,
+        status: 'running',
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        ptyPid: result.pid
+      })
+    }
+
+    const ids = sessions.map((s) => s.id)
+    let layoutRoot: PaneNode | null = null
+
+    if (ids.length > 0 && pw.layoutRoot && persistedSlotsValid(pw.layoutRoot, ids.length)) {
+      layoutRoot = persistedPaneToLive(pw.layoutRoot, ids)
+    }
+    if (!layoutRoot && ids.length === 1) {
+      layoutRoot = { type: 'leaf', sessionId: ids[0] }
+    }
+    if (!layoutRoot && ids.length > 1) {
+      layoutRoot = { type: 'leaf', sessionId: ids[0] }
+    }
+
+    for (const sess of sessions) {
+      await upsertWorkdirHistory(sess)
+    }
+
+    let activeSessionId: string | null = null
+    if (ids.length > 0) {
+      const idx = Math.min(Math.max(pw.activeSlotIndex, 0), ids.length - 1)
+      activeSessionId = ids[idx]
+    }
+
+    set({ sessions, layoutRoot, activeSessionId })
+    await get().loadHistory()
   }
 }))

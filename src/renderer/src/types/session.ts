@@ -39,4 +39,8 @@ export interface HistoryRecord {
   messages: Message[]
   createdAt: number
   updatedAt: number
+  /** 侧栏右键设置，列表优先展示 */
+  topic?: string
+  /** 终端最近一次完整提交行（自动） */
+  lastUserPrompt?: string
 }

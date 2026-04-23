@@ -5,6 +5,7 @@ import type { ClaudeSettings } from '../renderer/src/types/settings'
 import { DEFAULT_SETTINGS } from '../renderer/src/types/settings'
 
 export type { ClaudeSettings }
+export { DEFAULT_SETTINGS }
 
 interface StoreSchema {
   settings: ClaudeSettings
@@ -47,8 +48,10 @@ export class SettingsStore {
     // [2026-04-23] 原先仅从 electron-store 读取；增加读取 gitignore 的 local/claude.local.json 合并层，便于个人密钥只放本地文件、不提交仓库
     // return store.get('settings', DEFAULT_SETTINGS)
     const stored = store.get('settings', DEFAULT_SETTINGS)
+    /* [2026-04-23] 旧磁盘配置缺新字段（如 permissionPreset）时用 DEFAULT_SETTINGS 补齐 */
+    const mergedStored = { ...DEFAULT_SETTINGS, ...stored }
     const local = readLocalClaudeOverrides()
-    return local ? mergeClaudeSettings(stored, local) : stored
+    return local ? mergeClaudeSettings(mergedStored, local) : mergedStored
   }
 
   set(settings: ClaudeSettings): void {

@@ -6,5 +6,6 @@
   "haikuModel": "glm-5",
   "opusModel": "glm-5",
   "subagentModel": "glm-5",
-  "disableExperimentalBetas": true
+  "disableExperimentalBetas": true,
+  "permissionPreset": "acceptEdits"
 }

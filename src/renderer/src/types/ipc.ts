@@ -28,7 +28,10 @@ export const IPC = {
   APP_CLOSE: 'app:close',
 
   SETTINGS_GET: 'settings:get',
-  SETTINGS_SET: 'settings:set'
+  SETTINGS_SET: 'settings:set',
+
+  WORKSPACE_SAVE: 'workspace:save',
+  WORKSPACE_LOAD: 'workspace:load'
 } as const
 
 export interface SessionCreatePayload {

@@ -5,12 +5,14 @@ import type { PtyManager } from './ptyManager'
 import type { FileSystemHandler } from './fileSystemHandler'
 import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
+import type { WorkspaceStore } from './workspaceStore'
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   fsHandler: FileSystemHandler,
   historyStore: HistoryStore,
-  settingsStore: SettingsStore
+  settingsStore: SettingsStore,
+  workspaceStore: WorkspaceStore
 ): void {
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
@@ -18,6 +20,13 @@ export function registerIpcHandlers(
     settingsStore.set(settings)
     return { success: true }
   })
+
+  ipcMain.handle(IPC.WORKSPACE_SAVE, async (_e, workspace) => {
+    workspaceStore.set(workspace ?? null)
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC.WORKSPACE_LOAD, async () => workspaceStore.get())
 
   // ── Session management ──────────────────────────────────────
   ipcMain.handle(IPC.SESSION_CREATE, async (_e, payload) => {

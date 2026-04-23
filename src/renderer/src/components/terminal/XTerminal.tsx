@@ -3,6 +3,7 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import 'xterm/css/xterm.css'
+import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 
 interface Props {
   sessionId: string
@@ -11,6 +12,9 @@ interface Props {
 
 // Map sessionId → Terminal instance (shared across re-renders)
 const terminals = new Map<string, { term: Terminal; fitAddon: FitAddon }>()
+
+/** 当前行缓冲，遇 \\r/\\n 提交为「最后一问」候选（与 PTY send 并行） */
+const terminalLineBuffers = new Map<string, string>()
 
 function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: FitAddon } {
   if (terminals.has(sessionId)) return terminals.get(sessionId)!
@@ -56,6 +60,7 @@ function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: Fit
 }
 
 export function destroyTerminal(sessionId: string): void {
+  terminalLineBuffers.delete(sessionId)
   const entry = terminals.get(sessionId)
   if (entry) {
     entry.term.dispose()
@@ -107,6 +112,22 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
 
     const dataSub = term.onData((data) => {
       window.electronAPI?.sendInput(sessionId, data)
+      // [2026-04-23] 缓冲物理行，遇换行写入 history.lastUserPrompt（terminalLineBridge → sessionStore）
+      let buf = terminalLineBuffers.get(sessionId) ?? ''
+      for (const ch of data) {
+        if (ch === '\r' || ch === '\n') {
+          if (buf.length > 0) {
+            emitTerminalCommittedLine(sessionId, buf)
+            buf = ''
+          }
+        } else if (ch === '\x7f' || ch === '\b') {
+          buf = buf.slice(0, -1)
+        } else if (ch.charCodeAt(0) >= 32 || ch === '\t') {
+          buf += ch
+          if (buf.length > 4000) buf = buf.slice(-2000)
+        }
+      }
+      terminalLineBuffers.set(sessionId, buf)
     })
 
     fit()

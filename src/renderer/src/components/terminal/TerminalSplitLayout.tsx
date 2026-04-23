@@ -5,6 +5,41 @@ import type { PaneNode } from '../../types/paneLayout'
 import { TERMINAL_PANE_ATTR } from '../../lib/terminalPaneNeighbors'
 import { XTerminal } from './XTerminal'
 import { TerminalDropZone } from './TerminalDropZone'
+import { TerminalPaneHeader } from './TerminalPaneHeader'
+
+interface PaneLeafProps {
+  sessionId: string
+  focused: boolean
+  setActiveSession: (id: string) => void
+}
+
+/** 单个终端窗格：顶栏 + 终端区（data-terminal-pane 含顶栏便于 Alt+方向键几何） */
+function PaneLeafShell({
+  sessionId,
+  focused,
+  setActiveSession
+}: PaneLeafProps): React.ReactElement {
+  return (
+    <div
+      role="presentation"
+      {...{ [TERMINAL_PANE_ATTR]: sessionId }}
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-sm"
+    >
+      <TerminalPaneHeader sessionId={sessionId} focused={focused} />
+      <div
+        role="presentation"
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-sm transition-shadow ${
+          focused ? 'ring-1 ring-amber-500/60 ring-inset' : 'ring-1 ring-transparent'
+        }`}
+        onMouseDown={() => setActiveSession(sessionId)}
+      >
+        <TerminalDropZone sessionId={sessionId}>
+          <XTerminal sessionId={sessionId} active={focused} />
+        </TerminalDropZone>
+      </div>
+    </div>
+  )
+}
 
 interface PaneContentProps {
   node: PaneNode
@@ -22,18 +57,11 @@ function PaneContent({
   if (node.type === 'leaf') {
     const focused = activeSessionId === node.sessionId
     return (
-      <div
-        role="presentation"
-        {...{ [TERMINAL_PANE_ATTR]: node.sessionId }}
-        className={`flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-sm transition-shadow ${
-          focused ? 'ring-1 ring-amber-500/60 ring-inset' : 'ring-1 ring-transparent'
-        }`}
-        onMouseDown={() => setActiveSession(node.sessionId)}
-      >
-        <TerminalDropZone sessionId={node.sessionId}>
-          <XTerminal sessionId={node.sessionId} active={focused} />
-        </TerminalDropZone>
-      </div>
+      <PaneLeafShell
+        sessionId={node.sessionId}
+        focused={focused}
+        setActiveSession={setActiveSession}
+      />
     )
   }
 
@@ -89,18 +117,11 @@ export function TerminalSplitLayout({ root }: Props): React.ReactElement {
   if (root.type === 'leaf') {
     const focused = activeSessionId === root.sessionId
     return (
-      <div
-        role="presentation"
-        {...{ [TERMINAL_PANE_ATTR]: root.sessionId }}
-        className={`flex h-full min-h-0 w-full flex-col overflow-hidden rounded-sm transition-shadow ${
-          focused ? 'ring-1 ring-amber-500/60 ring-inset' : 'ring-1 ring-transparent'
-        }`}
-        onMouseDown={() => setActiveSession(root.sessionId)}
-      >
-        <TerminalDropZone sessionId={root.sessionId}>
-          <XTerminal sessionId={root.sessionId} active={focused} />
-        </TerminalDropZone>
-      </div>
+      <PaneLeafShell
+        sessionId={root.sessionId}
+        focused={focused}
+        setActiveSession={setActiveSession}
+      />
     )
   }
 

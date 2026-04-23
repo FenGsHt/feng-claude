@@ -2,7 +2,6 @@ import React from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useAltArrowPaneNav } from '../../hooks/useAltArrowPaneNav'
 import { TerminalSplitLayout } from './TerminalSplitLayout'
-import { SplitToolbar } from './SplitToolbar'
 
 /*
  * [2026-04-23] 原先：map sessions 仅显示 activeSessionId 对应的全屏单终端（其余 display:none）。
@@ -51,7 +50,6 @@ export function TerminalPanel(): React.ReactElement {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <SplitToolbar />
       <div className="min-h-0 flex-1">
         <TerminalSplitLayout root={layoutRoot} />
       </div>

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { FileTree } from './FileTree'
 import { HistoryPanel } from './HistoryPanel'
+import { SlashCommandsPanel } from './SlashCommandsPanel'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
-type Tab = 'files' | 'history' | 'settings'
+type Tab = 'files' | 'history' | 'commands' | 'settings'
 
 export function Sidebar(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -31,10 +32,10 @@ export function Sidebar(): React.ReactElement {
   }
 
   return (
-    <div className="flex flex-col w-56 shrink-0 bg-claude-surface border-r border-claude-border overflow-hidden">
+    <div className="flex flex-col w-60 shrink-0 bg-claude-surface border-r border-claude-border overflow-hidden">
       {/* Tab selector */}
       <div className="flex border-b border-claude-border shrink-0">
-        {(['files', 'history', 'settings'] as Tab[]).map((tab) => (
+        {(['files', 'history', 'commands', 'settings'] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -44,7 +45,7 @@ export function Sidebar(): React.ReactElement {
                 : 'text-claude-muted hover:text-claude-text'
             }`}
           >
-            {tab === 'settings' ? '⚙' : tab}
+            {tab === 'settings' ? '⚙' : tab === 'commands' ? '/' : tab}
           </button>
         ))}
       </div>
@@ -61,6 +62,8 @@ export function Sidebar(): React.ReactElement {
           <div className="overflow-y-auto h-full">
             <HistoryPanel />
           </div>
+        ) : activeTab === 'commands' ? (
+          <SlashCommandsPanel />
         ) : (
           <SettingsPanel />
         )}

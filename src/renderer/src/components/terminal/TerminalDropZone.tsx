@@ -5,6 +5,7 @@ import {
   formatFileRefForClaudeCode,
   type FileDragPayload
 } from '../../lib/claudeRef'
+import { CC_SLASH_DRAG_MIME, CC_SLASH_PLAIN_PREFIX } from '../../lib/ccSlashDrag'
 import { focusTerminal } from './XTerminal'
 
 /** 包住 xterm：从文件树拖入时往当前 Claude 会话注入 @path 引用（经 PTY 发送） */
@@ -45,6 +46,7 @@ export function TerminalDropZone({
   const handleDragOver = (e: React.DragEvent): void => {
     const types = Array.from(e.dataTransfer.types ?? [])
     if (
+      types.includes(CC_SLASH_DRAG_MIME) ||
       types.includes(FILE_DRAG_MIME) ||
       types.includes('application/json') ||
       types.includes('text/plain')
@@ -57,6 +59,7 @@ export function TerminalDropZone({
   const handleDragEnter = (e: React.DragEvent): void => {
     const types = Array.from(e.dataTransfer.types ?? [])
     if (
+      types.includes(CC_SLASH_DRAG_MIME) ||
       types.includes(FILE_DRAG_MIME) ||
       types.includes('application/json') ||
       types.includes('text/plain')
@@ -75,6 +78,31 @@ export function TerminalDropZone({
   const handleDrop = (e: React.DragEvent): void => {
     e.preventDefault()
     setDragOver(false)
+
+    /* [2026-04-23] 原仅处理文件树拖入；现优先处理侧栏 / 命令（CC_SLASH_*） */
+    try {
+      const raw = e.dataTransfer.getData(CC_SLASH_DRAG_MIME)
+      if (raw) {
+        const o = JSON.parse(raw) as { command?: string }
+        if (o.command && typeof o.command === 'string' && o.command.startsWith('/')) {
+          setActiveSession(sessionId)
+          window.electronAPI.sendInput(sessionId, o.command)
+          queueMicrotask(() => focusTerminal(sessionId))
+          return
+        }
+      }
+    } catch {
+      //
+    }
+    const plainFirst = e.dataTransfer.getData('text/plain').trim()
+    if (plainFirst.startsWith(CC_SLASH_PLAIN_PREFIX)) {
+      const cmd = plainFirst.slice(CC_SLASH_PLAIN_PREFIX.length)
+      setActiveSession(sessionId)
+      window.electronAPI.sendInput(sessionId, cmd)
+      queueMicrotask(() => focusTerminal(sessionId))
+      return
+    }
+
     const payload = parsePayload(e)
     if (!payload) return
 

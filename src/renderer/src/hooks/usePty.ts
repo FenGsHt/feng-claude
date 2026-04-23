@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { writeToTerminal } from '../components/terminal/XTerminal'
+import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
 
 /**
  * Global hook — subscribes to PTY output and routes data directly to
@@ -12,6 +13,7 @@ export function usePty(): void {
   useEffect(() => {
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
       writeToTerminal(payload.sessionId, payload.data)
+      feedPtyChunkForTokenUsage(payload.sessionId, payload.data)
     })
 
     const unsubStatus = window.electronAPI.onPtyStatus((payload) => {

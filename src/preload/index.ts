@@ -4,6 +4,7 @@ import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult } from '..
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
+import type { PersistedWorkspace } from '../renderer/src/types/workspace'
 
 const electronAPI = {
   // Session
@@ -56,6 +57,12 @@ const electronAPI = {
     get: (): Promise<ClaudeSettings> => ipcRenderer.invoke(IPC.SETTINGS_GET),
     set: (s: ClaudeSettings): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC.SETTINGS_SET, s)
+  },
+
+  workspace: {
+    save: (workspace: PersistedWorkspace | null): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.WORKSPACE_SAVE, workspace),
+    load: (): Promise<unknown> => ipcRenderer.invoke(IPC.WORKSPACE_LOAD)
   },
 
   // Window controls

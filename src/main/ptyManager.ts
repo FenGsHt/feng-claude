@@ -4,6 +4,7 @@ import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 import type { ClaudeSettings, SettingsStore } from './settingsStore'
+import { DEFAULT_SETTINGS } from './settingsStore'
 
 // Detect cmd.exe shell prompt: any path ending with ">"
 // e.g. "E:\git3\claude-gui>" or "C:\Users\foo>"
@@ -12,6 +13,12 @@ const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
 // Isolated config dir: <userData>/claude-session
 // Prevents conflict with the user's global ~/.claude OAuth login
 const CLAUDE_CONFIG_DIR = join(app.getPath('userData'), 'claude-session')
+
+/** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI） */
+function claudeLaunchLine(settings: ClaudeSettings): string {
+  const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
+  return `claude --permission-mode ${mode}\r`
+}
 
 interface PtySession {
   id: string
@@ -55,7 +62,7 @@ export class PtyManager {
 
     // Auto-launch claude CLI after shell is ready
     setTimeout(() => {
-      ptyProcess.write('claude\r')
+      ptyProcess.write(claudeLaunchLine(s))
     }, 300)
 
     const session: PtySession = { id: sessionId, ptyProcess, workdir, claudeRunning: true, buffer: '' }
@@ -80,7 +87,8 @@ export class PtyManager {
         setTimeout(() => {
           if (this.sessions.has(sessionId)) {
             session.claudeRunning = true
-            ptyProcess.write('claude\r')
+            const settings = this.settingsStore.get()
+            ptyProcess.write(claudeLaunchLine(settings))
           }
         }, 500)
       }

@@ -5,6 +5,7 @@ import { PtyManager } from './ptyManager'
 import { FileSystemHandler } from './fileSystemHandler'
 import { HistoryStore } from './historyStore'
 import { SettingsStore } from './settingsStore'
+import { WorkspaceStore } from './workspaceStore'
 import { registerIpcHandlers } from './ipcHandlers'
 
 let ptyManager: PtyManager
@@ -36,11 +37,12 @@ function createWindow(): BrowserWindow {
   })
 
   const settingsStore = new SettingsStore()
+  const workspaceStore = new WorkspaceStore()
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])

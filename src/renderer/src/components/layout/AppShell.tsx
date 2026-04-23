@@ -1,10 +1,19 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from '../sidebar/Sidebar'
 import { TabBar } from '../tabs/TabBar'
 import { TerminalPanel } from '../terminal/TerminalPanel'
+import { setTerminalLineHandler } from '../../lib/terminalLineBridge'
+import { useSessionStore } from '../../store/sessionStore'
 
 export function AppShell(): React.ReactElement {
+  useEffect(() => {
+    setTerminalLineHandler((sessionId, line) => {
+      void useSessionStore.getState().notifyTerminalCommittedLine(sessionId, line)
+    })
+    return () => setTerminalLineHandler(null)
+  }, [])
+
   return (
     <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans">
       <TitleBar />

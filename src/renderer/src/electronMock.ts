@@ -43,6 +43,10 @@ export function injectMockElectronAPI(): void {
         get: async () => ({ ...DEFAULT_SETTINGS }),
         set: async () => ({ success: true })
       },
+      workspace: {
+        save: async () => ({ success: true }),
+        load: async () => null
+      },
       appMinimize: noop,
       appMaximize: noop,
       appClose: noop
