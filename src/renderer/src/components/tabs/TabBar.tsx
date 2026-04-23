@@ -7,7 +7,7 @@ export function TabBar(): React.ReactElement {
 
   const handleNewTab = async () => {
     const dir = await window.electronAPI.openDirDialog()
-    await createSession(dir ?? process.cwd?.() ?? '.')
+    await createSession(dir ?? process.cwd?.() ?? '.', 'fullscreen')
   }
 
   return (

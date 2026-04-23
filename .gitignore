@@ -10,3 +10,7 @@ local/claude.local.json
 
 .claude-session/
 .claude/settings.local.json
+
+# 根目录便携 exe（npm run build:root-exe；启用 .githooks 后每次 commit 也会生成）
+/claude-gui-latest.exe
+/claude-gui-*-portable-*.exe

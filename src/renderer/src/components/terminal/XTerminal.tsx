@@ -67,9 +67,13 @@ export function writeToTerminal(sessionId: string, data: string): void {
   terminals.get(sessionId)?.term.write(data)
 }
 
+/** 将键盘焦点交给对应 xterm（例如从侧栏拖放路径后便于继续输入） */
+export function focusTerminal(sessionId: string): void {
+  terminals.get(sessionId)?.term.focus()
+}
+
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mountedRef = useRef(false)
 
   const fit = useCallback(() => {
     const entry = terminals.get(sessionId)
@@ -83,27 +87,36 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     }
   }, [sessionId])
 
+  /*
+   * [2026-04-23] 原先用 mountedRef 包住 onData，仅在「首次」注册；Strict Mode / 父级重挂时新实例
+   * mountedRef 归零，但 term 仍在全局 Map 里，会再次 register onData，cleanup 又不 dispose，
+   * 叠多条回调 → 键入一次多次 sendInput（中文 IME 看起来像「一个字重复多遍」）。
+   * 改为：每次 effect 注册一条 onData，cleanup 里 IDisposable.dispose()。
+   */
   useEffect(() => {
-    if (!containerRef.current) return
-    const { term, fitAddon } = getOrCreateTerminal(sessionId)
+    const container = containerRef.current
+    if (!container) return
 
-    if (!mountedRef.current) {
-      term.open(containerRef.current)
-      mountedRef.current = true
+    const { term } = getOrCreateTerminal(sessionId)
 
-      // Send keystrokes to PTY
-      term.onData((data) => {
-        window.electronAPI?.sendInput(sessionId, data)
-      })
+    if (!term.element) {
+      term.open(container)
     } else {
-      // Re-attach to DOM when switching tabs
-      containerRef.current.appendChild(term.element!)
+      container.appendChild(term.element)
     }
+
+    const dataSub = term.onData((data) => {
+      window.electronAPI?.sendInput(sessionId, data)
+    })
 
     fit()
     const ro = new ResizeObserver(fit)
-    ro.observe(containerRef.current)
-    return () => ro.disconnect()
+    ro.observe(container)
+
+    return () => {
+      dataSub.dispose()
+      ro.disconnect()
+    }
   }, [sessionId, fit])
 
   // Fit when becoming active

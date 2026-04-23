@@ -1,5 +1,18 @@
 import React, { useState } from 'react'
 import type { FileTreeNode } from '../../types/fs'
+import { FILE_DRAG_MIME, type FileDragPayload } from '../../lib/claudeRef'
+
+function setFileDragData(e: React.DragEvent, node: FileTreeNode): void {
+  const payload: FileDragPayload = {
+    path: node.path,
+    kind: node.type === 'directory' ? 'directory' : 'file'
+  }
+  const json = JSON.stringify(payload)
+  e.dataTransfer.effectAllowed = 'copy'
+  e.dataTransfer.setData(FILE_DRAG_MIME, json)
+  e.dataTransfer.setData('application/json', json)
+  e.dataTransfer.setData('text/plain', node.path)
+}
 
 interface NodeProps {
   node: FileTreeNode
@@ -13,9 +26,13 @@ function FileTreeNodeItem({ node, depth }: NodeProps): React.ReactElement {
     return (
       <div>
         <button
+          type="button"
+          draggable
+          onDragStart={(e) => setFileDragData(e, node)}
           onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-1.5 w-full text-left px-2 py-0.5 hover:bg-claude-border/50 rounded text-xs text-claude-muted hover:text-claude-text transition-colors"
+          className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-0.5 hover:bg-claude-border/50 rounded text-xs text-claude-muted hover:text-claude-text transition-colors"
           style={{ paddingLeft: `${8 + depth * 12}px` }}
+          title={`${node.path} — drag to Claude terminal as @ reference`}
         >
           <span className="text-xs">{expanded ? '▾' : '▸'}</span>
           <span className="text-amber-500/80">⊞</span>
@@ -34,9 +51,12 @@ function FileTreeNodeItem({ node, depth }: NodeProps): React.ReactElement {
 
   return (
     <button
-      className="flex items-center gap-1.5 w-full text-left px-2 py-0.5 hover:bg-claude-border/50 rounded text-xs text-claude-muted hover:text-claude-text transition-colors"
+      type="button"
+      draggable
+      onDragStart={(e) => setFileDragData(e, node)}
+      className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-0.5 hover:bg-claude-border/50 rounded text-xs text-claude-muted hover:text-claude-text transition-colors"
       style={{ paddingLeft: `${8 + depth * 12}px` }}
-      title={node.path}
+      title={`${node.path} — drag to Claude terminal as @ reference`}
     >
       <span className="text-xs opacity-0">▸</span>
       <span className="text-claude-muted/60">·</span>

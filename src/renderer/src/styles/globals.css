@@ -40,3 +40,33 @@ body,
 .no-select {
   user-select: none;
 }
+
+/* react-resizable-panels — Zellij 风格可拖分割线 */
+[data-separator] {
+  flex-shrink: 0;
+}
+
+.pane-separator {
+  border-radius: 9999px;
+  background: #2a2a2a;
+  transition: background 0.12s ease;
+}
+
+/* 左右分屏：竖条 */
+.pane-separator-cols {
+  width: 4px;
+  min-width: 4px;
+  align-self: stretch;
+}
+
+/* 上下分屏：横条 */
+.pane-separator-rows {
+  height: 4px;
+  min-height: 4px;
+  width: 100%;
+}
+
+.pane-separator:hover,
+.pane-separator:focus-visible {
+  background: rgba(217, 119, 6, 0.75);
+}

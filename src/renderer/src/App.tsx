@@ -10,7 +10,7 @@ export default function App(): React.ReactElement {
 
   useEffect(() => {
     if (sessions.length === 0) {
-      createSession('.')
+      void createSession('.', 'fullscreen')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
