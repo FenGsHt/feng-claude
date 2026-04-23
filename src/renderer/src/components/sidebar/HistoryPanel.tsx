@@ -23,7 +23,7 @@ export function HistoryPanel(): React.ReactElement {
           <div
             key={record.id}
             className="flex items-start gap-2 px-3 py-2 hover:bg-claude-border/50 rounded cursor-pointer group"
-            title="左键打开 · 右键编辑主题"
+            title={`${record.workdir}\n左键打开 · 右键编辑主题`}
             onClick={() => restoreFromHistory(record)}
             onContextMenu={(e) => {
               e.preventDefault()
@@ -34,8 +34,12 @@ export function HistoryPanel(): React.ReactElement {
             <div className="flex-1 min-w-0">
               {/* [2026-04-23] 原仅 record.title；现 topic / lastUserPrompt 优先 */}
               <p className="text-xs text-claude-text truncate">{historyRecordPrimaryLabel(record)}</p>
-              <p className="text-xs text-claude-muted truncate font-mono mt-0.5">
-                {record.workdir.split(/[/\\]/).pop()}
+              {/* [2026-04-23] 原仅显示最后一级目录名；改为展示完整路径便于区分同名文件夹 */}
+              <p
+                className="text-[10px] text-claude-muted truncate font-mono mt-0.5 leading-snug"
+                title={record.workdir}
+              >
+                {record.workdir}
               </p>
             </div>
             <button

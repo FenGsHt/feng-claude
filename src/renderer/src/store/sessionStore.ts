@@ -100,12 +100,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     mode: CreateSessionMode = 'fullscreen',
     splitFromSessionId?: string
   ) => {
-    const state = get()
-    const splitAnchor = splitFromSessionId ?? state.activeSessionId
-    const cwd =
-      mode !== 'fullscreen' && splitAnchor
-        ? state.sessions.find((x) => x.id === splitAnchor)?.workdir ?? workdir
-        : workdir
+    /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
+     * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
+     * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
+     */
+    const cwd = workdir
 
     const result = await window.electronAPI.createSession(cwd)
     const newSession: Session = {
