@@ -6,10 +6,16 @@ export interface SessionTokenTotals {
   output: number
 }
 
+export type TokenIngestMode = 'set' | 'add' | 'override'
+
 interface TokenUsageStore {
   bySession: Record<string, SessionTokenTotals>
-  /** mode: set — 取较大值（CLI 打印累计值）；add — 叠加增量行 */
-  ingest: (sessionId: string, input: number, output: number, mode: 'set' | 'add') => void
+  /**
+   * set — 与各来源匹配值取 max（累计口径）
+   * add — 增量叠加
+   * override — 直接覆盖（的状态栏 ↑↓ 尾部快照，避免与滚动区误匹配取 max）
+   */
+  ingest: (sessionId: string, input: number, output: number, mode: TokenIngestMode) => void
   clearSession: (sessionId: string) => void
   resetAll: () => void
 }
@@ -19,13 +25,17 @@ export const useTokenUsageStore = create<TokenUsageStore>((set) => ({
   ingest: (sessionId, input, output, mode) =>
     set((s) => {
       const cur = s.bySession[sessionId] ?? { input: 0, output: 0 }
-      const next =
-        mode === 'add'
-          ? { input: cur.input + input, output: cur.output + output }
-          : {
-              input: Math.max(cur.input, input),
-              output: Math.max(cur.output, output)
-            }
+      let next: SessionTokenTotals
+      if (mode === 'override') {
+        next = { input, output }
+      } else if (mode === 'add') {
+        next = { input: cur.input + input, output: cur.output + output }
+      } else {
+        next = {
+          input: Math.max(cur.input, input),
+          output: Math.max(cur.output, output)
+        }
+      }
       return { bySession: { ...s.bySession, [sessionId]: next } }
     }),
   clearSession: (sessionId) =>

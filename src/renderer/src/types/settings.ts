@@ -15,6 +15,11 @@ export interface ClaudeSettings {
   subagentModel: string
   disableExperimentalBetas: boolean
   permissionPreset: ClaudePermissionPreset
+  /**
+   * 填项目根路径（内含 `.claude/skills`）。非空时启动 Claude 附加 `--add-dir`，
+   * 任意 cwd 会话也会合并该目录下的 skills（见 Claude Code 文档）。
+   */
+  sharedSkillAddDir: string
 }
 
 export const DEFAULT_SETTINGS: ClaudeSettings = {
@@ -26,5 +31,6 @@ export const DEFAULT_SETTINGS: ClaudeSettings = {
   opusModel: 'glm-5',
   subagentModel: 'glm-5',
   disableExperimentalBetas: true,
-  permissionPreset: 'acceptEdits'
+  permissionPreset: 'acceptEdits',
+  sharedSkillAddDir: ''
 }

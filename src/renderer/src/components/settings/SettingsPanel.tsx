@@ -85,6 +85,34 @@ export function SettingsPanel(): React.ReactElement {
           </select>
         </Field>
 
+        <Field label="额外技能目录（可选）" hint="claude --add-dir">
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={form.sharedSkillAddDir}
+              onChange={(e) => handleChange('sharedSkillAddDir', e.target.value)}
+              placeholder="含 .claude/skills 的项目根绝对路径"
+              className="field-input flex-1 min-w-0"
+            />
+            <button
+              type="button"
+              onClick={async () => {
+                const dir = await window.electronAPI.openDirDialog()
+                if (dir) handleChange('sharedSkillAddDir', dir)
+              }}
+              className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
+            >
+              浏览…
+            </button>
+          </div>
+          <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+            任意会话 cwd 下合并该目录内 `.claude/skills`。留空时，若
+            <span className="text-claude-text"> 已安装/便携打包 </span>
+            且 exe 同目录或 resources 下存在 `.claude` 或 `.claude/skills`，将自动附加 `--add-dir`；源码开发启动不自动探测。保存后新开会话生效。
+            保存后新开 / 自动重启的 Claude 生效。
+          </p>
+        </Field>
+
         <div className="pt-1 pb-1 border-t border-claude-border">
           <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider pt-2 pb-1">
             Model Routing

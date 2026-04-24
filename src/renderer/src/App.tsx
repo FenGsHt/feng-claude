@@ -4,6 +4,7 @@ import { usePty } from './hooks/usePty'
 import { useWorkspacePersistence } from './hooks/useWorkspacePersistence'
 import { useSessionStore } from './store/sessionStore'
 import { parsePersistedWorkspace } from './lib/workspaceSerialize'
+import { loadPersistedWorkspace } from './lib/workspaceIpc'
 
 export default function App(): React.ReactElement {
   usePty()
@@ -14,7 +15,7 @@ export default function App(): React.ReactElement {
     let cancelled = false
     ;(async () => {
       try {
-        const raw = await window.electronAPI.workspace.load()
+        const raw = await loadPersistedWorkspace()
         const pw = parsePersistedWorkspace(raw)
         if (cancelled) return
         if (pw && pw.sessionWorkdirs.length > 0) {

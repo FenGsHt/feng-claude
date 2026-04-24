@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { workspaceToPersisted } from '../lib/workspaceSerialize'
+import { savePersistedWorkspace } from '../lib/workspaceIpc'
 
 const DEBOUNCE_MS = 450
 
@@ -14,7 +15,7 @@ export function useWorkspacePersistence(enabled: boolean): void {
     const flush = (): void => {
       const s = useSessionStore.getState()
       const pw = workspaceToPersisted(s.sessions, s.layoutRoot, s.activeSessionId)
-      void window.electronAPI.workspace.save(pw)
+      void savePersistedWorkspace(pw)
     }
 
     const unsub = useSessionStore.subscribe(() => {

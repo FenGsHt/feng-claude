@@ -2,6 +2,9 @@
 
 export const WORKSPACE_VERSION = 1 as const
 
+/** 主进程未注册 workspace IPC 或仅浏览器预览时，快照写入 localStorage 的键 */
+export const WORKSPACE_BROWSER_LS_KEY = 'claude-gui-workspace-v1'
+
 /** 与 PaneNode 同构，叶子为 slot 索引 */
 export type PersistedPaneNode =
   | { type: 'leaf'; slot: number }

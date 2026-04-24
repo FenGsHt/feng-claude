@@ -3,6 +3,8 @@
  * Injected only when window.electronAPI is not defined.
  */
 import { DEFAULT_SETTINGS } from './types/settings'
+import type { PersistedWorkspace } from './types/workspace'
+import { WORKSPACE_BROWSER_LS_KEY } from './types/workspace'
 
 export function injectMockElectronAPI(): void {
   if (typeof window !== 'undefined' && !window.electronAPI) {
@@ -44,8 +46,23 @@ export function injectMockElectronAPI(): void {
         set: async () => ({ success: true })
       },
       workspace: {
-        save: async () => ({ success: true }),
-        load: async () => null
+        save: async (w: PersistedWorkspace | null) => {
+          if (typeof localStorage !== 'undefined') {
+            if (w) localStorage.setItem(WORKSPACE_BROWSER_LS_KEY, JSON.stringify(w))
+            else localStorage.removeItem(WORKSPACE_BROWSER_LS_KEY)
+          }
+          return { success: true }
+        },
+        load: async () => {
+          if (typeof localStorage === 'undefined') return null
+          const raw = localStorage.getItem(WORKSPACE_BROWSER_LS_KEY)
+          if (!raw) return null
+          try {
+            return JSON.parse(raw) as unknown
+          } catch {
+            return null
+          }
+        }
       },
       appMinimize: noop,
       appMaximize: noop,

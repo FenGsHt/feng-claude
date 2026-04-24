@@ -9,7 +9,7 @@ interface Pattern {
   mode: 'set' | 'add'
 }
 
-/** 去掉 CSI / OSC，便于匹配 Claude Code 彩色状态行里的数字 */
+/** 去掉 CSI / OSC（含部分 SGR），便于匹配 Claude Code 彩色状态行里的数字 */
 function stripAnsi(text: string): string {
   return text
     .replace(/\x1b\[[\d;?]*[ -/]*[@-~]/g, '')
@@ -18,11 +18,14 @@ function stripAnsi(text: string): string {
     .replace(/\r\n/g, '\n')
 }
 
-/** 解析 1234 / 12,345 / 1.2k / 3.4M */
+/** 解析 1234 / 12,345 / 1.2k / 3.4M / 带小数的原样 token（无单位） */
 function parseTokenAmount(s: string): number {
   const t = s.trim().replace(/,/g, '')
   const m = t.match(/^([\d.]+)\s*([kKmM]?)$/)
-  if (!m) return parseInt(t, 10) || 0
+  if (!m) {
+    const n = parseFloat(t.replace(/[^\d.]/g, ''))
+    return Number.isFinite(n) ? Math.round(n) : 0
+  }
   const n = parseFloat(m[1])
   if (Number.isNaN(n)) return 0
   const u = (m[2] ?? '').toLowerCase()
@@ -35,28 +38,100 @@ function parseNumPair(a: string, b: string): { input: number; output: number } {
   return { input: parseTokenAmount(a), output: parseTokenAmount(b) }
 }
 
+/** 状态栏 ↑↓：只取缓冲区尾部最后一次出现，避免滚动区内旧快照被 Math.max 抬高 */
+const STATUS_ARROW_TAIL = 14_000
+
+/** 排除 git ahead/behind（↑2 ↓1）；带 k/M 或任一侧 >10 的视为用量 */
+function looksLikeTokenPair(
+  input: number,
+  output: number,
+  rawA: string,
+  rawB: string
+): boolean {
+  if (input <= 0 && output <= 0) return false
+  if (/[kKmM]/.test(rawA) || /[kKmM]/.test(rawB)) return true
+  const hi = Math.max(input, output)
+  const lo = Math.min(input, output)
+  if (hi <= 10 && lo <= 10) return false
+  return true
+}
+
+function ingestLatestStatusArrowSnapshot(
+  sessionId: string,
+  strippedSlice: string,
+  ingest: (
+    sid: string,
+    input: number,
+    output: number,
+    mode: 'set' | 'add' | 'override'
+  ) => void
+): void {
+  const tail = strippedSlice.slice(-STATUS_ARROW_TAIL)
+  /*
+   * [2026-04-23] 原先中间段用 [^\d\u2193]{0,72}，分支名里的数字或过长分隔符会导致永远匹配失败；
+   * statusline 文档里 ↑/↓ 与数字之间也可能插入其它片段（费用、百分比等）。改为单行内非贪婪拉到下一箭头。
+   */
+  const variants = [
+    /\u2191\s*([\d,.]+[kKmM]?)[^\n]*?\u2193\s*([\d,.]+[kKmM]?)/g,
+    /↑\s*([\d,.]+[kKmM]?)[^\n]*?↓\s*([\d,.]+[kKmM]?)/g
+  ]
+  let bestEnd = -1
+  let pick: { input: number; output: number } | null = null
+  for (const rawRe of variants) {
+    const r = new RegExp(rawRe.source, rawRe.flags.includes('g') ? rawRe.flags : `${rawRe.flags}g`)
+    let m: RegExpExecArray | null
+    while ((m = r.exec(tail)) !== null) {
+      const pair = parseNumPair(m[1], m[2])
+      const end = m.index + m[0].length
+      if (!looksLikeTokenPair(pair.input, pair.output, m[1], m[2])) continue
+      if ((pair.input > 0 || pair.output > 0) && end > bestEnd) {
+        bestEnd = end
+        pick = pair
+      }
+    }
+  }
+  if (pick) ingest(sessionId, pick.input, pick.output, 'override')
+}
+
+/** 内置右侧「61200 tokens」类单行总计（无 in/out 分拆时仅填 input） */
+function ingestBuiltinTotalTokensLine(
+  sessionId: string,
+  strippedSlice: string,
+  ingest: (
+    sid: string,
+    input: number,
+    output: number,
+    mode: 'set' | 'add' | 'override'
+  ) => void
+): void {
+  const tail = strippedSlice.slice(-STATUS_ARROW_TAIL)
+  const re = /\b([\d,.]+[kKmM]?)\s+tokens?\b/gi
+  let bestIdx = -1
+  let bestVal = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(tail)) !== null) {
+    const n = parseTokenAmount(m[1])
+    if (n > bestVal) {
+      bestVal = n
+      bestIdx = m.index
+    }
+  }
+  /* 用 set 合并：勿 override，否则冲掉 JSON/其它规则已识别的 output */
+  if (bestIdx >= 0 && bestVal > 0) {
+    ingest(sessionId, bestVal, 0, 'set')
+  }
+}
+
 /**
  * Claude Code 交互界面里 token 往往出现在：
- * - 底部状态行（含 ANSI）
- * - 偶发的 JSON 片段（stream 事件、context_window）
- * 官方未必打印「Token usage:」明文（见 GitHub feature request），因此模式要尽量宽。
+ * - 底部状态行（↑↓ / unicode 箭头）—— 末尾快照单独提取，避免滚动区旧数字干扰
+ * - `/cost`、`/stats`、debug JSON、stream 里的 usage / context_window
+ *
+ * 精确计费以 Anthropic Console / API 账单为准；此处为「界面可见数字」的最佳努力解析。
  */
 const PATTERNS: Pattern[] = [
   { re: /Token usage:\s*input[=:\s]*(\d+)[^\d]{0,60}output[=:\s]*(\d+)/gi, mode: 'set' },
   { re: /\[Tokens:\s*([\d,.]+[kKmM]?)\s*in\s*[/|]\s*([\d,.]+[kKmM]?)\s*out/gi, mode: 'set' },
-  {
-    re: /↑\s*([\d,.]+[kKmM]?)\s+↓\s*([\d,.]+[kKmM]?)/gi,
-    mode: 'set'
-  },
-  {
-    re: /↑\s*([\d,.]+[kKmM]?)[^\d]{0,16}↓\s*([\d,.]+[kKmM]?)/gi,
-    mode: 'set'
-  },
-  /* Unicode ↑↓（部分终端 / Claude Code 状态行） */
-  {
-    re: /\u2191\s*([\d,.]+[kKmM]?)[^\d]{0,24}\u2193\s*([\d,.]+[kKmM]?)/gi,
-    mode: 'set'
-  },
   { re: /"total_input_tokens"\s*:\s*(\d+)[^}]{0,120}"total_output_tokens"\s*:\s*(\d+)/gi, mode: 'set' },
   { re: /"input_tokens"\s*:\s*(\d+)[^}]{0,120}"output_tokens"\s*:\s*(\d+)/gi, mode: 'set' },
   {
@@ -68,11 +143,12 @@ const PATTERNS: Pattern[] = [
     mode: 'set'
   },
   {
-    re: /(\d[\d,]*)\s*(?:↑|tokens?\s*in|input\s*tokens?)[^\d]{0,40}(\d[\d,]*)\s*(?:↓|tokens?\s*out|output\s*tokens?)/gi,
+    re: /(\d[\d,]*)\s*(?:prompt|input)\s*tokens?[:\s]+(\d[\d,]*)\s*(?:completion|output)\s*tokens?/gi,
     mode: 'set'
   },
+  /* /cost、用量面板常见英文 */
   {
-    re: /(\d[\d,]*)\s*(?:prompt|input)\s*tokens?[:\s]+(\d[\d,]*)\s*(?:completion|output)\s*tokens?/gi,
+    re: /(?:^|\n)\s*(?:prompt|total\s+input)\s+tokens?[：:\s]+([\d,.]+[kKmM]?)[^\d]{0,120}(?:completion|total\s+output)\s+tokens?[：:\s]+([\d,.]+[kKmM]?)/gi,
     mode: 'set'
   },
   {
@@ -109,6 +185,10 @@ export function feedPtyChunkForTokenUsage(sessionId: string, chunk: string): voi
       }
     }
   }
+
+  /* 先拾取内置「N tokens」，再由 ↑↓ 覆盖（避免仅有总计时标题空白） */
+  ingestBuiltinTotalTokensLine(sessionId, slice, ingest)
+  ingestLatestStatusArrowSnapshot(sessionId, slice, ingest)
 }
 
 export function clearTokenUsageBuffer(sessionId: string): void {

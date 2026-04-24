@@ -7,5 +7,6 @@
   "opusModel": "glm-5",
   "subagentModel": "glm-5",
   "disableExperimentalBetas": true,
-  "permissionPreset": "acceptEdits"
+  "permissionPreset": "acceptEdits",
+  "sharedSkillAddDir": ""
 }

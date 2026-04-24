@@ -1,5 +1,6 @@
 import * as pty from 'node-pty'
-import { join } from 'path'
+import { existsSync } from 'fs'
+import { dirname, join } from 'path'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
@@ -14,10 +15,95 @@ const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
 // Prevents conflict with the user's global ~/.claude OAuth login
 const CLAUDE_CONFIG_DIR = join(app.getPath('userData'), 'claude-session')
 
+/** 上游 IDE/CI 会带这些变量，Chalk「supports-color」会关色，Claude Code 全屏发灰 */
+const PTY_ENV_STRIP = [
+  'NO_COLOR',
+  'CI',
+  'NODE_DISABLE_COLORS',
+  'GITHUB_ACTIONS',
+  'CIRCLECI',
+  'TEAMCITY_VERSION',
+  'TF_BUILD',
+  'TRAVIS',
+  'JENKINS_URL'
+] as const
+
+function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> {
+  const e = { ...(process.env as Record<string, string>) }
+  for (const k of PTY_ENV_STRIP) {
+    delete e[k]
+  }
+  return {
+    ...e,
+    ...claudeEnv,
+    CLAUDE_CONFIG_DIR,
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    /** Chalk：3 = truecolor；1 有时仍偏淡 */
+    FORCE_COLOR: '3',
+    CLICOLOR: '1',
+    CLICOLOR_FORCE: '1',
+    PATH: process.env.PATH ?? ''
+  }
+}
+
+/** `--add-dir` 路径：cmd.exe 与 bash 引号规则不同 */
+function quoteAddDirPath(arg: string, isWindows: boolean): string {
+  const t = arg.trim()
+  if (!t) return ''
+  if (isWindows) {
+    if (/[\s"]/.test(t)) return `"${t.replace(/"/g, '""')}"`
+    return t
+  }
+  if (/[^\w/.~+-]/i.test(t) || /\s/.test(t)) {
+    return `'${t.replace(/'/g, `'\\''`)}'`
+  }
+  return t
+}
+
+/**
+ * `--add-dir` 解析顺序：
+ * 1. 设置里手动填写的 sharedSkillAddDir（优先）
+ * 2. 仅打包版：resources 目录下存在 `.claude` / `.claude/skills`（可与 app.asar 同层放技能）
+ * 3. 仅打包版：可执行文件所在目录下存在 `.claude`（便携 exe 旁随包分发）
+ */
+function resolveClaudeAddDir(settings: ClaudeSettings): string {
+  const manual = (settings.sharedSkillAddDir ?? DEFAULT_SETTINGS.sharedSkillAddDir).trim()
+  if (manual) return manual
+
+  if (!app.isPackaged) return ''
+
+  try {
+    const resRoot = process.resourcesPath
+    if (resRoot) {
+      const rSkills = join(resRoot, '.claude', 'skills')
+      const rClaude = join(resRoot, '.claude')
+      if (existsSync(rSkills) || existsSync(rClaude)) {
+        return resRoot
+      }
+    }
+
+    const exeDir = dirname(app.getPath('exe'))
+    const eSkills = join(exeDir, '.claude', 'skills')
+    const eClaude = join(exeDir, '.claude')
+    if (existsSync(eSkills) || existsSync(eClaude)) {
+      return exeDir
+    }
+  } catch {
+    //
+  }
+  return ''
+}
+
 /** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI） */
-function claudeLaunchLine(settings: ClaudeSettings): string {
+function claudeLaunchLine(settings: ClaudeSettings, isWindows: boolean): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
-  return `claude --permission-mode ${mode}\r`
+  let line = `claude --permission-mode ${mode}`
+  const addDir = resolveClaudeAddDir(settings).trim()
+  if (addDir) {
+    line += ` --add-dir ${quoteAddDirPath(addDir, isWindows)}`
+  }
+  return `${line}\r`
 }
 
 interface PtySession {
@@ -50,19 +136,12 @@ export class PtyManager {
       cols: 120,
       rows: 40,
       cwd: workdir,
-      env: {
-        ...process.env,
-        ...claudeEnv,
-        CLAUDE_CONFIG_DIR,
-        TERM: 'xterm-256color',
-        COLORTERM: 'truecolor',
-        PATH: process.env.PATH
-      } as Record<string, string>
+      env: buildPtyEnv(claudeEnv)
     })
 
     // Auto-launch claude CLI after shell is ready
     setTimeout(() => {
-      ptyProcess.write(claudeLaunchLine(s))
+      ptyProcess.write(claudeLaunchLine(s, isWindows))
     }, 300)
 
     const session: PtySession = { id: sessionId, ptyProcess, workdir, claudeRunning: true, buffer: '' }
@@ -88,7 +167,7 @@ export class PtyManager {
           if (this.sessions.has(sessionId)) {
             session.claudeRunning = true
             const settings = this.settingsStore.get()
-            ptyProcess.write(claudeLaunchLine(settings))
+            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))
           }
         }, 500)
       }
