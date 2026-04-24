@@ -18,15 +18,6 @@ const notifyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** 自动记录时跳过无信息量的单行（与 shell 噪音区分） */
 const SKIP_TERMINAL_LINES = new Set(['claude', 'clear', 'exit', 'cls'])
 
-/** 与主进程 resolve 后的绝对路径比对（Windows 盘符/大小写/斜杠差异） */
-function sameResolvedWorkdirPath(a: string, b: string): boolean {
-  const norm = (p: string): string =>
-    p
-      .replace(/\\/g, '/')
-      .replace(/\/+$/, '')
-      .toLowerCase()
-  return norm(a) === norm(b)
-}
 
 function normalizeCommittedTerminalLine(raw: string): string | null {
   const s0 = raw.replace(/\r/g, '').trim()
@@ -220,28 +211,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   restoreFromHistory: async (record: HistoryRecord) => {
-    // [2026-04-23] 原先无条件 createSession；同目录双 PTY 会共抢 JSONL。曾用 resolve 后 === 比对，在 Windows 上大小写不一致时既不匹配也不建会话，表现为「点了没反应」
-    // [2026-04-23] 原先用 resolved[i+1]===target 严格相等；改为归一化比较 + 复用标签时 focusTerminal，已激活同目录也有反馈
-    const sessions = get().sessions
-    if (sessions.length > 0) {
-      try {
-        const paths = [record.workdir, ...sessions.map((s) => s.workdir)]
-        const resolved = await window.electronAPI.resolveWorkdirMany(paths)
-        const target = resolved[0]
-        if (typeof target === 'string') {
-          for (let i = 0; i < sessions.length; i++) {
-            const r = resolved[i + 1]
-            if (typeof r === 'string' && sameResolvedWorkdirPath(r, target)) {
-              const sid = sessions[i]!.id
-              get().setActiveSession(sid)
-              focusTerminal(sid)
-              return
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[restoreFromHistory] resolveWorkdirMany failed, will create new session', e)
-      }
+    // Session workdirs are always absolute paths (resolved by main on SESSION_CREATE),
+    // so a simple case-insensitive local comparison is sufficient — no IPC needed.
+    const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    const target = norm(record.workdir)
+    const existing = get().sessions.find((s) => norm(s.workdir) === target)
+    if (existing) {
+      get().setActiveSession(existing.id)
+      focusTerminal(existing.id)
+      return
     }
     await get().createSession(record.workdir, 'fullscreen')
   },
