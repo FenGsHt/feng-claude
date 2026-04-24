@@ -1,5 +1,5 @@
 import chokidar, { FSWatcher } from 'chokidar'
-import { existsSync, openSync, fstatSync, readSync, closeSync } from 'fs'
+import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
@@ -40,8 +40,10 @@ interface SessionWatch {
   watcher: FSWatcher
   /**
    * Byte offset into each JSONL file up to which we have already processed.
-   * On each `change` event only the new bytes are read — avoids re-reading
-   * the entire file every time Claude appends a line.
+   *
+   * Critically, existing files are pre-populated with their current size at
+   * watcher-start time, so historical content is never re-processed when Claude
+   * is already running and appends to a pre-existing file.
    */
   fileByteOffsets: Map<string, number>
   /** Path of the most recently seen JSONL — used to detect new claude sessions */
@@ -75,15 +77,50 @@ export class ClaudeSessionWatcher {
       latestFile: null
     }
 
+    // ── Pre-populate offsets for files that already exist ────────────────
+    // Without this, the first `change` event on a pre-existing JSONL (e.g.
+    // Claude was already running when the GUI session started) would fall back
+    // to offset 0 and re-process all historical token entries, inflating counts.
+    try {
+      if (existsSync(projectDir)) {
+        let latestMtime = 0
+        for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+          if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
+          const filePath = join(projectDir, entry.name)
+          try {
+            const st = statSync(filePath)
+            sw.fileByteOffsets.set(filePath, st.size)  // treat existing content as "already seen"
+            if (st.mtimeMs > latestMtime) {
+              latestMtime = st.mtimeMs
+              sw.latestFile = filePath  // track most-recently-modified as the active conversation
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* project dir may not exist yet — that's fine */ }
+
     sw.watcher.on('add', (filePath) => {
       // A new JSONL file means claude started a new conversation
       const isNewConversation = sw.latestFile !== null
       sw.latestFile = filePath
-      sw.fileByteOffsets.set(filePath, 0)
+      // Only initialise to 0 if we don't have an offset yet (shouldn't happen
+      // for truly new files, but be defensive)
+      if (!sw.fileByteOffsets.has(filePath)) {
+        sw.fileByteOffsets.set(filePath, 0)
+      }
       this.processNewBytes(sw, filePath, isNewConversation)
     })
 
     sw.watcher.on('change', (filePath) => {
+      if (!sw.fileByteOffsets.has(filePath)) {
+        // File was not known when watcher started and was never `add`-ed.
+        // Initialise to current size so we skip historical content and pick up
+        // only future appends.
+        try {
+          sw.fileByteOffsets.set(filePath, statSync(filePath).size)
+        } catch { /* ignore */ }
+        return
+      }
       this.processNewBytes(sw, filePath, false)
     })
 
