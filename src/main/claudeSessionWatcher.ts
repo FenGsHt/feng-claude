@@ -1,4 +1,3 @@
-import chokidar, { FSWatcher } from 'chokidar'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import type { BrowserWindow } from 'electron'
@@ -37,17 +36,16 @@ interface ParsedUsage {
 
 interface SessionWatch {
   sessionId: string
-  watcher: FSWatcher
+  projectDir: string
   /**
-   * Byte offset into each JSONL file up to which we have already processed.
-   *
-   * Critically, existing files are pre-populated with their current size at
-   * watcher-start time, so historical content is never re-processed when Claude
-   * is already running and appends to a pre-existing file.
+   * Per-file byte offsets — only bytes beyond this position are processed.
+   * Pre-populated with current sizes of files that existed at watcher-start
+   * time so historical content is never re-counted.
    */
   fileByteOffsets: Map<string, number>
-  /** Path of the most recently seen JSONL — used to detect new claude sessions */
+  /** Most recently seen JSONL file — used to detect a new claude conversation */
   latestFile: string | null
+  timer: ReturnType<typeof setInterval> | null
 }
 
 export class ClaudeSessionWatcher {
@@ -63,66 +61,21 @@ export class ClaudeSessionWatcher {
   watchSession(sessionId: string, workdir: string): void {
     const projectDirName = workdirToProjectDirName(workdir)
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
-    const pattern = join(projectDir, '*.jsonl').replace(/\\/g, '/')
 
     const sw: SessionWatch = {
       sessionId,
-      watcher: chokidar.watch(pattern, {
-        ignoreInitial: true,
-        persistent: true,
-        // Wait for file to stabilise (avoids partial-line reads on rapid flushes)
-        awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 }
-      }),
+      projectDir,
       fileByteOffsets: new Map(),
-      latestFile: null
+      latestFile: null,
+      timer: null
     }
 
-    // ── Pre-populate offsets for files that already exist ────────────────
-    // Without this, the first `change` event on a pre-existing JSONL (e.g.
-    // Claude was already running when the GUI session started) would fall back
-    // to offset 0 and re-process all historical token entries, inflating counts.
-    try {
-      if (existsSync(projectDir)) {
-        let latestMtime = 0
-        for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
-          if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
-          const filePath = join(projectDir, entry.name)
-          try {
-            const st = statSync(filePath)
-            sw.fileByteOffsets.set(filePath, st.size)  // treat existing content as "already seen"
-            if (st.mtimeMs > latestMtime) {
-              latestMtime = st.mtimeMs
-              sw.latestFile = filePath  // track most-recently-modified as the active conversation
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    } catch { /* project dir may not exist yet — that's fine */ }
+    // Pre-populate byte offsets for files that already exist so we never
+    // re-process historical token entries.
+    this.scanExisting(sw)
 
-    sw.watcher.on('add', (filePath) => {
-      // A new JSONL file means claude started a new conversation
-      const isNewConversation = sw.latestFile !== null
-      sw.latestFile = filePath
-      // Only initialise to 0 if we don't have an offset yet (shouldn't happen
-      // for truly new files, but be defensive)
-      if (!sw.fileByteOffsets.has(filePath)) {
-        sw.fileByteOffsets.set(filePath, 0)
-      }
-      this.processNewBytes(sw, filePath, isNewConversation)
-    })
-
-    sw.watcher.on('change', (filePath) => {
-      if (!sw.fileByteOffsets.has(filePath)) {
-        // File was not known when watcher started and was never `add`-ed.
-        // Initialise to current size so we skip historical content and pick up
-        // only future appends.
-        try {
-          sw.fileByteOffsets.set(filePath, statSync(filePath).size)
-        } catch { /* ignore */ }
-        return
-      }
-      this.processNewBytes(sw, filePath, false)
-    })
+    // Poll every 1 s — reliable on Windows where FSEvents can be flaky.
+    sw.timer = setInterval(() => this.poll(sw), 1000)
 
     this.sessions.set(sessionId, sw)
   }
@@ -130,7 +83,7 @@ export class ClaudeSessionWatcher {
   unwatchSession(sessionId: string): void {
     const sw = this.sessions.get(sessionId)
     if (sw) {
-      void sw.watcher.close()
+      if (sw.timer) clearInterval(sw.timer)
       this.sessions.delete(sessionId)
     }
   }
@@ -143,10 +96,58 @@ export class ClaudeSessionWatcher {
 
   // ── private ────────────────────────────────────────────────
 
+  /** Record current sizes of all existing JSONL files as "already seen". */
+  private scanExisting(sw: SessionWatch): void {
+    try {
+      if (!existsSync(sw.projectDir)) return
+      let latestMtime = 0
+      for (const entry of readdirSync(sw.projectDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
+        const filePath = join(sw.projectDir, entry.name)
+        try {
+          const st = statSync(filePath)
+          sw.fileByteOffsets.set(filePath, st.size)
+          if (st.mtimeMs > latestMtime) {
+            latestMtime = st.mtimeMs
+            sw.latestFile = filePath
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* project dir may not exist yet */ }
+  }
+
+  /**
+   * Called every second. Scans the project directory for JSONL files,
+   * processes any bytes appended since last poll, and emits token events.
+   */
+  private poll(sw: SessionWatch): void {
+    if (this.win.isDestroyed()) return
+    try {
+      if (!existsSync(sw.projectDir)) return
+
+      const entries = readdirSync(sw.projectDir, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
+        .map((e) => join(sw.projectDir, e.name))
+
+      for (const filePath of entries) {
+        const isNewFile = !sw.fileByteOffsets.has(filePath)
+        const isNewConversation = isNewFile && sw.latestFile !== null
+
+        if (isNewFile) {
+          // New JSONL file appeared → new claude conversation started
+          sw.fileByteOffsets.set(filePath, 0)
+          sw.latestFile = filePath
+        }
+
+        this.processNewBytes(sw, filePath, isNewConversation)
+      }
+    } catch { /* ignore transient errors */ }
+  }
+
   /**
    * Read only the bytes appended since last check, parse complete JSONL lines,
-   * and emit token usage events. Partial trailing lines (no newline yet) are
-   * skipped and will be included in the next call.
+   * and emit token usage events. Partial trailing lines are skipped and
+   * included in the next poll.
    */
   private processNewBytes(sw: SessionWatch, filePath: string, resetFirst: boolean): void {
     let fd: number | null = null
@@ -165,12 +166,11 @@ export class ClaudeSessionWatcher {
 
       const text = buf.toString('utf-8')
 
-      // Only process up to the last complete newline — skip a partial trailing line
+      // Skip partial trailing line (no newline yet)
       const lastNL = text.lastIndexOf('\n')
-      if (lastNL === -1) return  // no complete line yet
+      if (lastNL === -1) return
 
       const completeText = text.slice(0, lastNL + 1)
-      // Advance offset by the actual byte length of the processed text
       sw.fileByteOffsets.set(filePath, prevOffset + Buffer.byteLength(completeText, 'utf-8'))
 
       const lines = completeText.split('\n').filter((l) => l.trim().length > 0)
@@ -190,9 +190,7 @@ export class ClaudeSessionWatcher {
         })
         needReset = false
       }
-    } catch {
-      // Silently ignore — file may be locked or malformed
-    } finally {
+    } catch { /* silently ignore locked/malformed files */ } finally {
       if (fd !== null) {
         try { closeSync(fd) } catch { /* ignore */ }
       }
