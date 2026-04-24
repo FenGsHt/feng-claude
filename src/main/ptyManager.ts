@@ -17,6 +17,7 @@ const CLAUDE_CONFIG_DIR = join(app.getPath('userData'), 'claude-session')
 
 /** 上游 IDE/CI 会带这些变量，Chalk「supports-color」会关色，Claude Code 全屏发灰 */
 const PTY_ENV_STRIP = [
+  // CI / color-disable vars
   'NO_COLOR',
   'CI',
   'NODE_DISABLE_COLORS',
@@ -25,7 +26,16 @@ const PTY_ENV_STRIP = [
   'TEAMCITY_VERSION',
   'TF_BUILD',
   'TRAVIS',
-  'JENKINS_URL'
+  'JENKINS_URL',
+  // Auth vars that would conflict with our injected API key.
+  // CLAUDE_CODE_OAUTH_TOKEN comes from a global `claude login` or from a
+  // previously stored credentials.json in the parent process env.
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  // Strip these too so our injected values always win
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_MODEL'
 ] as const
 
 function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> {
@@ -35,11 +45,10 @@ function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> 
   }
   return {
     ...e,
-    ...claudeEnv,
-    CLAUDE_CONFIG_DIR,
+    ...claudeEnv,          // our settings (API key, base URL, model, etc.)
+    CLAUDE_CONFIG_DIR,     // isolated config dir — no global OAuth credentials
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
-    /** Chalk：3 = truecolor；1 有时仍偏淡 */
     FORCE_COLOR: '3',
     CLICOLOR: '1',
     CLICOLOR_FORCE: '1',
