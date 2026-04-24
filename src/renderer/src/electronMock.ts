@@ -41,6 +41,7 @@ export function injectMockElectronAPI(): void {
         delete: async () => {},
         get: async () => undefined
       },
+      onTokenUsageUpdate: listener,
       settings: {
         get: async () => ({ ...DEFAULT_SETTINGS }),
         set: async () => ({ success: true })

@@ -6,6 +6,7 @@ import { FileSystemHandler } from './fileSystemHandler'
 import { HistoryStore } from './historyStore'
 import { SettingsStore } from './settingsStore'
 import { WorkspaceStore } from './workspaceStore'
+import { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { registerIpcHandlers } from './ipcHandlers'
 
 let ptyManager: PtyManager
@@ -38,11 +39,13 @@ function createWindow(): BrowserWindow {
 
   const settingsStore = new SettingsStore()
   const workspaceStore = new WorkspaceStore()
+  const claudeConfigDir = join(app.getPath('userData'), 'claude-session')
+  const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir)
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -69,3 +72,4 @@ app.on('window-all-closed', () => {
   ptyManager?.closeAll()
   if (process.platform !== 'darwin') app.quit()
 })
+

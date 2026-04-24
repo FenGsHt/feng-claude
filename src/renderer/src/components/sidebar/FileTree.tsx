@@ -30,7 +30,7 @@ function FileTreeNodeItem({ node, depth }: NodeProps): React.ReactElement {
           draggable
           onDragStart={(e) => setFileDragData(e, node)}
           onClick={() => setExpanded((v) => !v)}
-          className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-0.5 hover:bg-claude-border/50 rounded text-xs text-claude-muted hover:text-claude-text transition-colors"
+          className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[13px] text-claude-muted hover:text-claude-text transition-colors"
           style={{ paddingLeft: `${8 + depth * 12}px` }}
           title={`${node.path} — drag to Claude terminal as @ reference`}
         >
@@ -75,23 +75,20 @@ interface FileTreeProps {
 export function FileTree({ nodes, loading, currentPath, onChangePath }: FileTreeProps): React.ReactElement {
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-claude-border shrink-0">
-        <span className="text-xs font-medium text-claude-muted uppercase tracking-wider">Files</span>
-        {onChangePath && (
-          <button
-            onClick={onChangePath}
-            className="text-xs text-claude-muted hover:text-claude-text transition-colors"
-            title="Change directory"
-          >
-            ⊕
-          </button>
-        )}
-      </div>
       {currentPath && (
-        <div className="px-3 py-1.5 border-b border-claude-border shrink-0">
-          <p className="text-xs text-claude-muted font-mono truncate" title={currentPath}>
+        <div className="px-3 py-1.5 border-b border-claude-border shrink-0 flex items-center justify-between gap-1">
+          <p className="text-[12px] text-claude-muted font-mono truncate flex-1" title={currentPath}>
             {currentPath.split(/[/\\]/).pop() ?? currentPath}
           </p>
+          {onChangePath && (
+            <button
+              onClick={onChangePath}
+              className="shrink-0 text-[13px] text-claude-muted hover:text-claude-text transition-colors"
+              title="Change directory"
+            >
+              ⊕
+            </button>
+          )}
         </div>
       )}
       <div className="flex-1 overflow-y-auto py-1">

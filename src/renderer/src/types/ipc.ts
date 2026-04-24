@@ -31,8 +31,20 @@ export const IPC = {
   SETTINGS_SET: 'settings:set',
 
   WORKSPACE_SAVE: 'workspace:save',
-  WORKSPACE_LOAD: 'workspace:load'
+  WORKSPACE_LOAD: 'workspace:load',
+
+  TOKEN_USAGE_UPDATE: 'token-usage:update'
 } as const
+
+export interface TokenUsageUpdatePayload {
+  sessionId: string
+  input: number
+  output: number
+  cacheCreate: number
+  cacheRead: number
+  /** true = new claude conversation detected; renderer should reset counter first */
+  reset: boolean
+}
 
 export interface SessionCreatePayload {
   workdir: string

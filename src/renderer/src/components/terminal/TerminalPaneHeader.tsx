@@ -67,6 +67,19 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   }
 
   const hasTokens = tokenUsage && (tokenUsage.input > 0 || tokenUsage.output > 0)
+  const hasCacheRead = tokenUsage && tokenUsage.cacheRead > 0
+
+  // Tooltip: detailed breakdown
+  const tokenTitle = tokenUsage
+    ? [
+        `Input:  ${tokenUsage.input.toLocaleString()} tokens`,
+        `Output: ${tokenUsage.output.toLocaleString()} tokens`,
+        tokenUsage.cacheCreate > 0 ? `Cache write: ${tokenUsage.cacheCreate.toLocaleString()}` : '',
+        tokenUsage.cacheRead > 0 ? `Cache read:  ${tokenUsage.cacheRead.toLocaleString()}` : ''
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : ''
 
   return (
     <>
@@ -105,10 +118,15 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         {/* Token usage */}
         {hasTokens && (
           <span
-            className="shrink-0 font-mono text-[9px] tabular-nums text-claude-muted/70 leading-none"
-            title="Token usage (parsed from terminal output)"
+            className="shrink-0 font-mono text-[9px] tabular-nums leading-none text-claude-muted/70 whitespace-nowrap"
+            title={tokenTitle}
           >
-            {fmtTokens(tokenUsage.input)}↑ {fmtTokens(tokenUsage.output)}↓
+            {fmtTokens(tokenUsage!.input)}↑ {fmtTokens(tokenUsage!.output)}↓
+            {hasCacheRead && (
+              <span className="text-sky-400/70 ml-1" title="Cache read tokens">
+                {fmtTokens(tokenUsage!.cacheRead)}⚡
+              </span>
+            )}
           </span>
         )}
 

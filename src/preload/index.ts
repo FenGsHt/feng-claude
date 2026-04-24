@@ -5,6 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
+import type { TokenUsageUpdatePayload } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   // Session
@@ -57,6 +58,13 @@ const electronAPI = {
     get: (): Promise<ClaudeSettings> => ipcRenderer.invoke(IPC.SETTINGS_GET),
     set: (s: ClaudeSettings): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC.SETTINGS_SET, s)
+  },
+
+  onTokenUsageUpdate: (callback: (payload: TokenUsageUpdatePayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: TokenUsageUpdatePayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.TOKEN_USAGE_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC.TOKEN_USAGE_UPDATE, handler)
   },
 
   workspace: {

@@ -6,13 +6,15 @@ import type { FileSystemHandler } from './fileSystemHandler'
 import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
+import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   fsHandler: FileSystemHandler,
   historyStore: HistoryStore,
   settingsStore: SettingsStore,
-  workspaceStore: WorkspaceStore
+  workspaceStore: WorkspaceStore,
+  sessionWatcher: ClaudeSessionWatcher
 ): void {
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
@@ -33,11 +35,14 @@ export function registerIpcHandlers(
     const sessionId = uuidv4()
     const settings = settingsStore.get()
     const result = ptyManager.createSession(sessionId, payload.workdir, settings)
+    // Start watching JSONL for accurate per-session token counting
+    sessionWatcher.watchSession(sessionId, payload.workdir)
     return { sessionId, pid: result.pid }
   })
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {
     ptyManager.closeSession(sessionId)
+    sessionWatcher.unwatchSession(sessionId)
     return { success: true }
   })
 
