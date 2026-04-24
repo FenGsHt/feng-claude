@@ -62,6 +62,8 @@ export class ClaudeSessionWatcher {
     const projectDirName = workdirToProjectDirName(workdir)
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
 
+    console.log(`[TokenWatcher] watchSession ${sessionId} → ${projectDir}`)
+
     const sw: SessionWatch = {
       sessionId,
       projectDir,
@@ -73,6 +75,7 @@ export class ClaudeSessionWatcher {
     // Pre-populate byte offsets for files that already exist so we never
     // re-process historical token entries.
     this.scanExisting(sw)
+    console.log(`[TokenWatcher] scanExisting done — ${sw.fileByteOffsets.size} files, latestFile=${sw.latestFile}`)
 
     // Poll every 1 s — reliable on Windows where FSEvents can be flaky.
     sw.timer = setInterval(() => this.poll(sw), 1000)
@@ -135,13 +138,16 @@ export class ClaudeSessionWatcher {
 
         if (isNewFile) {
           // New JSONL file appeared → new claude conversation started
+          console.log(`[TokenWatcher] new JSONL detected: ${filePath} isNewConversation=${isNewConversation}`)
           sw.fileByteOffsets.set(filePath, 0)
           sw.latestFile = filePath
         }
 
         this.processNewBytes(sw, filePath, isNewConversation)
       }
-    } catch { /* ignore transient errors */ }
+    } catch (err) {
+      console.error('[TokenWatcher] poll error:', err)
+    }
   }
 
   /**
@@ -174,12 +180,14 @@ export class ClaudeSessionWatcher {
       sw.fileByteOffsets.set(filePath, prevOffset + Buffer.byteLength(completeText, 'utf-8'))
 
       const lines = completeText.split('\n').filter((l) => l.trim().length > 0)
+      console.log(`[TokenWatcher] processNewBytes ${filePath.split(/[\\/]/).pop()} offset=${prevOffset}→${prevOffset + Buffer.byteLength(completeText, 'utf-8')} lines=${lines.length}`)
 
       let needReset = resetFirst
       for (const line of lines) {
         const usage = parseLine(line)
         if (!usage) continue
 
+        console.log(`[TokenWatcher] emit token event: in=${usage.input} out=${usage.output} reset=${needReset}`)
         this.emit({
           sessionId: sw.sessionId,
           input: usage.input,
@@ -190,7 +198,9 @@ export class ClaudeSessionWatcher {
         })
         needReset = false
       }
-    } catch { /* silently ignore locked/malformed files */ } finally {
+    } catch (err) {
+      console.error('[TokenWatcher] processNewBytes error:', err)
+    } finally {
       if (fd !== null) {
         try { closeSync(fd) } catch { /* ignore */ }
       }

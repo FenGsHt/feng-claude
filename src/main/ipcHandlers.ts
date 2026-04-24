@@ -1,5 +1,6 @@
 import { ipcMain, dialog } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
+import { resolve } from 'path'
 import { IPC } from '../renderer/src/types/ipc'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import type { PtyManager } from './ptyManager'
@@ -36,10 +37,12 @@ export function registerIpcHandlers(
   // ── Session management ──────────────────────────────────────
   ipcMain.handle(IPC.SESSION_CREATE, async (_e, payload) => {
     const sessionId = uuidv4()
+    // Resolve relative paths (e.g. '.') so the token watcher can locate the correct JSONL project dir
+    const workdir = resolve(payload.workdir ?? '.')
     const settings = settingsStore.get()
-    const result = ptyManager.createSession(sessionId, payload.workdir, settings)
+    const result = ptyManager.createSession(sessionId, workdir, settings)
     // Start watching JSONL for accurate per-session token counting
-    sessionWatcher.watchSession(sessionId, payload.workdir)
+    sessionWatcher.watchSession(sessionId, workdir)
     return { sessionId, pid: result.pid }
   })
 
