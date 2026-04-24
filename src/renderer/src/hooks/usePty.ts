@@ -27,15 +27,12 @@ export function usePty(): void {
 
     // ── JSONL token usage (sole accurate source) ──────────────
     const unsubTokens = window.electronAPI.onTokenUsageUpdate((payload) => {
-      const { sessionId, input, output, cacheCreate, cacheRead, reset } = payload
-      const store = useTokenUsageStore.getState()
+      const { sessionId, input, output, cacheCreate, cacheRead } = payload
 
-      if (reset) {
-        // New claude conversation in this pane — start fresh
-        store.clearSession(sessionId)
-      }
-
-      store.ingest(sessionId, input, output, 'add', { cacheCreate, cacheRead })
+      // Per-pane counter accumulates for the lifetime of the pane (never reset
+      // on new conversation). This keeps it consistent with the global "today"
+      // widget: for a single pane, pane total == today total.
+      useTokenUsageStore.getState().ingest(sessionId, input, output, 'add', { cacheCreate, cacheRead })
 
       // Persist into global all-time / today counters
       useGlobalTokenStore.getState().ingest({
