@@ -3,6 +3,7 @@ import { useSessionStore } from '../store/sessionStore'
 import { writeToTerminal } from '../components/terminal/XTerminal'
 import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
 import { useTokenUsageStore } from '../store/tokenUsageStore'
+import { useGlobalTokenStore } from '../store/globalTokenStore'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -37,6 +38,14 @@ export function usePty(): void {
       }
 
       store.ingest(sessionId, input, output, 'add', { cacheCreate, cacheRead })
+
+      // Persist into global all-time / today counters
+      useGlobalTokenStore.getState().ingest({
+        input,
+        output,
+        cacheCreate: cacheCreate ?? 0,
+        cacheRead: cacheRead ?? 0
+      })
     })
 
     return () => {

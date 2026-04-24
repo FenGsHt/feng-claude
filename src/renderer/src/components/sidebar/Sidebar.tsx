@@ -3,6 +3,7 @@ import { FileTree } from './FileTree'
 import { HistoryPanel } from './HistoryPanel'
 import { SlashCommandsPanel } from './SlashCommandsPanel'
 import { SettingsPanel } from '../settings/SettingsPanel'
+import { TokenUsageWidget } from './TokenUsageWidget'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
@@ -132,6 +133,9 @@ export function Sidebar(): React.ReactElement {
             <SettingsPanel />
           )}
         </div>
+
+        {/* Global token usage footer — always visible */}
+        <TokenUsageWidget />
       </div>
     </div>
   )
