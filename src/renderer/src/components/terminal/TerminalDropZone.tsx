@@ -22,6 +22,39 @@ export function TerminalDropZone({
 
   const workdir = sessions.find((s) => s.id === sessionId)?.workdir ?? ''
 
+  /** 资源管理器拖入：Chromium 常见 type 为 Files；另支持 text/uri-list */
+  const hasFileDropHint = (types: readonly string[]): boolean =>
+    types.includes('Files') ||
+    types.includes('text/uri-list') ||
+    types.some((t) => t.toLowerCase() === 'files')
+
+  /** Electron 下 File 带 path；否则尝试 text/uri-list */
+  const pathsFromOsDrop = (e: React.DragEvent): string[] => {
+    const out: string[] = []
+    const { files } = e.dataTransfer
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i] as File & { path?: string }
+      if (f.path) out.push(f.path)
+    }
+    if (out.length > 0) return out
+    const raw = e.dataTransfer.getData('text/uri-list')
+    if (!raw) return out
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim()
+      if (!t || t.startsWith('#')) continue
+      try {
+        const u = new URL(t)
+        if (u.protocol !== 'file:') continue
+        let pathname = decodeURIComponent(u.pathname.replace(/\+/g, '%20'))
+        if (/^\/[A-Za-z]:\//.test(pathname)) pathname = pathname.slice(1)
+        out.push(pathname)
+      } catch {
+        //
+      }
+    }
+    return out
+  }
+
   const parsePayload = (e: React.DragEvent): FileDragPayload | null => {
     try {
       const raw =
@@ -49,7 +82,8 @@ export function TerminalDropZone({
       types.includes(CC_SLASH_DRAG_MIME) ||
       types.includes(FILE_DRAG_MIME) ||
       types.includes('application/json') ||
-      types.includes('text/plain')
+      types.includes('text/plain') ||
+      hasFileDropHint(types)
     ) {
       e.preventDefault()
       e.dataTransfer.dropEffect = 'copy'
@@ -62,7 +96,8 @@ export function TerminalDropZone({
       types.includes(CC_SLASH_DRAG_MIME) ||
       types.includes(FILE_DRAG_MIME) ||
       types.includes('application/json') ||
-      types.includes('text/plain')
+      types.includes('text/plain') ||
+      hasFileDropHint(types)
     ) {
       e.preventDefault()
       setDragOver(true)
@@ -99,6 +134,17 @@ export function TerminalDropZone({
       const cmd = plainFirst.slice(CC_SLASH_PLAIN_PREFIX.length)
       setActiveSession(sessionId)
       window.electronAPI.sendInput(sessionId, cmd)
+      queueMicrotask(() => focusTerminal(sessionId))
+      return
+    }
+
+    const osPaths = pathsFromOsDrop(e)
+    if (osPaths.length > 0) {
+      setActiveSession(sessionId)
+      for (const p of osPaths) {
+        const ref = formatFileRefForClaudeCode(p, workdir, false)
+        window.electronAPI.sendInput(sessionId, `${ref} `)
+      }
       queueMicrotask(() => focusTerminal(sessionId))
       return
     }

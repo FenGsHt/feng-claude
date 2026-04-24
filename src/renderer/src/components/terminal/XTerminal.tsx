@@ -4,6 +4,8 @@ import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import 'xterm/css/xterm.css'
 import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
+import { useSessionStore } from '../../store/sessionStore'
+import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 
 interface Props {
   sessionId: string
@@ -15,6 +17,9 @@ const terminals = new Map<string, { term: Terminal; fitAddon: FitAddon }>()
 
 /** 当前行缓冲，遇 \\r/\\n 提交为「最后一问」候选（与 PTY send 并行） */
 const terminalLineBuffers = new Map<string, string>()
+
+/** 合并同一帧内多次 fit 请求，减轻 xterm 内部 requestIdleCallback 队列积压 */
+const pendingFitRafBySession = new Map<string, number>()
 
 function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: FitAddon } {
   if (terminals.has(sessionId)) return terminals.get(sessionId)!
@@ -47,7 +52,8 @@ function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: Fit
       white: '#d4d4d4',
       brightWhite: '#ffffff'
     },
-    scrollback: 5000,
+    // [2026-04-23] 原 5000；resize/fit 时 xterm 重算缓冲更重，打包后易触发 task queue deadline 警告，略降 scrollback
+    scrollback: 2000,
     allowProposedApi: true,
     convertEol: true
   })
@@ -61,6 +67,11 @@ function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: Fit
 }
 
 export function destroyTerminal(sessionId: string): void {
+  const raf = pendingFitRafBySession.get(sessionId)
+  if (raf !== undefined) {
+    cancelAnimationFrame(raf)
+    pendingFitRafBySession.delete(sessionId)
+  }
   terminalLineBuffers.delete(sessionId)
   const entry = terminals.get(sessionId)
   if (entry) {
@@ -80,18 +91,36 @@ export function focusTerminal(sessionId: string): void {
 
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
+  const lastPtyGeomRef = useRef<{ cols: number; rows: number } | null>(null)
 
   const fit = useCallback(() => {
     const entry = terminals.get(sessionId)
-    if (!entry || !containerRef.current) return
+    const el = containerRef.current
+    if (!entry || !el) return
+    // [2026-04-23] 原未判断尺寸；布局未稳定时 fit 会白跑并加重 xterm 队列
+    if (el.clientWidth < 4 || el.clientHeight < 4) return
     try {
       entry.fitAddon.fit()
       const { cols, rows } = entry.term
+      const prev = lastPtyGeomRef.current
+      if (prev?.cols === cols && prev?.rows === rows) return
+      lastPtyGeomRef.current = { cols, rows }
       window.electronAPI?.resizePty(sessionId, cols, rows)
     } catch {
+      lastPtyGeomRef.current = null
       // ignore fit errors on hidden tabs
     }
   }, [sessionId])
+
+  const scheduleFit = useCallback(() => {
+    const prev = pendingFitRafBySession.get(sessionId)
+    if (prev !== undefined) cancelAnimationFrame(prev)
+    const id = requestAnimationFrame(() => {
+      pendingFitRafBySession.delete(sessionId)
+      fit()
+    })
+    pendingFitRafBySession.set(sessionId, id)
+  }, [sessionId, fit])
 
   /*
    * [2026-04-23] 原先用 mountedRef 包住 onData，仅在「首次」注册；Strict Mode / 父级重挂时新实例
@@ -131,29 +160,78 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       terminalLineBuffers.set(sessionId, buf)
     })
 
-    fit()
-    // Debounce ResizeObserver — fitAddon.fit() is expensive; 80 ms is imperceptible
+    /** 资源管理器「复制文件」后 Ctrl+V：Electron clipboard 的 File 带 path，转成 @ 引用注入 PTY */
+    const onPasteFiles = (ev: ClipboardEvent): void => {
+      const files = ev.clipboardData?.files
+      if (!files || files.length === 0) return
+      const first = files[0] as File & { path?: string }
+      if (!first.path) return
+      ev.preventDefault()
+      ev.stopPropagation()
+      const wd =
+        useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir ?? ''
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i] as File & { path?: string }
+        if (!f.path) continue
+        const ref = formatFileRefForClaudeCode(f.path, wd, false)
+        window.electronAPI?.sendInput(sessionId, `${ref} `)
+      }
+    }
+    term.textarea.addEventListener('paste', onPasteFiles, true)
+
+    /**
+     * [2026-04-24] Ctrl/Cmd+V 在 Electron+xterm 下常无法走通默认 paste；主进程同步读文本后 term.paste。
+     * 仅当剪贴板含文本时 preventDefault，以便纯「复制文件」仍落到 onPasteFiles。
+     */
+    const onKeyDownClipboardPaste = (ev: KeyboardEvent): void => {
+      if (ev.type !== 'keydown') return
+      if (!(ev.ctrlKey || ev.metaKey)) return
+      if (ev.altKey) return
+      if (ev.isComposing) return
+      if (ev.code !== 'KeyV' && ev.key !== 'v' && ev.key !== 'V') return
+      const text = window.electronAPI.readClipboardTextSync?.() ?? ''
+      if (text.length === 0) return
+      ev.preventDefault()
+      ev.stopImmediatePropagation()
+      term.paste(text)
+    }
+    term.textarea.addEventListener('keydown', onKeyDownClipboardPaste, true)
+
+    // [2026-04-23] 原先立即 fit() + 80ms debounce；打包后 ResizeObserver 连发易与 xterm 内部 idle 队列打架，改为 220ms + rAF 合并
+    // fit()
+    scheduleFit()
     let fitTimer: ReturnType<typeof setTimeout> | null = null
     const debouncedFit = (): void => {
       if (fitTimer) clearTimeout(fitTimer)
-      fitTimer = setTimeout(fit, 80)
+      fitTimer = setTimeout(() => {
+        scheduleFit()
+      }, 220)
     }
     const ro = new ResizeObserver(debouncedFit)
     ro.observe(container)
 
     return () => {
+      const raf = pendingFitRafBySession.get(sessionId)
+      if (raf !== undefined) {
+        cancelAnimationFrame(raf)
+        pendingFitRafBySession.delete(sessionId)
+      }
       dataSub.dispose()
+      term.textarea.removeEventListener('paste', onPasteFiles, true)
+      term.textarea.removeEventListener('keydown', onKeyDownClipboardPaste, true)
       ro.disconnect()
       if (fitTimer) clearTimeout(fitTimer)
     }
-  }, [sessionId, fit])
+  }, [sessionId, scheduleFit])
 
-  // Fit when becoming active
+  // Fit when becoming active（延后到下一帧，避免与分屏/layout 同一 tick 内多次 resize）
   useEffect(() => {
-    if (active) {
-      setTimeout(fit, 50)
-    }
-  }, [active, fit])
+    if (!active) return
+    const t = window.setTimeout(() => {
+      scheduleFit()
+    }, 100)
+    return () => clearTimeout(t)
+  }, [active, scheduleFit])
 
   return (
     <div

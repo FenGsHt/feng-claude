@@ -8,6 +8,11 @@ import type { PersistedWorkspace } from '../renderer/src/types/workspace'
 import type { TokenUsageUpdatePayload } from '../renderer/src/types/ipc'
 
 const electronAPI = {
+  readClipboardTextSync: (): string => {
+    const v = ipcRenderer.sendSync(IPC.CLIPBOARD_READ_TEXT_SYNC)
+    return typeof v === 'string' ? v : ''
+  },
+
   // Session
   createSession: (workdir: string): Promise<SessionCreateResult> =>
     ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir }),
@@ -38,6 +43,9 @@ const electronAPI = {
 
   // Working directory
   openDirDialog: (): Promise<string | null> => ipcRenderer.invoke(IPC.WORKDIR_OPEN_DIALOG),
+
+  resolveWorkdirMany: (paths: string[]): Promise<string[]> =>
+    ipcRenderer.invoke(IPC.WORKDIR_RESOLVE_MANY, { paths }),
 
   // File system
   readFileTree: (dirPath: string, depth?: number): Promise<FileTreeNode[]> =>

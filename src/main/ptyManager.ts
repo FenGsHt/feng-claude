@@ -6,14 +6,11 @@ import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 import type { ClaudeSettings, SettingsStore } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
+import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 
 // Detect cmd.exe shell prompt: any path ending with ">"
 // e.g. "E:\git3\claude-gui>" or "C:\Users\foo>"
 const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
-
-// Isolated config dir: <userData>/claude-session
-// Prevents conflict with the user's global ~/.claude OAuth login
-const CLAUDE_CONFIG_DIR = join(app.getPath('userData'), 'claude-session')
 
 /** 上游 IDE/CI 会带这些变量，Chalk「supports-color」会关色，Claude Code 全屏发灰 */
 const PTY_ENV_STRIP = [
@@ -45,8 +42,9 @@ function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> 
   }
   return {
     ...e,
-    ...claudeEnv,          // our settings (API key, base URL, model, etc.)
-    CLAUDE_CONFIG_DIR,     // isolated config dir — no global OAuth credentials
+    ...claudeEnv, // our settings (API key, base URL, model, etc.)
+    /* 隔离配置目录，避免与全局 ~/.claude OAuth 冲突；与 claudeSessionConfigDir() 一致 */
+    CLAUDE_CONFIG_DIR: claudeSessionConfigDir(),
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     FORCE_COLOR: '3',

@@ -12,6 +12,7 @@ export function injectMockElectronAPI(): void {
     const listener = (_cb: unknown) => () => {}
 
     ;(window as any).electronAPI = {
+      readClipboardTextSync: () => '',
       createSession: async (_workdir: string) => ({
         sessionId: 'mock-session-' + Math.random().toString(36).slice(2),
         pid: 0
@@ -22,6 +23,7 @@ export function injectMockElectronAPI(): void {
       onPtyOutput: listener,
       onPtyStatus: listener,
       openDirDialog: async () => '/mock/workdir',
+      resolveWorkdirMany: async (paths: string[]) => paths.map((p) => p),
       readFileTree: async () => [
         {
           name: 'src',

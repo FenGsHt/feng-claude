@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PtyManager } from './ptyManager'
@@ -8,10 +8,13 @@ import { SettingsStore } from './settingsStore'
 import { WorkspaceStore } from './workspaceStore'
 import { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { registerIpcHandlers } from './ipcHandlers'
+import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
 
 let ptyManager: PtyManager
 
 function createWindow(): BrowserWindow {
+  ensureClaudeHudPluginDefaults()
+
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -58,11 +61,35 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // [2026-04-23] 打包后 file:// 无 CSP 时 Electron 报 warnAboutInsecureCSP；开发态仍用 Vite 自带策略，不在此注入以免破坏 HMR
+  if (app.isPackaged) {
+    const csp =
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss: data:; worker-src 'self' blob:;"
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (details.resourceType !== 'mainFrame' && details.resourceType !== 'subFrame') {
+        callback({ responseHeaders: details.responseHeaders })
+        return
+      }
+      if (!details.url.startsWith('file:')) {
+        callback({ responseHeaders: details.responseHeaders })
+        return
+      }
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [csp]
+        }
+      })
+    })
+  }
+
   electronApp.setAppUserModelId('com.claudegui')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
   createWindow()
+  /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
+  setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

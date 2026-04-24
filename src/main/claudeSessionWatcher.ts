@@ -34,6 +34,22 @@ interface ParsedUsage {
   cacheRead: number
 }
 
+const ZERO_USAGE: ParsedUsage = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+
+function usageSum(u: ParsedUsage): number {
+  return u.input + u.output + u.cacheCreate + u.cacheRead
+}
+
+/** 与上一条快照做差，避免多条 assistant 行携带相同 usage 时被渲染层反复 add */
+function usageDeltaSince(prev: ParsedUsage, cur: ParsedUsage): ParsedUsage {
+  return {
+    input: Math.max(0, cur.input - prev.input),
+    output: Math.max(0, cur.output - prev.output),
+    cacheCreate: Math.max(0, cur.cacheCreate - prev.cacheCreate),
+    cacheRead: Math.max(0, cur.cacheRead - prev.cacheRead)
+  }
+}
+
 interface SessionWatch {
   sessionId: string
   projectDir: string
@@ -43,6 +59,8 @@ interface SessionWatch {
    * time so historical content is never re-counted.
    */
   fileByteOffsets: Map<string, number>
+  /** 每条 jsonl 内上一条 assistant usage 快照，用于下发增量、对齐 /cost 会话口径 */
+  lastUsageByFile: Map<string, ParsedUsage>
   /** Most recently seen JSONL file — used to detect a new claude conversation */
   latestFile: string | null
   timer: ReturnType<typeof setInterval> | null
@@ -140,6 +158,7 @@ export class ClaudeSessionWatcher {
           // New JSONL file appeared → new claude conversation started
           console.log(`[TokenWatcher] new JSONL detected: ${filePath} isNewConversation=${isNewConversation}`)
           sw.fileByteOffsets.set(filePath, 0)
+          sw.lastUsageByFile.delete(filePath)
           sw.latestFile = filePath
         }
 
@@ -187,13 +206,34 @@ export class ClaudeSessionWatcher {
         const usage = parseLine(line)
         if (!usage) continue
 
-        console.log(`[TokenWatcher] emit token event: in=${usage.input} out=${usage.output} reset=${needReset}`)
+        const prev = sw.lastUsageByFile.get(filePath) ?? ZERO_USAGE
+        const prevSum = usageSum(prev)
+        const curSum = usageSum(usage)
+        /*
+         * [2026-04-24] 原先把每行 usage 原样 add 到前端，Claude 常在同一轮写多条 assistant 行且
+         * message.usage 为「该次请求上下文」快照（数值重复或单调增），导致侧栏 input 约为内置 Session 数倍。
+         */
+        let baseline = prev
+        if (prevSum > 0 && curSum + 500 < prevSum) {
+          baseline = ZERO_USAGE
+        }
+        const d = usageDeltaSince(baseline, usage)
+        sw.lastUsageByFile.set(filePath, usage)
+
+        if (usageSum(d) === 0) {
+          needReset = false
+          continue
+        }
+
+        console.log(
+          `[TokenWatcher] emit token delta: in=${d.input} out=${d.output} cr=${d.cacheRead} reset=${needReset} (raw in=${usage.input})`
+        )
         this.emit({
           sessionId: sw.sessionId,
-          input: usage.input,
-          output: usage.output,
-          cacheCreate: usage.cacheCreate,
-          cacheRead: usage.cacheRead,
+          input: d.input,
+          output: d.output,
+          cacheCreate: d.cacheCreate,
+          cacheRead: d.cacheRead,
           reset: needReset
         })
         needReset = false
