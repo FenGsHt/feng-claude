@@ -1,9 +1,9 @@
+/* ── Google Fonts: Inter (UI) — must be first ──────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* ── Google Fonts: Inter (UI) ──────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 * {
   box-sizing: border-box;
