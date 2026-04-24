@@ -1,5 +1,5 @@
 import chokidar, { FSWatcher } from 'chokidar'
-import { readFileSync, existsSync } from 'fs'
+import { existsSync, openSync, fstatSync, readSync, closeSync } from 'fs'
 import { join } from 'path'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
@@ -38,9 +38,13 @@ interface ParsedUsage {
 interface SessionWatch {
   sessionId: string
   watcher: FSWatcher
-  /** lines already processed per JSONL file */
-  fileLineCounts: Map<string, number>
-  /** path of the most recently seen JSONL — used to detect new claude sessions */
+  /**
+   * Byte offset into each JSONL file up to which we have already processed.
+   * On each `change` event only the new bytes are read — avoids re-reading
+   * the entire file every time Claude appends a line.
+   */
+  fileByteOffsets: Map<string, number>
+  /** Path of the most recently seen JSONL — used to detect new claude sessions */
   latestFile: string | null
 }
 
@@ -57,18 +61,17 @@ export class ClaudeSessionWatcher {
   watchSession(sessionId: string, workdir: string): void {
     const projectDirName = workdirToProjectDirName(workdir)
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
-    // Glob pattern: <projectDir>/*.jsonl (UUID-named conversation files)
     const pattern = join(projectDir, '*.jsonl').replace(/\\/g, '/')
 
     const sw: SessionWatch = {
       sessionId,
       watcher: chokidar.watch(pattern, {
-        ignoreInitial: true,    // only watch NEW writes during this GUI session
+        ignoreInitial: true,
         persistent: true,
-        // Wait for file to stabilise before emitting (avoids partial-line reads)
+        // Wait for file to stabilise (avoids partial-line reads on rapid flushes)
         awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 }
       }),
-      fileLineCounts: new Map(),
+      fileByteOffsets: new Map(),
       latestFile: null
     }
 
@@ -76,12 +79,12 @@ export class ClaudeSessionWatcher {
       // A new JSONL file means claude started a new conversation
       const isNewConversation = sw.latestFile !== null
       sw.latestFile = filePath
-      sw.fileLineCounts.set(filePath, 0)
-      this.processNewLines(sw, filePath, isNewConversation)
+      sw.fileByteOffsets.set(filePath, 0)
+      this.processNewBytes(sw, filePath, isNewConversation)
     })
 
     sw.watcher.on('change', (filePath) => {
-      this.processNewLines(sw, filePath, false)
+      this.processNewBytes(sw, filePath, false)
     })
 
     this.sessions.set(sessionId, sw)
@@ -103,18 +106,40 @@ export class ClaudeSessionWatcher {
 
   // ── private ────────────────────────────────────────────────
 
-  private processNewLines(sw: SessionWatch, filePath: string, resetFirst: boolean): void {
+  /**
+   * Read only the bytes appended since last check, parse complete JSONL lines,
+   * and emit token usage events. Partial trailing lines (no newline yet) are
+   * skipped and will be included in the next call.
+   */
+  private processNewBytes(sw: SessionWatch, filePath: string, resetFirst: boolean): void {
+    let fd: number | null = null
     try {
       if (!existsSync(filePath)) return
 
-      const content = readFileSync(filePath, 'utf-8')
-      const lines = content.split('\n').filter((l) => l.trim().length > 0)
-      const prevCount = sw.fileLineCounts.get(filePath) ?? 0
-      const newLines = lines.slice(prevCount)
-      sw.fileLineCounts.set(filePath, lines.length)
+      fd = openSync(filePath, 'r')
+      const { size: fileSize } = fstatSync(fd)
+      const prevOffset = sw.fileByteOffsets.get(filePath) ?? 0
+
+      if (fileSize <= prevOffset) return  // nothing new
+
+      const newByteCount = fileSize - prevOffset
+      const buf = Buffer.alloc(newByteCount)
+      readSync(fd, buf, 0, newByteCount, prevOffset)
+
+      const text = buf.toString('utf-8')
+
+      // Only process up to the last complete newline — skip a partial trailing line
+      const lastNL = text.lastIndexOf('\n')
+      if (lastNL === -1) return  // no complete line yet
+
+      const completeText = text.slice(0, lastNL + 1)
+      // Advance offset by the actual byte length of the processed text
+      sw.fileByteOffsets.set(filePath, prevOffset + Buffer.byteLength(completeText, 'utf-8'))
+
+      const lines = completeText.split('\n').filter((l) => l.trim().length > 0)
 
       let needReset = resetFirst
-      for (const line of newLines) {
+      for (const line of lines) {
         const usage = parseLine(line)
         if (!usage) continue
 
@@ -126,11 +151,14 @@ export class ClaudeSessionWatcher {
           cacheRead: usage.cacheRead,
           reset: needReset
         })
-        // Reset only fires on the first token event of the new conversation
         needReset = false
       }
     } catch {
       // Silently ignore — file may be locked or malformed
+    } finally {
+      if (fd !== null) {
+        try { closeSync(fd) } catch { /* ignore */ }
+      }
     }
   }
 

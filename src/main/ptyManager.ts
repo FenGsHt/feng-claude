@@ -121,6 +121,8 @@ interface PtySession {
   workdir: string
   claudeRunning: boolean
   buffer: string
+  /** Prevents scheduling multiple re-launches if shell prompt appears in rapid succession */
+  relaunchPending: boolean
 }
 
 export class PtyManager {
@@ -153,7 +155,7 @@ export class PtyManager {
       ptyProcess.write(claudeLaunchLine(s, isWindows))
     }, 300)
 
-    const session: PtySession = { id: sessionId, ptyProcess, workdir, claudeRunning: true, buffer: '' }
+    const session: PtySession = { id: sessionId, ptyProcess, workdir, claudeRunning: true, buffer: '', relaunchPending: false }
 
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return
@@ -168,11 +170,13 @@ export class PtyManager {
       // Detect if we've dropped back to the shell prompt (claude exited)
       // Keep a rolling buffer of recent output to match multi-chunk prompts
       session.buffer = (session.buffer + data).slice(-256)
-      if (session.claudeRunning && SHELL_PROMPT_RE.test(session.buffer)) {
+      if (session.claudeRunning && !session.relaunchPending && SHELL_PROMPT_RE.test(session.buffer)) {
         session.claudeRunning = false
+        session.relaunchPending = true
         session.buffer = ''
         // Re-launch claude after a short delay
         setTimeout(() => {
+          session.relaunchPending = false
           if (this.sessions.has(sessionId)) {
             session.claudeRunning = true
             const settings = this.settingsStore.get()
@@ -184,6 +188,14 @@ export class PtyManager {
 
     ptyProcess.onExit(({ exitCode }) => {
       if (!this.win.isDestroyed()) {
+        // Write a visible error line to the terminal before updating status
+        if (exitCode !== 0) {
+          this.win.webContents.send(IPC.PTY_OUTPUT, {
+            sessionId,
+            data: `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`,
+            timestamp: Date.now()
+          })
+        }
         this.win.webContents.send(IPC.PTY_STATUS, {
           sessionId,
           status: exitCode === 0 ? 'exited' : 'error',

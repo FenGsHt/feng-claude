@@ -1,19 +1,17 @@
 import React, { useState } from 'react'
 import { useGlobalTokenStore, tokenSum } from '../../store/globalTokenStore'
+import { fmtTokens } from '../../lib/formatTokens'
 
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 10_000) return `${(n / 1000).toFixed(1)}k`
-  if (n >= 1000) return `${(n / 1000).toFixed(2)}k`
-  return String(n)
-}
-
-function parseBudget(s: string): number {
+function parseBudget(s: string): number | null {
   const t = s.trim().toUpperCase()
-  if (/^\d+M$/.test(t)) return parseFloat(t) * 1_000_000
-  if (/^\d+K$/.test(t)) return parseFloat(t) * 1_000
+  if (!t) return 0  // empty = clear budget
+  const mM = t.match(/^([\d.]+)M$/)
+  if (mM) return Math.round(parseFloat(mM[1]) * 1_000_000)
+  const mK = t.match(/^([\d.]+)K$/)
+  if (mK) return Math.round(parseFloat(mK[1]) * 1_000)
   const n = parseFloat(t)
-  return isNaN(n) ? 0 : Math.floor(n)
+  if (isNaN(n) || n < 0 || !/^\d+$/.test(t)) return null  // invalid
+  return Math.floor(n)
 }
 
 function BudgetBar({ used, budget }: { used: number; budget: number }): React.ReactElement | null {
@@ -21,15 +19,15 @@ function BudgetBar({ used, budget }: { used: number; budget: number }): React.Re
   const pct = Math.min(1, used / budget)
   const color =
     pct >= 0.9
-      ? '#ef4444' // red-500
+      ? '#ef4444'
       : pct >= 0.7
-        ? '#f59e0b' // amber-500
-        : '#22c55e' // green-500
+        ? '#f59e0b'
+        : '#22c55e'
   return (
     <div className="mt-1.5">
       <div className="flex justify-between text-[9px] text-claude-muted mb-0.5">
         <span>
-          {fmt(used)} / {fmt(budget)}
+          {fmtTokens(used)} / {fmtTokens(budget)}
         </span>
         <span>{(pct * 100).toFixed(1)}%</span>
       </div>
@@ -52,25 +50,36 @@ export function TokenUsageWidget(): React.ReactElement {
 
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetDraft, setBudgetDraft] = useState('')
+  const [budgetError, setBudgetError] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
 
   const totalUsed = tokenSum(total)
   const todayUsed = tokenSum(today)
 
   function startEdit(): void {
-    setBudgetDraft(budget > 0 ? fmt(budget).replace(/[MK]$/, (m) => m) : '')
+    setBudgetDraft(budget > 0 ? String(budget) : '')
+    setBudgetError(false)
     setEditingBudget(true)
   }
 
   function commitBudget(): void {
-    const n = parseBudget(budgetDraft)
-    setBudget(n)
+    const result = parseBudget(budgetDraft)
+    if (result === null) {
+      // Invalid input — flash error state, keep editor open
+      setBudgetError(true)
+      setTimeout(() => setBudgetError(false), 1500)
+      return
+    }
+    setBudget(result)
     setEditingBudget(false)
   }
 
   function handleBudgetKey(e: React.KeyboardEvent): void {
     if (e.key === 'Enter') commitBudget()
-    if (e.key === 'Escape') setEditingBudget(false)
+    if (e.key === 'Escape') {
+      setBudgetError(false)
+      setEditingBudget(false)
+    }
   }
 
   function handleReset(): void {
@@ -89,15 +98,13 @@ export function TokenUsageWidget(): React.ReactElement {
       <div className="flex items-center justify-between mb-1">
         <span className="font-semibold uppercase tracking-wider text-[9px]">Token Usage</span>
         <div className="flex items-center gap-1.5">
-          {/* Budget edit */}
           <button
             onClick={startEdit}
-            title={budget > 0 ? `Budget: ${fmt(budget)} — click to edit` : 'Set token budget'}
+            title={budget > 0 ? `Budget: ${fmtTokens(budget)} — click to edit` : 'Set token budget'}
             className="text-[9px] text-claude-muted hover:text-amber-400 transition-colors"
           >
-            {budget > 0 ? `⚡${fmt(budget)}` : '+ budget'}
+            {budget > 0 ? `⚡${fmtTokens(budget)}` : '+ budget'}
           </button>
-          {/* Reset */}
           <button
             onClick={handleReset}
             title={confirmReset ? 'Click again to confirm reset' : 'Reset all-time counters'}
@@ -116,18 +123,21 @@ export function TokenUsageWidget(): React.ReactElement {
           <input
             autoFocus
             value={budgetDraft}
-            onChange={(e) => setBudgetDraft(e.target.value)}
+            onChange={(e) => { setBudgetDraft(e.target.value); setBudgetError(false) }}
             onKeyDown={handleBudgetKey}
             onBlur={commitBudget}
-            placeholder="e.g. 100M, 50k, 5000000"
-            className="flex-1 bg-claude-bg border border-amber-600/50 rounded px-1.5 py-0.5 text-[10px] text-claude-text outline-none font-mono"
+            placeholder="e.g. 100M · 50K · 5000000"
+            className={`flex-1 rounded border px-1.5 py-0.5 text-[10px] text-claude-text outline-none font-mono bg-claude-bg ${
+              budgetError ? 'border-red-500 animate-pulse' : 'border-amber-600/50'
+            }`}
           />
-          <button
-            onClick={commitBudget}
-            className="text-[9px] text-amber-400 hover:text-amber-300 px-1"
-          >
-            OK
-          </button>
+          {budgetError ? (
+            <span className="text-[9px] text-red-400 px-1 self-center">invalid</span>
+          ) : (
+            <button onClick={commitBudget} className="text-[9px] text-amber-400 hover:text-amber-300 px-1">
+              OK
+            </button>
+          )}
         </div>
       )}
 
@@ -136,24 +146,24 @@ export function TokenUsageWidget(): React.ReactElement {
         <div className="flex justify-between">
           <span className="text-claude-muted">Today</span>
           <span className="font-mono tabular-nums">
-            {fmt(today.input)}↑ {fmt(today.output)}↓
+            {fmtTokens(today.input)}↑ {fmtTokens(today.output)}↓
             {today.cacheRead > 0 && (
-              <span className="text-sky-400/70 ml-1">{fmt(today.cacheRead)}⚡</span>
+              <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
             )}
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-claude-muted">Total</span>
           <span className="font-mono tabular-nums">
-            {fmt(total.input)}↑ {fmt(total.output)}↓
+            {fmtTokens(total.input)}↑ {fmtTokens(total.output)}↓
             {total.cacheRead > 0 && (
-              <span className="text-sky-400/70 ml-1">{fmt(total.cacheRead)}⚡</span>
+              <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
             )}
           </span>
         </div>
       </div>
 
-      {/* Budget progress bar */}
+      {/* Budget progress bar — uses total when budget set, otherwise hidden */}
       <BudgetBar used={budget > 0 ? totalUsed : todayUsed} budget={budget} />
     </div>
   )

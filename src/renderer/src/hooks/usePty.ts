@@ -1,25 +1,23 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { writeToTerminal } from '../components/terminal/XTerminal'
-import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
 import { useTokenUsageStore } from '../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../store/globalTokenStore'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
- * Also subscribes to JSONL-sourced token usage events (primary source)
- * and falls back to regex parsing of PTY output for older Claude Code versions.
+ * Token usage comes exclusively from the JSONL watcher (accurate, per-turn deltas).
+ * The old regex fallback has been removed — it was matching Claude's context window
+ * display text (e.g. "256k tokens") and inflating counts incorrectly.
  * Mount once at the App root.
  */
 export function usePty(): void {
   const { updateSessionStatus } = useSessionStore()
 
   useEffect(() => {
-    // ── PTY output: write to terminal + regex token fallback ──
+    // ── PTY output: write to terminal ────────────────────────
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
       writeToTerminal(payload.sessionId, payload.data)
-      // Regex fallback — will be superseded by JSONL events when available
-      feedPtyChunkForTokenUsage(payload.sessionId, payload.data)
     })
 
     // ── PTY status changes ────────────────────────────────────
@@ -27,7 +25,7 @@ export function usePty(): void {
       updateSessionStatus(payload.sessionId, payload.status as any)
     })
 
-    // ── JSONL token usage (primary, accurate source) ──────────
+    // ── JSONL token usage (sole accurate source) ──────────────
     const unsubTokens = window.electronAPI.onTokenUsageUpdate((payload) => {
       const { sessionId, input, output, cacheCreate, cacheRead, reset } = payload
       const store = useTokenUsageStore.getState()

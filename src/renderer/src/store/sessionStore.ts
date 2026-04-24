@@ -12,6 +12,9 @@ import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeT
 import type { PersistedWorkspace } from '../types/workspace'
 import { persistedPaneToLive, persistedSlotsValid } from '../lib/workspaceSerialize'
 
+/** Debounce timers for notifyTerminalCommittedLine — avoids concurrent history writes per session */
+const notifyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 /** 自动记录时跳过无信息量的单行（与 shell 噪音区分） */
 const SKIP_TERMINAL_LINES = new Set(['claude', 'clear', 'exit', 'cls'])
 
@@ -81,7 +84,7 @@ interface SessionStore {
   restoreFromHistory: (record: HistoryRecord) => Promise<void>
 
   /** 终端提交完整一行后更新 lastUserPrompt（经规范化过滤） */
-  notifyTerminalCommittedLine: (sessionId: string, rawLine: string) => Promise<void>
+  notifyTerminalCommittedLine: (sessionId: string, rawLine: string) => void
   /** 侧栏右键：保存/清除自定义主题 */
   updateHistoryTopic: (recordId: string, topic: string | null) => Promise<void>
 
@@ -210,13 +213,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await get().createSession(record.workdir, 'fullscreen')
   },
 
-  notifyTerminalCommittedLine: async (sessionId: string, rawLine: string) => {
+  notifyTerminalCommittedLine: (sessionId: string, rawLine: string) => {
     const line = normalizeCommittedTerminalLine(rawLine)
     if (!line) return
-    const sess = get().sessions.find((s) => s.id === sessionId)
-    if (!sess) return
-    await upsertWorkdirHistory(sess, { lastUserPrompt: line })
-    await get().loadHistory()
+    // Debounce: rapid terminal lines collapse into one write per 400 ms,
+    // preventing concurrent get→merge→save races on the history store.
+    const prev = notifyDebounceTimers.get(sessionId)
+    if (prev) clearTimeout(prev)
+    const timer = setTimeout(async () => {
+      notifyDebounceTimers.delete(sessionId)
+      const sess = get().sessions.find((s) => s.id === sessionId)
+      if (!sess) return
+      await upsertWorkdirHistory(sess, { lastUserPrompt: line })
+      await get().loadHistory()
+    }, 400)
+    notifyDebounceTimers.set(sessionId, timer)
   },
 
   updateHistoryTopic: async (recordId: string, topic: string | null) => {
@@ -237,17 +248,22 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     const sessions: Session[] = []
     for (const wd of pw.sessionWorkdirs) {
-      const result = await window.electronAPI.createSession(wd)
-      sessions.push({
-        id: result.sessionId,
-        title: wd.split(/[/\\]/).pop() ?? wd,
-        workdir: wd,
-        status: 'running',
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        ptyPid: result.pid
-      })
+      try {
+        const result = await window.electronAPI.createSession(wd)
+        sessions.push({
+          id: result.sessionId,
+          title: wd.split(/[/\\]/).pop() ?? wd,
+          workdir: wd,
+          status: 'running',
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          ptyPid: result.pid
+        })
+      } catch {
+        // Directory no longer exists or PTY spawn failed — skip silently
+        console.warn(`[workspace restore] skipped missing/invalid workdir: ${wd}`)
+      }
     }
 
     const ids = sessions.map((s) => s.id)

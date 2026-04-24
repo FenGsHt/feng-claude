@@ -1,6 +1,7 @@
 import { ipcMain, dialog } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { IPC } from '../renderer/src/types/ipc'
+import { DEFAULT_SETTINGS } from './settingsStore'
 import type { PtyManager } from './ptyManager'
 import type { FileSystemHandler } from './fileSystemHandler'
 import type { HistoryStore } from './historyStore'
@@ -19,7 +20,9 @@ export function registerIpcHandlers(
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
   ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {
-    settingsStore.set(settings)
+    // Merge with defaults to sanitize — unknown/missing keys fall back to safe values
+    const merged = { ...DEFAULT_SETTINGS, ...(settings && typeof settings === 'object' ? settings : {}) }
+    settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
     return { success: true }
   })
 

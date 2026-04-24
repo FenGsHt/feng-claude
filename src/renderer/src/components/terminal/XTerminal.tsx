@@ -132,12 +132,19 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     })
 
     fit()
-    const ro = new ResizeObserver(fit)
+    // Debounce ResizeObserver — fitAddon.fit() is expensive; 80 ms is imperceptible
+    let fitTimer: ReturnType<typeof setTimeout> | null = null
+    const debouncedFit = (): void => {
+      if (fitTimer) clearTimeout(fitTimer)
+      fitTimer = setTimeout(fit, 80)
+    }
+    const ro = new ResizeObserver(debouncedFit)
     ro.observe(container)
 
     return () => {
       dataSub.dispose()
       ro.disconnect()
+      if (fitTimer) clearTimeout(fitTimer)
     }
   }, [sessionId, fit])
 
