@@ -2,7 +2,7 @@ appId: com.claudegui.app
 productName: Claude GUI
 directories:
   buildResources: resources
-  output: dist
+  output: dist-build
 files:
   - out/**/*
   - '!**/.vscode/*'
@@ -15,6 +15,7 @@ asarUnpack:
   - node_modules/node-pty/**
 win:
   executableName: claude-gui
+  forceCodeSigning: false
   target:
     - nsis
     - portable
