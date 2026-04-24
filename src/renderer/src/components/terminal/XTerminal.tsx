@@ -22,15 +22,16 @@ function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: Fit
   const term = new Terminal({
     fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
     fontSize: 13,
-    lineHeight: 1.4,
+    lineHeight: 1.45,
+    letterSpacing: 0.3,
     theme: {
-      background: '#1a1a1a',
-      foreground: '#ececec',
-      cursor: '#d97706',
-      cursorAccent: '#1a1a1a',
-      selectionBackground: '#d9770640',
-      black: '#1a1a1a',
-      brightBlack: '#555555',
+      background: '#141414',
+      foreground: '#e8e8e8',
+      cursor: '#f59e0b',
+      cursorAccent: '#141414',
+      selectionBackground: '#f59e0b30',
+      black: '#141414',
+      brightBlack: '#525252',
       red: '#f87171',
       brightRed: '#fca5a5',
       green: '#4ade80',
@@ -151,7 +152,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden"
-      style={{ background: '#1a1a1a' }}
+      style={{ background: '#141414' }}
     />
   )
 }

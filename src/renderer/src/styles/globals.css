@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Google Fonts: Inter (UI) ──────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 * {
   box-sizing: border-box;
 }
@@ -12,15 +15,25 @@ body,
   height: 100%;
   margin: 0;
   padding: 0;
-  background: #1a1a1a;
-  color: #ececec;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #141414;
+  color: #e8e8e8;
+  accent-color: #f59e0b;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar */
+/* ── Selection ─────────────────────────────────────────────── */
+::selection {
+  background: rgba(245, 158, 11, 0.3);
+  color: inherit;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -28,38 +41,41 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #444;
-  border-radius: 3px;
+  background: #363636;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #505050;
 }
 
-/* Prevent text selection on drag regions */
-.no-select {
-  user-select: none;
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
-/* react-resizable-panels — Zellij 风格可拖分割线 */
+/* ── Focus outlines ────────────────────────────────────────── */
+:focus-visible {
+  outline: 1.5px solid rgba(245, 158, 11, 0.6);
+  outline-offset: 1px;
+}
+
+/* ── Pane separators (react-resizable-panels) ──────────────── */
 [data-separator] {
   flex-shrink: 0;
 }
 
 .pane-separator {
   border-radius: 9999px;
-  background: #2a2a2a;
-  transition: background 0.12s ease;
+  background: #242424;
+  transition: background 0.1s ease;
 }
 
-/* 左右分屏：竖条 */
 .pane-separator-cols {
   width: 4px;
   min-width: 4px;
   align-self: stretch;
 }
 
-/* 上下分屏：横条 */
 .pane-separator-rows {
   height: 4px;
   min-height: 4px;
@@ -68,5 +84,32 @@ body,
 
 .pane-separator:hover,
 .pane-separator:focus-visible {
-  background: rgba(217, 119, 6, 0.75);
+  background: rgba(245, 158, 11, 0.6);
+  outline: none;
+}
+
+/* ── Tab bar — VS Code–style tab transitions ───────────────── */
+.tab-item {
+  position: relative;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.tab-item::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.1s ease;
+}
+
+.tab-item.tab-active::after {
+  background: #f59e0b;
+}
+
+/* ── Sidebar icon tab highlight ────────────────────────────── */
+.sidebar-tab-icon {
+  transition: color 0.1s ease, background 0.1s ease;
 }

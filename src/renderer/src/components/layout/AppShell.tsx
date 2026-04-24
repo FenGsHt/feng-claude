@@ -15,7 +15,7 @@ export function AppShell(): React.ReactElement {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans">
+    <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans antialiased">
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

@@ -14,11 +14,27 @@ function fmtTokens(n: number): string {
 
 interface Props {
   sessionId: string
-  /** 当前全局激活会话是否为该窗格 */
   focused: boolean
 }
 
-/** 每个分屏窗格顶部的导航条：状态、标题、关闭、拆分（对应本格的 session） */
+function SplitVIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <rect x="0.75" y="0.75" width="9.5" height="9.5" rx="1.25" stroke="currentColor" strokeWidth="1.1"/>
+      <line x1="5.5" y1="0.75" x2="5.5" y2="10.25" stroke="currentColor" strokeWidth="1.1"/>
+    </svg>
+  )
+}
+
+function SplitHIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <rect x="0.75" y="0.75" width="9.5" height="9.5" rx="1.25" stroke="currentColor" strokeWidth="1.1"/>
+      <line x1="0.75" y1="5.5" x2="10.25" y2="5.5" stroke="currentColor" strokeWidth="1.1"/>
+    </svg>
+  )
+}
+
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
@@ -38,12 +54,11 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
 
   async function beginSplit(mode: CreateSessionMode): Promise<void> {
     await loadHistory()
-    const latestHistory = useSessionStore.getState().history
     const dirs = getSplitWorkdirCandidates(
       useSessionStore.getState().history,
       useSessionStore.getState().sessions
     )
-    if (latestHistory.length === 0 || dirs.length === 0) {
+    if (dirs.length === 0) {
       const dir = await window.electronAPI.openDirDialog()
       if (dir) await createSession(dir, mode, sessionId)
       return
@@ -51,65 +66,66 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     setSplitMode(mode)
   }
 
+  const hasTokens = tokenUsage && (tokenUsage.input > 0 || tokenUsage.output > 0)
+
   return (
     <>
       <div
         role="presentation"
         onMouseDown={() => setActiveSession(sessionId)}
-        className={`flex h-8 shrink-0 cursor-default items-center gap-2 border-b px-2 ${
+        className={`flex h-7 shrink-0 cursor-default items-center gap-2 border-b px-2 transition-colors ${
           focused
-            ? 'border-amber-600/60 bg-claude-bg text-claude-text'
-            : 'border-claude-border bg-claude-surface text-claude-muted'
+            ? 'border-amber-600/40 bg-claude-bg'
+            : 'border-claude-border bg-claude-surface'
         }`}
         title={sess?.workdir ?? undefined}
       >
+        {/* Status dot */}
         <span
-          className={`shrink-0 rounded-full ${
+          className={`shrink-0 rounded-full transition-colors ${
             sess?.status === 'running'
               ? 'h-1.5 w-1.5 bg-amber-400 animate-pulse'
               : sess?.status === 'waiting_input'
                 ? 'h-1.5 w-1.5 bg-green-400'
                 : sess?.status === 'error'
                   ? 'h-1.5 w-1.5 bg-red-400'
-                  : 'h-1.5 w-1.5 bg-claude-muted'
+                  : 'h-1.5 w-1.5 bg-claude-muted/40'
           }`}
         />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-claude-text">
+
+        {/* Title */}
+        <span
+          className={`min-w-0 flex-1 truncate text-[11px] font-medium leading-none ${
+            focused ? 'text-claude-text' : 'text-claude-muted'
+          }`}
+        >
           {sess?.title ?? sessionId}
         </span>
-        <span
-          className="shrink-0 font-mono text-[10px] tabular-nums text-claude-muted"
-          title="本窗格累计 token（解析终端输出中的用量行；格式随 CLI 变化）"
-        >
-          {tokenUsage && (tokenUsage.input > 0 || tokenUsage.output > 0)
-            ? `${fmtTokens(tokenUsage.input)}↑ ${fmtTokens(tokenUsage.output)}↓`
-            : '—'}
-        </span>
-        <div className="flex shrink-0 gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            title="在此格右侧拆分新会话"
-            onClick={() => void beginSplit('split-right')}
-            className="flex h-6 min-w-[1.5rem] items-center justify-center rounded border border-claude-border bg-claude-bg px-1.5 text-[11px] text-claude-muted hover:border-amber-600/60 hover:text-claude-text"
+
+        {/* Token usage */}
+        {hasTokens && (
+          <span
+            className="shrink-0 font-mono text-[9px] tabular-nums text-claude-muted/70 leading-none"
+            title="Token usage (parsed from terminal output)"
           >
-            ┃
-          </button>
-          <button
-            type="button"
-            title="在此格下方拆分新会话"
-            onClick={() => void beginSplit('split-down')}
-            className="flex h-6 min-w-[1.5rem] items-center justify-center rounded border border-claude-border bg-claude-bg px-1.5 text-[11px] text-claude-muted hover:border-amber-600/60 hover:text-claude-text"
-          >
-            ━
-          </button>
-          <button
-            type="button"
-            title="关闭此会话"
-            onClick={() => closeSession(sessionId)}
-            className="flex h-6 w-6 items-center justify-center rounded text-claude-muted hover:bg-claude-border/60 hover:text-claude-text text-xs"
-          >
-            ✕
-          </button>
+            {fmtTokens(tokenUsage.input)}↑ {fmtTokens(tokenUsage.output)}↓
+          </span>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
+          <HeaderBtn title="Split right" onClick={() => void beginSplit('split-right')}>
+            <SplitVIcon />
+          </HeaderBtn>
+          <HeaderBtn title="Split down" onClick={() => void beginSplit('split-down')}>
+            <SplitHIcon />
+          </HeaderBtn>
+          <HeaderBtn title="Close pane" onClick={() => closeSession(sessionId)} danger>
+            <svg width="8" height="8" viewBox="0 0 8 8">
+              <line x1="1" y1="1" x2="7" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              <line x1="7" y1="1" x2="1" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          </HeaderBtn>
         </div>
       </div>
 
@@ -131,5 +147,32 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         />
       )}
     </>
+  )
+}
+
+function HeaderBtn({
+  onClick,
+  title,
+  danger,
+  children
+}: {
+  onClick: () => void
+  title: string
+  danger?: boolean
+  children: React.ReactNode
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={`flex h-5 w-5 items-center justify-center rounded transition-colors text-claude-muted ${
+        danger
+          ? 'hover:bg-red-600/20 hover:text-red-400'
+          : 'hover:bg-claude-border/60 hover:text-claude-text'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
