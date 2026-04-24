@@ -6,6 +6,7 @@ interface Props {
   open: boolean
   candidates: SplitWorkdirItem[]
   mode: CreateSessionMode
+  currentWorkdir?: string
   onPick: (workdir: string) => void
   onPickOther: () => void
   onClose: () => void
@@ -16,6 +17,7 @@ export function SplitWorkdirDialog({
   open,
   candidates,
   mode,
+  currentWorkdir,
   onPick,
   onPickOther,
   onClose
@@ -54,6 +56,22 @@ export function SplitWorkdirDialog({
           <p className="mt-1 text-[11px] text-claude-muted">选择曾打开过的目录，或浏览其他文件夹</p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          {/* 空控制台：直接在当前目录新开终端 */}
+          {currentWorkdir && (
+            <button
+              type="button"
+              onClick={() => onPick(currentWorkdir)}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-claude-border/40 border-b border-claude-border/30"
+            >
+              <span className="text-amber-400/80 text-sm leading-none">▸</span>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-xs text-claude-text font-medium">空控制台（当前目录）</span>
+                <span className="truncate font-mono text-[10px] text-claude-muted" title={currentWorkdir}>
+                  {currentWorkdir}
+                </span>
+              </div>
+            </button>
+          )}
           {candidates.map(({ workdir: wd, subtitle }) => (
             <button
               key={wd}

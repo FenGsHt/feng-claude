@@ -146,6 +146,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           open
           candidates={candidates}
           mode={splitMode}
+          currentWorkdir={sess?.workdir}
           onPick={(workdir) => {
             void createSession(workdir, splitMode, sessionId)
             setSplitMode(null)

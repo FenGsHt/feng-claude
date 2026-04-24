@@ -14,7 +14,7 @@ interface PaneLeafProps {
 }
 
 /** 单个终端窗格：顶栏 + 终端区（data-terminal-pane 含顶栏便于 Alt+方向键几何） */
-function PaneLeafShell({
+export function PaneLeafShell({
   sessionId,
   focused,
   setActiveSession
