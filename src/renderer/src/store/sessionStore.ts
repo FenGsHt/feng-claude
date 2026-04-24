@@ -6,7 +6,7 @@ import {
   removeSessionFromLayout,
   replaceLeafWithSplit
 } from '../lib/paneLayout'
-import { destroyTerminal } from '../components/terminal/XTerminal'
+import { destroyTerminal, focusTerminal } from '../components/terminal/XTerminal'
 import { useTokenUsageStore } from './tokenUsageStore'
 import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeTokenUsageParse'
 import type { PersistedWorkspace } from '../types/workspace'
@@ -17,6 +17,16 @@ const notifyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 /** 自动记录时跳过无信息量的单行（与 shell 噪音区分） */
 const SKIP_TERMINAL_LINES = new Set(['claude', 'clear', 'exit', 'cls'])
+
+/** 与主进程 resolve 后的绝对路径比对（Windows 盘符/大小写/斜杠差异） */
+function sameResolvedWorkdirPath(a: string, b: string): boolean {
+  const norm = (p: string): string =>
+    p
+      .replace(/\\/g, '/')
+      .replace(/\/+$/, '')
+      .toLowerCase()
+  return norm(a) === norm(b)
+}
 
 function normalizeCommittedTerminalLine(raw: string): string | null {
   const s0 = raw.replace(/\r/g, '').trim()
@@ -107,13 +117,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const cwd = workdir
-
-    const result = await window.electronAPI.createSession(cwd)
+    const result = await window.electronAPI.createSession(workdir)
+    // Use the resolved absolute path returned by main — avoids '.' being stored
+    const resolvedWorkdir = result.workdir ?? workdir
     const newSession: Session = {
       id: result.sessionId,
-      title: cwd.split(/[/\\]/).pop() ?? cwd,
-      workdir: cwd,
+      title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
+      workdir: resolvedWorkdir,
       status: 'running',
       messages: [],
       createdAt: Date.now(),
@@ -210,6 +220,29 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   restoreFromHistory: async (record: HistoryRecord) => {
+    // [2026-04-23] 原先无条件 createSession；同目录双 PTY 会共抢 JSONL。曾用 resolve 后 === 比对，在 Windows 上大小写不一致时既不匹配也不建会话，表现为「点了没反应」
+    // [2026-04-23] 原先用 resolved[i+1]===target 严格相等；改为归一化比较 + 复用标签时 focusTerminal，已激活同目录也有反馈
+    const sessions = get().sessions
+    if (sessions.length > 0) {
+      try {
+        const paths = [record.workdir, ...sessions.map((s) => s.workdir)]
+        const resolved = await window.electronAPI.resolveWorkdirMany(paths)
+        const target = resolved[0]
+        if (typeof target === 'string') {
+          for (let i = 0; i < sessions.length; i++) {
+            const r = resolved[i + 1]
+            if (typeof r === 'string' && sameResolvedWorkdirPath(r, target)) {
+              const sid = sessions[i]!.id
+              get().setActiveSession(sid)
+              focusTerminal(sid)
+              return
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[restoreFromHistory] resolveWorkdirMany failed, will create new session', e)
+      }
+    }
     await get().createSession(record.workdir, 'fullscreen')
   },
 
@@ -250,10 +283,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     for (const wd of pw.sessionWorkdirs) {
       try {
         const result = await window.electronAPI.createSession(wd)
+        const resolvedWd = result.workdir ?? wd
         sessions.push({
           id: result.sessionId,
-          title: wd.split(/[/\\]/).pop() ?? wd,
-          workdir: wd,
+          title: resolvedWd.split(/[/\\]/).pop() ?? resolvedWd,
+          workdir: resolvedWd,
           status: 'running',
           messages: [],
           createdAt: Date.now(),

@@ -11,6 +11,8 @@ export const IPC = {
   PTY_STATUS: 'pty:status',
 
   WORKDIR_OPEN_DIALOG: 'workdir:openDialog',
+  /** 与 SESSION_CREATE 一致，将路径 resolve 为绝对路径，供侧栏历史「同目录复用标签」比对 */
+  WORKDIR_RESOLVE_MANY: 'workdir:resolveMany',
   WORKDIR_CHANGE: 'workdir:change',
 
   FS_READ_TREE: 'fs:readTree',
@@ -33,7 +35,10 @@ export const IPC = {
   WORKSPACE_SAVE: 'workspace:save',
   WORKSPACE_LOAD: 'workspace:load',
 
-  TOKEN_USAGE_UPDATE: 'token-usage:update'
+  TOKEN_USAGE_UPDATE: 'token-usage:update',
+
+  /** 主进程同步读剪贴板文本，供终端 Ctrl+V 注入（避免渲染进程剪贴板 API 失效） */
+  CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync'
 } as const
 
 export interface TokenUsageUpdatePayload {
@@ -53,6 +58,8 @@ export interface SessionCreatePayload {
 export interface SessionCreateResult {
   sessionId: string
   pid: number
+  /** Resolved absolute workdir — always an absolute path, even if '.' was passed */
+  workdir: string
 }
 
 export interface PtyInputPayload {

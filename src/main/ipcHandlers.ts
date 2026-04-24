@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, clipboard } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve } from 'path'
 import { IPC } from '../renderer/src/types/ipc'
@@ -9,6 +9,22 @@ import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
+import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
+
+/** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
+let hudEnsureAfterSessionScheduled = false
+function scheduleEnsureClaudeHudAfterSession(): void {
+  if (hudEnsureAfterSessionScheduled) return
+  hudEnsureAfterSessionScheduled = true
+  setImmediate(() => {
+    hudEnsureAfterSessionScheduled = false
+    try {
+      ensureClaudeHudPluginDefaults()
+    } catch (e) {
+      console.warn('[ipc] ensureClaudeHudPluginDefaults:', e)
+    }
+  })
+}
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -18,6 +34,11 @@ export function registerIpcHandlers(
   workspaceStore: WorkspaceStore,
   sessionWatcher: ClaudeSessionWatcher
 ): void {
+  /* [2026-04-24] 渲染层 xterm 对 Ctrl+V 有时拿不到剪贴板；sendSync + clipboard.readText 与系统一致 */
+  ipcMain.on(IPC.CLIPBOARD_READ_TEXT_SYNC, (event) => {
+    event.returnValue = clipboard.readText()
+  })
+
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
   ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {
@@ -43,7 +64,10 @@ export function registerIpcHandlers(
     const result = ptyManager.createSession(sessionId, workdir, settings)
     // Start watching JSONL for accurate per-session token counting
     sessionWatcher.watchSession(sessionId, workdir)
-    return { sessionId, pid: result.pid }
+    // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
+    // ensureClaudeHudPluginDefaults()
+    scheduleEnsureClaudeHudAfterSession()
+    return { sessionId, pid: result.pid, workdir }
   })
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {
@@ -68,6 +92,12 @@ export function registerIpcHandlers(
       properties: ['openDirectory']
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  // [2026-04-23] 新增：渲染层比对「是否同一工作目录」须与主进程 resolve 规则一致，避免历史点击再建第二个 PTY/双 JSONL watcher
+  ipcMain.handle(IPC.WORKDIR_RESOLVE_MANY, async (_e, payload: { paths: string[] }) => {
+    const paths = Array.isArray(payload?.paths) ? payload.paths : []
+    return paths.map((p) => resolve(typeof p === 'string' ? p : '.'))
   })
 
   // ── File system ──────────────────────────────────────────────
