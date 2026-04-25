@@ -89,6 +89,13 @@ export function focusTerminal(sessionId: string): void {
   terminals.get(sessionId)?.term.focus()
 }
 
+/** 恢复历史 scrollback：创建（或复用）terminal 实例并写入 base64 编码的原始终端数据 */
+export function preFillTerminal(sessionId: string, rawBase64: string): void {
+  const { term } = getOrCreateTerminal(sessionId)
+  const bytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0))
+  term.write(bytes)
+}
+
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const lastPtyGeomRef = useRef<{ cols: number; rows: number } | null>(null)

@@ -4,10 +4,11 @@ import { HistoryPanel } from './HistoryPanel'
 import { SlashCommandsPanel } from './SlashCommandsPanel'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { TokenUsageWidget } from './TokenUsageWidget'
+import { UsageChart } from '../stats/UsageChart'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats'
 
 interface TabConfig {
   id: Tab
@@ -55,10 +56,21 @@ function IconSettings(): React.ReactElement {
   )
 }
 
+function IconStats(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <rect x="1.5" y="8" width="2.5" height="5.5" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+      <rect x="6" y="5" width="2.5" height="8.5" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+      <rect x="10.5" y="2" width="2.5" height="11.5" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+    </svg>
+  )
+}
+
 const TABS: TabConfig[] = [
   { id: 'files', label: 'Files', icon: <IconFiles /> },
   { id: 'history', label: 'History', icon: <IconHistory /> },
   { id: 'commands', label: 'Commands', icon: <IconCommands /> },
+  { id: 'stats', label: 'Stats', icon: <IconStats /> },
   { id: 'settings', label: 'Settings', icon: <IconSettings /> }
 ]
 
@@ -96,7 +108,6 @@ export function Sidebar(): React.ReactElement {
               }`}
             >
               {t.icon}
-              {/* Active accent bar */}
               {isActive && (
                 <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r-full bg-amber-500" />
               )}
@@ -129,6 +140,8 @@ export function Sidebar(): React.ReactElement {
             </div>
           ) : activeTab === 'commands' ? (
             <SlashCommandsPanel />
+          ) : activeTab === 'stats' ? (
+            <UsageChart />
           ) : (
             <SettingsPanel />
           )}

@@ -2,7 +2,7 @@ import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, stat
 import { join } from 'path'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import type { TokenUsageUpdatePayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, ToolCallPayload } from '../renderer/src/types/ipc'
 
 export type { TokenUsageUpdatePayload }
 
@@ -18,6 +18,12 @@ function workdirToProjectDirName(workdir: string): string {
 interface ClaudeJSONLEntry {
   type: string
   message?: {
+    content?: Array<{
+      type: string
+      id?: string
+      name?: string
+      input?: Record<string, unknown>
+    }>
     usage?: {
       input_tokens?: number
       output_tokens?: number
@@ -86,6 +92,7 @@ export class ClaudeSessionWatcher {
       sessionId,
       projectDir,
       fileByteOffsets: new Map(),
+      lastUsageByFile: new Map(),
       latestFile: null,
       timer: null
     }
@@ -203,6 +210,17 @@ export class ClaudeSessionWatcher {
 
       let needReset = resetFirst
       for (const line of lines) {
+        // Emit tool calls for any tool_use blocks in this line
+        for (const tc of parseToolCalls(line)) {
+          this.emitToolCall({
+            sessionId: sw.sessionId,
+            toolId: tc.id,
+            name: tc.name,
+            input: tc.input,
+            timestamp: Date.now()
+          })
+        }
+
         const usage = parseLine(line)
         if (!usage) continue
 
@@ -252,9 +270,31 @@ export class ClaudeSessionWatcher {
       this.win.webContents.send(IPC.TOKEN_USAGE_UPDATE, payload)
     }
   }
+
+  private emitToolCall(payload: ToolCallPayload): void {
+    if (!this.win.isDestroyed()) {
+      this.win.webContents.send(IPC.TOOL_CALL_UPDATE, payload)
+    }
+  }
 }
 
 // ── Pure helpers ─────────────────────────────────────────────
+
+interface ToolCallBlock { id: string; name: string; input: Record<string, unknown> }
+
+function parseToolCalls(line: string): ToolCallBlock[] {
+  try {
+    const entry = JSON.parse(line) as ClaudeJSONLEntry
+    if (entry.type !== 'assistant') return []
+    const content = entry.message?.content
+    if (!Array.isArray(content)) return []
+    return content
+      .filter((c) => c.type === 'tool_use' && c.name)
+      .map((c) => ({ id: c.id ?? '', name: c.name!, input: c.input ?? {} }))
+  } catch {
+    return []
+  }
+}
 
 function parseLine(line: string): ParsedUsage | null {
   try {

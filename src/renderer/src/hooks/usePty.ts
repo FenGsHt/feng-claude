@@ -3,6 +3,7 @@ import { useSessionStore } from '../store/sessionStore'
 import { writeToTerminal } from '../components/terminal/XTerminal'
 import { useTokenUsageStore } from '../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../store/globalTokenStore'
+import { useToolCallStore } from '../store/toolCallStore'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -43,10 +44,22 @@ export function usePty(): void {
       })
     })
 
+    // ── Tool call updates ─────────────────────────────────────
+    const unsubTools = window.electronAPI.onToolCallUpdate((payload) => {
+      useToolCallStore.getState().addCall({
+        id: payload.toolId,
+        sessionId: payload.sessionId,
+        name: payload.name,
+        input: payload.input,
+        timestamp: payload.timestamp
+      })
+    })
+
     return () => {
       unsubOutput()
       unsubStatus()
       unsubTokens()
+      unsubTools()
     }
   }, [updateSessionStatus])
 }

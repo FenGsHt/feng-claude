@@ -6,7 +6,7 @@ import {
   removeSessionFromLayout,
   replaceLeafWithSplit
 } from '../lib/paneLayout'
-import { destroyTerminal, focusTerminal } from '../components/terminal/XTerminal'
+import { destroyTerminal, focusTerminal, preFillTerminal } from '../components/terminal/XTerminal'
 import { useTokenUsageStore } from './tokenUsageStore'
 import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeTokenUsageParse'
 import type { PersistedWorkspace } from '../types/workspace'
@@ -72,8 +72,9 @@ interface SessionStore {
 
   /**
    * @param splitFromSessionId 分屏时从该 session 所在格拆出；缺省则使用当前 active（与点哪个窗格上的分屏一致）
+   * @param resume 传 true 时以 --continue 恢复该目录上次对话上下文
    */
-  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string) => Promise<void>
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
 
@@ -102,13 +103,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   createSession: async (
     workdir: string,
     mode: CreateSessionMode = 'fullscreen',
-    splitFromSessionId?: string
+    splitFromSessionId?: string,
+    resume?: boolean
   ) => {
     /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const result = await window.electronAPI.createSession(workdir)
+    const result = await window.electronAPI.createSession(workdir, resume)
     // Use the resolved absolute path returned by main — avoids '.' being stored
     const resolvedWorkdir = result.workdir ?? workdir
     const newSession: Session = {
@@ -151,6 +153,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         layoutRoot
       }
     })
+
+    if (result.scrollback) {
+      preFillTerminal(result.sessionId, result.scrollback)
+    }
 
     await upsertWorkdirHistory(newSession)
     await get().loadHistory()
@@ -221,7 +227,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       focusTerminal(existing.id)
       return
     }
-    await get().createSession(record.workdir, 'fullscreen')
+    await get().createSession(record.workdir, 'fullscreen', undefined, true)
   },
 
   notifyTerminalCommittedLine: (sessionId: string, rawLine: string) => {
@@ -260,8 +266,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const sessions: Session[] = []
     for (const wd of pw.sessionWorkdirs) {
       try {
-        const result = await window.electronAPI.createSession(wd)
+        const result = await window.electronAPI.createSession(wd, true)
         const resolvedWd = result.workdir ?? wd
+        if (result.scrollback) {
+          preFillTerminal(result.sessionId, result.scrollback)
+        }
         sessions.push({
           id: result.sessionId,
           title: resolvedWd.split(/[/\\]/).pop() ?? resolvedWd,

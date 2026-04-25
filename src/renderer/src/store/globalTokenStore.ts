@@ -3,6 +3,7 @@
  * - Survives session close and window restart (localStorage via zustand/middleware).
  * - Tracks all-time `total` and rolling `today` (auto-resets on calendar day change).
  * - Stores a configurable `budget` (token cap) for the progress bar.
+ * - Tracks per-day history (last 30 days) for the trend chart.
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -41,6 +42,8 @@ interface GlobalTokenStore {
   todayDate: string
   /** Budget cap in tokens (0 = unlimited / no progress bar) */
   budget: number
+  /** Per-day token totals, keyed YYYY-MM-DD, last 30 days */
+  dailyHistory: Record<string, TokenTotals>
 
   /** Accumulate a per-turn delta from the JSONL watcher */
   ingest: (delta: TokenTotals) => void
@@ -55,18 +58,25 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()(
       today: { ...ZERO },
       todayDate: todayStr(),
       budget: 0,
+      dailyHistory: {},
 
       ingest: (delta) =>
         set((s) => {
           const now = todayStr()
-          const today =
-            s.todayDate === now
-              ? add(s.today, delta) // same day — accumulate
-              : { ...delta } // new day — start fresh
+          const isSameDay = s.todayDate === now
+          const today = isSameDay ? add(s.today, delta) : { ...delta }
+
+          // Update daily history: accumulate into today's bucket, keep last 30 days
+          const prevDay = s.dailyHistory[now] ?? { ...ZERO }
+          const allDays = { ...s.dailyHistory, [now]: add(prevDay, delta) }
+          const keys = Object.keys(allDays).sort().slice(-30)
+          const dailyHistory = Object.fromEntries(keys.map((k) => [k, allDays[k]]))
+
           return {
             total: add(s.total, delta),
             today,
-            todayDate: now
+            todayDate: now,
+            dailyHistory
           }
         }),
 

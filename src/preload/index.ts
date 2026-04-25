@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult } from '../renderer/src/types/ipc'
+import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
@@ -14,8 +14,8 @@ const electronAPI = {
   },
 
   // Session
-  createSession: (workdir: string): Promise<SessionCreateResult> =>
-    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir }),
+  createSession: (workdir: string, resume?: boolean): Promise<SessionCreateResult> =>
+    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume }),
 
   closeSession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC.SESSION_CLOSE, { sessionId }),
@@ -73,6 +73,13 @@ const electronAPI = {
       callback(payload)
     ipcRenderer.on(IPC.TOKEN_USAGE_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.TOKEN_USAGE_UPDATE, handler)
+  },
+
+  onToolCallUpdate: (callback: (payload: ToolCallPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: ToolCallPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.TOOL_CALL_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC.TOOL_CALL_UPDATE, handler)
   },
 
   workspace: {

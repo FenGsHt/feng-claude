@@ -60,14 +60,17 @@ export function registerIpcHandlers(
     const sessionId = uuidv4()
     // Resolve relative paths (e.g. '.') so the token watcher can locate the correct JSONL project dir
     const workdir = resolve(payload.workdir ?? '.')
+    const resume = payload.resume ?? false
     const settings = settingsStore.get()
-    const result = ptyManager.createSession(sessionId, workdir, settings)
+    // Read scrollback before creating session (file written by previous session's close)
+    const scrollback = ptyManager.readScrollback(workdir)
+    const result = ptyManager.createSession(sessionId, workdir, settings, resume)
     // Start watching JSONL for accurate per-session token counting
     sessionWatcher.watchSession(sessionId, workdir)
     // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
     // ensureClaudeHudPluginDefaults()
     scheduleEnsureClaudeHudAfterSession()
-    return { sessionId, pid: result.pid, workdir }
+    return { sessionId, pid: result.pid, workdir, scrollback }
   })
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {

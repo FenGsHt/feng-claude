@@ -7,8 +7,9 @@ out
 *.local
 src/main/claudeEnv.ts
 
-# 仓库内个人覆盖（复制 example 为 claude.local.json 并填写密钥；勿提交 claude.local.json）
+# 仓库内个人覆盖（复制 example 为对应 .local.json 并按需填写；勿提交）
 local/claude.local.json
+local/deploy-config.local.json
 
 .claude-session/
 .claude/settings.local.json

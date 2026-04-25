@@ -167,6 +167,23 @@ async function main() {
 
   // 清理临时目录（后台异步，不阻塞）
   spawnSync('cmd', ['/c', `start /b rmdir /s /q "${tmpOut}"`], { stdio: 'ignore', shell: true })
+
+  // 读取本地部署目标（local/deploy-config.local.json），存在则复制过去
+  const deployConfigPath = join(root, 'local', 'deploy-config.local.json')
+  if (existsSync(deployConfigPath)) {
+    try {
+      const deployConfig = JSON.parse(readFileSync(deployConfigPath, 'utf-8'))
+      const deployTarget = deployConfig.deployTarget
+      if (deployTarget) {
+        mkdirSync(deployTarget, { recursive: true })
+        const dest = join(deployTarget, 'claude-gui-latest.exe')
+        copyFileSync(latestPath, dest)
+        console.log(`[sync-root-exe] 已复制到部署目标: ${dest}`)
+      }
+    } catch (e) {
+      console.warn(`[sync-root-exe] 读取 deploy-config.local.json 失败，跳过部署复制: ${e.message}`)
+    }
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })

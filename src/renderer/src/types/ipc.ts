@@ -36,6 +36,7 @@ export const IPC = {
   WORKSPACE_LOAD: 'workspace:load',
 
   TOKEN_USAGE_UPDATE: 'token-usage:update',
+  TOOL_CALL_UPDATE: 'tool-call:update',
 
   /** 主进程同步读剪贴板文本，供终端 Ctrl+V 注入（避免渲染进程剪贴板 API 失效） */
   CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync'
@@ -53,6 +54,7 @@ export interface TokenUsageUpdatePayload {
 
 export interface SessionCreatePayload {
   workdir: string
+  resume?: boolean
 }
 
 export interface SessionCreateResult {
@@ -60,6 +62,8 @@ export interface SessionCreateResult {
   pid: number
   /** Resolved absolute workdir — always an absolute path, even if '.' was passed */
   workdir: string
+  /** Base64-encoded raw terminal data from previous session in this workdir */
+  scrollback?: string | null
 }
 
 export interface PtyInputPayload {
@@ -97,4 +101,12 @@ export interface FsReadTreePayload {
 
 export interface HistorySavePayload {
   record: HistoryRecord
+}
+
+export interface ToolCallPayload {
+  sessionId: string
+  toolId: string
+  name: string
+  input: Record<string, unknown>
+  timestamp: number
 }

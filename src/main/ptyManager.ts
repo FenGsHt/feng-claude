@@ -1,5 +1,6 @@
 import * as pty from 'node-pty'
-import { existsSync } from 'fs'
+import { createHash } from 'crypto'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
@@ -102,10 +103,24 @@ function resolveClaudeAddDir(settings: ClaudeSettings): string {
   return ''
 }
 
+const MAX_SCROLLBACK_BYTES = 200 * 1024
+
+function scrollbackDir(): string {
+  return join(app.getPath('userData'), 'scrollback')
+}
+
+function scrollbackPath(workdir: string): string {
+  const hash = createHash('md5').update(workdir.replace(/\\/g, '/').toLowerCase()).digest('hex')
+  return join(scrollbackDir(), `${hash}.log`)
+}
+
 /** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI） */
-function claudeLaunchLine(settings: ClaudeSettings, isWindows: boolean): string {
+function claudeLaunchLine(settings: ClaudeSettings, isWindows: boolean, resume?: boolean): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
   let line = `claude --permission-mode ${mode}`
+  if (resume) {
+    line += ' --continue'
+  }
   const addDir = resolveClaudeAddDir(settings).trim()
   if (addDir) {
     line += ` --add-dir ${quoteAddDirPath(addDir, isWindows)}`
@@ -121,6 +136,11 @@ interface PtySession {
   buffer: string
   /** Prevents scheduling multiple re-launches if shell prompt appears in rapid succession */
   relaunchPending: boolean
+  /** Whether this session was created with --continue (used for relaunches) */
+  resume: boolean
+  /** Rolling buffer of raw PTY output for scrollback persistence */
+  scrollbackChunks: Buffer[]
+  scrollbackSize: number
 }
 
 export class PtyManager {
@@ -133,7 +153,7 @@ export class PtyManager {
     this.settingsStore = settingsStore
   }
 
-  createSession(sessionId: string, workdir: string, settings?: ClaudeSettings): { pid: number } {
+  createSession(sessionId: string, workdir: string, settings?: ClaudeSettings, resume?: boolean): { pid: number } {
     const s = settings ?? this.settingsStore.get()
     const claudeEnv = this.settingsStore.toEnv(s)
 
@@ -150,10 +170,20 @@ export class PtyManager {
 
     // Auto-launch claude CLI after shell is ready
     setTimeout(() => {
-      ptyProcess.write(claudeLaunchLine(s, isWindows))
+      ptyProcess.write(claudeLaunchLine(s, isWindows, resume))
     }, 300)
 
-    const session: PtySession = { id: sessionId, ptyProcess, workdir, claudeRunning: true, buffer: '', relaunchPending: false }
+    const session: PtySession = {
+      id: sessionId,
+      ptyProcess,
+      workdir,
+      claudeRunning: true,
+      buffer: '',
+      relaunchPending: false,
+      resume: resume ?? false,
+      scrollbackChunks: [],
+      scrollbackSize: 0
+    }
 
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return
@@ -164,6 +194,15 @@ export class PtyManager {
         data,
         timestamp: Date.now()
       })
+
+      // Accumulate scrollback buffer (rolling, max MAX_SCROLLBACK_BYTES)
+      const chunk = Buffer.from(data)
+      session.scrollbackChunks.push(chunk)
+      session.scrollbackSize += chunk.length
+      while (session.scrollbackSize > MAX_SCROLLBACK_BYTES && session.scrollbackChunks.length > 1) {
+        const removed = session.scrollbackChunks.shift()!
+        session.scrollbackSize -= removed.length
+      }
 
       // Detect if we've dropped back to the shell prompt (claude exited)
       // Keep a rolling buffer of recent output to match multi-chunk prompts
@@ -178,7 +217,8 @@ export class PtyManager {
           if (this.sessions.has(sessionId)) {
             session.claudeRunning = true
             const settings = this.settingsStore.get()
-            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))
+            // Relaunch without --continue: only the initial launch uses it
+            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', false))
           }
         }, 500)
       }
@@ -218,6 +258,7 @@ export class PtyManager {
   closeSession(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session) {
+      this.flushScrollback(session)
       try {
         session.ptyProcess.kill()
       } catch {
@@ -228,8 +269,32 @@ export class PtyManager {
   }
 
   closeAll(): void {
-    for (const id of this.sessions.keys()) {
+    for (const id of [...this.sessions.keys()]) {
       this.closeSession(id)
+    }
+  }
+
+  private flushScrollback(session: PtySession): void {
+    if (session.scrollbackChunks.length === 0) return
+    try {
+      mkdirSync(scrollbackDir(), { recursive: true })
+      writeFileSync(scrollbackPath(session.workdir), Buffer.concat(session.scrollbackChunks))
+    } catch { /* ignore */ }
+  }
+
+  readScrollback(workdir: string): string | null {
+    const p = scrollbackPath(workdir)
+    if (!existsSync(p)) return null
+    try {
+      return readFileSync(p).toString('base64')
+    } catch {
+      return null
+    }
+  }
+
+  flushAll(): void {
+    for (const session of this.sessions.values()) {
+      this.flushScrollback(session)
     }
   }
 }

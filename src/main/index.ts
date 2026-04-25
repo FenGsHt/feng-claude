@@ -95,6 +95,10 @@ app.whenReady().then(() => {
   })
 })
 
+app.on('before-quit', () => {
+  ptyManager?.flushAll()
+})
+
 app.on('window-all-closed', () => {
   ptyManager?.closeAll()
   if (process.platform !== 'darwin') app.quit()
