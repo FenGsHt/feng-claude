@@ -18,6 +18,8 @@ function workdirToProjectDirName(workdir: string): string {
 interface ClaudeJSONLEntry {
   type: string
   message?: {
+    id?: string
+    model?: string
     content?: Array<{
       type: string
       id?: string
@@ -65,8 +67,14 @@ interface SessionWatch {
    * time so historical content is never re-counted.
    */
   fileByteOffsets: Map<string, number>
-  /** 每条 jsonl 内上一条 assistant usage 快照，用于下发增量、对齐 /cost 会话口径 */
-  lastUsageByFile: Map<string, ParsedUsage>
+  /**
+   * Per-message-id last seen usage snapshot.
+   * Claude Code writes 2-3 JSONL lines per assistant response during streaming;
+   * all share the same message.id. We track the latest value per id and emit
+   * only the delta vs the previous value for that same id — this matches the
+   * billing truth (the last line has the final accurate counts).
+   */
+  lastUsageByMessageId: Map<string, ParsedUsage>
   /** Most recently seen JSONL file — used to detect a new claude conversation */
   latestFile: string | null
   timer: ReturnType<typeof setInterval> | null
@@ -92,7 +100,7 @@ export class ClaudeSessionWatcher {
       sessionId,
       projectDir,
       fileByteOffsets: new Map(),
-      lastUsageByFile: new Map(),
+      lastUsageByMessageId: new Map(),
       latestFile: null,
       timer: null
     }
@@ -165,7 +173,6 @@ export class ClaudeSessionWatcher {
           // New JSONL file appeared → new claude conversation started
           console.log(`[TokenWatcher] new JSONL detected: ${filePath} isNewConversation=${isNewConversation}`)
           sw.fileByteOffsets.set(filePath, 0)
-          sw.lastUsageByFile.delete(filePath)
           sw.latestFile = filePath
         }
 
@@ -221,22 +228,20 @@ export class ClaudeSessionWatcher {
           })
         }
 
-        const usage = parseLine(line)
-        if (!usage) continue
+        const parsed = parseLineWithId(line)
+        if (!parsed) continue
+        const { messageId, model, usage } = parsed
 
-        const prev = sw.lastUsageByFile.get(filePath) ?? ZERO_USAGE
-        const prevSum = usageSum(prev)
-        const curSum = usageSum(usage)
-        /*
-         * [2026-04-24] 原先把每行 usage 原样 add 到前端，Claude 常在同一轮写多条 assistant 行且
-         * message.usage 为「该次请求上下文」快照（数值重复或单调增），导致侧栏 input 约为内置 Session 数倍。
-         */
-        let baseline = prev
-        if (prevSum > 0 && curSum + 500 < prevSum) {
-          baseline = ZERO_USAGE
-        }
-        const d = usageDeltaSince(baseline, usage)
-        sw.lastUsageByFile.set(filePath, usage)
+        // Skip synthetic model entries (Claude Code internal bookkeeping)
+        if (model === '<synthetic>') continue
+
+        // Per-message-id delta: Claude streams 2-3 lines per response with the
+        // same message.id; each line's usage is a running total for that message,
+        // not an increment. We emit only the increase vs the last seen value for
+        // that specific message id.
+        const prev = sw.lastUsageByMessageId.get(messageId) ?? ZERO_USAGE
+        const d = usageDeltaSince(prev, usage)
+        sw.lastUsageByMessageId.set(messageId, usage)
 
         if (usageSum(d) === 0) {
           needReset = false
@@ -244,7 +249,7 @@ export class ClaudeSessionWatcher {
         }
 
         console.log(
-          `[TokenWatcher] emit token delta: in=${d.input} out=${d.output} cr=${d.cacheRead} reset=${needReset} (raw in=${usage.input})`
+          `[TokenWatcher] emit token delta: in=${d.input} out=${d.output} cc=${d.cacheCreate} cr=${d.cacheRead} reset=${needReset} msgId=${messageId}`
         )
         this.emit({
           sessionId: sw.sessionId,
@@ -296,18 +301,32 @@ function parseToolCalls(line: string): ToolCallBlock[] {
   }
 }
 
-function parseLine(line: string): ParsedUsage | null {
+interface ParsedLine {
+  messageId: string
+  model: string
+  usage: ParsedUsage
+}
+
+function parseLineWithId(line: string): ParsedLine | null {
   try {
     const entry = JSON.parse(line) as ClaudeJSONLEntry
     if (entry.type !== 'assistant') return null
-    const u = entry.message?.usage
+    const msg = entry.message
+    if (!msg) return null
+    const messageId = msg.id
+    if (!messageId) return null
+    const u = msg.usage
     if (!u) return null
     const input = Number(u.input_tokens ?? 0)
     const output = Number(u.output_tokens ?? 0)
     const cacheCreate = Number(u.cache_creation_input_tokens ?? 0)
     const cacheRead = Number(u.cache_read_input_tokens ?? 0)
     if (input + output + cacheCreate + cacheRead === 0) return null
-    return { input, output, cacheCreate, cacheRead }
+    return {
+      messageId,
+      model: msg.model ?? '',
+      usage: { input, output, cacheCreate, cacheRead }
+    }
   } catch {
     return null
   }
