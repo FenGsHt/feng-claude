@@ -45,16 +45,48 @@ function TipModal({
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  // [2026-04-27] Allow Ctrl+C to copy selected text when modal is open
+  // xterm's textarea captures keyboard events; blur it and intercept Ctrl+C
+  useEffect(() => {
+    // Blur xterm textareas on open
+    const blurXterm = (): void => {
+      const textareas = document.querySelectorAll('.xterm textarea, .xterm-helper-textarea')
+      textareas.forEach((ta) => (ta as HTMLTextAreaElement).blur())
+    }
+    blurXterm()
+
+    // Intercept Ctrl+C in capture phase (before xterm processes it)
+    const interceptCopy = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const sel = window.getSelection()
+        if (sel && sel.toString().length > 0) {
+          navigator.clipboard.writeText(sel.toString()).catch(() => {})
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
+      }
+    }
+    document.addEventListener('keydown', interceptCopy, true)
+
+    // Keep xterm blurred (it may try to refocus)
+    const intervalId = setInterval(blurXterm, 100)
+
+    return () => {
+      document.removeEventListener('keydown', interceptCopy, true)
+      clearInterval(intervalId)
+    }
+  }, [])
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center select-text"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
 
       {/* Card */}
-      <div className="relative z-10 w-[380px] max-w-[90vw] bg-claude-surface border border-claude-border rounded-xl shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-[380px] max-w-[90vw] bg-claude-surface border border-claude-border rounded-xl shadow-2xl overflow-hidden select-text">
         {/* Header */}
         <div className="flex items-start gap-2 px-4 pt-4 pb-3 border-b border-claude-border/60">
           <div className="flex-1 min-w-0">
