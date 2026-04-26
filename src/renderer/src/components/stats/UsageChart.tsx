@@ -110,14 +110,12 @@ function BreakdownRow({ label, totals, pricing }: { label: string; totals: Token
   return (
     <div>
       <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">{label}</div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+      <div className="flex flex-col gap-0.5">
         {rows.map(([name, val, cost, color]) => (
-          <div key={name} className="flex items-center justify-between text-[11px]">
-            <span className={color}>{name}</span>
-            <span className="text-right">
-              <span className="text-claude-text font-mono">{formatK(val)}</span>
-              <span className="text-[9px] text-claude-muted ml-1">{formatCost(cost)}</span>
-            </span>
+          <div key={name} className="flex items-center text-[11px]">
+            <span className={`${color} w-12 shrink-0`}>{name}</span>
+            <span className="text-claude-text font-mono w-10 text-right shrink-0">{formatK(val)}</span>
+            <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(cost)}</span>
           </div>
         ))}
       </div>
