@@ -102,6 +102,24 @@ export function listPlugins(): PluginEntry[] {
     }
   } catch { /* ignore */ }
 
+  // Add enabled plugins that aren't in any marketplace (e.g. claude-hud from extra marketplace)
+  const listedIds = new Set(plugins.map((p) => p.id))
+  for (const [id, isEn] of Object.entries(enabled)) {
+    if (!isEn || listedIds.has(id)) continue
+    const atIdx = id.lastIndexOf('@')
+    const name = atIdx > 0 ? id.slice(0, atIdx) : id
+    const marketplace = atIdx > 0 ? id.slice(atIdx + 1) : 'custom'
+    plugins.push({
+      id,
+      name,
+      marketplace,
+      description: '',
+      installCount: 0,
+      isEnabled: true,
+      isInstalled: isPluginInstalled(name)
+    })
+  }
+
   return plugins.sort((a, b) => b.installCount - a.installCount)
 }
 

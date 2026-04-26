@@ -7,6 +7,16 @@ function formatCount(n: number): string {
   return String(n)
 }
 
+const MARKETPLACE_LABELS: Record<string, string> = {
+  'claude-plugins-official': '官方市场',
+  'claude-hud': 'Claude HUD',
+  'custom': '自定义'
+}
+
+function marketplaceLabel(id: string): string {
+  return MARKETPLACE_LABELS[id] ?? id
+}
+
 export function PluginsPanel(): React.ReactElement {
   const [plugins, setPlugins] = useState<PluginEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -142,7 +152,7 @@ function PluginRow({
           <p className="text-[10px] text-claude-muted mt-0.5 leading-snug line-clamp-2">
             {plugin.description || '暂无描述'}
           </p>
-          <p className="text-[9px] text-claude-border mt-0.5 font-mono">{plugin.marketplace}</p>
+          <p className="text-[9px] text-claude-border mt-0.5">{marketplaceLabel(plugin.marketplace)}</p>
         </div>
 
         {/* Toggle switch */}
