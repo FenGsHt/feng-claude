@@ -74,7 +74,7 @@ const TABS: TabConfig[] = [
   { id: 'settings', label: 'Settings', icon: <IconSettings /> }
 ]
 
-export function Sidebar(): React.ReactElement {
+export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
   const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
@@ -90,7 +90,7 @@ export function Sidebar(): React.ReactElement {
   }, [loadHistory])
 
   return (
-    <div className="flex shrink-0 bg-claude-surface border-r border-claude-border overflow-hidden">
+    <div className="flex shrink-0 bg-claude-surface border-r border-claude-border overflow-hidden" style={{ width }}>
       {/* Icon-only tab rail (left column) */}
       <div className="flex flex-col w-11 shrink-0 border-r border-claude-border py-1 items-center gap-0.5">
         {TABS.map((t) => {
@@ -117,7 +117,7 @@ export function Sidebar(): React.ReactElement {
       </div>
 
       {/* Content panel */}
-      <div className="flex flex-col w-52 overflow-hidden">
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         {/* Panel header */}
         <div className="flex items-center h-9 px-3 border-b border-claude-border shrink-0">
           <span className="text-[11px] font-semibold text-claude-muted uppercase tracking-wider">
