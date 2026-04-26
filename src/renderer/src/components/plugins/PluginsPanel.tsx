@@ -7,6 +7,46 @@ function formatCount(n: number): string {
   return String(n)
 }
 
+const PLUGIN_ZH: Record<string, string> = {
+  'frontend-design': '生成独特的生产级前端界面，避免 AI 审美疲劳，注重大胆排版与高冲击力动效',
+  'code-review': '多专家视角自动化代码审查，覆盖安全、性能、可维护性等维度',
+  'code-simplifier': '识别并简化过度复杂的代码，提升可读性与可维护性',
+  'feature-dev': '结构化功能开发工作流，从需求分析到实现、测试全流程引导',
+  'ralph-loop': 'Ralph Wiggum 迭代技术：通过自我参照循环实现持续改进',
+  'typescript-lsp': 'Claude Code 内置 TypeScript/JavaScript 语言服务器，提供代码补全与诊断',
+  'commit-commands': '简化 Git 提交流程，提供 /commit、/push 等快捷命令',
+  'security-guidance': '实时安全最佳实践指导，帮助识别和修复常见漏洞',
+  'github': '集成 GitHub PR、Issue 管理，支持代码审查与发布操作',
+  'superpowers': '增强 Claude 的推理能力，提供更深入的分析与解题策略',
+  'context7': '集成 Context7，为代码库提供精准的上下文感知文档检索',
+  'playwright': '自动化浏览器测试，生成和运行 Playwright 端到端测试',
+  'agent-sdk-dev': 'Claude Agent SDK 开发辅助，加速构建多智能体工作流',
+  'claude-code-setup': '项目初始化向导，自动配置 CLAUDE.md 与开发环境',
+  'claude-md-management': 'CLAUDE.md 文件管理，保持项目记忆文件整洁有序',
+  'pr-review-toolkit': 'Pull Request 审查工具集，自动生成审查意见与变更摘要',
+  'feature-dev': '结构化功能开发工作流，从需求到上线全流程覆盖',
+  'hookify': '可视化管理 Claude Code hooks，简化钩子配置与调试',
+  'skill-creator': '快速创建自定义技能（Skill），扩展 Claude 的专属能力',
+  'mcp-server-dev': 'MCP 服务器开发辅助，加速构建 Model Context Protocol 服务',
+  'learning-output-style': '教学式输出风格，附带详细解释与学习引导',
+  'explanatory-output-style': '解释型输出风格，为每个操作提供清晰的原因说明',
+  'rust-analyzer-lsp': 'Rust 语言服务器集成，提供类型检查、补全与重构支持',
+  'gopls-lsp': 'Go 语言官方 LSP 集成，提供补全、诊断与跳转功能',
+  'pyright-lsp': 'Python 静态类型检查器 Pyright 集成',
+  'clangd-lsp': 'C/C++ Clangd 语言服务器集成',
+  'ruby-lsp': 'Ruby 语言服务器集成',
+  'swift-lsp': 'Swift 语言服务器集成',
+  'kotlin-lsp': 'Kotlin 语言服务器集成',
+  'csharp-lsp': 'C# 语言服务器集成',
+  'jdtls-lsp': 'Java 语言服务器集成',
+  'lua-lsp': 'Lua 语言服务器集成',
+  'php-lsp': 'PHP 语言服务器集成',
+  'claude-hud': '终端状态栏实时显示上下文用量、活跃工具、Git 信息等 HUD 信息',
+  'math-olympiad': '数学竞赛解题辅助，提供严格的数学推导与证明',
+  'playground': '实验性功能测试场，用于探索新特性',
+  'plugin-dev': '插件开发辅助工具，帮助构建和调试 Claude Code 插件',
+}
+
 const MARKETPLACE_LABELS: Record<string, string> = {
   'claude-plugins-official': '官方市场',
   'claude-hud': 'Claude HUD',
@@ -150,7 +190,7 @@ function PluginRow({
             )}
           </div>
           <p className="text-[10px] text-claude-muted mt-0.5 leading-snug line-clamp-2">
-            {plugin.description || '暂无描述'}
+            {PLUGIN_ZH[plugin.name] ?? plugin.description || '暂无描述'}
           </p>
           <p className="text-[9px] text-claude-border mt-0.5">{marketplaceLabel(plugin.marketplace)}</p>
         </div>
