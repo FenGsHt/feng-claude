@@ -190,7 +190,7 @@ function PluginRow({
             )}
           </div>
           <p className="text-[10px] text-claude-muted mt-0.5 leading-snug line-clamp-2">
-            {PLUGIN_ZH[plugin.name] ?? plugin.description || '暂无描述'}
+            {PLUGIN_ZH[plugin.name] ?? (plugin.description || '暂无描述')}
           </p>
           <p className="text-[9px] text-claude-border mt-0.5">{marketplaceLabel(plugin.marketplace)}</p>
         </div>
