@@ -2,12 +2,14 @@ import React, { useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { historyRecordPrimaryLabel } from '../../lib/historyLabels'
 import { TopicEditModal } from './TopicEditModal'
+import { useI18n } from '../../i18n'
 
 export function HistoryPanel(): React.ReactElement {
   const { history, restoreFromHistory, deleteHistory, updateHistoryTopic } = useSessionStore()
   const [topicEditId, setTopicEditId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const editing = topicEditId ? history.find((r) => r.id === topicEditId) : undefined
+  const { t } = useI18n()
 
   const filtered = query.trim()
     ? history.filter((r) => {
@@ -22,7 +24,7 @@ export function HistoryPanel(): React.ReactElement {
   if (history.length === 0) {
     return (
       <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
-        No history yet
+        {t.history.empty}
       </div>
     )
   }
@@ -35,7 +37,7 @@ export function HistoryPanel(): React.ReactElement {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索..."
+          placeholder={t.history.search}
           className="w-full bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-amber-500/60 font-mono"
         />
       </div>
@@ -43,7 +45,7 @@ export function HistoryPanel(): React.ReactElement {
       <div className="flex flex-col gap-0.5 py-1">
         {filtered.length === 0 && (
           <div className="flex items-center justify-center py-4 text-claude-muted text-xs">
-            无匹配结果
+            {t.common.noResults}
           </div>
         )}
         {filtered.map((record) => (

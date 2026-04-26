@@ -1,6 +1,7 @@
 import React, { useRef } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import type { Session } from '../../types/session'
+import { useI18n } from '../../i18n'
 
 /** Status dot color for a session */
 function statusColor(status: Session['status']): string {
@@ -29,6 +30,7 @@ export function TabBar(): React.ReactElement {
   const { sessions, activeSessionId, setActiveSession, createSession, closeSession, restartSession } =
     useSessionStore()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
 
   const handleNewTab = async () => {
     const dir = await window.electronAPI.openDirDialog()
@@ -88,7 +90,7 @@ export function TabBar(): React.ReactElement {
                   void restartSession(sess.id)
                 }}
                 aria-label="Restart session"
-                title="重启会话"
+                title={t.tabs.restartSession}
                 className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-all text-claude-muted hover:text-amber-400 hover:bg-claude-border ${
                   isActive ? 'opacity-60 hover:opacity-100' : 'opacity-0 group-hover:opacity-60 hover:!opacity-100'
                 }`}
@@ -123,8 +125,8 @@ export function TabBar(): React.ReactElement {
       {/* New tab button */}
       <button
         onClick={handleNewTab}
-        aria-label="New session"
-        title="New session (opens folder picker)"
+        aria-label={t.tabs.newSession}
+        title={t.tabs.newSession}
         className="flex items-center justify-center w-9 shrink-0 text-claude-muted hover:text-claude-text hover:bg-claude-bg/60 transition-colors border-l border-claude-border"
       >
         <svg width="13" height="13" viewBox="0 0 13 13">

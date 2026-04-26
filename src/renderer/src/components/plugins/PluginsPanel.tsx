@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import type { PluginEntry } from '../../types/ipc'
+import { useI18n } from '../../i18n'
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -64,6 +65,7 @@ export function PluginsPanel(): React.ReactElement {
   const [query, setQuery] = useState('')
   const [toggling, setToggling] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<'all' | 'enabled'>('all')
+  const { t } = useI18n()
 
   const reload = async (): Promise<void> => {
     setLoading(true)
@@ -124,23 +126,23 @@ export function PluginsPanel(): React.ReactElement {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Tab bar */}
       <div className="flex items-center border-b border-claude-border shrink-0">
-        {(['all', 'enabled'] as const).map((t) => (
+        {(['all', 'enabled'] as const).map((tabId) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={tabId}
+            onClick={() => setTab(tabId)}
             className={`flex-1 py-1.5 text-[11px] font-medium transition-colors ${
-              tab === t
+              tab === tabId
                 ? 'text-amber-400 border-b-2 border-amber-400 -mb-px'
                 : 'text-claude-muted hover:text-claude-text'
             }`}
           >
-            {t === 'all' ? '市场' : `已启用 ${enabledCount > 0 ? `(${enabledCount})` : ''}`}
+            {tabId === 'all' ? t.plugins.market : `${t.plugins.enabled} ${enabledCount > 0 ? `(${enabledCount})` : ''}`}
           </button>
         ))}
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          title="拉取最新插件"
+          title={t.plugins.refreshTitle}
           className="shrink-0 w-7 h-7 flex items-center justify-center text-claude-muted hover:text-amber-400 disabled:opacity-40 transition-colors mr-1"
         >
           <svg
@@ -159,7 +161,7 @@ export function PluginsPanel(): React.ReactElement {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索插件..."
+          placeholder={t.plugins.searchPlaceholder}
           className="w-full bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-amber-500/60 font-mono"
         />
       </div>
@@ -168,11 +170,11 @@ export function PluginsPanel(): React.ReactElement {
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
-            加载中...
+            {t.common.loading}
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
-            {tab === 'enabled' ? '未启用任何插件' : '无匹配插件'}
+            {tab === 'enabled' ? t.plugins.noEnabled : t.plugins.noMatch}
           </div>
         ) : (
           filtered.map((plugin) => (
@@ -189,7 +191,7 @@ export function PluginsPanel(): React.ReactElement {
 
       {/* Footer hint */}
       <div className="shrink-0 px-3 py-1.5 border-t border-claude-border text-[9px] text-claude-muted text-center leading-snug">
-        开关立即生效，新会话重启后加载插件
+        {t.plugins.footerHint}
       </div>
     </div>
   )
@@ -206,6 +208,7 @@ function PluginRow({
   toggling: boolean
   onToggle: (p: PluginEntry) => void
 }): React.ReactElement {
+  const { t } = useI18n()
   return (
     <div className="px-3 py-2.5 border-b border-claude-border/50 hover:bg-claude-bg/40 group">
       <div className="flex items-start gap-2">
@@ -214,12 +217,12 @@ function PluginRow({
             <span className="text-[12px] font-semibold text-claude-text">{plugin.name}</span>
             {isNew && (
               <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
-                NEW
+                {t.plugins.new}
               </span>
             )}
             {plugin.isInstalled && (
               <span className="text-[9px] px-1 rounded bg-green-500/15 text-green-400 border border-green-500/20">
-                已安装
+                {t.plugins.installed}
               </span>
             )}
             {plugin.installCount > 0 && (
@@ -238,7 +241,7 @@ function PluginRow({
         <button
           onClick={() => onToggle(plugin)}
           disabled={toggling}
-          title={plugin.isEnabled ? '点击禁用' : '点击启用'}
+          title={plugin.isEnabled ? t.common.disable : t.common.enable}
           className={`shrink-0 mt-0.5 relative w-8 h-4 rounded-full transition-colors ${
             toggling ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
           } ${plugin.isEnabled ? 'bg-amber-500' : 'bg-claude-border'}`}

@@ -5,7 +5,10 @@
  */
 export type ClaudePermissionPreset = 'acceptEdits' | 'bypassPermissions'
 
+export type AppLanguage = 'zh' | 'en'
+
 export interface ClaudeSettings {
+  language: AppLanguage
   authToken: string
   baseUrl: string
   model: string
@@ -23,6 +26,7 @@ export interface ClaudeSettings {
 }
 
 export const DEFAULT_SETTINGS: ClaudeSettings = {
+  language: 'zh',
   authToken: '',
   baseUrl: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
   model: 'glm-5',

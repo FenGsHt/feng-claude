@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import type { ClaudeSettings } from '../../types/settings'
 import { DEFAULT_SETTINGS } from '../../types/settings'
 import { useGlobalTokenStore, DEFAULT_PRICING, type Pricing } from '../../store/globalTokenStore'
+import { useI18n, useLangStore } from '../../i18n'
 
 export function SettingsPanel(): React.ReactElement {
   const [form, setForm] = useState<ClaudeSettings>(DEFAULT_SETTINGS)
@@ -9,6 +10,7 @@ export function SettingsPanel(): React.ReactElement {
   const [loading, setLoading] = useState(true)
   const { pricing, setPricing } = useGlobalTokenStore()
   const [pricingForm, setPricingForm] = useState<Pricing>(pricing)
+  const { t } = useI18n()
 
   useEffect(() => {
     setPricingForm(pricing)
@@ -24,6 +26,10 @@ export function SettingsPanel(): React.ReactElement {
   const handleChange = <K extends keyof ClaudeSettings>(key: K, value: ClaudeSettings[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
     setSaved(false)
+    // Instantly apply language change to UI
+    if (key === 'language') {
+      useLangStore.getState().setLang(value as ClaudeSettings['language'])
+    }
   }
 
   const handleSave = async () => {
@@ -36,14 +42,36 @@ export function SettingsPanel(): React.ReactElement {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-claude-muted text-xs">
-        Loading...
+        {t.common.loading}
       </div>
     )
   }
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="px-3 pt-3 pb-2 text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+      {/* Language selector */}
+      <div className="px-3 pt-3 pb-2 flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          {t.settings.language}
+        </span>
+        <div className="flex rounded overflow-hidden border border-claude-border text-[10px]">
+          {(['zh', 'en'] as const).map((lang) => (
+            <button
+              key={lang}
+              onClick={() => handleChange('language', lang)}
+              className={`px-2 py-0.5 transition-colors ${
+                form.language === lang
+                  ? 'bg-amber-500 text-black font-medium'
+                  : 'text-claude-muted hover:text-claude-text'
+              }`}
+            >
+              {lang === 'zh' ? t.settings.languageZh : t.settings.languageEn}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-3 pb-2 text-[10px] font-semibold text-claude-muted uppercase tracking-wider border-t border-claude-border pt-2">
         API Configuration
       </div>
 
@@ -151,7 +179,7 @@ export function SettingsPanel(): React.ReactElement {
         {/* Disable experimental betas */}
         <div className="flex items-center justify-between py-1">
           <div>
-            <div className="text-xs text-claude-text">Disable Experimental Betas</div>
+            <div className="text-xs text-claude-text">{t.settings.disableExperimentalBetas}</div>
             <div className="text-[10px] text-claude-muted">CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS</div>
           </div>
           <button
@@ -216,7 +244,7 @@ export function SettingsPanel(): React.ReactElement {
               : 'bg-amber-500 hover:bg-amber-400 text-black'
           }`}
         >
-          {saved ? '✓ Saved' : 'Save Settings'}
+          {saved ? `✓ ${t.settings.saved}` : t.settings.save}
         </button>
 
         <p className="text-[10px] text-claude-muted text-center leading-snug">

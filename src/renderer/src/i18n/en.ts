@@ -1,0 +1,160 @@
+import type { Translations } from './zh'
+
+export const en: Translations = {
+  sidebar: {
+    files: 'Files',
+    history: 'History',
+    commands: 'Commands',
+    stats: 'Stats',
+    plugins: 'Plugins',
+    skills: 'Skills',
+    mcp: 'MCP',
+    guide: 'Guide',
+    settings: 'Settings'
+  },
+  common: {
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    edit: 'Edit',
+    add: 'Add',
+    search: 'Search',
+    loading: 'Loading...',
+    confirm: 'Confirm',
+    confirmDelete: 'Confirm delete',
+    close: 'Close',
+    create: 'Create',
+    refresh: 'Refresh',
+    enable: 'Enable',
+    disable: 'Disable',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    noResults: 'No results',
+    empty: 'Empty',
+    openFolder: 'Open in file manager',
+    name: 'Name',
+    type: 'Type',
+    optional: 'Optional',
+    error: 'Error'
+  },
+  token: {
+    title: 'Token Usage',
+    today: 'Today',
+    total: 'Total',
+    addBudget: '+ budget',
+    budgetTitle: 'Set Token Budget',
+    budgetPlaceholder: 'e.g. 100M · 50K · 5000000',
+    budgetInvalid: 'Invalid',
+    confirmReset: 'Confirm?',
+    resetTitle: 'Reset all-time counters',
+    footerHint: 'Toggle takes effect immediately; plugins load on session restart'
+  },
+  history: {
+    search: 'Search history...',
+    empty: 'No history yet',
+    deleteConfirm: 'Confirm delete',
+    resume: 'Resume last conversation',
+    openNew: 'Open new session'
+  },
+  plugins: {
+    market: 'Market',
+    enabled: 'Enabled',
+    searchPlaceholder: 'Search plugins...',
+    noEnabled: 'No plugins enabled',
+    noMatch: 'No matching plugins',
+    installed: 'Installed',
+    new: 'NEW',
+    refreshTitle: 'Pull latest plugins',
+    footerHint: 'Toggle takes effect immediately; reopen session to load',
+    officialMarket: 'Official',
+    custom: 'Custom'
+  },
+  mcp: {
+    addServer: 'Add server',
+    editServer: 'Edit',
+    noServers: 'No MCP servers',
+    addFirst: 'Click to add',
+    serverName: 'Name',
+    command: 'Command',
+    args: 'Args (space-separated)',
+    url: 'URL',
+    envVars: 'Env vars (optional, one KEY=VALUE per line)',
+    footerHint: 'Changes written immediately · restart session to apply',
+    enabledCount: '{enabled}/{total} enabled',
+    noServersEmpty: 'No servers'
+  },
+  skills: {
+    searchPlaceholder: 'Search skills...',
+    createFirst: 'Create your first skill',
+    newSkill: 'New Skill',
+    editSkill: 'Edit',
+    skillName: 'Command name (creates /name command)',
+    content: 'Content (Markdown)',
+    chars: 'chars',
+    emptyDir: '~/.claude/commands/ is empty',
+    noMatch: 'No results',
+    footerSkillCount: '{count} skills · ',
+    folderBadge: 'folder'
+  },
+  stats: {
+    title: 'Token Usage Trend',
+    inputTokens: 'Input',
+    outputTokens: 'Output',
+    cacheRead: 'Cache read',
+    cacheCreate: 'Cache write',
+    noData: 'No data yet',
+    days: 'd',
+    today: 'Today',
+    total: 'Total'
+  },
+  settings: {
+    title: 'Settings',
+    language: 'UI Language',
+    languageZh: '中文',
+    languageEn: 'English',
+    authToken: 'Auth Token',
+    baseUrl: 'API Base URL',
+    model: 'Default Model',
+    permissionPreset: 'Permission Mode',
+    permissionAcceptEdits: 'Accept Edits (recommended)',
+    permissionBypass: 'Bypass All (dangerous)',
+    sharedSkillDir: 'Shared Skill Directory',
+    save: 'Save Settings',
+    saved: 'Saved',
+    pricing: 'Pricing ($ per million tokens)',
+    pricingInput: 'Input',
+    pricingOutput: 'Output',
+    pricingCacheCreate: 'Cache write',
+    pricingCacheRead: 'Cache read',
+    pricingReset: 'Reset defaults',
+    disableExperimentalBetas: 'Disable experimental betas'
+  },
+  guide: {
+    searchPlaceholder: 'Search tips...',
+    noResults: 'No results',
+    learnedButton: 'Learned',
+    markLearned: 'Mark as learned',
+    close: 'Close',
+    footer: ' best practices · ref shanraisshan/claude-code-best-practice',
+    collapseHint: 'Click to expand',
+    learned: 'Learned',
+    progress: '{learned}/{total} learned'
+  },
+  tabs: {
+    newSession: 'New session (pick folder)',
+    closeTab: 'Close tab',
+    restartSession: 'Restart session'
+  },
+  files: {
+    changeDir: 'Change directory',
+    empty: 'Empty directory',
+    loading: 'Loading...'
+  },
+  session: {
+    running: 'Running',
+    idle: 'Idle',
+    waiting: 'Waiting for input',
+    error: 'Error',
+    exited: 'Exited'
+  }
+}

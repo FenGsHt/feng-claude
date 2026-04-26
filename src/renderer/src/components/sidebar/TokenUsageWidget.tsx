@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useGlobalTokenStore, tokenSum, computeCost } from '../../store/globalTokenStore'
 import { fmtTokens } from '../../lib/formatTokens'
+import { useI18n } from '../../i18n'
 
 function fmtCost(usd: number): string {
   if (usd < 0.001) return '<$0.001'
@@ -59,6 +60,7 @@ export function TokenUsageWidget(): React.ReactElement {
   const [budgetDraft, setBudgetDraft] = useState('')
   const [budgetError, setBudgetError] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const { t } = useI18n()
 
   const totalUsed = tokenSum(total)
   const todayUsed = tokenSum(today)
@@ -103,23 +105,23 @@ export function TokenUsageWidget(): React.ReactElement {
     <div className="px-3 py-2 border-t border-claude-border text-[10px] text-claude-muted shrink-0">
       {/* Header row */}
       <div className="flex items-center justify-between mb-1">
-        <span className="font-semibold uppercase tracking-wider text-[9px]">Token Usage</span>
+        <span className="font-semibold uppercase tracking-wider text-[9px]">{t.token.title}</span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={startEdit}
-            title={budget > 0 ? `Budget: ${fmtTokens(budget)} — click to edit` : 'Set token budget'}
+            title={budget > 0 ? `Budget: ${fmtTokens(budget)} — click to edit` : t.token.budgetTitle}
             className="text-[9px] text-claude-muted hover:text-amber-400 transition-colors"
           >
-            {budget > 0 ? `⚡${fmtTokens(budget)}` : '+ budget'}
+            {budget > 0 ? `⚡${fmtTokens(budget)}` : t.token.addBudget}
           </button>
           <button
             onClick={handleReset}
-            title={confirmReset ? 'Click again to confirm reset' : 'Reset all-time counters'}
+            title={confirmReset ? t.token.confirmReset : t.token.resetTitle}
             className={`text-[9px] transition-colors ${
               confirmReset ? 'text-red-400' : 'text-claude-muted hover:text-claude-text'
             }`}
           >
-            {confirmReset ? 'confirm?' : '↺'}
+            {confirmReset ? t.token.confirmReset : '↺'}
           </button>
         </div>
       </div>
@@ -133,13 +135,13 @@ export function TokenUsageWidget(): React.ReactElement {
             onChange={(e) => { setBudgetDraft(e.target.value); setBudgetError(false) }}
             onKeyDown={handleBudgetKey}
             onBlur={commitBudget}
-            placeholder="e.g. 100M · 50K · 5000000"
+            placeholder={t.token.budgetPlaceholder}
             className={`flex-1 rounded border px-1.5 py-0.5 text-[10px] text-claude-text outline-none font-mono bg-claude-bg ${
               budgetError ? 'border-red-500 animate-pulse' : 'border-amber-600/50'
             }`}
           />
           {budgetError ? (
-            <span className="text-[9px] text-red-400 px-1 self-center">invalid</span>
+            <span className="text-[9px] text-red-400 px-1 self-center">{t.token.budgetInvalid}</span>
           ) : (
             <button onClick={commitBudget} className="text-[9px] text-amber-400 hover:text-amber-300 px-1">
               OK
@@ -151,7 +153,7 @@ export function TokenUsageWidget(): React.ReactElement {
       {/* Today / Total rows */}
       <div className="space-y-0.5">
         <div className="flex justify-between items-baseline">
-          <span className="text-claude-muted">Today</span>
+          <span className="text-claude-muted">{t.token.today}</span>
           <span className="font-mono tabular-nums text-right">
             {fmtTokens(today.input)}↑ {fmtTokens(today.output)}↓
             {today.cacheRead > 0 && (
@@ -161,7 +163,7 @@ export function TokenUsageWidget(): React.ReactElement {
           </span>
         </div>
         <div className="flex justify-between items-baseline">
-          <span className="text-claude-muted">Total</span>
+          <span className="text-claude-muted">{t.token.total}</span>
           <span className="font-mono tabular-nums text-right">
             {fmtTokens(total.input)}↑ {fmtTokens(total.output)}↓
             {total.cacheRead > 0 && (

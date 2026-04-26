@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import type { SkillEntry } from '../../types/ipc'
+import { useI18n } from '../../i18n'
 
 // ── Markdown viewer (lightweight) ────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ function ContentModal({
   onClose: () => void
   onEdit: () => void
 }): React.ReactElement {
+  const { t } = useI18n()
   useEffect(() => {
     const h = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)
@@ -72,7 +74,7 @@ function ContentModal({
             <div className="flex items-center gap-1.5">
               <span className="text-[13px] font-semibold text-claude-text">/{skill.name}</span>
               {skill.isFolder && (
-                <span className="text-[9px] px-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">folder</span>
+                <span className="text-[9px] px-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">{t.skills.folderBadge}</span>
               )}
             </div>
             {skill.description && (
@@ -83,7 +85,7 @@ function ContentModal({
             {!skill.isFolder && (
               <button onClick={onEdit}
                 className="text-[10px] px-2 py-1 rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors">
-                编辑
+                {t.common.edit}
               </button>
             )}
             <button onClick={onClose}
@@ -123,6 +125,7 @@ function EditorModal({
   const [content, setContent] = useState(initialContent)
   const [error, setError] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const { t } = useI18n()
 
   useEffect(() => { taRef.current?.focus() }, [])
   useEffect(() => {
@@ -147,7 +150,7 @@ function EditorModal({
       <div className="relative z-10 w-[520px] max-w-[94vw] max-h-[85vh] bg-claude-surface border border-claude-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-claude-border shrink-0">
           <span className="text-[13px] font-semibold text-claude-text flex-1">
-            {skill ? `编辑 /${skill.name}` : '新建 Skill'}
+            {skill ? `${t.skills.editSkill} /${skill.name}` : t.skills.newSkill}
           </span>
           <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors">
             <svg width="9" height="9" viewBox="0 0 9 9">
@@ -161,7 +164,7 @@ function EditorModal({
           {/* Name */}
           {!skill && (
             <div>
-              <label className="text-[10px] text-claude-muted mb-0.5 block">命令名称（生成 /name 命令）</label>
+              <label className="text-[10px] text-claude-muted mb-0.5 block">{t.skills.skillName}</label>
               <div className="flex items-center gap-1">
                 <span className="text-[11px] text-claude-muted font-mono">/</span>
                 <input className={inputCls} placeholder="my-skill" value={name}
@@ -174,8 +177,8 @@ function EditorModal({
           {/* Content */}
           <div className="flex-1">
             <div className="flex items-center justify-between mb-0.5">
-              <label className="text-[10px] text-claude-muted">内容（Markdown）</label>
-              <span className="text-[9px] text-claude-border">{content.length} chars</span>
+              <label className="text-[10px] text-claude-muted">{t.skills.content}</label>
+              <span className="text-[9px] text-claude-border">{content.length} {t.skills.chars}</span>
             </div>
             <textarea
               ref={taRef}
@@ -190,11 +193,11 @@ function EditorModal({
         <div className="flex gap-2 px-4 py-3 border-t border-claude-border shrink-0">
           <button onClick={submit}
             className="flex-1 py-1.5 text-[11px] bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/30 transition-colors font-medium">
-            保存
+            {t.common.save}
           </button>
           <button onClick={onClose}
             className="px-4 py-1.5 text-[11px] text-claude-muted hover:text-claude-text border border-claude-border rounded transition-colors">
-            取消
+            {t.common.cancel}
           </button>
         </div>
       </div>
@@ -216,6 +219,7 @@ function SkillRow({
   onDelete: () => void
 }): React.ReactElement {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { t } = useI18n()
 
   return (
     <div
@@ -228,7 +232,7 @@ function SkillRow({
             <span className="text-[11px] font-semibold text-amber-400 font-mono">/{skill.name}</span>
             {skill.isFolder && (
               <span className="text-[9px] px-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                folder
+                {t.skills.folderBadge}
               </span>
             )}
           </div>
@@ -246,7 +250,7 @@ function SkillRow({
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           onClick={(e) => e.stopPropagation()}>
           {!skill.isFolder && (
-            <button onClick={onEdit} title="编辑"
+            <button onClick={onEdit} title={t.common.edit}
               className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors">
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                 <path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
@@ -254,7 +258,7 @@ function SkillRow({
             </button>
           )}
           <button
-            title={confirmDelete ? '确认删除' : '删除'}
+            title={confirmDelete ? t.common.confirmDelete : t.common.delete}
             onClick={() => {
               if (confirmDelete) onDelete()
               else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 3000) }
@@ -300,6 +304,7 @@ export function SkillsPanel(): React.ReactElement {
   const [query, setQuery] = useState('')
   const [viewing, setViewing] = useState<{ skill: SkillEntry; content: string } | null>(null)
   const [editing, setEditing] = useState<{ skill?: SkillEntry; content: string } | null>(null)
+  const { t } = useI18n()
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -351,12 +356,12 @@ export function SkillsPanel(): React.ReactElement {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索 skill..."
+          placeholder={t.skills.searchPlaceholder}
           className="flex-1 bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-amber-500/60 font-mono"
         />
         <button
           onClick={() => setEditing({ content: NEW_SKILL_TEMPLATE })}
-          title="新建 Skill"
+          title={t.skills.newSkill}
           className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 12 12">
@@ -366,7 +371,7 @@ export function SkillsPanel(): React.ReactElement {
         </button>
         <button
           onClick={() => window.electronAPI.skills.openDir()}
-          title="在文件管理器中打开"
+          title={t.common.openFolder}
           className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -379,7 +384,7 @@ export function SkillsPanel(): React.ReactElement {
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-10 text-claude-muted text-xs">加载中...</div>
+          <div className="flex items-center justify-center py-10 text-claude-muted text-xs">{t.common.loading}</div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-claude-muted">
             <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="opacity-30">
@@ -387,11 +392,11 @@ export function SkillsPanel(): React.ReactElement {
               <circle cx="20" cy="20" r="5" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M17.5 20h5M20 17.5v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
             </svg>
-            <p className="text-xs">{query ? '无匹配结果' : '~/.claude/commands/ 为空'}</p>
+            <p className="text-xs">{query ? t.skills.noMatch : t.skills.emptyDir}</p>
             {!query && (
               <button onClick={() => setEditing({ content: NEW_SKILL_TEMPLATE })}
                 className="text-[11px] text-amber-400 hover:underline">
-                创建第一个 Skill
+                {t.skills.createFirst}
               </button>
             )}
           </div>
@@ -410,7 +415,7 @@ export function SkillsPanel(): React.ReactElement {
 
       {/* Footer */}
       <div className="shrink-0 px-3 py-1.5 border-t border-claude-border text-[9px] text-claude-muted text-center">
-        {skills.length > 0 ? `${skills.length} 个 skill · ` : ''}~/.claude/commands/
+        {skills.length > 0 ? t.skills.footerSkillCount.replace('{count}', String(skills.length)) : ''}~/.claude/commands/
       </div>
 
       {/* View modal */}

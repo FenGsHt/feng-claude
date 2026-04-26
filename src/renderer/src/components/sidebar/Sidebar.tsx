@@ -11,6 +11,7 @@ import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
+import { useI18n } from '../../i18n'
 
 type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills'
 
@@ -109,22 +110,23 @@ function IconStats(): React.ReactElement {
   )
 }
 
-const TABS: TabConfig[] = [
-  { id: 'files', label: 'Files', icon: <IconFiles /> },
-  { id: 'history', label: 'History', icon: <IconHistory /> },
-  { id: 'commands', label: 'Commands', icon: <IconCommands /> },
-  { id: 'stats', label: 'Stats', icon: <IconStats /> },
-  { id: 'plugins', label: 'Plugins', icon: <IconPlugins /> },
-  { id: 'skills', label: 'Skills', icon: <IconSkills /> },
-  { id: 'mcp', label: 'MCP', icon: <IconMcp /> },
-  { id: 'guide', label: 'Guide', icon: <IconGuide /> },
-  { id: 'settings', label: 'Settings', icon: <IconSettings /> }
-]
-
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
   const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
+  const { t } = useI18n()
+
+  const TABS: TabConfig[] = [
+    { id: 'files', label: t.sidebar.files, icon: <IconFiles /> },
+    { id: 'history', label: t.sidebar.history, icon: <IconHistory /> },
+    { id: 'commands', label: t.sidebar.commands, icon: <IconCommands /> },
+    { id: 'stats', label: t.sidebar.stats, icon: <IconStats /> },
+    { id: 'plugins', label: t.sidebar.plugins, icon: <IconPlugins /> },
+    { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
+    { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
+    { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
+    { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
+  ]
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 

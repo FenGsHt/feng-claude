@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { GUIDE_SECTIONS } from './guideData'
 import type { Tip, Section } from './guideData'
+import { useI18n } from '../../i18n'
 
 const STORAGE_KEY = 'claude-guide-learned'
 
@@ -34,6 +35,7 @@ function TipModal({
   onToggleLearned: () => void
   onClose: () => void
 }): React.ReactElement {
+  const { t } = useI18n()
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -105,7 +107,7 @@ function TipModal({
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                   <path d="M1.5 5.5l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                已学习
+                {t.guide.learnedButton}
               </>
             ) : (
               <>
@@ -113,7 +115,7 @@ function TipModal({
                   <circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.1"/>
                   <path d="M5.5 3v2.5l1.5 1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
                 </svg>
-                标记为已学习
+                {t.guide.markLearned}
               </>
             )}
           </button>
@@ -121,7 +123,7 @@ function TipModal({
             onClick={onClose}
             className="text-[11px] text-claude-muted hover:text-claude-text transition-colors px-2 py-1"
           >
-            关闭
+            {t.guide.close}
           </button>
         </div>
       </div>
@@ -209,6 +211,7 @@ export function GuidePanel(): React.ReactElement {
   const [learned, setLearned] = useState<Set<string>>(loadLearned)
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState<{ tip: Tip; section: Section } | null>(null)
+  const { t } = useI18n()
 
   const toggleLearned = useCallback((id: string) => {
     setLearned((prev) => {
@@ -234,10 +237,10 @@ export function GuidePanel(): React.ReactElement {
     ? GUIDE_SECTIONS.map((s) => ({
         ...s,
         tips: s.tips.filter(
-          (t) =>
-            t.title.toLowerCase().includes(search.toLowerCase()) ||
-            t.brief.toLowerCase().includes(search.toLowerCase()) ||
-            t.detail.toLowerCase().includes(search.toLowerCase())
+          (tip) =>
+            tip.title.toLowerCase().includes(search.toLowerCase()) ||
+            tip.brief.toLowerCase().includes(search.toLowerCase()) ||
+            tip.detail.toLowerCase().includes(search.toLowerCase())
         )
       })).filter((s) => s.tips.length > 0)
     : GUIDE_SECTIONS
@@ -250,7 +253,7 @@ export function GuidePanel(): React.ReactElement {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="搜索技巧..."
+          placeholder={t.guide.searchPlaceholder}
           className="w-full bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-amber-500/60 font-mono"
         />
         {totalLearned > 0 && (
@@ -262,7 +265,7 @@ export function GuidePanel(): React.ReactElement {
               />
             </div>
             <span className="text-[9px] text-claude-muted shrink-0">
-              {totalLearned}/{totalTips} 已学习
+              {t.guide.progress.replace('{learned}', String(totalLearned)).replace('{total}', String(totalTips))}
             </span>
           </div>
         )}
@@ -272,7 +275,7 @@ export function GuidePanel(): React.ReactElement {
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-claude-muted text-xs">
-            无匹配结果
+            {t.guide.noResults}
           </div>
         ) : search.trim() ? (
           // Flat list when searching
@@ -323,7 +326,7 @@ export function GuidePanel(): React.ReactElement {
 
       {/* Footer */}
       <div className="shrink-0 px-3 py-1.5 border-t border-claude-border text-[9px] text-claude-muted text-center">
-        {totalTips} 条最佳实践 · 参考 shanraisshan/claude-code-best-practice
+        {totalTips}{t.guide.footer}
       </div>
 
       {/* Modal */}

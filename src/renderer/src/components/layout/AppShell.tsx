@@ -7,6 +7,7 @@ import { ToolCallFeed } from '../toolcalls/ToolCallFeed'
 import { setTerminalLineHandler } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
+import { useLangStore } from '../../i18n'
 
 const SIDEBAR_DEFAULT = 280
 const SIDEBAR_MIN = 180
@@ -53,6 +54,13 @@ export function AppShell(): React.ReactElement {
   // Load persisted token data from main process (userData/token-data.json)
   useEffect(() => {
     void useGlobalTokenStore.getState().hydrate()
+  }, [])
+
+  // Sync UI language from saved settings
+  useEffect(() => {
+    void window.electronAPI.settings.get().then((s) => {
+      if (s.language) useLangStore.getState().setLang(s.language)
+    })
   }, [])
 
   return (

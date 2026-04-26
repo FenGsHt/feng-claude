@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import type { McpEntry, McpServerConfig, McpServerType } from '../../types/ipc'
+import { useI18n } from '../../i18n'
 
 // ── Add / Edit form ──────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ function McpForm({
 }): React.ReactElement {
   const [form, setForm] = useState<FormState>(initial ?? EMPTY_FORM)
   const [error, setError] = useState('')
+  const { t } = useI18n()
 
   const set = (patch: Partial<FormState>): void => setForm((f) => ({ ...f, ...patch }))
 
@@ -75,13 +77,13 @@ function McpForm({
   return (
     <div className="mx-2 my-2 rounded-lg border border-claude-border bg-claude-bg/50 p-3 space-y-2">
       <p className="text-[11px] font-semibold text-claude-text mb-1">
-        {editingName ? `编辑 ${editingName}` : '添加 MCP Server'}
+        {editingName ? `${t.mcp.editServer} ${editingName}` : t.mcp.addServer}
       </p>
 
       {/* Name */}
       {!editingName && (
         <div>
-          <label className="text-[10px] text-claude-muted mb-0.5 block">名称</label>
+          <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.serverName}</label>
           <input className={inputCls} placeholder="my-server" value={form.name}
             onChange={(e) => { set({ name: e.target.value }); setError('') }} />
         </div>
@@ -107,7 +109,7 @@ function McpForm({
               onChange={(e) => { set({ command: e.target.value }); setError('') }} />
           </div>
           <div>
-            <label className="text-[10px] text-claude-muted mb-0.5 block">Args（空格分隔）</label>
+            <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.args}</label>
             <input className={inputCls} placeholder="-y @modelcontextprotocol/server-filesystem /path"
               value={form.args} onChange={(e) => set({ args: e.target.value })} />
           </div>
@@ -122,7 +124,7 @@ function McpForm({
 
       {/* Env vars */}
       <div>
-        <label className="text-[10px] text-claude-muted mb-0.5 block">环境变量（可选，每行 KEY=VALUE）</label>
+        <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.envVars}</label>
         <textarea className={`${inputCls} resize-none h-14`} placeholder="GITHUB_TOKEN=ghp_xxx"
           value={form.envRaw} onChange={(e) => set({ envRaw: e.target.value })} />
       </div>
@@ -132,11 +134,11 @@ function McpForm({
       <div className="flex gap-2 pt-1">
         <button onClick={submit}
           className="flex-1 py-1 text-[11px] bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/30 transition-colors font-medium">
-          保存
+          {t.common.save}
         </button>
         <button onClick={onCancel}
           className="px-3 py-1 text-[11px] text-claude-muted hover:text-claude-text border border-claude-border rounded transition-colors">
-          取消
+          {t.common.cancel}
         </button>
       </div>
     </div>
@@ -158,6 +160,7 @@ function McpRow({
 }): React.ReactElement {
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { t } = useI18n()
 
   const preview =
     entry.type === 'stdio'
@@ -190,7 +193,7 @@ function McpRow({
 
           {/* Actions */}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={onEdit} title="编辑"
+            <button onClick={onEdit} title={t.common.edit}
               className="w-5 h-5 flex items-center justify-center text-claude-muted hover:text-amber-400 rounded transition-colors">
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                 <path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
@@ -198,7 +201,7 @@ function McpRow({
             </button>
             <button
               onClick={() => { if (confirmDelete) onRemove(); else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 3000) } }}
-              title={confirmDelete ? '确认删除' : '删除'}
+              title={confirmDelete ? t.common.confirmDelete : t.common.delete}
               className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${confirmDelete ? 'text-red-400' : 'text-claude-muted hover:text-red-400'}`}>
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                 <path d="M1.5 3h8M4 3V2h3v1M4.5 5v3.5M6.5 5v3.5M2.5 3l.5 6h5l.5-6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
@@ -207,7 +210,7 @@ function McpRow({
           </div>
 
           {/* Toggle */}
-          <button onClick={onToggle} title={entry.isEnabled ? '禁用' : '启用'}
+          <button onClick={onToggle} title={entry.isEnabled ? t.common.disable : t.common.enable}
             className={`shrink-0 relative w-8 h-4 rounded-full transition-colors ${entry.isEnabled ? 'bg-amber-500' : 'bg-claude-border'}`}>
             <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform shadow-sm ${entry.isEnabled ? 'left-[18px]' : 'left-0.5'}`} />
           </button>
@@ -248,6 +251,7 @@ export function McpPanel(): React.ReactElement {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<McpEntry | null>(null)
+  const { t } = useI18n()
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -292,7 +296,9 @@ export function McpPanel(): React.ReactElement {
       {/* Header actions */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-claude-border shrink-0">
         <span className="text-[10px] text-claude-muted">
-          {servers.length > 0 ? `${enabledCount}/${servers.length} 已启用` : '无服务器'}
+          {servers.length > 0
+            ? t.mcp.enabledCount.replace('{enabled}', String(enabledCount)).replace('{total}', String(servers.length))
+            : t.mcp.noServersEmpty}
         </span>
         <button
           onClick={() => { setAdding(true); setEditing(null) }}
@@ -302,7 +308,7 @@ export function McpPanel(): React.ReactElement {
             <line x1="5" y1="1" x2="5" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
             <line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
           </svg>
-          添加服务器
+          {t.mcp.addServer}
         </button>
       </div>
 
@@ -324,16 +330,16 @@ export function McpPanel(): React.ReactElement {
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-10 text-claude-muted text-xs">加载中...</div>
+          <div className="flex items-center justify-center py-10 text-claude-muted text-xs">{t.common.loading}</div>
         ) : servers.length === 0 && !adding ? (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-claude-muted">
             <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="opacity-30">
               <rect x="3" y="7" width="22" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M8 11h4M8 15h8M16 11h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
             </svg>
-            <p className="text-xs">暂无 MCP 服务器</p>
+            <p className="text-xs">{t.mcp.noServers}</p>
             <button onClick={() => setAdding(true)} className="text-[11px] text-amber-400 hover:underline">
-              点击添加
+              {t.mcp.addFirst}
             </button>
           </div>
         ) : (
@@ -350,7 +356,7 @@ export function McpPanel(): React.ReactElement {
       </div>
 
       <div className="shrink-0 px-3 py-1.5 border-t border-claude-border text-[9px] text-claude-muted text-center">
-        开关立即写入 settings.json · 重启会话后生效
+        {t.mcp.footerHint}
       </div>
     </div>
   )
