@@ -75,6 +75,7 @@ export function listPlugins(): PluginEntry[] {
   const enabled = (settings.enabledPlugins ?? {}) as Record<string, boolean>
   const plugins: PluginEntry[] = []
 
+  console.log('[PluginManager] marketplacesDir:', marketplacesDir, 'exists:', existsSync(marketplacesDir))
   if (!existsSync(marketplacesDir)) return plugins
 
   try {

@@ -17,8 +17,10 @@ export function PluginsPanel(): React.ReactElement {
   const reload = async (): Promise<void> => {
     setLoading(true)
     try {
-      const list = await window.electronAPI.plugins.list()
-      setPlugins(list)
+      const list = await window.electronAPI.plugins?.list()
+      setPlugins(list ?? [])
+    } catch (e) {
+      console.error('[PluginsPanel] failed to load plugins:', e)
     } finally {
       setLoading(false)
     }
