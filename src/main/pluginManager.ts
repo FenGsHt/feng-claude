@@ -1,8 +1,14 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { execSync } from 'child_process'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 import type { PluginEntry } from '../renderer/src/types/ipc'
+
+export interface RefreshResult {
+  newPlugins: string[]   // plugin names added in this pull
+  error?: string
+}
 
 export type { PluginEntry }
 
@@ -26,9 +32,13 @@ function readInstallCounts(): Map<string, number> {
 function readSessionSettings(): Record<string, unknown> {
   try {
     const path = join(claudeSessionConfigDir(), 'settings.json')
+    console.log('[PluginManager] settings path:', path, 'exists:', existsSync(path))
     if (!existsSync(path)) return {}
-    return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
-  } catch {
+    const data = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+    console.log('[PluginManager] enabledPlugins:', JSON.stringify(data.enabledPlugins))
+    return data
+  } catch (e) {
+    console.error('[PluginManager] readSessionSettings error:', e)
     return {}
   }
 }
@@ -68,7 +78,58 @@ function isPluginInstalled(pluginName: string): boolean {
   return false
 }
 
-export function listPlugins(): PluginEntry[] {
+export function refreshMarketplaces(): RefreshResult {
+  const marketplacesDir = join(claudePluginsDir(), 'marketplaces')
+  if (!existsSync(marketplacesDir)) return { newPlugins: [], error: '市场目录不存在' }
+
+  const newPlugins: string[] = []
+
+  try {
+    for (const mkt of readdirSync(marketplacesDir, { withFileTypes: true })) {
+      if (!mkt.isDirectory()) continue
+      const mktDir = join(marketplacesDir, mkt.name)
+      const gitDir = join(mktDir, '.git')
+      if (!existsSync(gitDir)) continue
+
+      // Detect which plugin dirs exist before pull
+      const pluginsDir = join(mktDir, 'plugins')
+      const before = new Set(
+        existsSync(pluginsDir)
+          ? readdirSync(pluginsDir, { withFileTypes: true })
+              .filter((e) => e.isDirectory())
+              .map((e) => e.name)
+          : []
+      )
+
+      try {
+        execSync('git pull --ff-only', {
+          cwd: mktDir,
+          encoding: 'utf-8',
+          windowsHide: true,
+          timeout: 30_000
+        })
+        console.log(`[PluginManager] git pull OK in ${mkt.name}`)
+      } catch (e) {
+        console.warn(`[PluginManager] git pull failed in ${mkt.name}:`, e)
+      }
+
+      // Detect new plugin dirs after pull
+      if (existsSync(pluginsDir)) {
+        for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+          if (entry.isDirectory() && !before.has(entry.name)) {
+            newPlugins.push(entry.name)
+          }
+        }
+      }
+    }
+  } catch (e) {
+    return { newPlugins, error: String(e) }
+  }
+
+  return { newPlugins }
+}
+
+export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
   const marketplacesDir = join(claudePluginsDir(), 'marketplaces')
   const counts = readInstallCounts()
   const settings = readSessionSettings()
@@ -120,7 +181,13 @@ export function listPlugins(): PluginEntry[] {
     })
   }
 
-  return plugins.sort((a, b) => b.installCount - a.installCount)
+  // New plugins float to top, then sort by install count
+  return plugins.sort((a, b) => {
+    const aNew = newPluginNames?.has(a.name) ? 1 : 0
+    const bNew = newPluginNames?.has(b.name) ? 1 : 0
+    if (bNew !== aNew) return bNew - aNew
+    return b.installCount - a.installCount
+  })
 }
 
 export function setPluginEnabled(id: string, enable: boolean): void {

@@ -42,7 +42,8 @@ export const IPC = {
   CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync',
 
   PLUGIN_LIST: 'plugin:list',
-  PLUGIN_SET_ENABLED: 'plugin:setEnabled'
+  PLUGIN_SET_ENABLED: 'plugin:setEnabled',
+  PLUGIN_REFRESH: 'plugin:refresh'
 } as const
 
 export interface PluginEntry {

@@ -91,7 +91,9 @@ const electronAPI = {
   plugins: {
     list: (): Promise<PluginEntry[]> => ipcRenderer.invoke(IPC.PLUGIN_LIST),
     setEnabled: (id: string, enabled: boolean): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke(IPC.PLUGIN_SET_ENABLED, { id, enabled })
+      ipcRenderer.invoke(IPC.PLUGIN_SET_ENABLED, { id, enabled }),
+    refresh: (): Promise<{ plugins: PluginEntry[]; newPlugins: string[]; error?: string }> =>
+      ipcRenderer.invoke(IPC.PLUGIN_REFRESH)
   },
 
   // Window controls

@@ -10,7 +10,7 @@ import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
-import { listPlugins, setPluginEnabled } from './pluginManager'
+import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -120,6 +120,11 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.PLUGIN_SET_ENABLED, async (_e, { id, enabled }: { id: string; enabled: boolean }) => {
     setPluginEnabled(id, enabled)
     return { success: true }
+  })
+  ipcMain.handle(IPC.PLUGIN_REFRESH, async () => {
+    const { newPlugins, error } = refreshMarketplaces()
+    const plugins = listPlugins(new Set(newPlugins))
+    return { plugins, newPlugins, error }
   })
 
   // ── Window controls ──────────────────────────────────────────

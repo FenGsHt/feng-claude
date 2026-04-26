@@ -24,7 +24,6 @@ const PLUGIN_ZH: Record<string, string> = {
   'claude-code-setup': '项目初始化向导，自动配置 CLAUDE.md 与开发环境',
   'claude-md-management': 'CLAUDE.md 文件管理，保持项目记忆文件整洁有序',
   'pr-review-toolkit': 'Pull Request 审查工具集，自动生成审查意见与变更摘要',
-  'feature-dev': '结构化功能开发工作流，从需求到上线全流程覆盖',
   'hookify': '可视化管理 Claude Code hooks，简化钩子配置与调试',
   'skill-creator': '快速创建自定义技能（Skill），扩展 Claude 的专属能力',
   'mcp-server-dev': 'MCP 服务器开发辅助，加速构建 Model Context Protocol 服务',
@@ -60,6 +59,8 @@ function marketplaceLabel(id: string): string {
 export function PluginsPanel(): React.ReactElement {
   const [plugins, setPlugins] = useState<PluginEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [newPlugins, setNewPlugins] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
   const [toggling, setToggling] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<'all' | 'enabled'>('all')
@@ -73,6 +74,22 @@ export function PluginsPanel(): React.ReactElement {
       console.error('[PluginsPanel] failed to load plugins:', e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true)
+    try {
+      const res = await window.electronAPI.plugins?.refresh()
+      if (res) {
+        setPlugins(res.plugins)
+        setNewPlugins(new Set(res.newPlugins))
+        setTimeout(() => setNewPlugins(new Set()), 30_000)
+      }
+    } catch (e) {
+      console.error('[PluginsPanel] refresh failed:', e)
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -106,7 +123,7 @@ export function PluginsPanel(): React.ReactElement {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Tab bar */}
-      <div className="flex border-b border-claude-border shrink-0">
+      <div className="flex items-center border-b border-claude-border shrink-0">
         {(['all', 'enabled'] as const).map((t) => (
           <button
             key={t}
@@ -120,6 +137,20 @@ export function PluginsPanel(): React.ReactElement {
             {t === 'all' ? '市场' : `已启用 ${enabledCount > 0 ? `(${enabledCount})` : ''}`}
           </button>
         ))}
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          title="拉取最新插件"
+          className="shrink-0 w-7 h-7 flex items-center justify-center text-claude-muted hover:text-amber-400 disabled:opacity-40 transition-colors mr-1"
+        >
+          <svg
+            width="13" height="13" viewBox="0 0 13 13" fill="none"
+            className={refreshing ? 'animate-spin' : ''}
+          >
+            <path d="M11 6.5A4.5 4.5 0 1 1 6.5 2c1.2 0 2.3.47 3.18 1.25" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <path d="M9.5 1v2.5H12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
       </div>
 
       {/* Search */}
@@ -148,6 +179,7 @@ export function PluginsPanel(): React.ReactElement {
             <PluginRow
               key={plugin.id}
               plugin={plugin}
+              isNew={newPlugins.has(plugin.name)}
               toggling={toggling.has(plugin.id)}
               onToggle={handleToggle}
             />
@@ -165,10 +197,12 @@ export function PluginsPanel(): React.ReactElement {
 
 function PluginRow({
   plugin,
+  isNew,
   toggling,
   onToggle
 }: {
   plugin: PluginEntry
+  isNew: boolean
   toggling: boolean
   onToggle: (p: PluginEntry) => void
 }): React.ReactElement {
@@ -178,6 +212,11 @@ function PluginRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[12px] font-semibold text-claude-text">{plugin.name}</span>
+            {isNew && (
+              <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                NEW
+              </span>
+            )}
             {plugin.isInstalled && (
               <span className="text-[9px] px-1 rounded bg-green-500/15 text-green-400 border border-green-500/20">
                 已安装
