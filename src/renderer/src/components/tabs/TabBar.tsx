@@ -26,7 +26,7 @@ function FolderIcon(): React.ReactElement {
 }
 
 export function TabBar(): React.ReactElement {
-  const { sessions, activeSessionId, setActiveSession, createSession, closeSession } =
+  const { sessions, activeSessionId, setActiveSession, createSession, closeSession, restartSession } =
     useSessionStore()
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -80,6 +80,24 @@ export function TabBar(): React.ReactElement {
               <span className="text-[12px] truncate flex-1 leading-none font-medium">
                 {sess.title}
               </span>
+
+              {/* Restart button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void restartSession(sess.id)
+                }}
+                aria-label="Restart session"
+                title="重启会话"
+                className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-all text-claude-muted hover:text-amber-400 hover:bg-claude-border ${
+                  isActive ? 'opacity-60 hover:opacity-100' : 'opacity-0 group-hover:opacity-60 hover:!opacity-100'
+                }`}
+              >
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                  <path d="M8.5 5A3.5 3.5 0 1 1 5 1.5c.94 0 1.8.37 2.43.97" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  <path d="M7.5 1v2H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
 
               {/* Close button */}
               <button

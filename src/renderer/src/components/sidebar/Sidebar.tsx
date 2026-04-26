@@ -6,10 +6,11 @@ import { SettingsPanel } from '../settings/SettingsPanel'
 import { TokenUsageWidget } from './TokenUsageWidget'
 import { UsageChart } from '../stats/UsageChart'
 import { PluginsPanel } from '../plugins/PluginsPanel'
+import { GuidePanel } from '../guide/GuidePanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide'
 
 interface TabConfig {
   id: Tab
@@ -66,6 +67,16 @@ function IconPlugins(): React.ReactElement {
   )
 }
 
+function IconGuide(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M2.5 2A1.5 1.5 0 0 1 4 .5h7A1.5 1.5 0 0 1 12.5 2v11A1.5 1.5 0 0 1 11 14.5H4A1.5 1.5 0 0 1 2.5 13V2Z"
+        stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+      <path d="M5 4.5h5M5 7h5M5 9.5h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 function IconStats(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -82,6 +93,7 @@ const TABS: TabConfig[] = [
   { id: 'commands', label: 'Commands', icon: <IconCommands /> },
   { id: 'stats', label: 'Stats', icon: <IconStats /> },
   { id: 'plugins', label: 'Plugins', icon: <IconPlugins /> },
+  { id: 'guide', label: 'Guide', icon: <IconGuide /> },
   { id: 'settings', label: 'Settings', icon: <IconSettings /> }
 ]
 
@@ -155,6 +167,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <UsageChart />
           ) : activeTab === 'plugins' ? (
             <PluginsPanel />
+          ) : activeTab === 'guide' ? (
+            <GuidePanel />
           ) : (
             <SettingsPanel />
           )}

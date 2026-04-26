@@ -114,6 +114,29 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()(
 
       setPricing: (p) => set({ pricing: p })
     }),
-    { name: 'global-token-usage' }
+    {
+      name: 'global-token-usage',
+      version: 1,
+      // Migrate old state (v0, before pricing field existed) to current schema
+      migrate: (stored: unknown, _version: number) => {
+        const s = (stored ?? {}) as Partial<GlobalTokenStore>
+        return {
+          total: s.total ?? { ...ZERO },
+          today: s.today ?? { ...ZERO },
+          todayDate: s.todayDate ?? todayStr(),
+          budget: s.budget ?? 0,
+          dailyHistory: s.dailyHistory ?? {},
+          pricing: s.pricing ?? { ...DEFAULT_PRICING }
+        }
+      },
+      partialize: (s) => ({
+        total: s.total,
+        today: s.today,
+        todayDate: s.todayDate,
+        budget: s.budget,
+        dailyHistory: s.dailyHistory,
+        pricing: s.pricing
+      })
+    }
   )
 )

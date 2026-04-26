@@ -92,6 +92,9 @@ interface SessionStore {
 
   /** 从磁盘快照恢复：按顺序建 PTY，再按 slot 还原分屏与 active */
   restoreWorkspace: (pw: PersistedWorkspace) => Promise<void>
+
+  /** 原地重启：关闭当前 PTY，在相同 workdir 重新创建，保持 tab 位置不变 */
+  restartSession: (id: string) => Promise<void>
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -257,6 +260,47 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       updatedAt: Date.now()
     })
     await get().loadHistory()
+  },
+
+  restartSession: async (id: string) => {
+    const sess = get().sessions.find((s) => s.id === id)
+    if (!sess) return
+    const { workdir, createdAt } = sess
+
+    destroyTerminal(id)
+    clearTokenUsageBuffer(id)
+    useTokenUsageStore.getState().clearSession(id)
+    window.electronAPI.closeSession(id)
+
+    const result = await window.electronAPI.createSession(workdir)
+    const resolvedWorkdir = result.workdir ?? workdir
+    const newSession: Session = {
+      id: result.sessionId,
+      title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
+      workdir: resolvedWorkdir,
+      status: 'running',
+      messages: [],
+      createdAt,
+      updatedAt: Date.now(),
+      ptyPid: result.pid
+    }
+
+    function replaceLeafId(node: PaneNode, oldId: string, newId: string): PaneNode {
+      if (node.type === 'leaf') return node.sessionId === oldId ? { ...node, sessionId: newId } : node
+      return { ...node, first: replaceLeafId(node.first, oldId, newId), second: replaceLeafId(node.second, oldId, newId) }
+    }
+
+    set((s) => ({
+      sessions: s.sessions.map((existing) => existing.id === id ? newSession : existing),
+      activeSessionId: s.activeSessionId === id ? result.sessionId : s.activeSessionId,
+      layoutRoot: s.layoutRoot
+        ? replaceLeafId(s.layoutRoot, id, result.sessionId)
+        : { type: 'leaf', sessionId: result.sessionId }
+    }))
+
+    if (result.scrollback) {
+      preFillTerminal(result.sessionId, result.scrollback)
+    }
   },
 
   restoreWorkspace: async (pw: PersistedWorkspace) => {
