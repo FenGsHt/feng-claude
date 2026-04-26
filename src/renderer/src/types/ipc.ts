@@ -39,8 +39,21 @@ export const IPC = {
   TOOL_CALL_UPDATE: 'tool-call:update',
 
   /** 主进程同步读剪贴板文本，供终端 Ctrl+V 注入（避免渲染进程剪贴板 API 失效） */
-  CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync'
+  CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync',
+
+  PLUGIN_LIST: 'plugin:list',
+  PLUGIN_SET_ENABLED: 'plugin:setEnabled'
 } as const
+
+export interface PluginEntry {
+  id: string
+  name: string
+  marketplace: string
+  description: string
+  installCount: number
+  isEnabled: boolean
+  isInstalled: boolean
+}
 
 export interface TokenUsageUpdatePayload {
   sessionId: string

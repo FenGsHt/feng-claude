@@ -5,10 +5,11 @@ import { SlashCommandsPanel } from './SlashCommandsPanel'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { TokenUsageWidget } from './TokenUsageWidget'
 import { UsageChart } from '../stats/UsageChart'
+import { PluginsPanel } from '../plugins/PluginsPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins'
 
 interface TabConfig {
   id: Tab
@@ -56,6 +57,15 @@ function IconSettings(): React.ReactElement {
   )
 }
 
+function IconPlugins(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M6 2.5A1.5 1.5 0 0 1 7.5 1v0A1.5 1.5 0 0 1 9 2.5V3h2.5A1.5 1.5 0 0 1 13 4.5v2H12.5A1.5 1.5 0 0 0 11 8v0a1.5 1.5 0 0 0 1.5 1.5H13v2A1.5 1.5 0 0 1 11.5 13H9v-.5A1.5 1.5 0 0 0 7.5 11v0A1.5 1.5 0 0 0 6 12.5V13H3.5A1.5 1.5 0 0 1 2 11.5v-2h.5A1.5 1.5 0 0 0 4 8v0A1.5 1.5 0 0 0 2.5 6.5H2v-2A1.5 1.5 0 0 1 3.5 3H6v-.5z"
+        stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 function IconStats(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -71,6 +81,7 @@ const TABS: TabConfig[] = [
   { id: 'history', label: 'History', icon: <IconHistory /> },
   { id: 'commands', label: 'Commands', icon: <IconCommands /> },
   { id: 'stats', label: 'Stats', icon: <IconStats /> },
+  { id: 'plugins', label: 'Plugins', icon: <IconPlugins /> },
   { id: 'settings', label: 'Settings', icon: <IconSettings /> }
 ]
 
@@ -142,6 +153,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <SlashCommandsPanel />
           ) : activeTab === 'stats' ? (
             <UsageChart />
+          ) : activeTab === 'plugins' ? (
+            <PluginsPanel />
           ) : (
             <SettingsPanel />
           )}

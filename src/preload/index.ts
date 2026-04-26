@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -86,6 +86,12 @@ const electronAPI = {
     save: (workspace: PersistedWorkspace | null): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC.WORKSPACE_SAVE, workspace),
     load: (): Promise<unknown> => ipcRenderer.invoke(IPC.WORKSPACE_LOAD)
+  },
+
+  plugins: {
+    list: (): Promise<PluginEntry[]> => ipcRenderer.invoke(IPC.PLUGIN_LIST),
+    setEnabled: (id: string, enabled: boolean): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.PLUGIN_SET_ENABLED, { id, enabled })
   },
 
   // Window controls
