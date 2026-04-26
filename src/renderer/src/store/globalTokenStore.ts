@@ -75,16 +75,21 @@ interface GlobalTokenStore extends PersistedTokenData {
   hydrate: () => Promise<void>
 }
 
-// Debounced save to main process
+// Debounced save to main process (for high-frequency token ingest)
 let _saveTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleSave(state: PersistedTokenData): void {
   if (_saveTimer) clearTimeout(_saveTimer)
   _saveTimer = setTimeout(() => {
     _saveTimer = null
-    const { total, today, todayDate, budget, dailyHistory, pricing } = state
-    window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing })
-      .catch((e: unknown) => console.error('[tokenStore] save failed:', e))
+    saveImmediately(state)
   }, 800)
+}
+
+// Immediate save (for user-initiated actions like setBudget/resetTotal)
+function saveImmediately(state: PersistedTokenData): void {
+  const { total, today, todayDate, budget, dailyHistory, pricing } = state
+  window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing })
+    .catch((e: unknown) => console.error('[tokenStore] save failed:', e))
 }
 
 export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
@@ -111,7 +116,40 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           _hydrated: true
         })
       } else {
-        set({ _hydrated: true })
+        // [2026-04-27] Migration: localStorage (old) → IPC (new)
+        // Previous version used zustand persist middleware with key 'global-token-usage'
+        // If IPC returns null (no token-data.json yet), try localStorage migration
+        const lsKey = 'global-token-usage'
+        const lsRaw = localStorage.getItem(lsKey)
+        let migrated = false
+        if (lsRaw) {
+          try {
+            const parsed = JSON.parse(lsRaw) as { state?: Partial<PersistedTokenData>; version?: number }
+            const state = parsed?.state ?? parsed
+            if (state && typeof state === 'object') {
+              const budget = state.budget ?? 0
+              const total = state.total ?? { ...ZERO }
+              const today = state.today ?? { ...ZERO }
+              const todayDate = state.todayDate ?? todayStr()
+              const dailyHistory = state.dailyHistory ?? {}
+              const pricing = state.pricing ?? { ...DEFAULT_PRICING }
+              set({ total, today, todayDate, budget, dailyHistory, pricing, _hydrated: true })
+              // Write migrated data to IPC so future loads work
+              await window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing })
+              migrated = true
+              console.log('[tokenStore] migrated from localStorage to IPC')
+            }
+          } catch {
+            // Invalid localStorage data, ignore
+          }
+        }
+        // Clean up localStorage after successful migration
+        if (migrated) {
+          localStorage.removeItem(lsKey)
+        }
+        if (!migrated) {
+          set({ _hydrated: true })
+        }
       }
     } catch (e) {
       console.error('[tokenStore] hydrate failed:', e)
@@ -139,19 +177,22 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
     const budget = Math.max(0, n)
     set({ budget })
     const s = get()
-    if (s._hydrated) scheduleSave({ ...s, budget })
+    // [2026-04-27] User-initiated action: save immediately (not debounced) to avoid data loss on quick window close
+    if (s._hydrated) saveImmediately({ ...s, budget })
   },
 
   resetTotal: () => {
     const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr() }
     set(next)
     const s = get()
-    if (s._hydrated) scheduleSave({ ...s, ...next })
+    // [2026-04-27] User-initiated action: save immediately
+    if (s._hydrated) saveImmediately({ ...s, ...next })
   },
 
   setPricing: (pricing) => {
     set({ pricing })
     const s = get()
-    if (s._hydrated) scheduleSave({ ...s, pricing })
+    // [2026-04-27] User-initiated action: save immediately
+    if (s._hydrated) saveImmediately({ ...s, pricing })
   }
 }))

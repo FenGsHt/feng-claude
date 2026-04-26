@@ -69,7 +69,11 @@ export function injectMockElectronAPI(): void {
       },
       appMinimize: noop,
       appMaximize: noop,
-      appClose: noop
+      appClose: noop,
+      tokenData: {
+        get: async () => null,
+        set: async () => {}
+      }
     }
   }
 }
