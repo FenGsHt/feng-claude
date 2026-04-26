@@ -43,7 +43,10 @@ export const IPC = {
 
   PLUGIN_LIST: 'plugin:list',
   PLUGIN_SET_ENABLED: 'plugin:setEnabled',
-  PLUGIN_REFRESH: 'plugin:refresh'
+  PLUGIN_REFRESH: 'plugin:refresh',
+
+  TOKEN_DATA_GET: 'token-data:get',
+  TOKEN_DATA_SET: 'token-data:set'
 } as const
 
 export interface PluginEntry {

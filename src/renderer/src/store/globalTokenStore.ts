@@ -1,12 +1,9 @@
 /**
- * Global persistent token usage store.
- * - Survives session close and window restart (localStorage via zustand/middleware).
- * - Tracks all-time `total` and rolling `today` (auto-resets on calendar day change).
- * - Stores a configurable `budget` (token cap) for the progress bar.
- * - Tracks per-day history (last 30 days) for the trend chart.
+ * Global token usage store.
+ * Persistence: IPC → main process → userData/token-data.json
+ * (localStorage proved unreliable in Electron portable builds)
  */
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
 export interface TokenTotals {
   input: number
@@ -41,7 +38,7 @@ export function computeCost(t: TokenTotals, p: Pricing): number {
 const ZERO: TokenTotals = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10) // YYYY-MM-DD UTC
+  return new Date().toISOString().slice(0, 10)
 }
 
 function add(a: TokenTotals, b: TokenTotals): TokenTotals {
@@ -53,90 +50,108 @@ function add(a: TokenTotals, b: TokenTotals): TokenTotals {
   }
 }
 
-/** Sum all token fields into a single number for budget comparison */
 export function tokenSum(t: TokenTotals): number {
   return t.input + t.output + t.cacheCreate + t.cacheRead
 }
 
-interface GlobalTokenStore {
+interface PersistedTokenData {
   total: TokenTotals
   today: TokenTotals
-  /** YYYY-MM-DD of when `today` was last written — used to detect day rollover */
   todayDate: string
-  /** Budget cap in tokens (0 = unlimited / no progress bar) */
   budget: number
-  /** Per-day token totals, keyed YYYY-MM-DD, last 30 days */
   dailyHistory: Record<string, TokenTotals>
-  /** Pricing config ($ per million tokens) */
   pricing: Pricing
+}
 
-  /** Accumulate a per-turn delta from the JSONL watcher */
+interface GlobalTokenStore extends PersistedTokenData {
+  /** true after initial load from disk completes */
+  _hydrated: boolean
+
   ingest: (delta: TokenTotals) => void
   setBudget: (n: number) => void
   resetTotal: () => void
   setPricing: (p: Pricing) => void
+  /** Called once at app startup to load persisted data from main process */
+  hydrate: () => Promise<void>
 }
 
-export const useGlobalTokenStore = create<GlobalTokenStore>()(
-  persist(
-    (set) => ({
-      total: { ...ZERO },
-      today: { ...ZERO },
-      todayDate: todayStr(),
-      budget: 0,
-      dailyHistory: {},
-      pricing: { ...DEFAULT_PRICING },
+// Debounced save to main process
+let _saveTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleSave(state: PersistedTokenData): void {
+  if (_saveTimer) clearTimeout(_saveTimer)
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null
+    const { total, today, todayDate, budget, dailyHistory, pricing } = state
+    window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing })
+      .catch((e: unknown) => console.error('[tokenStore] save failed:', e))
+  }, 800)
+}
 
-      ingest: (delta) =>
-        set((s) => {
-          const now = todayStr()
-          const isSameDay = s.todayDate === now
-          const today = isSameDay ? add(s.today, delta) : { ...delta }
+export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
+  total: { ...ZERO },
+  today: { ...ZERO },
+  todayDate: todayStr(),
+  budget: 0,
+  dailyHistory: {},
+  pricing: { ...DEFAULT_PRICING },
+  _hydrated: false,
 
-          // Update daily history: accumulate into today's bucket, keep last 30 days
-          const prevDay = s.dailyHistory[now] ?? { ...ZERO }
-          const allDays = { ...s.dailyHistory, [now]: add(prevDay, delta) }
-          const keys = Object.keys(allDays).sort().slice(-30)
-          const dailyHistory = Object.fromEntries(keys.map((k) => [k, allDays[k]]))
-
-          return {
-            total: add(s.total, delta),
-            today,
-            todayDate: now,
-            dailyHistory
-          }
-        }),
-
-      setBudget: (n) => set({ budget: Math.max(0, n) }),
-
-      resetTotal: () =>
-        set({ total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr() }),
-
-      setPricing: (p) => set({ pricing: p })
-    }),
-    {
-      name: 'global-token-usage',
-      version: 1,
-      // Migrate old state (v0, before pricing field existed) to current schema
-      migrate: (stored: unknown, _version: number) => {
-        const s = (stored ?? {}) as Partial<GlobalTokenStore>
-        return {
-          total: s.total ?? { ...ZERO },
-          today: s.today ?? { ...ZERO },
-          todayDate: s.todayDate ?? todayStr(),
-          budget: s.budget ?? 0,
-          dailyHistory: s.dailyHistory ?? {},
-          pricing: s.pricing ?? { ...DEFAULT_PRICING }
-        }
-      },
-      partialize: (s) => ({
-        total: s.total,
-        today: s.today,
-        todayDate: s.todayDate,
-        budget: s.budget,
-        dailyHistory: s.dailyHistory,
-        pricing: s.pricing
-      })
+  hydrate: async () => {
+    try {
+      const raw = await window.electronAPI.tokenData?.get()
+      if (raw && typeof raw === 'object') {
+        const d = raw as Partial<PersistedTokenData>
+        set({
+          total: d.total ?? { ...ZERO },
+          today: d.today ?? { ...ZERO },
+          todayDate: d.todayDate ?? todayStr(),
+          budget: d.budget ?? 0,
+          dailyHistory: d.dailyHistory ?? {},
+          pricing: d.pricing ?? { ...DEFAULT_PRICING },
+          _hydrated: true
+        })
+      } else {
+        set({ _hydrated: true })
+      }
+    } catch (e) {
+      console.error('[tokenStore] hydrate failed:', e)
+      set({ _hydrated: true })
     }
-  )
-)
+  },
+
+  ingest: (delta) =>
+    set((s) => {
+      const now = todayStr()
+      const isSameDay = s.todayDate === now
+      const today = isSameDay ? add(s.today, delta) : { ...delta }
+
+      const prevDay = s.dailyHistory[now] ?? { ...ZERO }
+      const allDays = { ...s.dailyHistory, [now]: add(prevDay, delta) }
+      const keys = Object.keys(allDays).sort().slice(-30)
+      const dailyHistory = Object.fromEntries(keys.map((k) => [k, allDays[k]]))
+
+      const next = { total: add(s.total, delta), today, todayDate: now, dailyHistory }
+      if (s._hydrated) scheduleSave({ ...s, ...next })
+      return next
+    }),
+
+  setBudget: (n) => {
+    const budget = Math.max(0, n)
+    set({ budget })
+    const s = get()
+    if (s._hydrated) scheduleSave({ ...s, budget })
+  },
+
+  resetTotal: () => {
+    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr() }
+    set(next)
+    const s = get()
+    if (s._hydrated) scheduleSave({ ...s, ...next })
+  },
+
+  setPricing: (pricing) => {
+    set({ pricing })
+    const s = get()
+    if (s._hydrated) scheduleSave({ ...s, pricing })
+  }
+}))

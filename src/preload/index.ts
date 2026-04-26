@@ -96,6 +96,11 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.PLUGIN_REFRESH)
   },
 
+  tokenData: {
+    get: (): Promise<unknown> => ipcRenderer.invoke(IPC.TOKEN_DATA_GET),
+    set: (data: unknown): Promise<void> => ipcRenderer.invoke(IPC.TOKEN_DATA_SET, data)
+  },
+
   // Window controls
   appMinimize: (): void => ipcRenderer.send(IPC.APP_MINIMIZE),
   appMaximize: (): void => ipcRenderer.send(IPC.APP_MAXIMIZE),

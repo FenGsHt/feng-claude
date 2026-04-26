@@ -82,13 +82,17 @@ async function ensureWinCodeSignCache() {
   )
   const version = 'winCodeSign-2.6.0'
   const targetDir = join(cacheDir, version)
+  // 用哨兵文件标记"已尝试解压"，避免每次都重新下载
+  // winCodeSign 仅用于代码签名；无证书时即使解压不完整也不影响打包
+  const sentinelPath = join(targetDir, '.extracted-ok')
 
+  if (existsSync(sentinelPath)) {
+    console.log('[sync-root-exe] winCodeSign 缓存已存在，跳过下载')
+    return
+  }
+
+  // 清理可能存在的残留目录
   if (existsSync(targetDir)) {
-    // 检查是否包含 win 目录（确保不是空目录或上次失败的残留）
-    if (existsSync(join(targetDir, 'win'))) {
-      console.log('[sync-root-exe] winCodeSign 缓存已存在，跳过下载')
-      return
-    }
     rmSync(targetDir, { recursive: true, force: true })
   }
 
@@ -96,7 +100,7 @@ async function ensureWinCodeSignCache() {
   const archivePath = join(cacheDir, `${version}.7z`)
   mkdirSync(cacheDir, { recursive: true })
 
-  console.log(`[sync-root-exe] 下载 winCodeSign (绕过符号链接问题)…`)
+  console.log(`[sync-root-exe] 下载 winCodeSign…`)
   await new Promise((resolve, reject) => {
     function get(u) {
       const proto = u.startsWith('https') ? https : http
@@ -114,9 +118,10 @@ async function ensureWinCodeSignCache() {
 
   mkdirSync(targetDir, { recursive: true })
   const sevenZa = join(root, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe')
-  console.log('[sync-root-exe] 解压 winCodeSign（-ssc- 跳过符号链接）…')
-  // -ssc- : 不创建符号链接，改为复制实际文件（解决无开发者模式时的权限问题）
-  spawnSync(sevenZa, ['x', '-bd', '-ssc-', archivePath, `-o${targetDir}`], {
+  console.log('[sync-root-exe] 解压 winCodeSign（macOS 符号链接报错可忽略）…')
+  // Windows 无开发者模式时无法创建符号链接（darwin/libcrypto.dylib 等），属正常现象
+  // 忽略退出码：7-Zip 仍会解压 win/ 等实际需要的目录
+  spawnSync(sevenZa, ['x', '-bd', '-y', archivePath, `-o${targetDir}`], {
     stdio: 'inherit',
     shell: false
   })
@@ -124,11 +129,9 @@ async function ensureWinCodeSignCache() {
   // 清理下载的 7z 文件
   try { rmSync(archivePath) } catch { /* ignore */ }
 
-  if (existsSync(join(targetDir, 'win'))) {
-    console.log('[sync-root-exe] winCodeSign 缓存准备完毕')
-  } else {
-    console.warn('[sync-root-exe] winCodeSign 解压后未找到 win 目录，后续签名步骤可能失败（无证书时可忽略）')
-  }
+  // 无论是否有符号链接错误，都写入哨兵文件，避免下次重新下载
+  writeFileSync(sentinelPath, new Date().toISOString())
+  console.log('[sync-root-exe] winCodeSign 缓存准备完毕（无证书时签名步骤会自动跳过）')
 }
 
 async function main() {

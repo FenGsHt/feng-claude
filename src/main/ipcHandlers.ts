@@ -11,6 +11,7 @@ import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
+import { getTokenData, setTokenData } from './tokenDataStore'
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -126,6 +127,10 @@ export function registerIpcHandlers(
     const plugins = listPlugins(new Set(newPlugins))
     return { plugins, newPlugins, error }
   })
+
+  // ── Token data persistence ────────────────────────────────────
+  ipcMain.handle(IPC.TOKEN_DATA_GET, async () => getTokenData())
+  ipcMain.handle(IPC.TOKEN_DATA_SET, async (_e, data: unknown) => setTokenData(data))
 
   // ── Window controls ──────────────────────────────────────────
   ipcMain.on(IPC.APP_MINIMIZE, (e) => {

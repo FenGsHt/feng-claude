@@ -6,6 +6,7 @@ import { TerminalPanel } from '../terminal/TerminalPanel'
 import { ToolCallFeed } from '../toolcalls/ToolCallFeed'
 import { setTerminalLineHandler } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
+import { useGlobalTokenStore } from '../../store/globalTokenStore'
 
 const SIDEBAR_DEFAULT = 280
 const SIDEBAR_MIN = 180
@@ -47,6 +48,11 @@ export function AppShell(): React.ReactElement {
       void useSessionStore.getState().notifyTerminalCommittedLine(sessionId, line)
     })
     return () => setTerminalLineHandler(null)
+  }, [])
+
+  // Load persisted token data from main process (userData/token-data.json)
+  useEffect(() => {
+    void useGlobalTokenStore.getState().hydrate()
   }, [])
 
   return (
