@@ -242,6 +242,11 @@ export class ClaudeSessionWatcher {
         const prev = sw.lastUsageByMessageId.get(messageId) ?? ZERO_USAGE
         const d = usageDeltaSince(prev, usage)
         sw.lastUsageByMessageId.set(messageId, usage)
+        // Cap map size to avoid unbounded growth in long-running sessions
+        if (sw.lastUsageByMessageId.size > 500) {
+          const oldest = sw.lastUsageByMessageId.keys().next().value
+          if (oldest) sw.lastUsageByMessageId.delete(oldest)
+        }
 
         if (usageSum(d) === 0) {
           needReset = false

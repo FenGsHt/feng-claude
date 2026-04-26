@@ -32,6 +32,9 @@ function shortDate(dateStr: string): string {
 
 export function UsageChart(): React.ReactElement {
   const { dailyHistory, total, today, pricing } = useGlobalTokenStore()
+  const dayCosts = Object.fromEntries(
+    Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)])
+  )
 
   const dates = lastNDates(CHART_DAYS)
   const values = dates.map((d) => {
@@ -66,7 +69,7 @@ export function UsageChart(): React.ReactElement {
             return (
               <div key={date} className="flex flex-col items-center gap-0.5" style={{ width: BAR_W }}>
                 <div
-                  title={`${date}: ${formatK(v)} tokens`}
+                  title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
                   className={`w-full rounded-sm transition-all ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-600/70' : 'bg-claude-border/30'}`}
                   style={{ height: barH, marginTop: BAR_H - barH }}
                 />

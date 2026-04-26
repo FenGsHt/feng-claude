@@ -11,6 +11,10 @@ export function SettingsPanel(): React.ReactElement {
   const [pricingForm, setPricingForm] = useState<Pricing>(pricing)
 
   useEffect(() => {
+    setPricingForm(pricing)
+  }, [pricing])
+
+  useEffect(() => {
     window.electronAPI.settings.get().then((s) => {
       setForm(s)
       setLoading(false)

@@ -1,6 +1,12 @@
 import React, { useState } from 'react'
-import { useGlobalTokenStore, tokenSum } from '../../store/globalTokenStore'
+import { useGlobalTokenStore, tokenSum, computeCost } from '../../store/globalTokenStore'
 import { fmtTokens } from '../../lib/formatTokens'
+
+function fmtCost(usd: number): string {
+  if (usd < 0.001) return '<$0.001'
+  if (usd < 1) return `$${usd.toFixed(3)}`
+  return `$${usd.toFixed(2)}`
+}
 
 function parseBudget(s: string): number | null {
   const t = s.trim().toUpperCase()
@@ -45,6 +51,7 @@ export function TokenUsageWidget(): React.ReactElement {
   const total = useGlobalTokenStore((s) => s.total)
   const today = useGlobalTokenStore((s) => s.today)
   const budget = useGlobalTokenStore((s) => s.budget)
+  const pricing = useGlobalTokenStore((s) => s.pricing)
   const setBudget = useGlobalTokenStore((s) => s.setBudget)
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
 
@@ -143,22 +150,24 @@ export function TokenUsageWidget(): React.ReactElement {
 
       {/* Today / Total rows */}
       <div className="space-y-0.5">
-        <div className="flex justify-between">
+        <div className="flex justify-between items-baseline">
           <span className="text-claude-muted">Today</span>
-          <span className="font-mono tabular-nums">
+          <span className="font-mono tabular-nums text-right">
             {fmtTokens(today.input)}↑ {fmtTokens(today.output)}↓
             {today.cacheRead > 0 && (
               <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
             )}
+            <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(today, pricing))}</span>
           </span>
         </div>
-        <div className="flex justify-between">
+        <div className="flex justify-between items-baseline">
           <span className="text-claude-muted">Total</span>
-          <span className="font-mono tabular-nums">
+          <span className="font-mono tabular-nums text-right">
             {fmtTokens(total.input)}↑ {fmtTokens(total.output)}↓
             {total.cacheRead > 0 && (
               <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
             )}
+            <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(total, pricing))}</span>
           </span>
         </div>
       </div>
