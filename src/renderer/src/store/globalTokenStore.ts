@@ -15,6 +15,29 @@ export interface TokenTotals {
   cacheRead: number
 }
 
+export interface Pricing {
+  inputPerM: number
+  outputPerM: number
+  cacheCreatePerM: number
+  cacheReadPerM: number
+}
+
+export const DEFAULT_PRICING: Pricing = {
+  inputPerM: 3,
+  outputPerM: 15,
+  cacheCreatePerM: 3.75,
+  cacheReadPerM: 0.3
+}
+
+export function computeCost(t: TokenTotals, p: Pricing): number {
+  return (
+    (t.input / 1_000_000) * p.inputPerM +
+    (t.output / 1_000_000) * p.outputPerM +
+    (t.cacheCreate / 1_000_000) * p.cacheCreatePerM +
+    (t.cacheRead / 1_000_000) * p.cacheReadPerM
+  )
+}
+
 const ZERO: TokenTotals = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
 
 function todayStr(): string {
@@ -44,11 +67,14 @@ interface GlobalTokenStore {
   budget: number
   /** Per-day token totals, keyed YYYY-MM-DD, last 30 days */
   dailyHistory: Record<string, TokenTotals>
+  /** Pricing config ($ per million tokens) */
+  pricing: Pricing
 
   /** Accumulate a per-turn delta from the JSONL watcher */
   ingest: (delta: TokenTotals) => void
   setBudget: (n: number) => void
   resetTotal: () => void
+  setPricing: (p: Pricing) => void
 }
 
 export const useGlobalTokenStore = create<GlobalTokenStore>()(
@@ -59,6 +85,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()(
       todayDate: todayStr(),
       budget: 0,
       dailyHistory: {},
+      pricing: { ...DEFAULT_PRICING },
 
       ingest: (delta) =>
         set((s) => {
@@ -83,7 +110,9 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()(
       setBudget: (n) => set({ budget: Math.max(0, n) }),
 
       resetTotal: () =>
-        set({ total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr() })
+        set({ total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr() }),
+
+      setPricing: (p) => set({ pricing: p })
     }),
     { name: 'global-token-usage' }
   )

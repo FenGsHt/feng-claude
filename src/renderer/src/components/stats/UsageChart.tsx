@@ -1,5 +1,5 @@
 import React from 'react'
-import { useGlobalTokenStore, tokenSum, type TokenTotals } from '../../store/globalTokenStore'
+import { useGlobalTokenStore, tokenSum, computeCost, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
 
 const CHART_DAYS = 14
 
@@ -7,6 +7,12 @@ function formatK(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
   return String(n)
+}
+
+function formatCost(usd: number): string {
+  if (usd < 0.001) return '<$0.001'
+  if (usd < 1) return `$${usd.toFixed(3)}`
+  return `$${usd.toFixed(2)}`
 }
 
 function lastNDates(n: number): string[] {
@@ -25,7 +31,7 @@ function shortDate(dateStr: string): string {
 }
 
 export function UsageChart(): React.ReactElement {
-  const { dailyHistory, total, today } = useGlobalTokenStore()
+  const { dailyHistory, total, today, pricing } = useGlobalTokenStore()
 
   const dates = lastNDates(CHART_DAYS)
   const values = dates.map((d) => {
@@ -42,12 +48,12 @@ export function UsageChart(): React.ReactElement {
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
       {/* Totals */}
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label="今日" value={tokenSum(today)} />
-        <StatCard label="累计" value={tokenSum(total)} />
+        <StatCard label="今日" value={tokenSum(today)} cost={computeCost(today, pricing)} />
+        <StatCard label="累计" value={tokenSum(total)} cost={computeCost(total, pricing)} />
       </div>
 
       {/* Breakdown today */}
-      <BreakdownRow label="今日明细" totals={today} />
+      <BreakdownRow label="今日明细" totals={today} pricing={pricing} />
 
       {/* Bar chart */}
       <div>
@@ -83,31 +89,35 @@ export function UsageChart(): React.ReactElement {
   )
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value, cost }: { label: string; value: number; cost: number }) {
   return (
     <div className="bg-claude-surface rounded-md p-2.5 border border-claude-border">
       <div className="text-[10px] text-claude-muted mb-1">{label}</div>
       <div className="text-base font-semibold text-claude-text">{formatK(value)}</div>
       <div className="text-[9px] text-claude-muted">tokens</div>
+      <div className="text-[10px] text-amber-400 mt-0.5 font-mono">{formatCost(cost)}</div>
     </div>
   )
 }
 
-function BreakdownRow({ label, totals }: { label: string; totals: TokenTotals }) {
-  const rows: [string, number, string][] = [
-    ['Input', totals.input, 'text-blue-400'],
-    ['Output', totals.output, 'text-green-400'],
-    ['Cache↑', totals.cacheCreate, 'text-purple-400'],
-    ['Cache↓', totals.cacheRead, 'text-amber-400'],
+function BreakdownRow({ label, totals, pricing }: { label: string; totals: TokenTotals; pricing: Pricing }) {
+  const rows: [string, number, number, string][] = [
+    ['Input', totals.input, (totals.input / 1_000_000) * pricing.inputPerM, 'text-blue-400'],
+    ['Output', totals.output, (totals.output / 1_000_000) * pricing.outputPerM, 'text-green-400'],
+    ['Cache↑', totals.cacheCreate, (totals.cacheCreate / 1_000_000) * pricing.cacheCreatePerM, 'text-purple-400'],
+    ['Cache↓', totals.cacheRead, (totals.cacheRead / 1_000_000) * pricing.cacheReadPerM, 'text-amber-400'],
   ]
   return (
     <div>
       <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">{label}</div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-        {rows.map(([name, val, color]) => (
+        {rows.map(([name, val, cost, color]) => (
           <div key={name} className="flex items-center justify-between text-[11px]">
-            <span className={`${color}`}>{name}</span>
-            <span className="text-claude-text font-mono">{formatK(val)}</span>
+            <span className={color}>{name}</span>
+            <span className="text-right">
+              <span className="text-claude-text font-mono">{formatK(val)}</span>
+              <span className="text-[9px] text-claude-muted ml-1">{formatCost(cost)}</span>
+            </span>
           </div>
         ))}
       </div>

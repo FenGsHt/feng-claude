@@ -12,6 +12,19 @@ import { useToolCallStore } from '../store/toolCallStore'
  * display text (e.g. "256k tokens") and inflating counts incorrectly.
  * Mount once at the App root.
  */
+/** Track when each session started running, for notification threshold */
+const runningStartTime = new Map<string, number>()
+const NOTIFY_AFTER_MS = 5_000
+
+function notifyTaskDone(sessionId: string): void {
+  const start = runningStartTime.get(sessionId)
+  if (!start || Date.now() - start < NOTIFY_AFTER_MS) return
+  if (document.hasFocus()) return
+  try {
+    new Notification('Claude GUI', { body: 'Task completed', silent: false })
+  } catch { /* ignore if notifications blocked */ }
+}
+
 export function usePty(): void {
   const { updateSessionStatus } = useSessionStore()
 
@@ -23,7 +36,14 @@ export function usePty(): void {
 
     // ── PTY status changes ────────────────────────────────────
     const unsubStatus = window.electronAPI.onPtyStatus((payload) => {
-      updateSessionStatus(payload.sessionId, payload.status as any)
+      const { sessionId, status } = payload
+      if (status === 'running') {
+        runningStartTime.set(sessionId, Date.now())
+      } else if (status === 'idle') {
+        notifyTaskDone(sessionId)
+        runningStartTime.delete(sessionId)
+      }
+      updateSessionStatus(sessionId, status as any)
     })
 
     // ── JSONL token usage (sole accurate source) ──────────────

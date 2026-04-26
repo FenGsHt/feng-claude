@@ -6,7 +6,18 @@ import { TopicEditModal } from './TopicEditModal'
 export function HistoryPanel(): React.ReactElement {
   const { history, restoreFromHistory, deleteHistory, updateHistoryTopic } = useSessionStore()
   const [topicEditId, setTopicEditId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const editing = topicEditId ? history.find((r) => r.id === topicEditId) : undefined
+
+  const filtered = query.trim()
+    ? history.filter((r) => {
+        const q = query.toLowerCase()
+        return (
+          historyRecordPrimaryLabel(r).toLowerCase().includes(q) ||
+          r.workdir.toLowerCase().includes(q)
+        )
+      })
+    : history
 
   if (history.length === 0) {
     return (
@@ -18,8 +29,24 @@ export function HistoryPanel(): React.ReactElement {
 
   return (
     <>
+      {/* Search input */}
+      <div className="px-2 pt-2 pb-1">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索..."
+          className="w-full bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-amber-500/60 font-mono"
+        />
+      </div>
+
       <div className="flex flex-col gap-0.5 py-1">
-        {history.map((record) => (
+        {filtered.length === 0 && (
+          <div className="flex items-center justify-center py-4 text-claude-muted text-xs">
+            无匹配结果
+          </div>
+        )}
+        {filtered.map((record) => (
           <div
             key={record.id}
             className="flex items-start gap-2 px-3 py-2 hover:bg-claude-border/50 rounded cursor-pointer group"
@@ -32,9 +59,7 @@ export function HistoryPanel(): React.ReactElement {
             }}
           >
             <div className="flex-1 min-w-0">
-              {/* [2026-04-23] 原仅 record.title；现 topic / lastUserPrompt 优先 */}
               <p className="text-xs text-claude-text truncate">{historyRecordPrimaryLabel(record)}</p>
-              {/* [2026-04-23] 原仅显示最后一级目录名；改为展示完整路径便于区分同名文件夹 */}
               <p
                 className="text-[10px] text-claude-muted truncate font-mono mt-0.5 leading-snug"
                 title={record.workdir}

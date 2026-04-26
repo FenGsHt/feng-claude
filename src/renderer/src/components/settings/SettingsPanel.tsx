@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import type { ClaudeSettings } from '../../types/settings'
 import { DEFAULT_SETTINGS } from '../../types/settings'
+import { useGlobalTokenStore, DEFAULT_PRICING, type Pricing } from '../../store/globalTokenStore'
 
 export function SettingsPanel(): React.ReactElement {
   const [form, setForm] = useState<ClaudeSettings>(DEFAULT_SETTINGS)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
+  const { pricing, setPricing } = useGlobalTokenStore()
+  const [pricingForm, setPricingForm] = useState<Pricing>(pricing)
 
   useEffect(() => {
     window.electronAPI.settings.get().then((s) => {
@@ -21,6 +24,7 @@ export function SettingsPanel(): React.ReactElement {
 
   const handleSave = async () => {
     await window.electronAPI.settings.set(form)
+    setPricing(pricingForm)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -159,6 +163,45 @@ export function SettingsPanel(): React.ReactElement {
             />
           </button>
         </div>
+
+        <div className="pt-1 pb-1 border-t border-claude-border">
+          <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider pt-2 pb-1">
+            Pricing / 费用估算 <span className="normal-case font-normal">($ / M tokens)</span>
+          </div>
+        </div>
+
+        {(
+          [
+            ['inputPerM', 'Input', '$3.00'],
+            ['outputPerM', 'Output', '$15.00'],
+            ['cacheCreatePerM', 'Cache Write', '$3.75'],
+            ['cacheReadPerM', 'Cache Read', '$0.30'],
+          ] as [keyof Pricing, string, string][]
+        ).map(([key, label, placeholder]) => (
+          <Field key={key} label={label} hint={`default: ${placeholder}`}>
+            <div className="flex items-center gap-1">
+              <span className="text-claude-muted text-xs">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={pricingForm[key]}
+                onChange={(e) =>
+                  setPricingForm((prev) => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))
+                }
+                className="field-input flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => setPricingForm((prev) => ({ ...prev, [key]: DEFAULT_PRICING[key] }))}
+                title="Reset to default"
+                className="shrink-0 text-[9px] text-claude-muted hover:text-claude-text px-1"
+              >
+                ↺
+              </button>
+            </div>
+          </Field>
+        ))}
 
         {/* Save button */}
         <button
