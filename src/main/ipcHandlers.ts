@@ -14,6 +14,7 @@ import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginMana
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
 import type { McpServerConfig } from '../renderer/src/types/ipc'
+import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -148,6 +149,19 @@ export function registerIpcHandlers(
     updateMcpServer(name, cfg)
     return { success: true }
   })
+
+  // ── Skills ────────────────────────────────────────────────────
+  ipcMain.handle(IPC.SKILLS_LIST, async () => listSkills())
+  ipcMain.handle(IPC.SKILLS_GET, async (_e, { name }: { name: string }) => getSkillContent(name))
+  ipcMain.handle(IPC.SKILLS_SAVE, async (_e, { name, content }: { name: string; content: string }) => {
+    saveSkill(name, content)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.SKILLS_DELETE, async (_e, { name, isFolder }: { name: string; isFolder: boolean }) => {
+    deleteSkill(name, isFolder)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.SKILLS_OPEN_DIR, async () => openSkillsDir())
 
   // ── Token data persistence ────────────────────────────────────
   ipcMain.handle(IPC.TOKEN_DATA_GET, async () => getTokenData())

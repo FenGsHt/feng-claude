@@ -52,8 +52,23 @@ export const IPC = {
   MCP_ADD: 'mcp:add',
   MCP_REMOVE: 'mcp:remove',
   MCP_SET_ENABLED: 'mcp:setEnabled',
-  MCP_UPDATE: 'mcp:update'
+  MCP_UPDATE: 'mcp:update',
+
+  SKILLS_LIST: 'skills:list',
+  SKILLS_GET: 'skills:get',
+  SKILLS_SAVE: 'skills:save',
+  SKILLS_DELETE: 'skills:delete',
+  SKILLS_OPEN_DIR: 'skills:openDir'
 } as const
+
+export interface SkillEntry {
+  name: string
+  title: string
+  description: string
+  isFolder: boolean
+  filePath: string
+  updatedAt: number
+}
 
 export type McpServerType = 'stdio' | 'sse'
 

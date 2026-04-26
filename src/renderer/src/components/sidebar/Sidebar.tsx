@@ -8,10 +8,11 @@ import { UsageChart } from '../stats/UsageChart'
 import { PluginsPanel } from '../plugins/PluginsPanel'
 import { GuidePanel } from '../guide/GuidePanel'
 import { McpPanel } from '../mcp/McpPanel'
+import { SkillsPanel } from '../skills/SkillsPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills'
 
 interface TabConfig {
   id: Tab
@@ -68,6 +69,15 @@ function IconPlugins(): React.ReactElement {
   )
 }
 
+function IconSkills(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M7.5 1.5L9.5 5.5L14 6.2L10.75 9.3L11.5 13.5L7.5 11.4L3.5 13.5L4.25 9.3L1 6.2L5.5 5.5L7.5 1.5Z"
+        stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 function IconMcp(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -105,6 +115,7 @@ const TABS: TabConfig[] = [
   { id: 'commands', label: 'Commands', icon: <IconCommands /> },
   { id: 'stats', label: 'Stats', icon: <IconStats /> },
   { id: 'plugins', label: 'Plugins', icon: <IconPlugins /> },
+  { id: 'skills', label: 'Skills', icon: <IconSkills /> },
   { id: 'mcp', label: 'MCP', icon: <IconMcp /> },
   { id: 'guide', label: 'Guide', icon: <IconGuide /> },
   { id: 'settings', label: 'Settings', icon: <IconSettings /> }
@@ -180,6 +191,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <UsageChart />
           ) : activeTab === 'plugins' ? (
             <PluginsPanel />
+          ) : activeTab === 'skills' ? (
+            <SkillsPanel />
           ) : activeTab === 'mcp' ? (
             <McpPanel />
           ) : activeTab === 'guide' ? (
