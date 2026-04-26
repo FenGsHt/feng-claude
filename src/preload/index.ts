@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -99,6 +99,18 @@ const electronAPI = {
   tokenData: {
     get: (): Promise<unknown> => ipcRenderer.invoke(IPC.TOKEN_DATA_GET),
     set: (data: unknown): Promise<void> => ipcRenderer.invoke(IPC.TOKEN_DATA_SET, data)
+  },
+
+  mcp: {
+    list: (): Promise<McpEntry[]> => ipcRenderer.invoke(IPC.MCP_LIST),
+    add: (name: string, cfg: McpServerConfig): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.MCP_ADD, { name, cfg }),
+    remove: (name: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.MCP_REMOVE, { name }),
+    setEnabled: (name: string, enabled: boolean): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.MCP_SET_ENABLED, { name, enabled }),
+    update: (name: string, cfg: McpServerConfig): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.MCP_UPDATE, { name, cfg })
   },
 
   // Window controls

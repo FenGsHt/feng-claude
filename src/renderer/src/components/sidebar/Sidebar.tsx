@@ -7,10 +7,11 @@ import { TokenUsageWidget } from './TokenUsageWidget'
 import { UsageChart } from '../stats/UsageChart'
 import { PluginsPanel } from '../plugins/PluginsPanel'
 import { GuidePanel } from '../guide/GuidePanel'
+import { McpPanel } from '../mcp/McpPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp'
 
 interface TabConfig {
   id: Tab
@@ -67,6 +68,17 @@ function IconPlugins(): React.ReactElement {
   )
 }
 
+function IconMcp(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <rect x="1.5" y="4" width="5" height="7" rx="1" stroke="currentColor" strokeWidth="1.1"/>
+      <rect x="8.5" y="4" width="5" height="7" rx="1" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M6.5 7.5h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <path d="M4 2v2M11 2v2M4 11v2M11 11v2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 function IconGuide(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -93,6 +105,7 @@ const TABS: TabConfig[] = [
   { id: 'commands', label: 'Commands', icon: <IconCommands /> },
   { id: 'stats', label: 'Stats', icon: <IconStats /> },
   { id: 'plugins', label: 'Plugins', icon: <IconPlugins /> },
+  { id: 'mcp', label: 'MCP', icon: <IconMcp /> },
   { id: 'guide', label: 'Guide', icon: <IconGuide /> },
   { id: 'settings', label: 'Settings', icon: <IconSettings /> }
 ]
@@ -167,6 +180,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <UsageChart />
           ) : activeTab === 'plugins' ? (
             <PluginsPanel />
+          ) : activeTab === 'mcp' ? (
+            <McpPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (

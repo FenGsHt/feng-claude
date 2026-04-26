@@ -46,8 +46,34 @@ export const IPC = {
   PLUGIN_REFRESH: 'plugin:refresh',
 
   TOKEN_DATA_GET: 'token-data:get',
-  TOKEN_DATA_SET: 'token-data:set'
+  TOKEN_DATA_SET: 'token-data:set',
+
+  MCP_LIST: 'mcp:list',
+  MCP_ADD: 'mcp:add',
+  MCP_REMOVE: 'mcp:remove',
+  MCP_SET_ENABLED: 'mcp:setEnabled',
+  MCP_UPDATE: 'mcp:update'
 } as const
+
+export type McpServerType = 'stdio' | 'sse'
+
+export interface McpServerConfig {
+  type?: McpServerType
+  command?: string
+  args?: string[]
+  url?: string
+  env?: Record<string, string>
+}
+
+export interface McpEntry {
+  name: string
+  type: McpServerType
+  command?: string
+  args?: string[]
+  url?: string
+  env?: Record<string, string>
+  isEnabled: boolean
+}
 
 export interface PluginEntry {
   id: string

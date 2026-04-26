@@ -12,6 +12,8 @@ import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
+import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
+import type { McpServerConfig } from '../renderer/src/types/ipc'
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -126,6 +128,25 @@ export function registerIpcHandlers(
     const { newPlugins, error } = refreshMarketplaces()
     const plugins = listPlugins(new Set(newPlugins))
     return { plugins, newPlugins, error }
+  })
+
+  // ── MCP servers ───────────────────────────────────────────────
+  ipcMain.handle(IPC.MCP_LIST, async () => listMcpServers())
+  ipcMain.handle(IPC.MCP_ADD, async (_e, { name, cfg }: { name: string; cfg: McpServerConfig }) => {
+    addMcpServer(name, cfg)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.MCP_REMOVE, async (_e, { name }: { name: string }) => {
+    removeMcpServer(name)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.MCP_SET_ENABLED, async (_e, { name, enabled }: { name: string; enabled: boolean }) => {
+    setMcpServerEnabled(name, enabled)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.MCP_UPDATE, async (_e, { name, cfg }: { name: string; cfg: McpServerConfig }) => {
+    updateMcpServer(name, cfg)
+    return { success: true }
   })
 
   // ── Token data persistence ────────────────────────────────────
