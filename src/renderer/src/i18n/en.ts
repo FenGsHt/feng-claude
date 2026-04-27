@@ -9,7 +9,6 @@ export const en: Translations = {
     plugins: 'Plugins',
     skills: 'Skills',
     mcp: 'MCP',
-    pet: 'Pet',
     guide: 'Guide',
     settings: 'Settings'
   },

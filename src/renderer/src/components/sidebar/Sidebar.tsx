@@ -9,12 +9,12 @@ import { PluginsPanel } from '../plugins/PluginsPanel'
 import { GuidePanel } from '../guide/GuidePanel'
 import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
-import { PetPanel } from './PetPanel'
+import { PetWidget } from './PetWidget'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills'
 
 interface TabConfig {
   id: Tab
@@ -111,23 +111,6 @@ function IconStats(): React.ReactElement {
   )
 }
 
-function IconPet(): React.ReactElement {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-      {/* cat ears */}
-      <path d="M3 6 L2 2 L5 5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill="none"/>
-      <path d="M12 6 L13 2 L10 5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill="none"/>
-      {/* head */}
-      <ellipse cx="7.5" cy="8" rx="4.5" ry="4" stroke="currentColor" strokeWidth="1.1"/>
-      {/* eyes */}
-      <circle cx="5.8" cy="7.2" r="0.7" fill="currentColor"/>
-      <circle cx="9.2" cy="7.2" r="0.7" fill="currentColor"/>
-      {/* nose + mouth */}
-      <path d="M7.5 9 q-0.8 0.8-1.4 0.5M7.5 9 q0.8 0.8 1.4 0.5" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round"/>
-      <circle cx="7.5" cy="8.7" r="0.35" fill="currentColor"/>
-    </svg>
-  )
-}
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -143,7 +126,6 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'plugins', label: t.sidebar.plugins, icon: <IconPlugins /> },
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
-    { id: 'pet', label: t.sidebar.pet, icon: <IconPet /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -217,14 +199,15 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <SkillsPanel />
           ) : activeTab === 'mcp' ? (
             <McpPanel />
-          ) : activeTab === 'pet' ? (
-            <PetPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (
             <SettingsPanel />
           )}
         </div>
+
+        {/* Pet widget — always visible above token usage */}
+        <PetWidget />
 
         {/* Global token usage footer — always visible */}
         <TokenUsageWidget />
