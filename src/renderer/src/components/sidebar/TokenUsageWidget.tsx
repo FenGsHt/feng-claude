@@ -139,8 +139,10 @@ export function TokenUsageWidget(): React.ReactElement {
   const today = useGlobalTokenStore((s) => s.today)
   const budget = useGlobalTokenStore((s) => s.budget)
   const pricing = useGlobalTokenStore((s) => s.pricing)
+  const hideDetailedTokens = useGlobalTokenStore((s) => s.hideDetailedTokens)
   const setBudget = useGlobalTokenStore((s) => s.setBudget)
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
+  const setHideDetailedTokens = useGlobalTokenStore((s) => s.setHideDetailedTokens)
 
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetDraft, setBudgetDraft] = useState('')
@@ -193,6 +195,16 @@ export function TokenUsageWidget(): React.ReactElement {
       <div className="flex items-center justify-between mb-1">
         <span className="font-semibold uppercase tracking-wider text-[9px]">{t.token.title}</span>
         <div className="flex items-center gap-1.5">
+          {/* 切换详细显示 */}
+          <button
+            onClick={() => setHideDetailedTokens(!hideDetailedTokens)}
+            title={hideDetailedTokens ? '显示详细用量' : '隐藏详细用量，只显示等级'}
+            className={`text-[9px] transition-colors ${
+              hideDetailedTokens ? 'text-amber-400' : 'text-claude-muted hover:text-amber-400'
+            }`}
+          >
+            {hideDetailedTokens ? '📊' : '🔒'}
+          </button>
           <button
             onClick={startEdit}
             title={budget > 0 ? `Budget: ${fmtTokens(budget)} — click to edit` : t.token.budgetTitle}
@@ -236,29 +248,46 @@ export function TokenUsageWidget(): React.ReactElement {
         </div>
       )}
 
-      {/* Today / Total rows */}
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-baseline">
-          <span className="text-claude-muted">{t.token.today}</span>
-          <span className="font-mono tabular-nums text-right">
-            {fmtTokens(today.input)}↑ {fmtTokens(today.output)}↓
-            {today.cacheRead > 0 && (
-              <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
-            )}
-            <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(today, pricing))}</span>
-          </span>
+      {/* Today / Total rows - 根据 hideDetailedTokens 决定显示 */}
+      {hideDetailedTokens ? (
+        <div className="space-y-0.5">
+          <div className="flex justify-between items-baseline">
+            <span className="text-claude-muted">{t.token.today}</span>
+            <span className="font-mono tabular-nums text-right text-amber-400">
+              {fmtCost(computeCost(today, pricing))}
+            </span>
+          </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-claude-muted">{t.token.total}</span>
+            <span className="font-mono tabular-nums text-right text-amber-400">
+              {fmtCost(computeCost(total, pricing))}
+            </span>
+          </div>
         </div>
-        <div className="flex justify-between items-baseline">
-          <span className="text-claude-muted">{t.token.total}</span>
-          <span className="font-mono tabular-nums text-right">
-            {fmtTokens(total.input)}↑ {fmtTokens(total.output)}↓
-            {total.cacheRead > 0 && (
-              <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
-            )}
-            <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(total, pricing))}</span>
-          </span>
+      ) : (
+        <div className="space-y-0.5">
+          <div className="flex justify-between items-baseline">
+            <span className="text-claude-muted">{t.token.today}</span>
+            <span className="font-mono tabular-nums text-right">
+              {fmtTokens(today.input)}↑ {fmtTokens(today.output)}↓
+              {today.cacheRead > 0 && (
+                <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
+              )}
+              <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(today, pricing))}</span>
+            </span>
+          </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-claude-muted">{t.token.total}</span>
+            <span className="font-mono tabular-nums text-right">
+              {fmtTokens(total.input)}↑ {fmtTokens(total.output)}↓
+              {total.cacheRead > 0 && (
+                <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
+              )}
+              <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(total, pricing))}</span>
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 等级经验条 */}
       <LevelBar totalTokens={totalUsed} />

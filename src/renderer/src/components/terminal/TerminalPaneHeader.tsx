@@ -1,10 +1,17 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
 import { SplitWorkdirDialog } from './SplitWorkdirDialog'
+import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
+
+interface WorktreeInfo {
+  path: string
+  branch: string
+  isMain: boolean
+}
 
 interface Props {
   sessionId: string
@@ -29,6 +36,27 @@ function SplitHIcon(): React.ReactElement {
   )
 }
 
+function WorktreeIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <path d="M5.5 1L10 4V8L5.5 11L1 8V4L5.5 1Z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/>
+      <line x1="5.5" y1="1" x2="5.5" y2="11" stroke="currentColor" strokeWidth="0.7"/>
+      <line x1="1" y1="4" x2="10" y2="4" stroke="currentColor" strokeWidth="0.7"/>
+      <line x1="1" y1="8" x2="10" y2="8" stroke="currentColor" strokeWidth="0.7"/>
+    </svg>
+  )
+}
+
+function MergeIcon(): React.ReactElement {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <circle cx="2" cy="5" r="1.5" stroke="currentColor" strokeWidth="1"/>
+      <path d="M3.5 5H6.5" stroke="currentColor" strokeWidth="1"/>
+      <path d="M6 3L8 5L6 7" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
@@ -40,13 +68,42 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const tokenUsage = useTokenUsageStore((s) => s.bySession[sessionId])
 
   const [splitMode, setSplitMode] = useState<CreateSessionMode | null>(null)
+  const [showWorktreeDialog, setShowWorktreeDialog] = useState(false)
+  const [isGitRepo, setIsGitRepo] = useState(false)
+  const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
+  const [showMergeReminder, setShowMergeReminder] = useState(false)
 
   const candidates = useMemo(
     () => getSplitWorkdirCandidates(history, sessions),
     [history, sessions]
   )
 
+  // 检查是否是 git 仓库以及 worktree 状态
+  const checkGitStatus = useCallback(async () => {
+    if (!sess?.workdir) return
+    try {
+      const repoResult = await window.electronAPI.git.isRepo(sess.workdir)
+      setIsGitRepo(repoResult.isRepo)
+      if (repoResult.isRepo) {
+        const wtResult = await window.electronAPI.git.worktreeList(sess.workdir)
+        setWorktrees(wtResult.worktrees)
+        // 如果有多个 worktree，显示合并提醒
+        setShowMergeReminder(wtResult.worktrees.length > 1)
+      }
+    } catch {
+      setIsGitRepo(false)
+    }
+  }, [sess?.workdir])
+
+  useEffect(() => {
+    void checkGitStatus()
+  }, [checkGitStatus])
+
   async function beginSplit(mode: CreateSessionMode): Promise<void> {
+    if (mode === 'split-worktree') {
+      setShowWorktreeDialog(true)
+      return
+    }
     await loadHistory()
     const dirs = getSplitWorkdirCandidates(
       useSessionStore.getState().history,
@@ -58,6 +115,12 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       return
     }
     setSplitMode(mode)
+  }
+
+  const handleWorktreeCreate = async (worktreePath: string, branch: string): void => {
+    // 在 worktree 路径创建新会话
+    await createSession(worktreePath, 'split-right', sessionId)
+    void checkGitStatus() // 更新 worktree 状态
   }
 
   const hasTokens = tokenUsage && (tokenUsage.input > 0 || tokenUsage.output > 0)
@@ -126,12 +189,31 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
 
         {/* Action buttons */}
         <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
+          {/* 合并提醒 */}
+          {showMergeReminder && (
+            <HeaderBtn
+              title={`有 ${worktrees.length} 个 worktree，记得合并！`}
+              onClick={() => {
+                // 点击显示提示
+                alert(`提示：当前仓库有 ${worktrees.length} 个 worktree。\n分支：${worktrees.filter(wt => !wt.isMain).map(wt => wt.branch).join(', ')}\n请在完成开发后合并并清理 worktree。`)
+              }}
+              warning
+            >
+              <MergeIcon />
+            </HeaderBtn>
+          )}
           <HeaderBtn title="Split right" onClick={() => void beginSplit('split-right')}>
             <SplitVIcon />
           </HeaderBtn>
           <HeaderBtn title="Split down" onClick={() => void beginSplit('split-down')}>
             <SplitHIcon />
           </HeaderBtn>
+          {/* Worktree 按钮 */}
+          {isGitRepo && (
+            <HeaderBtn title="Split worktree (新建分支)" onClick={() => void beginSplit('split-worktree')}>
+              <WorktreeIcon />
+            </HeaderBtn>
+          )}
           <HeaderBtn title="Close pane" onClick={() => closeSession(sessionId)} danger>
             <svg width="8" height="8" viewBox="0 0 8 8">
               <line x1="1" y1="1" x2="7" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
@@ -141,7 +223,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         </div>
       </div>
 
-      {splitMode != null && (
+      {splitMode != null && splitMode !== 'split-worktree' && (
         <SplitWorkdirDialog
           open
           candidates={candidates}
@@ -159,6 +241,15 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           onClose={() => setSplitMode(null)}
         />
       )}
+
+      {showWorktreeDialog && sess?.workdir && (
+        <WorktreeDialog
+          open
+          repoPath={sess.workdir}
+          onClose={() => setShowWorktreeDialog(false)}
+          onCreate={handleWorktreeCreate}
+        />
+      )}
     </>
   )
 }
@@ -167,11 +258,13 @@ function HeaderBtn({
   onClick,
   title,
   danger,
+  warning,
   children
 }: {
   onClick: () => void
   title: string
   danger?: boolean
+  warning?: boolean
   children: React.ReactNode
 }): React.ReactElement {
   return (
@@ -179,10 +272,12 @@ function HeaderBtn({
       type="button"
       title={title}
       onClick={onClick}
-      className={`flex h-5 w-5 items-center justify-center rounded transition-colors text-claude-muted ${
+      className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${
         danger
-          ? 'hover:bg-red-600/20 hover:text-red-400'
-          : 'hover:bg-claude-border/60 hover:text-claude-text'
+          ? 'text-red-400 hover:bg-red-600/20 hover:text-red-500'
+          : warning
+            ? 'text-amber-400 hover:bg-amber-600/20 hover:text-amber-500 animate-pulse'
+            : 'text-claude-muted hover:bg-claude-border/60 hover:text-claude-text'
       }`}
     >
       {children}

@@ -246,12 +246,230 @@ export function registerIpcHandlers(
         req.end()
       })
 
-      const json = JSON.parse(text) as { content?: Array<{ text?: string }>; error?: { message?: string } }
+      const json = JSON.parse(text) as {
+        content?: Array<{ text?: string }>
+        usage?: {
+          input_tokens: number
+          output_tokens: number
+          cache_creation_input_tokens?: number
+          cache_read_input_tokens?: number
+        }
+        error?: { message?: string }
+      }
       if (json.error) return { error: json.error.message ?? 'API error' }
-      return { text: json.content?.[0]?.text ?? '' }
+      return {
+        text: json.content?.[0]?.text ?? '',
+        usage: json.usage ? {
+          input: json.usage.input_tokens,
+          output: json.usage.output_tokens,
+          cacheCreate: json.usage.cache_creation_input_tokens ?? 0,
+          cacheRead: json.usage.cache_read_input_tokens ?? 0,
+        } : undefined,
+      }
     } catch (e) {
       console.error('[pet:ask] error:', e)
       return { error: String(e) }
+    }
+  })
+
+  // ── Content Bank Generate ─────────────────────────────────────
+  ipcMain.handle(IPC.CONTENT_BANK_GENERATE, async (_e, payload) => {
+    const { category, count } = payload as {
+      category: 'chitchat' | 'joke' | 'news' | 'tip'
+      count: number
+    }
+    const settings = settingsStore.get()
+    const apiKey = settings.authToken
+    const rawBase = settings.baseUrl?.trim() || 'https://api.anthropic.com'
+    const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
+
+    if (!apiKey) return { items: [], error: 'No API key configured' }
+
+    const prompts: Record<string, string> = {
+      joke: `生成 ${count} 个程序员笑话，每个笑话用 JSON 数组格式返回，每条一句话以内，中文，格式如：["笑话1", "笑话2", ...]`,
+      tip: `生成 ${count} 个技术小技巧/命令行技巧，每个用 JSON 数组格式返回，每条一句话以内，中文，格式如：["技巧1", "技巧2", ...]`,
+      news: `列出 ${count} 个最近的技术新闻摘要，每个用 JSON 数组格式返回，每条一句话以内，中文，格式如：["新闻1", "新闻2", ...]`,
+      chitchat: `生成 ${count} 条可爱的闲聊语句（宠物对程序员说的话），用 JSON 数组格式返回，每条一句话以内，中文，格式如：["语句1", "语句2", ...]`,
+    }
+
+    const model = settings.haikuModel?.trim() || settings.model?.trim() || 'claude-haiku-4-5'
+
+    try {
+      const body = JSON.stringify({
+        model,
+        max_tokens: 500,
+        messages: [{ role: 'user', content: prompts[category] ?? prompts.chitchat }],
+      })
+
+      const url = new URL(`${baseUrl}/v1/messages`)
+      const isHttps = url.protocol === 'https:'
+      const { request } = isHttps ? await import('https') : await import('http')
+
+      const text = await new Promise<string>((resolve, reject) => {
+        const req = request(
+          {
+            hostname: url.hostname,
+            port: url.port || (isHttps ? 443 : 80),
+            path: url.pathname + url.search,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(body),
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+          },
+          (res) => {
+            let data = ''
+            res.on('data', (chunk: Buffer) => { data += chunk.toString() })
+            res.on('end', () => resolve(data))
+          }
+        )
+        req.on('error', reject)
+        req.write(body)
+        req.end()
+      })
+
+      const json = JSON.parse(text) as { content?: Array<{ text?: string }>; error?: { message?: string } }
+      if (json.error) return { items: [], error: json.error.message ?? 'API error' }
+
+      const rawText = json.content?.[0]?.text ?? ''
+      // 尝试解析 JSON 数组
+      try {
+        const items = JSON.parse(rawText) as string[]
+        if (Array.isArray(items)) return { items }
+      } catch {
+        // 解析失败，尝试提取内容
+        const lines = rawText.split('\n').filter((l) => l.trim())
+        return { items: lines.slice(0, count) }
+      }
+      return { items: [] }
+    } catch (e) {
+      console.error('[content-bank:generate] error:', e)
+      return { items: [], error: String(e) }
+    }
+  })
+
+  // ── Git Worktree ───────────────────────────────────────────────
+  ipcMain.handle(IPC.GIT_IS_REPO, async (_e, { path }) => {
+    try {
+      const { execSync } = await import('child_process')
+      execSync('git rev-parse --git-dir', { cwd: path, stdio: 'pipe' })
+      return { isRepo: true }
+    } catch {
+      return { isRepo: false }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_BRANCH_LIST, async (_e, { repoPath }) => {
+    try {
+      const { execSync } = await import('child_process')
+      // 获取本地分支
+      const local = execSync('git branch --format=%(refname:short)%(HEAD)', { cwd: repoPath, encoding: 'utf-8' })
+      // 获取远程分支
+      const remote = execSync('git branch -r --format=%(refname:short)', { cwd: repoPath, encoding: 'utf-8' })
+
+      const currentBranch = execSync('git branch --show-current', { cwd: repoPath, encoding: 'utf-8' }).trim()
+
+      const branches = [
+        ...local.trim().split('\n').filter(Boolean).map((line) => {
+          const isCurrent = line.endsWith('*')
+          const name = line.replace('*', '').trim()
+          return { name, isCurrent, isRemote: false }
+        }),
+        ...remote.trim().split('\n').filter(Boolean).map((name) => ({
+          name: name.trim(),
+          isCurrent: false,
+          isRemote: true
+        }))
+      ]
+
+      return { branches, currentBranch, error: undefined }
+    } catch (e) {
+      return { branches: [], currentBranch: '', error: String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_WORKTREE_LIST, async (_e, { repoPath }) => {
+    try {
+      const { execSync } = await import('child_process')
+      const output = execSync('git worktree list --porcelain', { cwd: repoPath, encoding: 'utf-8' })
+
+      const lines = output.trim().split('\n')
+      const worktrees: Array<{ path: string; branch: string; commit: string; isMain: boolean }> = []
+      let current: { path?: string; branch?: string; commit?: string } = {}
+
+      for (const line of lines) {
+        if (line.startsWith('worktree ')) {
+          if (current.path) {
+            worktrees.push({
+              path: current.path,
+              branch: current.branch ?? '',
+              commit: current.commit ?? '',
+              isMain: worktrees.length === 0
+            })
+          }
+          current = { path: line.slice(9) }
+        } else if (line.startsWith('HEAD ')) {
+          current.commit = line.slice(5)
+        } else if (line.startsWith('branch ')) {
+          current.branch = line.slice(7)
+        }
+      }
+      if (current.path) {
+        worktrees.push({
+          path: current.path,
+          branch: current.branch ?? '',
+          commit: current.commit ?? '',
+          isMain: worktrees.length === 0
+        })
+      }
+
+      const mainPath = worktrees[0]?.path ?? repoPath
+      return { worktrees, mainPath, error: undefined }
+    } catch (e) {
+      return { worktrees: [], mainPath: '', error: String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_WORKTREE_CREATE, async (_e, payload) => {
+    const { mainRepoPath, branchName, worktreePath, createBranch, baseBranch } = payload as {
+      mainRepoPath: string
+      branchName: string
+      worktreePath?: string
+      createBranch?: boolean
+      baseBranch?: string
+    }
+    try {
+      const { execSync } = await import('child_process')
+      const path = await import('path')
+
+      // 默认 worktree 路径：主仓库父目录 + 分支名
+      const wtPath = worktreePath ?? path.join(path.dirname(mainRepoPath), branchName.replace(/\//g, '-'))
+
+      let cmd = `git worktree add "${wtPath}"`
+      if (createBranch) {
+        cmd += ` -b "${branchName}"${baseBranch ? ` "${baseBranch}"` : ''}`
+      } else {
+        cmd += ` "${branchName}"`
+      }
+
+      execSync(cmd, { cwd: mainRepoPath, encoding: 'utf-8' })
+
+      return { worktreePath: wtPath, branch: branchName, error: undefined }
+    } catch (e) {
+      return { worktreePath: '', branch: '', error: String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_WORKTREE_REMOVE, async (_e, payload) => {
+    const { worktreePath, force } = payload as { worktreePath: string; force?: boolean }
+    try {
+      const { execSync } = await import('child_process')
+      execSync(`git worktree remove "${worktreePath}"${force ? ' --force' : ''}`, { encoding: 'utf-8' })
+      return { success: true, error: undefined }
+    } catch (e) {
+      return { success: false, error: String(e) }
     }
   })
 

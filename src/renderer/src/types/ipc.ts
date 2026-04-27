@@ -64,7 +64,17 @@ export const IPC = {
   NOTIFICATION_SHOW: 'notification:show',
 
   /** 宠物 Agent：调用 Anthropic API 返回建议 */
-  PET_ASK: 'pet:ask'
+  PET_ASK: 'pet:ask',
+
+  /** 内容库生成：调用 API 生成笑话/技巧/新闻 */
+  CONTENT_BANK_GENERATE: 'content-bank:generate',
+
+  /** Git worktree 操作 */
+  GIT_WORKTREE_LIST: 'git:worktreeList',
+  GIT_WORKTREE_CREATE: 'git:worktreeCreate',
+  GIT_WORKTREE_REMOVE: 'git:worktreeRemove',
+  GIT_BRANCH_LIST: 'git:branchList',
+  GIT_IS_REPO: 'git:isRepo',
 } as const
 
 export interface SkillEntry {
@@ -183,5 +193,67 @@ export interface PetAskPayload {
 
 export interface PetAskResult {
   text?: string
+  error?: string
+  usage?: {
+    input: number
+    output: number
+    cacheCreate: number
+    cacheRead: number
+  }
+}
+
+export type ContentCategory = 'chitchat' | 'joke' | 'news' | 'tip'
+
+export interface ContentBankGeneratePayload {
+  category: ContentCategory
+  count: number
+}
+
+export interface ContentBankGenerateResult {
+  items: string[]
+  error?: string
+}
+
+// Git worktree
+export interface GitWorktreeInfo {
+  path: string
+  branch: string
+  commit: string
+  isMain: boolean
+}
+
+export interface GitWorktreeListResult {
+  worktrees: GitWorktreeInfo[]
+  mainPath: string
+  error?: string
+}
+
+export interface GitWorktreeCreatePayload {
+  mainRepoPath: string
+  branchName: string
+  worktreePath?: string  // 可选，默认自动生成
+  createBranch?: boolean  // 是否创建新分支
+  baseBranch?: string    // 新分支基于哪个分支
+}
+
+export interface GitWorktreeCreateResult {
+  worktreePath: string
+  branch: string
+  error?: string
+}
+
+export interface GitWorktreeRemovePayload {
+  worktreePath: string
+  force?: boolean
+}
+
+export interface GitWorktreeRemoveResult {
+  success: boolean
+  error?: string
+}
+
+export interface GitBranchListResult {
+  branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean }>
+  currentBranch: string
   error?: string
 }

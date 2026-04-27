@@ -77,6 +77,16 @@ export function injectMockElectronAPI(): void {
       },
       pet: {
         ask: async () => ({ text: '（浏览器预览模式，无法调用 API）' })
+      },
+      contentBank: {
+        generate: async () => ({ items: [] })
+      },
+      git: {
+        isRepo: async () => ({ isRepo: false }),
+        branchList: async () => ({ branches: [], currentBranch: '' }),
+        worktreeList: async () => ({ worktrees: [], mainPath: '' }),
+        worktreeCreate: async () => ({ worktreePath: '', branch: '' }),
+        worktreeRemove: async () => ({ success: false })
       }
     }
   }

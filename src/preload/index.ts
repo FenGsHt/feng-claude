@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -127,6 +127,26 @@ const electronAPI = {
   pet: {
     ask: (payload: PetAskPayload): Promise<PetAskResult> =>
       ipcRenderer.invoke(IPC.PET_ASK, payload)
+  },
+
+  // Content Bank
+  contentBank: {
+    generate: (payload: ContentBankGeneratePayload): Promise<ContentBankGenerateResult> =>
+      ipcRenderer.invoke(IPC.CONTENT_BANK_GENERATE, payload)
+  },
+
+  // Git Worktree
+  git: {
+    isRepo: (path: string): Promise<{ isRepo: boolean }> =>
+      ipcRenderer.invoke(IPC.GIT_IS_REPO, { path }),
+    branchList: (repoPath: string): Promise<GitBranchListResult> =>
+      ipcRenderer.invoke(IPC.GIT_BRANCH_LIST, { repoPath }),
+    worktreeList: (repoPath: string): Promise<GitWorktreeListResult> =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST, { repoPath }),
+    worktreeCreate: (payload: GitWorktreeCreatePayload): Promise<GitWorktreeCreateResult> =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_CREATE, payload),
+    worktreeRemove: (payload: GitWorktreeRemovePayload): Promise<GitWorktreeRemoveResult> =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, payload),
   },
 
   // Window controls

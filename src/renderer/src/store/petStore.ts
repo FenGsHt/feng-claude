@@ -25,6 +25,8 @@ interface PetStore {
   speech: string
   /** 上次自动触发时间戳（毫秒），用于冷却判断 */
   lastAutoAt: number
+  /** 上次抚摸时间戳（毫秒）*/
+  lastPetAt: number
   /** 对话历史（多轮，送 API 用最近 12 条）*/
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 
@@ -32,6 +34,7 @@ interface PetStore {
   setMood: (m: PetMood) => void
   setSpeech: (s: string) => void
   setLastAutoAt: (t: number) => void
+  setLastPetAt: (t: number) => void
   pushHistory: (role: 'user' | 'assistant', content: string) => void
   clearHistory: () => void
 }
@@ -49,12 +52,14 @@ export const usePetStore = create<PetStore>()(
       mood: 'idle',
       speech: '喵~ 我在偷看你的代码',
       lastAutoAt: 0,
+      lastPetAt: 0,
       history: [],
 
       setConfig: (c) => set((s) => ({ config: { ...s.config, ...c } })),
       setMood: (m) => set({ mood: m }),
       setSpeech: (s) => set({ speech: s }),
       setLastAutoAt: (t) => set({ lastAutoAt: t }),
+      setLastPetAt: (t) => set({ lastPetAt: t }),
       pushHistory: (role, content) =>
         set((s) => ({
           history: [...s.history, { role, content }].slice(-24)

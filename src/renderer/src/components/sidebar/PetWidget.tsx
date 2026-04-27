@@ -13,9 +13,28 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { usePetStore, type PetType } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
+import { useGlobalTokenStore } from '../../store/globalTokenStore'
+import { useContentBankStore } from '../../store/contentBankStore'
 
 // ── ASCII 帧库 ────────────────────────────────────────────────────
-type Activity = 'look' | 'sleep' | 'play' | 'curious' | 'thinking' | 'excited'
+type Activity =
+  // 原有空闲
+  | 'look' | 'sleep' | 'play' | 'curious'
+  // 触发状态
+  | 'thinking' | 'excited'
+  // 新增空闲
+  | 'blink' | 'stretch' | 'yawn' | 'hungry'
+  | 'sneeze' | 'groom' | 'wiggle' | 'tilt' | 'doze'
+  // 抚摸互动
+  | 'happy'
+  // 走动
+  | 'walk'
+
+// 空闲活动列表（不含触发状态）
+const IDLE_ACTIVITIES: Activity[] = [
+  'look', 'sleep', 'play', 'curious',
+  'blink', 'stretch', 'yawn', 'hungry', 'sneeze', 'groom', 'wiggle', 'tilt', 'doze', 'walk'
+]
 
 const FRAMES: Record<Activity, Record<PetType, string[][]>> = {
   look: {
@@ -54,24 +73,183 @@ const FRAMES: Record<Activity, Record<PetType, string[][]>> = {
     dragon: [['∩___∩', '(★ ▽ ★)', '✨^✨ '], ['∩___∩', '(★ ‿ ★)', ' ✨^ ']],
     ghost:  [['.--.', '(★  ★)', '✨∿✨ '], ['.--.', '(◉  ◉)', ' ∿✨∿']],
   },
+  // 新增空闲活动
+  blink: {
+    cat:    [[' /\\_/\\', '( ^ω^)', '  >-< '], [' /\\_/\\', '( -ω-)', '  >-< ']],
+    robot:  [['[◉  ◉]', '[ ▽  ]', '[═══]'], ['[─  ─]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)', '  ~^~ '], ['∩___∩', '(- ▽ -)', '  ~^~ ']],
+    ghost:  [['.--.', '(O  O)', ' ∿∿∿ '], ['.--.', '(-  -)', ' ∿∿∿ ']],
+  },
+  stretch: {
+    cat:    [[' /\\_/\\', '( >ω< )', ' ≈≈≈ '], [' /\\_/\\', '( -ω-)', '≈   ≈'], [' /\\_/\\', '( ^ω^)', '  >-< ']],
+    robot:  [['[◉  ◉]', '[ ▽  ]', '[═══]'], ['[◉  ◉]', '[    ]', '[────]'], ['[◉  ◉]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)', '  ~^~ '], ['∩___∩', '(◕    ◕)', ' ~^^~ '], ['∩___∩', '(◕ ▽ ◕)', '  ~^~ ']],
+    ghost:  [['.--.', '(O  O)', ' ∿∿∿ '], ['.--.', '(O    O)', '∿   ∿ '], ['.--.', '(O  O)', ' ∿∿∿ ']],
+  },
+  yawn: {
+    cat:    [[' /\\_/\\', '(- ω -)', '  o  '], [' /\\_/\\', '( ○ω○)', '   ..']],
+    robot:  [['[─  ─]', '[  o  ]', '[═══]'], ['[─  ○]', '[     ]', '[═══]']],
+    dragon: [['∩___∩', '(- ω -)', '  o  '], ['∩___∩', '(○ ω ○)', '   ..']],
+    ghost:  [['.--.', '(- ω -)', ' o∿ '], ['.--.', '(○ ω ○)', ' ∿..']],
+  },
+  hungry: {
+    cat:    [[' /\\_/\\', '( >ω<)', '  !! '], [' /\\_/\\', '( >ω<)', '  ?? ']],
+    robot:  [['[◉  ◉]', '[ !! ]', '[═══]'], ['[◉  ◉]', '[ ?? ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ >◕)', '  !! '], ['∩___∩', '(◕ >◕)', '  ?? ']],
+    ghost:  [['.--.', '(O >O)', ' !!∿ '], ['.--.', '(O >O)', ' ??∿ ']],
+  },
+  sneeze: {
+    cat:    [[' /\\_/\\', '( >ω<)', '  .. '], [' /\\_/\\', '( >○<)', '  !! '], [' /\\_/\\', '( ^ω^)', '  ~  ']],
+    robot:  [['[◉  ◉]', '[ .. ]', '[═══]'], ['[◉  ◉]', '[ !! ]', '[═══]'], ['[◉  ◉]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ >◕)', '  .. '], ['∩___∩', '(◕ ○◕)', '  !! '], ['∩___∩', '(◕ ▽ ◕)', '  ~  ']],
+    ghost:  [['.--.', '(O >O)', ' ..∿ '], ['.--.', '(O ○O)', ' !!∿ '], ['.--.', '(O  O)', ' ∿∿∿ ']],
+  },
+  groom: {
+    cat:    [[' /\\_/\\', '( ^ω^)', ' ≈≈≈ '], [' /\\_/\\', '( ·ω·)', '≈≈≈≈'], [' /\\_/\\', '( ^ω^)', ' ≈≈≈ ']],
+    robot:  [['[◉  ◉]', '[ ◐  ]', '[═══]'], ['[◉  ◉]', '[ ◑  ]', '[═══]'], ['[◉  ◉]', '[ ◐  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)', ' ∿∿∿ '], ['∩___∩', '(◕ ·◕)', '∿∿∿ '], ['∩___∩', '(◕ ▽ ◕)', ' ∿∿∿ ']],
+    ghost:  [['.--.', '(O  O)', ' ∿∿∿ '], ['.--.', '(·  ·)', ' ∿∿ '], ['.--.', '(O  O)', ' ∿∿∿ ']],
+  },
+  wiggle: {
+    cat:    [[' /\\_/\\', '(^ω^ )', ' ≈♪≈ '], [' /\\_/\\', '(^ω^)', ' ♪≈≈ '], [' /\\_/\\', '(^ω^ )', ' ≈♪≈ ']],
+    robot:  [['[◉  ◉]', '[ ∼  ]', '[═══]'], ['[◉  ◉]', '[ ∼∼ ]', '[═══]'], ['[◉  ◉]', '[ ∼  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)', ' ∿^~ '], ['∩___∩', '(◕ ▽ ◕)', '^~^ '], ['∩___∩', '(◕ ▽ ◕)', ' ∿^~ ']],
+    ghost:  [['.--.', '(O  O)', ' ∿^∿ '], ['.--.', '(O  O)', ' ^∿^ '], ['.--.', '(O  O)', ' ∿^∿ ']],
+  },
+  tilt: {
+    cat:    [[' /\\_/\\', '(°ω°)', '  >-<'], [' /\\_/\\', '(°ω° )', '  >-<']],
+    robot:  [['[◉  ◉]', '[ ▽  ]', '[═══]'], ['[◉? ◉]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)', '  ~^~'], ['∩___∩', '(◕?▽◕)', '  ~^~']],
+    ghost:  [['.--.', '(O  O)', ' ∿∿∿'], ['.--.', '(O? O)', ' ∿∿∿']],
+  },
+  doze: {
+    cat:    [[' /\\_/\\', '(- ω -)', '  zZ '], [' /\\_/\\', '(- ω-)', '   Zz']],
+    robot:  [['[─  ○]', '[  .  ]', '[═══]'], ['[○  ─]', '[     ]', '[═══]']],
+    dragon: [['∩___∩', '(- ω -)', '  zZ '], ['∩___∩', '(- ω-)', '   Zz']],
+    ghost:  [['.--.', '(- ω -)', ' zZ∿'], ['.--.', '(- ω-)', '  Zz']],
+  },
+  // 抚摸互动
+  happy: {
+    cat:    [[' /\\_/\\', '(^ω^)', ' ≈♪≈ '], [' /\\_/\\', '(^ω^)', ' ♪≈≈ ']],
+    robot:  [['[♥  ♥]', '[ ▽  ]', '[═══]'], ['[♡  ♡]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)♡', '  ~^~ '], ['∩___∩', '(◕ ‿ ◕)♡', ' ♡~^~']],
+    ghost:  [['.--.', '(★  ★)', '✨∿✨ '], ['.--.', '(★  ★)', ' ∿✨✨']],
+  },
+  // 走动（左右移动动画）
+  walk: {
+    cat:    [[' /\\_/\\', '( >ω>)', ' >=> '], [' /\\_/\\', '( <ω<)', ' <=< ']],
+    robot:  [['[◉  ◉]', '[ → ]', '[═══]'], ['[◉  ◉]', '[ ← ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▷◕)', ' ~^> '], ['∩___∩', '(◕◁ ◕)', ' <^~ ']],
+    ghost:  [['.--.', '(O  O)', ' ∿→ '], ['.--.', '(O  O)', ' ←∿ ']],
+  },
 }
 
-// 空闲活动轮换顺序和停留时长范围 [min, max] 毫秒
-const IDLE_CYCLE: Array<{ activity: Activity; msRange: [number, number] }> = [
-  { activity: 'look',    msRange: [8000, 14000] },
-  { activity: 'curious', msRange: [5000, 9000]  },
-  { activity: 'look',    msRange: [6000, 10000] },
-  { activity: 'sleep',   msRange: [7000, 13000] },
-  { activity: 'play',    msRange: [4000, 8000]  },
+// 加权随机空闲池
+interface IdlePoolEntry {
+  activity: Activity
+  weight: number
+  msRange: [number, number]
+  cooldown: number
+  forbiddenAfter: Activity[]
+}
+
+const IDLE_POOL: IdlePoolEntry[] = [
+  { activity: 'look',    weight: 10, msRange: [8000, 14000], cooldown: 2, forbiddenAfter: [] },
+  { activity: 'blink',   weight: 8,  msRange: [1000, 2000],  cooldown: 3, forbiddenAfter: [] },
+  { activity: 'curious', weight: 7,  msRange: [5000, 9000],  cooldown: 2, forbiddenAfter: [] },
+  { activity: 'tilt',    weight: 5,  msRange: [2500, 4000],  cooldown: 2, forbiddenAfter: [] },
+  { activity: 'doze',    weight: 5,  msRange: [4000, 7000],  cooldown: 2, forbiddenAfter: ['play', 'wiggle', 'walk'] },
+  { activity: 'groom',   weight: 4,  msRange: [4000, 7000],  cooldown: 3, forbiddenAfter: [] },
+  { activity: 'wiggle',  weight: 4,  msRange: [2000, 3500],  cooldown: 3, forbiddenAfter: [] },
+  { activity: 'walk',    weight: 4,  msRange: [3000, 6000],  cooldown: 3, forbiddenAfter: ['sleep', 'doze'] },
+  { activity: 'yawn',    weight: 3,  msRange: [2000, 3500],  cooldown: 4, forbiddenAfter: ['sleep', 'play', 'walk'] },
+  { activity: 'sleep',   weight: 3,  msRange: [8000, 15000], cooldown: 5, forbiddenAfter: ['sleep', 'play', 'wiggle', 'walk'] },
+  { activity: 'stretch', weight: 3,  msRange: [2500, 4500],  cooldown: 4, forbiddenAfter: ['play', 'wiggle', 'walk'] },
+  { activity: 'play',    weight: 2,  msRange: [4000, 8000],  cooldown: 4, forbiddenAfter: ['sleep', 'doze'] },
+  { activity: 'hungry',  weight: 2,  msRange: [3000, 5000],  cooldown: 5, forbiddenAfter: ['sleep', 'doze'] },
+  { activity: 'sneeze',  weight: 1,  msRange: [800, 1500],   cooldown: 6, forbiddenAfter: ['sleep', 'doze'] },
 ]
 
+// 空闲状态跟踪
+interface IdleState {
+  lastActivity: Activity
+  cooldowns: Map<Activity, number>
+}
+
+// 加权随机选择下一个空闲活动
+function selectNextIdleActivity(state: IdleState): { activity: Activity; msRange: [number, number] } {
+  // 1. 更新 cooldown 计数器
+  for (const [act, cd] of state.cooldowns) {
+    if (cd <= 1) state.cooldowns.delete(act)
+    else state.cooldowns.set(act, cd - 1)
+  }
+
+  // 2. 构建候选池
+  const candidates = IDLE_POOL.filter((entry) => {
+    // 不在 cooldown 中
+    if (state.cooldowns.has(entry.activity)) return false
+    // 不是 forbiddenAfter 当前活动
+    if (entry.forbiddenAfter.includes(state.lastActivity)) return false
+    return true
+  })
+
+  // 3. 如果没有候选（边界情况），清除 cooldown 重试
+  if (candidates.length === 0) {
+    state.cooldowns.clear()
+    // 重新过滤，只检查 forbiddenAfter
+    const fallback = IDLE_POOL.filter((e) => !e.forbiddenAfter.includes(state.lastActivity))
+    if (fallback.length === 0) return { activity: 'look' as Activity, msRange: [8000, 14000] }
+    const chosen = fallback[Math.floor(Math.random() * fallback.length)]!
+    return { activity: chosen.activity, msRange: chosen.msRange }
+  }
+
+  // 4. 加权随机选择
+  const totalWeight = candidates.reduce((sum, e) => sum + e.weight, 0)
+  let random = Math.random() * totalWeight
+
+  for (const entry of candidates) {
+    random -= entry.weight
+    if (random <= 0) {
+      // 设置 cooldown
+      state.cooldowns.set(entry.activity, entry.cooldown)
+      state.lastActivity = entry.activity
+      return { activity: entry.activity, msRange: entry.msRange }
+    }
+  }
+
+  // Fallback
+  const chosen = candidates[0]!
+  state.cooldowns.set(chosen.activity, chosen.cooldown)
+  state.lastActivity = chosen.activity
+  return { activity: chosen.activity, msRange: chosen.msRange }
+}
+
+function randRange(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
 const FRAME_INTERVAL: Record<Activity, number> = {
-  look: 900, sleep: 1200, play: 400, curious: 700, thinking: 350, excited: 280,
+  look: 900, sleep: 1200, play: 400, curious: 700,
+  thinking: 350, excited: 280,
+  // 新增空闲
+  blink: 300, stretch: 500, yawn: 700, hungry: 600,
+  sneeze: 200, groom: 450, wiggle: 350, tilt: 650, doze: 900,
+  // 抚摸
+  happy: 400,
+  // 走动
+  walk: 500,
 }
 
 const ACTIVITY_COLOR: Record<Activity, string> = {
   look: '#94a3b8', sleep: '#475569', play: '#fcd34d', curious: '#7dd3fc',
   thinking: '#64748b', excited: '#fbbf24',
+  // 新增空闲
+  blink: '#cbd5e1', stretch: '#a3e635', yawn: '#94a3b8', hungry: '#fb923c',
+  sneeze: '#f87171', groom: '#a78bfa', wiggle: '#34d399', tilt: '#7dd3fc', doze: '#64748b',
+  // 抚摸
+  happy: '#f9a8d4',
+  // 走动
+  walk: '#60a5fa',
 }
 
 // ── ASCII 宠物渲染 ─────────────────────────────────────────────────
@@ -242,55 +420,201 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
 }
 
 // ── Main ─────────────────────────────────────────────────────────
-const COOLDOWN_MS = 45_000       // 两次触发最小间隔
+const COOLDOWN_MS = 45_000       // 两次自动触发最小间隔
 const TRIGGER_PROBABILITY = 0.4  // 40% 概率响应
+const PET_COOLDOWN_MS = 3_000    // 抚摸冷却 3 秒
 
-const IDLE_ACTIVITIES = IDLE_CYCLE.map((c) => c.activity)
+// 抚摸预设回复
+const PET_RESPONSES: string[] = [
+  '喵~好舒服', '再摸摸~', '嘿嘿~', '舒服~', '(蹭蹭)', '喜欢~', '好开心!',
+]
 
-function randRange(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min
+function randomPick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!
 }
 
 export function PetWidget(): React.ReactElement {
-  const { config, speech, history, lastAutoAt,
-          setSpeech, pushHistory, setLastAutoAt } = usePetStore()
+  const { config, speech, history, lastAutoAt, lastPetAt,
+          setSpeech, pushHistory, setLastAutoAt, setLastPetAt } = usePetStore()
   const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
   // output token 计数是最准确的"Claude Code 完成了一轮回答"的信号
   const outputTokens = useTokenUsageStore((s) =>
     activeSessionId ? (s.bySession[activeSessionId]?.output ?? 0) : 0
   )
+  // 内容库
+  const { items, getRandomUnused, markUsed, initPresets, cleanup, performDailyUpdate, lastDailyUpdate } = useContentBankStore()
 
   const [activity, setActivity] = useState<Activity>('look')
   const [isLoading, setIsLoading] = useState(false)
   const [showBubble, setShowBubble] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // 走动位置（0-100 百分比）
+  const [petX, setPetX] = useState(50)
+  const [walkDirection, setWalkDirection] = useState<'left' | 'right'>('right')
 
   const idleCycleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const idleIndexRef = useRef(0)
+  const idleStateRef = useRef<IdleState>({ lastActivity: 'look', cooldowns: new Map() })
   const talkEndRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const walkAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // 上次看到的 output token 数，用于检测新增
   const lastOutputRef = useRef(0)
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
-  // ── 空闲轮换 ──────────────────────────────────────────────────
-  const startIdleCycle = useCallback((fromIndex = 0) => {
+  // ── 走动动画 ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (activity === 'walk' && !showBubble && !isLoading) {
+      // 开始走动动画
+      if (walkAnimRef.current) clearInterval(walkAnimRef.current)
+      walkAnimRef.current = setInterval(() => {
+        setPetX((prev) => {
+          const step = walkDirection === 'right' ? 2 : -2
+          const next = prev + step
+          // 边界检查，碰到边缘就反向
+          if (next >= 85) {
+            setWalkDirection('left')
+            return 85
+          }
+          if (next <= 15) {
+            setWalkDirection('right')
+            return 15
+          }
+          return next
+        })
+      }, 100) // 每 100ms 移动 2%
+      return () => {
+        if (walkAnimRef.current) clearInterval(walkAnimRef.current)
+      }
+    } else {
+      // 停止走动动画，回到中心
+      if (walkAnimRef.current) clearInterval(walkAnimRef.current)
+      // 非 walk 状态时缓慢回到中心
+      if (activity !== 'walk' && petX !== 50) {
+        const resetInterval = setInterval(() => {
+          setPetX((prev) => {
+            const diff = 50 - prev
+            const step = Math.sign(diff) * Math.min(Math.abs(diff), 1)
+            const next = prev + step
+            if (Math.abs(50 - next) < 1) {
+              clearInterval(resetInterval)
+              return 50
+            }
+            return next
+          })
+        }, 50)
+        return () => clearInterval(resetInterval)
+      }
+    }
+  }, [activity, showBubble, isLoading, walkDirection, petX])
+
+  // ── 空闲轮换（加权随机）──────────────────────────────────────────
+  const startIdleCycle = useCallback(() => {
     if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
     const step = (): void => {
-      const entry = IDLE_CYCLE[idleIndexRef.current % IDLE_CYCLE.length]!
-      setActivity(entry.activity)
-      const ms = randRange(entry.msRange[0], entry.msRange[1])
-      idleIndexRef.current = (idleIndexRef.current + 1) % IDLE_CYCLE.length
+      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current)
+      setActivity(nextActivity)
+      const ms = randRange(msRange[0], msRange[1])
       idleCycleRef.current = setTimeout(step, ms)
     }
-    idleIndexRef.current = fromIndex % IDLE_CYCLE.length
     step()
   }, [])
 
+  // ── 内容库初始化和每日更新 ───────────────────────────────────────
   useEffect(() => {
-    startIdleCycle()
+    // 初始化预设内容
+    if (items.length === 0) {
+      initPresets()
+    }
+    // 清理过期内容
+    cleanup()
+    // 检查是否需要每日更新（每 5 分钟检查一次）
+    const checkDaily = () => {
+      const now = Date.now()
+      const oneDayMs = 24 * 60 * 60 * 1000
+      if (now - lastDailyUpdate > oneDayMs) {
+        performDailyUpdate()
+      }
+    }
+    checkDaily()
+    const interval = setInterval(checkDaily, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [items.length, initPresets, cleanup, performDailyUpdate, lastDailyUpdate])
+
+  // ── 内容库空闲触发 ──────────────────────────────────────────────────
+  const IDLE_BANK_TRIGGER_PROBABILITY = 0.08 // 8% 概率触发
+  const bankTriggerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const triggerContentBank = useCallback(() => {
+    // 冷却检查
+    const now = Date.now()
+    if (now - lastAutoAt < COOLDOWN_MS) return
+
+    const item = getRandomUnused()
+    if (!item) return
+
+    setLastAutoAt(now)
+    markUsed(item.id)
+
+    // 停止空闲轮换
+    if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
+
+    setActivity('excited')
+    setSpeech(item.content)
+    setShowBubble(true)
+
+    // 8秒后恢复空闲
+    bankTriggerRef.current = setTimeout(() => {
+      setShowBubble(false)
+      startIdleCycle()
+    }, 8000)
+  }, [lastAutoAt, setLastAutoAt, getRandomUnused, markUsed, setSpeech, startIdleCycle])
+
+  // 空闲轮换 + 内容库触发概率
+  useEffect(() => {
+    if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
+    const step = (): void => {
+      // 概率触发内容库
+      if (Math.random() < IDLE_BANK_TRIGGER_PROBABILITY && !showBubble && !isLoading) {
+        triggerContentBank()
+        return
+      }
+      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current)
+      setActivity(nextActivity)
+      const ms = randRange(msRange[0], msRange[1])
+      idleCycleRef.current = setTimeout(step, ms)
+    }
+    step()
     return () => { if (idleCycleRef.current) clearTimeout(idleCycleRef.current) }
-  }, [startIdleCycle])
+  }, [triggerContentBank, showBubble, isLoading])
+
+  // ── 抚摸互动 ──────────────────────────────────────────────────
+  const petEndRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handlePet = useCallback(() => {
+    // 冷却检查
+    const now = Date.now()
+    if (now - lastPetAt < PET_COOLDOWN_MS) return
+
+    setLastPetAt(now)
+
+    // 停止空闲轮换
+    if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
+    if (petEndRef.current) clearTimeout(petEndRef.current)
+
+    // 设置 happy 状态
+    setActivity('happy')
+
+    // 随机回复
+    const reply = randomPick(PET_RESPONSES)
+    setSpeech(reply)
+    setShowBubble(true)
+
+    // 2秒后恢复空闲
+    petEndRef.current = setTimeout(() => {
+      setShowBubble(false)
+      startIdleCycle()
+    }, 2000)
+  }, [lastPetAt, setLastPetAt, setSpeech, startIdleCycle])
 
   // ── 触发宠物讲话 ──────────────────────────────────────────────
   const triggerPet = useCallback(
@@ -315,6 +639,16 @@ export function PetWidget(): React.ReactElement {
         setSpeech(reply)
         setActivity('excited')
         setIsLoading(false)
+
+        // 统计 token 消耗到全局 store
+        if (result.usage) {
+          useGlobalTokenStore.getState().ingest({
+            input: result.usage.input,
+            output: result.usage.output,
+            cacheCreate: result.usage.cacheCreate,
+            cacheRead: result.usage.cacheRead,
+          })
+        }
 
         talkEndRef.current = setTimeout(() => {
           setShowBubble(false)
@@ -387,16 +721,29 @@ export function PetWidget(): React.ReactElement {
   // 当前活动在空闲列表中
   const isIdleActivity = IDLE_ACTIVITIES.includes(activity)
 
+  // 走动时的样式
+  const walkStyle = activity === 'walk' ? {
+    transform: `translateX(${(petX - 50) * 2}px)`, // 基于中心位置的偏移
+    transition: 'none',
+  } : {
+    transform: `translateX(${(petX - 50) * 2}px)`,
+    transition: 'transform 0.5s ease-out',
+  }
+
+  // 走动时显示方向指示
+  const walkIndicator = activity === 'walk' ? (walkDirection === 'right' ? '→' : '←') : ''
+
   return (
-    <div className="shrink-0 border-t border-claude-border bg-claude-surface/50">
+    <div className="shrink-0 border-t border-claude-border bg-claude-surface/50 overflow-hidden">
       <div
         className={`flex items-center gap-2 px-2 py-1.5 transition-all duration-300 ${idleMode ? 'justify-center' : ''}`}
       >
-        {/* 宠物 + 名字 */}
+        {/* 宠物 + 名字（点击抚摸，带位置动画）*/}
         <div
           className="flex flex-col items-center gap-0 cursor-pointer shrink-0"
-          onClick={() => setExpanded((v) => !v)}
-          title="点击展开设置"
+          onClick={handlePet}
+          title="点击抚摸"
+          style={walkStyle}
         >
           <AsciiPet type={config.type} activity={activity} large={idleMode} />
           <span
@@ -404,9 +751,17 @@ export function PetWidget(): React.ReactElement {
             style={{ color: ACTIVITY_COLOR[activity] }}
           >
             {config.name}
-            {isIdleActivity && activity !== 'look' && (
+            {isIdleActivity && activity !== 'look' && activity !== 'blink' && (
               <span className="ml-1 opacity-60">
-                {activity === 'sleep' ? 'zzz' : activity === 'play' ? '~' : activity === 'curious' ? '?' : ''}
+                {activity === 'sleep' || activity === 'doze' ? 'zzz' :
+                 activity === 'play' || activity === 'wiggle' ? '~' :
+                 activity === 'curious' || activity === 'tilt' ? '?' :
+                 activity === 'groom' ? '✨' :
+                 activity === 'yawn' ? 'o' :
+                 activity === 'hungry' ? '!' :
+                 activity === 'sneeze' ? '~' :
+                 activity === 'stretch' ? '↔' :
+                 activity === 'walk' ? walkIndicator : ''}
               </span>
             )}
           </span>
@@ -416,6 +771,18 @@ export function PetWidget(): React.ReactElement {
         {bubbleVisible && (
           <Bubble text={speech} loading={isLoading} />
         )}
+
+        {/* 设置按钮（齿轮图标）*/}
+        <button
+          className="ml-auto p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded shrink-0"
+          onClick={() => setExpanded((v) => !v)}
+          title="设置"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+        </button>
       </div>
 
       {/* 设置面板 */}

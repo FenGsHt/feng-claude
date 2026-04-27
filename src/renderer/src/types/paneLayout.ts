@@ -9,4 +9,4 @@ export type PaneNode =
       second: PaneNode
     }
 
-export type CreateSessionMode = 'fullscreen' | 'split-right' | 'split-down'
+export type CreateSessionMode = 'fullscreen' | 'split-right' | 'split-down' | 'split-worktree'

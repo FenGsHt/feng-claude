@@ -61,6 +61,8 @@ interface PersistedTokenData {
   budget: number
   dailyHistory: Record<string, TokenTotals>
   pricing: Pricing
+  /** 屏蔽详细 token 数字，只显示等级 */
+  hideDetailedTokens: boolean
 }
 
 interface GlobalTokenStore extends PersistedTokenData {
@@ -71,6 +73,7 @@ interface GlobalTokenStore extends PersistedTokenData {
   setBudget: (n: number) => void
   resetTotal: () => void
   setPricing: (p: Pricing) => void
+  setHideDetailedTokens: (v: boolean) => void
   /** Called once at app startup to load persisted data from main process */
   hydrate: () => Promise<void>
 }
@@ -87,8 +90,8 @@ function scheduleSave(state: PersistedTokenData): void {
 
 // Immediate save (for user-initiated actions like setBudget/resetTotal)
 function saveImmediately(state: PersistedTokenData): void {
-  const { total, today, todayDate, budget, dailyHistory, pricing } = state
-  window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing })
+  const { total, today, todayDate, budget, dailyHistory, pricing, hideDetailedTokens } = state
+  window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing, hideDetailedTokens })
     .catch((e: unknown) => console.error('[tokenStore] save failed:', e))
 }
 
@@ -99,6 +102,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
   budget: 0,
   dailyHistory: {},
   pricing: { ...DEFAULT_PRICING },
+  hideDetailedTokens: false,
   _hydrated: false,
 
   hydrate: async () => {
@@ -113,6 +117,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           budget: d.budget ?? 0,
           dailyHistory: d.dailyHistory ?? {},
           pricing: d.pricing ?? { ...DEFAULT_PRICING },
+          hideDetailedTokens: d.hideDetailedTokens ?? false,
           _hydrated: true
         })
       } else {
@@ -194,5 +199,11 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
     const s = get()
     // [2026-04-27] User-initiated action: save immediately
     if (s._hydrated) saveImmediately({ ...s, pricing })
+  },
+
+  setHideDetailedTokens: (v) => {
+    set({ hideDetailedTokens: v })
+    const s = get()
+    if (s._hydrated) saveImmediately({ ...s, hideDetailedTokens: v })
   }
 }))
