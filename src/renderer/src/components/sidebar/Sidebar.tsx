@@ -127,7 +127,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
   const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
 
   const TABS: TabConfig[] = [
     { id: 'files', label: t.sidebar.files, icon: <IconFiles /> },
