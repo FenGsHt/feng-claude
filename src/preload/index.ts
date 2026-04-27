@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -156,7 +156,27 @@ const electronAPI = {
 
   // Notifications
   showNotification: (title: string, body: string): void =>
-    ipcRenderer.send(IPC.NOTIFICATION_SHOW, { title, body })
+    ipcRenderer.send(IPC.NOTIFICATION_SHOW, { title, body }),
+
+  // Auto Update
+  onUpdateStatus: (callback: (payload: UpdateStatusPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: UpdateStatusPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.UPDATE_STATUS, handler)
+    return () => ipcRenderer.removeListener(IPC.UPDATE_STATUS, handler)
+  },
+  onUpdateProgress: (callback: (payload: UpdateProgressPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: UpdateProgressPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.UPDATE_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC.UPDATE_PROGRESS, handler)
+  },
+  checkForUpdates: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC.UPDATE_CHECK),
+  downloadUpdate: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
+  installUpdate: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC.UPDATE_INSTALL),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

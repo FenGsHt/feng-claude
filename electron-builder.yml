@@ -32,3 +32,9 @@ mac:
 linux:
   target:
     - AppImage
+
+# Auto update configuration
+publish:
+  - provider: github
+    owner: FenGsHt
+    repo: feng-claude

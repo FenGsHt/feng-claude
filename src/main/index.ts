@@ -13,8 +13,10 @@ import { WorkspaceStore } from './workspaceStore'
 import { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { registerIpcHandlers } from './ipcHandlers'
 import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
+import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 
 let ptyManager: PtyManager
+let mainWindow: BrowserWindow
 
 function createWindow(): BrowserWindow {
   ensureClaudeHudPluginDefaults()
@@ -54,6 +56,9 @@ function createWindow(): BrowserWindow {
 
   registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher)
 
+  // Setup auto updater
+  setupAutoUpdater(win)
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
     win.webContents.openDevTools({ mode: 'detach' })
@@ -61,6 +66,7 @@ function createWindow(): BrowserWindow {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  mainWindow = win
   return win
 }
 
@@ -98,6 +104,10 @@ app.whenReady().then(() => {
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
   setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)
+  // Check for updates after 3 seconds (only in production)
+  if (app.isPackaged) {
+    setTimeout(() => checkForUpdates(), 3000)
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

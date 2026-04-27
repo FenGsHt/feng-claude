@@ -15,6 +15,7 @@ import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
 import type { McpServerConfig } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
+import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -484,5 +485,19 @@ export function registerIpcHandlers(
     notif.on('show', () => console.log('[notification] displayed'))
     notif.on('error', (err) => console.error('[notification] error:', err))
     notif.show()
+  })
+
+  // ── Auto Update ───────────────────────────────────────────────
+  ipcMain.handle(IPC.UPDATE_CHECK, async () => {
+    checkForUpdates()
+    return { success: true }
+  })
+  ipcMain.handle(IPC.UPDATE_DOWNLOAD, async () => {
+    downloadUpdate()
+    return { success: true }
+  })
+  ipcMain.handle(IPC.UPDATE_INSTALL, async () => {
+    installUpdate()
+    return { success: true }
   })
 }

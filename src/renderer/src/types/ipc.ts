@@ -75,6 +75,13 @@ export const IPC = {
   GIT_WORKTREE_REMOVE: 'git:worktreeRemove',
   GIT_BRANCH_LIST: 'git:branchList',
   GIT_IS_REPO: 'git:isRepo',
+
+  /** 自动更新状态 */
+  UPDATE_STATUS: 'update:status',
+  UPDATE_PROGRESS: 'update:progress',
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
 } as const
 
 export interface SkillEntry {
@@ -256,4 +263,20 @@ export interface GitBranchListResult {
   branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean }>
   currentBranch: string
   error?: string
+}
+
+// Auto update
+export interface UpdateStatusPayload {
+  status: 'checking' | 'available' | 'not-available' | 'downloaded' | 'error'
+  version?: string
+  releaseDate?: string
+  releaseName?: string
+  error?: string
+}
+
+export interface UpdateProgressPayload {
+  percent: number
+  bytesPerSecond: number
+  transferred: number
+  total: number
 }

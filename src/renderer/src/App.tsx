@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { AppShell } from './components/layout/AppShell'
+import { UpdateNotification } from './components/sidebar/UpdateNotification'
 import { usePty } from './hooks/usePty'
 import { useWorkspacePersistence } from './hooks/useWorkspacePersistence'
 import { useSessionStore } from './store/sessionStore'
@@ -42,5 +43,10 @@ export default function App(): React.ReactElement {
     return <div className="h-full w-full bg-[#1a1a1a]" />
   }
 
-  return <AppShell />
+  return (
+    <>
+      <AppShell />
+      <UpdateNotification />
+    </>
+  )
 }
