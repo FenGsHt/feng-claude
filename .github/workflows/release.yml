@@ -31,13 +31,42 @@ jobs:
       - name: Get version
         id: version
         run: |
+          # 获取当前 package.json 版本
+          CURRENT_VER=$(node -p "require('./package.json').version")
+
           if [ -n "${{ inputs.version }}" ]; then
+            # 用户指定了版本
             TAG="v${{ inputs.version }}"
+            NEED_COMMIT=false
           else
-            VER=$(node -p "require('./package.json').version")
-            TAG="v$VER"
+            # 自动递增版本号（minor 版本）
+            # 例如 0.1.0 -> 0.2.0, 1.5.3 -> 1.6.0
+            MAJOR=$(echo $CURRENT_VER | cut -d. -f1)
+            MINOR=$(echo $CURRENT_VER | cut -d. -f2)
+            PATCH=$(echo $CURRENT_VER | cut -d. -f3)
+            NEW_MINOR=$((MINOR + 1))
+            NEW_VER="${MAJOR}.${NEW_MINOR}.0"
+            TAG="v${NEW_VER}"
+
+            # 更新 package.json
+            node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.version='${NEW_VER}';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+
+            echo "Auto incrementing version: $CURRENT_VER -> ${NEW_VER}"
+            NEED_COMMIT=true
           fi
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "NEED_COMMIT=$NEED_COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        if: steps.version.outputs.NEED_COMMIT == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${{{ steps.version.outputs.TAG }}"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push git tag
         run: |
