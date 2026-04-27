@@ -9,6 +9,92 @@ function fmtCost(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
 
+// ── 等级系统（300 级，幂次曲线，满级 = 1 万亿 token）──────
+const MAX_LEVEL = 300
+const MAX_TOKENS = 1_000_000_000_000   // 1 万亿
+const CURVE_EXP = 2.5                  // 指数越大，后期越陡
+
+/** 达到该等级所需的最低累计 token 数 */
+function tokensForLevel(level: number): number {
+  if (level <= 1) return 0
+  if (level >= MAX_LEVEL) return MAX_TOKENS
+  return Math.round(MAX_TOKENS * Math.pow((level - 1) / (MAX_LEVEL - 1), CURVE_EXP))
+}
+
+/** 根据累计 token 计算当前等级（1-300） */
+function levelFromTokens(total: number): number {
+  if (total >= MAX_TOKENS) return MAX_LEVEL
+  let lo = 1, hi = MAX_LEVEL
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    if (tokensForLevel(mid) <= total) lo = mid
+    else hi = mid - 1
+  }
+  return lo
+}
+
+interface TierDef { minLevel: number; maxLevel: number; title: string; emoji: string; color: string }
+
+const TIERS: TierDef[] = [
+  { minLevel: 1,   maxLevel: 30,  title: '石头',  emoji: '🪨', color: '#6b7280' },
+  { minLevel: 31,  maxLevel: 60,  title: '青铜',  emoji: '🥉', color: '#b45309' },
+  { minLevel: 61,  maxLevel: 100, title: '白银',  emoji: '🥈', color: '#94a3b8' },
+  { minLevel: 101, maxLevel: 150, title: '黄金',  emoji: '🥇', color: '#d97706' },
+  { minLevel: 151, maxLevel: 200, title: '铂金',  emoji: '💫', color: '#a78bfa' },
+  { minLevel: 201, maxLevel: 250, title: '钻石',  emoji: '💎', color: '#38bdf8' },
+  { minLevel: 251, maxLevel: 299, title: '王者',  emoji: '👑', color: '#f97316' },
+  { minLevel: 300, maxLevel: 300, title: '神话',  emoji: '🌟', color: '#fbbf24' },
+]
+
+function getTier(level: number): TierDef {
+  return TIERS.find((t) => level >= t.minLevel && level <= t.maxLevel) ?? TIERS[0]!
+}
+
+function getLevelInfo(totalTokens: number): {
+  level: number
+  tier: TierDef
+  progress: number
+  nextTokens: number
+  curTokens: number
+} {
+  const level = levelFromTokens(totalTokens)
+  const tier = getTier(level)
+  const curTokens = tokensForLevel(level)
+  const nextTokens = level < MAX_LEVEL ? tokensForLevel(level + 1) : MAX_TOKENS
+  const progress = level >= MAX_LEVEL ? 1 : Math.min(1, (totalTokens - curTokens) / (nextTokens - curTokens))
+  return { level, tier, progress, nextTokens, curTokens }
+}
+
+function LevelBar({ totalTokens }: { totalTokens: number }): React.ReactElement {
+  const { level, tier, progress, nextTokens } = getLevelInfo(totalTokens)
+  const isMax = level >= MAX_LEVEL
+  return (
+    <div className="mt-2 mb-1">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1">
+          <span className="text-sm leading-none">{tier.emoji}</span>
+          <span className="text-[10px] font-semibold" style={{ color: tier.color }}>
+            Lv.{level} {tier.title}
+          </span>
+        </div>
+        {isMax ? (
+          <span className="text-[9px] font-bold" style={{ color: tier.color }}>MAX</span>
+        ) : (
+          <span className="text-[9px] text-claude-muted">
+            距 Lv.{level + 1}：{fmtTokens(nextTokens - totalTokens)}
+          </span>
+        )}
+      </div>
+      <div className="h-1.5 rounded-full bg-claude-border overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${progress * 100}%`, backgroundColor: tier.color }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function parseBudget(s: string): number | null {
   const t = s.trim().toUpperCase()
   if (!t) return 0  // empty = clear budget
@@ -173,6 +259,9 @@ export function TokenUsageWidget(): React.ReactElement {
           </span>
         </div>
       </div>
+
+      {/* 等级经验条 */}
+      <LevelBar totalTokens={totalUsed} />
 
       {/* Budget progress bar — uses total when budget set, otherwise hidden */}
       <BudgetBar used={budget > 0 ? totalUsed : todayUsed} budget={budget} />
