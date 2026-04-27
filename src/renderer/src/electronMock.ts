@@ -82,12 +82,19 @@ export function injectMockElectronAPI(): void {
         generate: async () => ({ items: [] })
       },
       git: {
-        isRepo: async () => ({ isRepo: false }),
-        branchList: async () => ({ branches: [], currentBranch: '' }),
-        worktreeList: async () => ({ worktrees: [], mainPath: '' }),
-        worktreeCreate: async () => ({ worktreePath: '', branch: '' }),
-        worktreeRemove: async () => ({ success: false })
-      }
+        isRepo: async () => ({ isRepo: true }),
+        branchList: async () => ({ branches: [{ name: 'main', isCurrent: true, isRemote: false }], currentBranch: 'main' }),
+        worktreeList: async () => ({ worktrees: [{ path: '/mock', branch: 'main', commit: 'abc123', isMain: true }], mainPath: '/mock' }),
+        worktreeCreate: async () => ({ worktreePath: '/mock-worktree', branch: 'feat/test' }),
+        worktreeRemove: async () => ({ success: true }),
+        mergeBranch: async () => ({ success: true }),
+        unmergedCommits: async () => ({ count: 0, commits: [] })
+      },
+      onUpdateStatus: listener,
+      onUpdateProgress: listener,
+      checkForUpdates: async () => ({ success: true }),
+      downloadUpdate: async () => ({ success: true }),
+      installUpdate: async () => ({ success: true })
     }
   }
 }

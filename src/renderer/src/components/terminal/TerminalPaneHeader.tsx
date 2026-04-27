@@ -89,32 +89,33 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     if (!sess?.workdir) return
     try {
       const repoResult = await window.electronAPI.git?.isRepo(sess.workdir)
-      if (!repoResult) {
+      if (!repoResult?.isRepo) {
         setIsGitRepo(false)
         return
       }
-      setIsGitRepo(repoResult.isRepo)
-      if (repoResult.isRepo) {
-        const wtResult = await window.electronAPI.git?.worktreeList(sess.workdir)
-        if (wtResult) {
-          setWorktrees(wtResult.worktrees)
+      setIsGitRepo(true)
 
-          // 检查每个 worktree 分支是否有未合并的提交
-          const unmerged: UnmergedInfo[] = []
-          for (const wt of wtResult.worktrees.filter(w => !w.isMain)) {
-            const result = await window.electronAPI.git?.unmergedCommits({
-              repoPath: sess.workdir,
-              branch: wt.branch,
-            })
-            if (result && result.count > 0) {
-              unmerged.push({ branch: wt.branch, count: result.count })
-            }
+      const wtResult = await window.electronAPI.git?.worktreeList(sess.workdir)
+      if (!wtResult) return
+      setWorktrees(wtResult.worktrees)
+
+      // 检查每个 worktree 分支是否有未合并的提交
+      const unmerged: UnmergedInfo[] = []
+      for (const wt of wtResult.worktrees.filter(w => !w.isMain)) {
+        try {
+          const result = await window.electronAPI.git?.unmergedCommits({
+            repoPath: sess.workdir,
+            branch: wt.branch,
+          })
+          if (result && result.count > 0) {
+            unmerged.push({ branch: wt.branch, count: result.count })
           }
-          setUnmergedInfo(unmerged)
-          // 如果有未合并的提交，显示合并提醒
-          setShowMergeReminder(unmerged.length > 0)
+        } catch (e) {
+          console.warn('[TerminalPaneHeader] unmergedCommits check failed for', wt.branch, e)
         }
       }
+      setUnmergedInfo(unmerged)
+      setShowMergeReminder(unmerged.length > 0)
     } catch (e) {
       console.warn('[TerminalPaneHeader] git check failed:', e)
       setIsGitRepo(false)
