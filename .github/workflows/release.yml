@@ -60,10 +60,11 @@ jobs:
       - name: Commit version bump
         if: steps.version.outputs.NEED_COMMIT == 'true'
         run: |
+          TAG="${{ steps.version.outputs.TAG }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
-          git commit -m "chore: bump version to ${{ steps.version.outputs.TAG }}"
+          git commit -m "chore: bump version to ${TAG}"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
