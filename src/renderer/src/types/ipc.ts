@@ -75,6 +75,7 @@ export const IPC = {
   GIT_WORKTREE_REMOVE: 'git:worktreeRemove',
   GIT_BRANCH_LIST: 'git:branchList',
   GIT_IS_REPO: 'git:isRepo',
+  GIT_MERGE_BRANCH: 'git:mergeBranch',
 
   /** 自动更新状态 */
   UPDATE_STATUS: 'update:status',
@@ -262,6 +263,17 @@ export interface GitWorktreeRemoveResult {
 export interface GitBranchListResult {
   branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean }>
   currentBranch: string
+  error?: string
+}
+
+export interface GitMergeBranchPayload {
+  repoPath: string
+  branch: string
+  targetBranch?: string  // 合并到哪个分支，默认当前分支
+}
+
+export interface GitMergeBranchResult {
+  success: boolean
   error?: string
 }
 

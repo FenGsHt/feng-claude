@@ -10,12 +10,13 @@ interface Props {
 export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): React.ReactElement | null {
   const [branches, setBranches] = useState<Array<{ name: string; isCurrent: boolean; isRemote: boolean }>>([])
   const [currentBranch, setCurrentBranch] = useState('')
-  const [worktrees, setWorktrees] = useState<Array<{ path: string; branch: string; isMain: boolean }>>([])
+  const [worktrees, setWorktrees] = useState<Array<{ path: string; branch: string; commit: string; isMain: boolean }>>([])
   const [selectedBranch, setSelectedBranch] = useState('')
   const [newBranchName, setNewBranchName] = useState('')
   const [createNewBranch, setCreateNewBranch] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [mergeLoading, setMergeLoading] = useState<string | null>(null) // 正在合并的分支名
 
   // 加载分支和 worktree 信息
   const loadData = useCallback(async () => {
@@ -87,6 +88,26 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setLoading(false)
   }
 
+  const handleMerge = async (branch: string): void => {
+    setMergeLoading(branch)
+    setError('')
+    try {
+      const result = await window.electronAPI.git.mergeBranch({
+        repoPath,
+        branch,
+      })
+      if (!result.success) {
+        setError(`合并 ${branch} 失败: ${result.error}`)
+      } else {
+        // 合并成功，刷新数据
+        await loadData()
+      }
+    } catch (e) {
+      setError(String(e))
+    }
+    setMergeLoading(null)
+  }
+
   // 已存在的 worktree 分支
   const existingWorktreeBranches = worktrees.map(wt => wt.branch)
 
@@ -118,11 +139,21 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
           {worktrees.length > 1 && (
             <div className="space-y-1">
               <div className="text-[11px] text-claude-muted">已存在的 Worktree：</div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-col gap-1">
                 {worktrees.filter(wt => !wt.isMain).map(wt => (
-                  <span key={wt.path} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 font-mono">
-                    {wt.branch}
-                  </span>
+                  <div key={wt.path} className="flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 font-mono flex-1 truncate">
+                      {wt.branch}
+                    </span>
+                    <button
+                      onClick={() => handleMerge(wt.branch)}
+                      disabled={mergeLoading === wt.branch}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 hover:bg-green-600/30 disabled:opacity-50 shrink-0"
+                      title={`合并 ${wt.branch} 到 ${currentBranch}`}
+                    >
+                      {mergeLoading === wt.branch ? '合并中...' : '合并'}
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>

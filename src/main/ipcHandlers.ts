@@ -474,6 +474,19 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle(IPC.GIT_MERGE_BRANCH, async (_e, payload) => {
+    const { repoPath, branch } = payload as { repoPath: string; branch: string }
+    try {
+      const { execSync } = await import('child_process')
+      // 合并指定分支到当前分支
+      const output = execSync(`git merge "${branch}"`, { cwd: repoPath, encoding: 'utf-8' })
+      return { success: true, output, error: undefined }
+    } catch (e) {
+      // 合并可能有冲突，返回错误信息
+      return { success: false, error: String(e) }
+    }
+  })
+
   // ── Notifications ────────────────────────────────────────────
   ipcMain.on(IPC.NOTIFICATION_SHOW, (_e, { title, body }) => {
     console.log('[notification] show:', title, body)
