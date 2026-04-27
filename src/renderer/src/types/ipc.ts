@@ -61,7 +61,10 @@ export const IPC = {
   SKILLS_OPEN_DIR: 'skills:openDir',
 
   /** 主进程显示系统通知 */
-  NOTIFICATION_SHOW: 'notification:show'
+  NOTIFICATION_SHOW: 'notification:show',
+
+  /** 宠物 Agent：调用 Anthropic API 返回建议 */
+  PET_ASK: 'pet:ask'
 } as const
 
 export interface SkillEntry {
@@ -170,4 +173,15 @@ export interface ToolCallPayload {
   name: string
   input: Record<string, unknown>
   timestamp: number
+}
+
+export interface PetAskPayload {
+  message: string
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+  petConfig: { name: string; personality: string }
+}
+
+export interface PetAskResult {
+  text?: string
+  error?: string
 }

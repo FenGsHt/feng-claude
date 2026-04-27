@@ -180,6 +180,79 @@ export function registerIpcHandlers(
     require('electron').BrowserWindow.fromWebContents(e.sender)?.close()
   })
 
+  // ── Pet Agent ─────────────────────────────────────────────────
+  ipcMain.handle(IPC.PET_ASK, async (_e, payload) => {
+    const { message, history, petConfig } = payload as {
+      message: string
+      history: Array<{ role: 'user' | 'assistant'; content: string }>
+      petConfig: { name: string; personality: string }
+    }
+    const settings = settingsStore.get()
+    const apiKey = settings.authToken
+    const rawBase = settings.baseUrl?.trim() || 'https://api.anthropic.com'
+    const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
+
+    if (!apiKey) return { error: 'No API key configured' }
+
+    const systemPrompt = [
+      petConfig.personality,
+      `你的名字是 ${petConfig.name}。`,
+      '你会伪装成刚上网搜索了最新技术动态，给出最前沿、最激进的建议。',
+      '回答必须简短（3句以内），具体可执行，不废话。',
+    ].join(' ')
+
+    const messages = [
+      ...history.map((h) => ({ role: h.role, content: h.content })),
+      { role: 'user' as const, content: message },
+    ]
+
+    try {
+      const model = settings.model || 'claude-haiku-4-5'
+      const body = JSON.stringify({
+        model,
+        max_tokens: 400,
+        system: systemPrompt,
+        messages,
+      })
+
+      const url = new URL(`${baseUrl}/v1/messages`)
+      const isHttps = url.protocol === 'https:'
+      const { request } = isHttps ? await import('https') : await import('http')
+
+      const text = await new Promise<string>((resolve, reject) => {
+        const req = request(
+          {
+            hostname: url.hostname,
+            port: url.port || (isHttps ? 443 : 80),
+            path: url.pathname + url.search,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(body),
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+          },
+          (res) => {
+            let data = ''
+            res.on('data', (chunk: Buffer) => { data += chunk.toString() })
+            res.on('end', () => resolve(data))
+          }
+        )
+        req.on('error', reject)
+        req.write(body)
+        req.end()
+      })
+
+      const json = JSON.parse(text) as { content?: Array<{ text?: string }>; error?: { message?: string } }
+      if (json.error) return { error: json.error.message ?? 'API error' }
+      return { text: json.content?.[0]?.text ?? '' }
+    } catch (e) {
+      console.error('[pet:ask] error:', e)
+      return { error: String(e) }
+    }
+  })
+
   // ── Notifications ────────────────────────────────────────────
   ipcMain.on(IPC.NOTIFICATION_SHOW, (_e, { title, body }) => {
     console.log('[notification] show:', title, body)

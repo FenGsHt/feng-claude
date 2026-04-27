@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -121,6 +121,12 @@ const electronAPI = {
     delete: (name: string, isFolder: boolean): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC.SKILLS_DELETE, { name, isFolder }),
     openDir: (): Promise<void> => ipcRenderer.invoke(IPC.SKILLS_OPEN_DIR)
+  },
+
+  // Pet Agent
+  pet: {
+    ask: (payload: PetAskPayload): Promise<PetAskResult> =>
+      ipcRenderer.invoke(IPC.PET_ASK, payload)
   },
 
   // Window controls

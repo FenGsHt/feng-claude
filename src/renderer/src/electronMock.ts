@@ -74,6 +74,9 @@ export function injectMockElectronAPI(): void {
       tokenData: {
         get: async () => null,
         set: async () => {}
+      },
+      pet: {
+        ask: async () => ({ text: '（浏览器预览模式，无法调用 API）' })
       }
     }
   }

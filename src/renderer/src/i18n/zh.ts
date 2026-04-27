@@ -8,6 +8,7 @@ export const zh = {
     plugins: '插件',
     skills: 'Skills',
     mcp: 'MCP',
+    pet: '宠物',
     guide: '指南',
     settings: '设置'
   },
