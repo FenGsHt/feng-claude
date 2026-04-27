@@ -204,6 +204,24 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     }
     term.textarea.addEventListener('keydown', onKeyDownClipboardPaste, true)
 
+    /**
+     * [2026-04-27] Ctrl+Shift+C 复制终端选中文本（终端标准快捷键，不干扰 Ctrl+C 的 SIGINT）。
+     */
+    const onKeyDownClipboardCopy = (ev: KeyboardEvent): void => {
+      if (ev.type !== 'keydown') return
+      if (!(ev.ctrlKey || ev.metaKey)) return
+      if (!ev.shiftKey) return
+      if (ev.altKey) return
+      if (ev.isComposing) return
+      if (ev.code !== 'KeyC' && ev.key !== 'c' && ev.key !== 'C') return
+      const selection = term.getSelection()
+      if (!selection || selection.length === 0) return
+      navigator.clipboard.writeText(selection).catch(() => {})
+      ev.preventDefault()
+      ev.stopImmediatePropagation()
+    }
+    term.textarea.addEventListener('keydown', onKeyDownClipboardCopy, true)
+
     // [2026-04-23] 原先立即 fit() + 80ms debounce；打包后 ResizeObserver 连发易与 xterm 内部 idle 队列打架，改为 220ms + rAF 合并
     // fit()
     scheduleFit()
@@ -226,6 +244,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       dataSub.dispose()
       term.textarea.removeEventListener('paste', onPasteFiles, true)
       term.textarea.removeEventListener('keydown', onKeyDownClipboardPaste, true)
+      term.textarea.removeEventListener('keydown', onKeyDownClipboardCopy, true)
       ro.disconnect()
       if (fitTimer) clearTimeout(fitTimer)
     }
