@@ -20,9 +20,8 @@ function notifyTaskDone(sessionId: string): void {
   const start = runningStartTime.get(sessionId)
   if (!start || Date.now() - start < NOTIFY_AFTER_MS) return
   if (document.hasFocus()) return
-  try {
-    new Notification('Claude GUI', { body: 'Task completed', silent: false })
-  } catch { /* ignore if notifications blocked */ }
+  // Use main process notification (more reliable than renderer Notification API)
+  window.electronAPI?.showNotification('Claude GUI', 'Task completed')
 }
 
 export function usePty(): void {

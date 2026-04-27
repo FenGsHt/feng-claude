@@ -126,7 +126,11 @@ const electronAPI = {
   // Window controls
   appMinimize: (): void => ipcRenderer.send(IPC.APP_MINIMIZE),
   appMaximize: (): void => ipcRenderer.send(IPC.APP_MAXIMIZE),
-  appClose: (): void => ipcRenderer.send(IPC.APP_CLOSE)
+  appClose: (): void => ipcRenderer.send(IPC.APP_CLOSE),
+
+  // Notifications
+  showNotification: (title: string, body: string): void =>
+    ipcRenderer.send(IPC.NOTIFICATION_SHOW, { title, body })
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

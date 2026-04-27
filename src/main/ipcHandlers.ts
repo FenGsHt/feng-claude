@@ -1,4 +1,4 @@
-import { ipcMain, dialog, clipboard } from 'electron'
+import { ipcMain, dialog, clipboard, Notification } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve } from 'path'
 import { IPC } from '../renderer/src/types/ipc'
@@ -178,5 +178,10 @@ export function registerIpcHandlers(
   })
   ipcMain.on(IPC.APP_CLOSE, (e) => {
     require('electron').BrowserWindow.fromWebContents(e.sender)?.close()
+  })
+
+  // ── Notifications ────────────────────────────────────────────
+  ipcMain.on(IPC.NOTIFICATION_SHOW, (_e, { title, body }) => {
+    new Notification({ title, body, silent: false }).show()
   })
 }

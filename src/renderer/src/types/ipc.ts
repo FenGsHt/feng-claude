@@ -58,7 +58,10 @@ export const IPC = {
   SKILLS_GET: 'skills:get',
   SKILLS_SAVE: 'skills:save',
   SKILLS_DELETE: 'skills:delete',
-  SKILLS_OPEN_DIR: 'skills:openDir'
+  SKILLS_OPEN_DIR: 'skills:openDir',
+
+  /** 主进程显示系统通知 */
+  NOTIFICATION_SHOW: 'notification:show'
 } as const
 
 export interface SkillEntry {
