@@ -78,6 +78,10 @@ interface SessionWatch {
   /** Most recently seen JSONL file — used to detect a new claude conversation */
   latestFile: string | null
   timer: ReturnType<typeof setInterval> | null
+  /** Last time we saw token usage — used to detect idle state for notifications */
+  lastTokenTime: number | null
+  /** Whether we've already sent 'running' status (avoid duplicate sends) */
+  runningNotified: boolean
 }
 
 export class ClaudeSessionWatcher {
@@ -102,7 +106,9 @@ export class ClaudeSessionWatcher {
       fileByteOffsets: new Map(),
       lastUsageByMessageId: new Map(),
       latestFile: null,
-      timer: null
+      timer: null,
+      lastTokenTime: null,
+      runningNotified: false
     }
 
     // Pre-populate byte offsets for files that already exist so we never
@@ -177,6 +183,17 @@ export class ClaudeSessionWatcher {
         }
 
         this.processNewBytes(sw, filePath, isNewConversation)
+      }
+
+      // [2026-04-27] Detect idle state: if no token usage for 3+ seconds, send 'idle' status
+      // This enables task completion notifications in the renderer
+      if (sw.lastTokenTime && sw.runningNotified) {
+        const elapsed = Date.now() - sw.lastTokenTime
+        if (elapsed > 3000) {
+          console.log(`[TokenWatcher] idle detected, elapsed=${elapsed}ms`)
+          this.emitStatus(sw.sessionId, 'idle')
+          sw.runningNotified = false
+        }
       }
     } catch (err) {
       console.error('[TokenWatcher] poll error:', err)
@@ -256,6 +273,12 @@ export class ClaudeSessionWatcher {
         console.log(
           `[TokenWatcher] emit token delta: in=${d.input} out=${d.output} cc=${d.cacheCreate} cr=${d.cacheRead} reset=${needReset} msgId=${messageId}`
         )
+        // [2026-04-27] Send 'running' status when we see token usage (Claude is thinking)
+        if (!sw.runningNotified) {
+          this.emitStatus(sw.sessionId, 'running')
+          sw.runningNotified = true
+        }
+        sw.lastTokenTime = Date.now()
         this.emit({
           sessionId: sw.sessionId,
           input: d.input,
@@ -278,6 +301,13 @@ export class ClaudeSessionWatcher {
   private emit(payload: TokenUsageUpdatePayload): void {
     if (!this.win.isDestroyed()) {
       this.win.webContents.send(IPC.TOKEN_USAGE_UPDATE, payload)
+    }
+  }
+
+  private emitStatus(sessionId: string, status: 'running' | 'idle'): void {
+    if (!this.win.isDestroyed()) {
+      console.log(`[TokenWatcher] emit status: ${sessionId} ${status}`)
+      this.win.webContents.send(IPC.PTY_STATUS, { sessionId, status })
     }
   }
 

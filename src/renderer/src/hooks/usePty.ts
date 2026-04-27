@@ -18,8 +18,13 @@ const NOTIFY_AFTER_MS = 10_000 // 10 seconds - only notify for longer tasks
 
 function notifyTaskDone(sessionId: string): void {
   const start = runningStartTime.get(sessionId)
-  if (!start || Date.now() - start < NOTIFY_AFTER_MS) return
-  // Always notify when task completes after running >10s
+  const elapsed = start ? Date.now() - start : 0
+  console.log('[notify] task done, sessionId:', sessionId, 'elapsed:', elapsed, 'ms')
+  if (!start || elapsed < NOTIFY_AFTER_MS) {
+    console.log('[notify] skipped - elapsed <', NOTIFY_AFTER_MS)
+    return
+  }
+  console.log('[notify] sending notification')
   window.electronAPI?.showNotification('Claude GUI', 'Task completed')
 }
 

@@ -182,6 +182,14 @@ export function registerIpcHandlers(
 
   // ── Notifications ────────────────────────────────────────────
   ipcMain.on(IPC.NOTIFICATION_SHOW, (_e, { title, body }) => {
-    new Notification({ title, body, silent: false }).show()
+    console.log('[notification] show:', title, body)
+    if (!Notification.isSupported()) {
+      console.warn('[notification] not supported on this platform')
+      return
+    }
+    const notif = new Notification({ title, body, silent: false })
+    notif.on('show', () => console.log('[notification] displayed'))
+    notif.on('error', (err) => console.error('[notification] error:', err))
+    notif.show()
   })
 }
