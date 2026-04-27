@@ -199,11 +199,8 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           {/* 合并提醒 */}
           {showMergeReminder && (
             <HeaderBtn
-              title={`有 ${worktrees.length} 个 worktree，记得合并！`}
-              onClick={() => {
-                // 点击显示提示
-                alert(`提示：当前仓库有 ${worktrees.length} 个 worktree。\n分支：${worktrees.filter(wt => !wt.isMain).map(wt => wt.branch).join(', ')}\n请在完成开发后合并并清理 worktree。`)
-              }}
+              title={`有 ${worktrees.length} 个 worktree，点击查看/合并`}
+              onClick={() => setShowWorktreeDialog(true)}
               warning
             >
               <MergeIcon />
