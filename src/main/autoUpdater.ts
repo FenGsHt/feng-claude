@@ -1,5 +1,5 @@
 import { autoUpdater } from 'electron-updater'
-import { BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 
 let mainWindow: BrowserWindow | null = null
@@ -59,6 +59,11 @@ export function setupAutoUpdater(win: BrowserWindow): void {
       error: error?.message || String(error),
     })
   })
+
+  // 启动后延迟 3 秒自动检查更新（避免阻塞启动）
+  setTimeout(() => {
+    checkForUpdates()
+  }, 3000)
 }
 
 export function checkForUpdates(): void {
@@ -83,6 +88,17 @@ export function downloadUpdate(): void {
 }
 
 export function installUpdate(): void {
-  // quitAndInstall will close all windows and restart the app
-  autoUpdater.quitAndInstall(false, true)
+  // Close all windows immediately so the NSIS installer can overwrite files
+  // without hitting "application is still running" dialog
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.destroy()   // destroy() skips close-event, forces immediate removal
+  }
+
+  // Give the main process 300 ms to flush PTY scrollback, then hard-exit
+  // so the installer never finds a running claude-gui.exe
+  setTimeout(() => {
+    autoUpdater.quitAndInstall(false, true)
+    // Fallback: if quitAndInstall doesn't exit within 2 s, force-exit
+    setTimeout(() => app.exit(0), 2000)
+  }, 300)
 }

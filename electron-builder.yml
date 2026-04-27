@@ -25,6 +25,7 @@ nsis:
   artifactName: '${name}-${version}-setup.${ext}'
   oneClick: false
   perMachine: false
+  allowElevation: true
   allowToChangeInstallationDirectory: true
   shortcutName: '${productName}'
   uninstallDisplayName: '${productName}'

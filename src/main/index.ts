@@ -114,7 +114,10 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
-  ptyManager?.flushAll()
+  ptyManager?.flushAll()   // save scrollback
+  ptyManager?.closeAll()   // kill PTY child processes so they don't keep the process alive
+  // Hard-exit after 1 s as a backstop (e.g. NSIS installer update flow)
+  setTimeout(() => process.exit(0), 1000).unref()
 })
 
 app.on('window-all-closed', () => {
