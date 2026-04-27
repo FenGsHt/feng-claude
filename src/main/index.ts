@@ -87,7 +87,11 @@ app.whenReady().then(() => {
     })
   }
 
-  electronApp.setAppUserModelId('com.claudegui')
+  // [2026-04-27] For Windows notifications to work, AppUserModelId must match the executable path
+  // in portable mode. In installed mode, the installer creates a Start Menu shortcut with this ID.
+  const appId = app.isPackaged ? 'com.claudegui' : process.execPath
+  electronApp.setAppUserModelId(appId)
+  console.log('[main] AppUserModelId set to:', appId)
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
