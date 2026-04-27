@@ -2,11 +2,10 @@
  * PetWidget — 固定显示在 TokenUsageWidget 上方
  *
  * 触发机制：
- *   1. lastUserPrompt 变化（用户提交了终端命令）→ debounce N 秒 → 调用 API
- *   2. 新增 toolCall → debounce N 秒 → 调用 API
- *   3. 冷却 30s，防止频繁调用
+ *   1. output tokens 增加（Claude 开始回答）→ 提交用户问题 → 延迟 N ms → 调用 API
+ *   2. 冷却 45s，防止频繁调用
  *
- * 空闲时：宠物在自己玩（look/sleep/play/curious 四种活动自动轮换）
+ * 空闲时：宠物在自己玩（look/sleep/play/curious 等活动自动轮换）
  * 讲话时：右侧出现打字机气泡，讲完后气泡消失宠物继续玩
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
@@ -15,6 +14,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
 import { useContentBankStore } from '../../store/contentBankStore'
+import { useUserPromptStore } from '../../store/userPromptStore'
 
 // ── ASCII 帧库 ────────────────────────────────────────────────────
 type Activity =
@@ -345,6 +345,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
   const [name, setName] = useState(config.name)
   const [persona, setPersona] = useState(config.personality)
   const [delay, setDelay] = useState(String(config.autoDelaySec))
+  const [probability, setProbability] = useState(String(config.triggerProbability))
 
   const PET_TYPES: Array<{ id: PetType; label: string }> = [
     { id: 'cat', label: '🐱' },
@@ -378,6 +379,17 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
       </div>
 
       <div className="flex items-center gap-1.5">
+        <span className="text-[9px] text-slate-500 shrink-0">触发概率</span>
+        <input
+          value={probability}
+          onChange={(e) => setProbability(e.target.value)}
+          className="w-10 text-[9.5px] px-1 py-0.5 rounded border border-slate-600/50 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50 font-mono text-center"
+          placeholder="40"
+        />
+        <span className="text-[9px] text-slate-500">% (0-100，100=百分百)</span>
+      </div>
+
+      <div className="flex items-center gap-1.5">
         <span className="text-[9px] text-slate-500 shrink-0">触发延迟（秒）</span>
         <input
           value={delay}
@@ -400,7 +412,13 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
         <button
           onClick={() => {
             const d = parseInt(delay, 10)
-            setConfig({ name, personality: persona, autoDelaySec: isNaN(d) ? 6 : Math.max(0, d) })
+            const p = parseInt(probability, 10)
+            setConfig({
+              name,
+              personality: persona,
+              autoDelaySec: isNaN(d) ? 6 : Math.max(0, d),
+              triggerProbability: isNaN(p) ? 40 : Math.max(0, Math.min(100, p)),
+            })
             onClose()
           }}
           className="flex-1 text-[9px] py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 border border-amber-600/40 text-amber-300"
@@ -421,7 +439,6 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
 
 // ── Main ─────────────────────────────────────────────────────────
 const COOLDOWN_MS = 45_000       // 两次自动触发最小间隔
-const TRIGGER_PROBABILITY = 0.4  // 40% 概率响应
 const PET_COOLDOWN_MS = 3_000    // 抚摸冷却 3 秒
 
 // 抚摸预设回复
@@ -436,11 +453,11 @@ function randomPick<T>(arr: T[]): T {
 export function PetWidget(): React.ReactElement {
   const { config, speech, history, lastAutoAt, lastPetAt,
           setSpeech, pushHistory, setLastAutoAt, setLastPetAt } = usePetStore()
-  const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
-  // output token 计数是最准确的"Claude Code 完成了一轮回答"的信号
-  const outputTokens = useTokenUsageStore((s) =>
-    activeSessionId ? (s.bySession[activeSessionId]?.output ?? 0) : 0
-  )
+  const { sessions, activeSessionId } = useSessionStore()
+  // [2026-04-28] 监听所有 session 的 output tokens，而不是只监听 activeSessionId
+  const allOutputTokens = useTokenUsageStore((s) => s.bySession)
+  // [2026-04-27] 实时用户问题（不走 sessionHistory 的延迟链路）
+  const allUserPrompts = useUserPromptStore((s) => s.prompts)
   // 内容库
   const { items, getRandomUnused, markUsed, initPresets, cleanup, performDailyUpdate, lastDailyUpdate } = useContentBankStore()
 
@@ -456,10 +473,8 @@ export function PetWidget(): React.ReactElement {
   const idleStateRef = useRef<IdleState>({ lastActivity: 'look', cooldowns: new Map() })
   const talkEndRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const walkAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // 上次看到的 output token 数，用于检测新增
-  const lastOutputRef = useRef(0)
-
-  const activeSession = sessions.find((s) => s.id === activeSessionId)
+  // [2026-04-28] 追踪每个 session 的上次 output token 数（用 Map 而不是单个值）
+  const lastOutputBySessionRef = useRef<Map<string, number>>(new Map())
 
   // ── 走动动画 ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -665,53 +680,53 @@ export function PetWidget(): React.ReactElement {
     [config, history, isLoading, setSpeech, pushHistory, startIdleCycle]
   )
 
-  // ── 构建上下文 ────────────────────────────────────────────────
-  const buildContext = useCallback((): string => {
-    const workdir = activeSession?.workdir ?? '(未知目录)'
-    const rec = activeSession
-      ? sessionHistory.find(
-          (r) => r.workdir.replace(/\\/g, '/').toLowerCase() ===
-                 activeSession.workdir.replace(/\\/g, '/').toLowerCase()
+  // ── 核心触发：监听所有 session 的 output tokens 增加 ────────────────────────
+  // [2026-04-28] 改为监听所有 session，而不是只监听 activeSessionId
+  useEffect(() => {
+    const prob = config.triggerProbability / 100
+
+    // 遍历所有 session，找出有新增 output tokens 的
+    for (const [sessionId, totals] of Object.entries(allOutputTokens)) {
+      const output = totals.output ?? 0
+      const prevOutput = lastOutputBySessionRef.current.get(sessionId) ?? 0
+
+      // 更新追踪值
+      lastOutputBySessionRef.current.set(sessionId, output)
+
+      // 检查是否有新增
+      if (output <= prevOutput) continue
+
+      const delta = output - prevOutput
+
+      // 跳过太小的增量（可能是噪音）
+      if (delta < 10) continue
+
+      // 概率门控
+      if (Math.random() > prob) continue
+
+      // 冷却检查
+      const now = Date.now()
+      if (now - lastAutoAt < COOLDOWN_MS) continue
+
+      setLastAutoAt(now)
+
+      // 获取该 session 的用户问题和工作目录
+      const userPrompt = allUserPrompts.get(sessionId) ?? ''
+      const session = sessions.find(s => s.id === sessionId)
+      const workdir = session?.workdir ?? '(未知目录)'
+      const ctx = `工作目录: ${workdir}\n${userPrompt ? `用户的问题: ${userPrompt}` : ''}`
+
+      // 延迟 500ms 触发，确保 userPromptStore 已更新
+      const delayTimer = setTimeout(() => {
+        void triggerPet(
+          `[上下文]\n${ctx}\n\n用户刚刚在 Claude Code 中提交了一个问题并得到了回答（${delta} output tokens）。用你的人格，给出一条激进的技术点评或建议。`
         )
-      : null
-    const lastPrompt = rec?.lastUserPrompt ?? ''
-    const lines = [`工作目录: ${workdir}`]
-    if (lastPrompt) lines.push(`用户最近的问题/操作: ${lastPrompt}`)
-    return lines.join('\n')
-  }, [activeSession, sessionHistory])
+      }, 500)
 
-  // ── 核心触发：监听 output tokens 增加 ────────────────────────
-  // output tokens 增加 = Claude Code 完成了一轮回答 = 用户之前发送了一个问题
-  useEffect(() => {
-    if (outputTokens <= lastOutputRef.current) {
-      lastOutputRef.current = outputTokens
-      return
+      // 只触发一次，找到后立即返回
+      return () => clearTimeout(delayTimer)
     }
-    // 有新的 output tokens
-    const delta = outputTokens - lastOutputRef.current
-    lastOutputRef.current = outputTokens
-
-    // 跳过太小的增量（可能是噪音）
-    if (delta < 10) return
-
-    // 概率门控：40% 概率触发
-    if (Math.random() > TRIGGER_PROBABILITY) return
-
-    // 冷却检查
-    const now = Date.now()
-    if (now - lastAutoAt < COOLDOWN_MS) return
-
-    setLastAutoAt(now)
-    const ctx = buildContext()
-    void triggerPet(
-      `[上下文]\n${ctx}\n\n用户刚刚在 Claude Code 中提交了一个问题并得到了回答（${delta} output tokens）。用你的人格，给出一条激进的技术点评或建议。`
-    )
-  }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt])
-
-  // session 切换时重置 token 计数基线
-  useEffect(() => {
-    lastOutputRef.current = outputTokens
-  }, [activeSessionId])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allOutputTokens, allUserPrompts, sessions, lastAutoAt, triggerPet, setLastAutoAt, config.triggerProbability])
 
   // 气泡是否可见：loading 时 or talking 时
   const bubbleVisible = showBubble

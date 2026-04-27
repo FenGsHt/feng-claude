@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { usePetStore, type PetType } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
+import { useUserPromptStore } from '../../store/userPromptStore'
 
 // ── ASCII Art ────────────────────────────────────────────────────
 // 每个 PetType 3 帧（idle 循环），thinking 状态用独立帧
@@ -186,12 +187,17 @@ function SpeechBubble({
 export function PetPanel(): React.ReactElement {
   const { config, mood, speech, history, setConfig, setMood, setSpeech, pushHistory, clearHistory } =
     usePetStore()
-  const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
+  const { sessions, activeSessionId } = useSessionStore()
+  // [2026-04-27] 实时用户问题
+  const userPrompt = useUserPromptStore((s) =>
+    activeSessionId ? s.prompts.get(activeSessionId) : undefined
+  )
 
   const [input, setInput] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [draftName, setDraftName] = useState(config.name)
   const [draftPersonality, setDraftPersonality] = useState(config.personality)
+  const [draftProbability, setDraftProbability] = useState(String(config.triggerProbability))
   const [isTyping, setIsTyping] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -206,19 +212,12 @@ export function PetPanel(): React.ReactElement {
 
   const buildContext = useCallback((): string => {
     const workdir = activeSession?.workdir ?? '未知目录'
-    // Find last user prompt from session history
-    const sessionRecord = activeSession
-      ? sessionHistory.find(
-          (r) =>
-            r.workdir.replace(/\\/g, '/').toLowerCase() ===
-            activeSession.workdir.replace(/\\/g, '/').toLowerCase()
-        )
-      : null
-    const lastPrompt = sessionRecord?.lastUserPrompt ?? ''
+    // [2026-04-27] 使用实时 userPromptStore
+    const lastPrompt = userPrompt ?? ''
     const lines: string[] = [`当前工作目录: ${workdir}`]
-    if (lastPrompt) lines.push(`用户最近输入: ${lastPrompt}`)
+    if (lastPrompt) lines.push(`用户的问题: ${lastPrompt}`)
     return lines.join('\n')
-  }, [activeSession, sessionHistory])
+  }, [activeSession, userPrompt])
 
   const askPet = useCallback(
     async (userMsg: string) => {
@@ -280,7 +279,12 @@ export function PetPanel(): React.ReactElement {
   }
 
   function saveSettings(): void {
-    setConfig({ name: draftName, personality: draftPersonality })
+    const p = parseInt(draftProbability, 10)
+    setConfig({
+      name: draftName,
+      personality: draftPersonality,
+      triggerProbability: isNaN(p) ? 40 : Math.max(0, Math.min(100, p)),
+    })
     setShowSettings(false)
   }
 
@@ -365,6 +369,7 @@ export function PetPanel(): React.ReactElement {
             setShowSettings((v) => !v)
             setDraftName(config.name)
             setDraftPersonality(config.personality)
+            setDraftProbability(String(config.triggerProbability))
           }}
           className="mt-2 text-[9.5px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition-colors"
         >
@@ -403,6 +408,18 @@ export function PetPanel(): React.ReactElement {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Trigger probability */}
+            <div>
+              <label className="text-[9px] text-slate-400 block mb-0.5">触发概率 (%)</label>
+              <input
+                value={draftProbability}
+                onChange={(e) => setDraftProbability(e.target.value)}
+                className="w-full text-[10px] px-2 py-1 rounded border border-slate-600/60 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50 font-mono"
+                placeholder="40"
+              />
+              <div className="text-[8px] text-slate-500 mt-0.5">0-100，100 = 百分百触发</div>
             </div>
 
             {/* Personality */}
