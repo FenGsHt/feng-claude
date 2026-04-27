@@ -6,14 +6,53 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build (e.g. 0.2.0)'
+        description: 'Version to build (e.g. 0.2.0) - leave empty to use package.json version'
         required: false
+      draft:
+        description: 'Create as draft release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
+  # 手动触发时先创建 draft release
+  create-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      release-id: ${{ steps.create.outputs.id }}
+      upload-url: ${{ steps.create.outputs.upload_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create draft release
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: v${{ steps.version.outputs.VERSION }}
+          draft: ${{ inputs.draft }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: [create-release]
+    if: always() && (needs.create-release.result == 'success' || github.event_name == 'release')
     strategy:
       matrix:
         include:
@@ -58,12 +97,12 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist-build/*
-          retention-days: 7
+          retention-days: 1
 
   release:
-    needs: build
+    needs: [create-release, build]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: always() && needs.build.result == 'success'
 
     steps:
       - name: Download Windows artifacts
@@ -87,6 +126,7 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
+          release_id: ${{ needs.create-release.outputs.release-id }}
           files: |
             dist-build/win/*
             dist-build/mac/*
