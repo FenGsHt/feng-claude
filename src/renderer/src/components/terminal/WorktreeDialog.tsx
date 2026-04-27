@@ -146,7 +146,10 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
                       {wt.branch}
                     </span>
                     <button
-                      onClick={() => handleMerge(wt.branch)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleMerge(wt.branch)
+                      }}
                       disabled={mergeLoading === wt.branch}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 hover:bg-green-600/30 disabled:opacity-50 shrink-0"
                       title={`合并 ${wt.branch} 到 ${currentBranch}`}
