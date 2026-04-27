@@ -14,13 +14,12 @@ import { useToolCallStore } from '../store/toolCallStore'
  */
 /** Track when each session started running, for notification threshold */
 const runningStartTime = new Map<string, number>()
-const NOTIFY_AFTER_MS = 5_000
+const NOTIFY_AFTER_MS = 10_000 // 10 seconds - only notify for longer tasks
 
 function notifyTaskDone(sessionId: string): void {
   const start = runningStartTime.get(sessionId)
   if (!start || Date.now() - start < NOTIFY_AFTER_MS) return
-  if (document.hasFocus()) return
-  // Use main process notification (more reliable than renderer Notification API)
+  // Always notify when task completes after running >10s
   window.electronAPI?.showNotification('Claude GUI', 'Task completed')
 }
 
