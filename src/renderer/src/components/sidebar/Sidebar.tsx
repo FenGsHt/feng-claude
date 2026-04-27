@@ -10,11 +10,12 @@ import { GuidePanel } from '../guide/GuidePanel'
 import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
+import { PetLogPanel } from './PetLogPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet-logs'
 
 interface TabConfig {
   id: Tab
@@ -111,6 +112,16 @@ function IconStats(): React.ReactElement {
   )
 }
 
+function IconPetLog(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M4 10c1.5-1 3.5-1 7 0" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <path d="M3 12h9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -126,6 +137,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'plugins', label: t.sidebar.plugins, icon: <IconPlugins /> },
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
+    { id: 'pet-logs', label: lang === 'zh' ? '宠物日志' : 'Pet Logs', icon: <IconPetLog /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -199,6 +211,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <SkillsPanel />
           ) : activeTab === 'mcp' ? (
             <McpPanel />
+          ) : activeTab === 'pet-logs' ? (
+            <PetLogPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (

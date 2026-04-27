@@ -632,7 +632,8 @@ export function PetWidget(): React.ReactElement {
         const result = await window.electronAPI.pet.ask({
           message: userMsg,
           history: history.slice(-12),
-          petConfig: { name: config.name, personality: config.personality },
+          petConfig: { name: config.name, personality: config.personality, type: config.type },
+          triggerType: 'auto',
         })
         const reply = result.text?.trim() || '喵？没有响应...'
         pushHistory('assistant', reply)

@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -126,7 +126,11 @@ const electronAPI = {
   // Pet Agent
   pet: {
     ask: (payload: PetAskPayload): Promise<PetAskResult> =>
-      ipcRenderer.invoke(IPC.PET_ASK, payload)
+      ipcRenderer.invoke(IPC.PET_ASK, payload),
+    getLogs: (limit?: number): Promise<PetLogRecord[]> =>
+      ipcRenderer.invoke(IPC.PET_LOG_LIST, { limit }),
+    clearLogs: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.PET_LOG_CLEAR),
   },
 
   // Content Bank

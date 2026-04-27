@@ -65,6 +65,8 @@ export const IPC = {
 
   /** 宠物 Agent：调用 Anthropic API 返回建议 */
   PET_ASK: 'pet:ask',
+  PET_LOG_LIST: 'pet:logList',
+  PET_LOG_CLEAR: 'pet:logClear',
 
   /** 内容库生成：调用 API 生成笑话/技巧/新闻 */
   CONTENT_BANK_GENERATE: 'content-bank:generate',
@@ -196,7 +198,8 @@ export interface ToolCallPayload {
 export interface PetAskPayload {
   message: string
   history: Array<{ role: 'user' | 'assistant'; content: string }>
-  petConfig: { name: string; personality: string }
+  petConfig: { name: string; personality: string; type?: string }
+  triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
 }
 
 export interface PetAskResult {
@@ -275,6 +278,17 @@ export interface GitMergeBranchPayload {
 export interface GitMergeBranchResult {
   success: boolean
   error?: string
+}
+
+// Pet Log
+export interface PetLogRecord {
+  id: string
+  timestamp: number
+  userMessage: string
+  assistantMessage: string
+  petName: string
+  petType: string
+  triggerType: 'auto' | 'manual' | 'pet' | 'content-bank'
 }
 
 // Auto update

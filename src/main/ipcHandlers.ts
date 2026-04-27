@@ -16,6 +16,10 @@ import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, upd
 import type { McpServerConfig } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
+import { PetLogStore } from './petLogStore'
+import { v4 as uuidv4 } from 'uuid'
+
+const petLogStore = new PetLogStore()
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -183,10 +187,11 @@ export function registerIpcHandlers(
 
   // ── Pet Agent ─────────────────────────────────────────────────
   ipcMain.handle(IPC.PET_ASK, async (_e, payload) => {
-    const { message, history, petConfig } = payload as {
+    const { message, history, petConfig, triggerType } = payload as {
       message: string
       history: Array<{ role: 'user' | 'assistant'; content: string }>
-      petConfig: { name: string; personality: string }
+      petConfig: { name: string; personality: string; type?: string }
+      triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
     }
     const settings = settingsStore.get()
     const apiKey = settings.authToken
@@ -258,8 +263,22 @@ export function registerIpcHandlers(
         error?: { message?: string }
       }
       if (json.error) return { error: json.error.message ?? 'API error' }
+
+      const replyText = json.content?.[0]?.text ?? ''
+
+      // 保存宠物日志
+      petLogStore.add({
+        id: uuidv4(),
+        timestamp: Date.now(),
+        userMessage: message,
+        assistantMessage: replyText,
+        petName: petConfig.name,
+        petType: petConfig.type ?? 'cat',
+        triggerType: triggerType ?? 'auto',
+      })
+
       return {
-        text: json.content?.[0]?.text ?? '',
+        text: replyText,
         usage: json.usage ? {
           input: json.usage.input_tokens,
           output: json.usage.output_tokens,
@@ -271,6 +290,15 @@ export function registerIpcHandlers(
       console.error('[pet:ask] error:', e)
       return { error: String(e) }
     }
+  })
+
+  // ── Pet Logs ──────────────────────────────────────────────────
+  ipcMain.handle(IPC.PET_LOG_LIST, async (_e, { limit }: { limit?: number }) => {
+    return petLogStore.list(limit ?? 100)
+  })
+  ipcMain.handle(IPC.PET_LOG_CLEAR, async () => {
+    petLogStore.clear()
+    return { success: true }
   })
 
   // ── Content Bank Generate ─────────────────────────────────────
