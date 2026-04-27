@@ -78,6 +78,7 @@ export const IPC = {
   GIT_BRANCH_LIST: 'git:branchList',
   GIT_IS_REPO: 'git:isRepo',
   GIT_MERGE_BRANCH: 'git:mergeBranch',
+  GIT_UNMERGED_COMMITS: 'git:unmergedCommits',
 
   /** 自动更新状态 */
   UPDATE_STATUS: 'update:status',
@@ -277,6 +278,17 @@ export interface GitMergeBranchPayload {
 
 export interface GitMergeBranchResult {
   success: boolean
+  error?: string
+}
+
+export interface GitUnmergedCommitsPayload {
+  repoPath: string
+  branch: string
+}
+
+export interface GitUnmergedCommitsResult {
+  count: number
+  commits: Array<{ hash: string; message: string; author: string; date: string }>
   error?: string
 }
 

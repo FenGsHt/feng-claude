@@ -11,6 +11,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
   const [branches, setBranches] = useState<Array<{ name: string; isCurrent: boolean; isRemote: boolean }>>([])
   const [currentBranch, setCurrentBranch] = useState('')
   const [worktrees, setWorktrees] = useState<Array<{ path: string; branch: string; commit: string; isMain: boolean }>>([])
+  const [unmergedCounts, setUnmergedCounts] = useState<Record<string, number>>({})
   const [selectedBranch, setSelectedBranch] = useState('')
   const [newBranchName, setNewBranchName] = useState('')
   const [createNewBranch, setCreateNewBranch] = useState(false)
@@ -33,6 +34,17 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
 
       const wtResult = await window.electronAPI.git.worktreeList(repoPath)
       setWorktrees(wtResult.worktrees)
+
+      // 检查每个 worktree 分支的未合并提交数
+      const counts: Record<string, number> = {}
+      for (const wt of wtResult.worktrees.filter(w => !w.isMain)) {
+        const result = await window.electronAPI.git.unmergedCommits({
+          repoPath,
+          branch: wt.branch,
+        })
+        counts[wt.branch] = result.count
+      }
+      setUnmergedCounts(counts)
     } catch (e) {
       setError(String(e))
     }
@@ -144,15 +156,22 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
                   <div key={wt.path} className="flex items-center gap-2">
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 font-mono flex-1 truncate">
                       {wt.branch}
+                      {unmergedCounts[wt.branch] > 0 && (
+                        <span className="ml-1 text-amber-400">({unmergedCounts[wt.branch]} 未合并)</span>
+                      )}
                     </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
                         handleMerge(wt.branch)
                       }}
-                      disabled={mergeLoading === wt.branch}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 hover:bg-green-600/30 disabled:opacity-50 shrink-0"
-                      title={`合并 ${wt.branch} 到 ${currentBranch}`}
+                      disabled={mergeLoading === wt.branch || unmergedCounts[wt.branch] === 0}
+                      className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                        unmergedCounts[wt.branch] > 0
+                          ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                          : 'bg-slate-700/30 text-slate-500'
+                      } disabled:opacity-50`}
+                      title={unmergedCounts[wt.branch] > 0 ? `合并 ${wt.branch} 到 ${currentBranch}` : '无未合并提交'}
                     >
                       {mergeLoading === wt.branch ? '合并中...' : '合并'}
                     </button>

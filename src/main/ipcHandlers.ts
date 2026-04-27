@@ -515,6 +515,37 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle(IPC.GIT_UNMERGED_COMMITS, async (_e, payload) => {
+    const { repoPath, branch } = payload as { repoPath: string; branch: string }
+    try {
+      const { execSync } = await import('child_process')
+      // 获取当前分支名
+      const currentBranch = execSync('git branch --show-current', { cwd: repoPath, encoding: 'utf-8' }).trim()
+      // 检查 branch 是否有领先于当前分支的提交（未合并的提交）
+      const countStr = execSync(`git rev-list --count HEAD..${branch}`, { cwd: repoPath, encoding: 'utf-8' }).trim()
+      const count = parseInt(countStr, 10) || 0
+
+      if (count === 0) {
+        return { count: 0, commits: [], error: undefined }
+      }
+
+      // 获取未合并的提交详情
+      const logOutput = execSync(
+        `git log HEAD..${branch} --format="%H|%s|%an|%ad" --date=short`,
+        { cwd: repoPath, encoding: 'utf-8' }
+      ).trim()
+
+      const commits = logOutput.split('\n').filter(Boolean).map((line) => {
+        const [hash, message, author, date] = line.split('|')
+        return { hash: hash ?? '', message: message ?? '', author: author ?? '', date: date ?? '' }
+      })
+
+      return { count, commits, error: undefined }
+    } catch (e) {
+      return { count: 0, commits: [], error: String(e) }
+    }
+  })
+
   // ── Notifications ────────────────────────────────────────────
   ipcMain.on(IPC.NOTIFICATION_SHOW, (_e, { title, body }) => {
     console.log('[notification] show:', title, body)

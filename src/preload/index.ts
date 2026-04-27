@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -153,6 +153,8 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, payload),
     mergeBranch: (payload: GitMergeBranchPayload): Promise<GitMergeBranchResult> =>
       ipcRenderer.invoke(IPC.GIT_MERGE_BRANCH, payload),
+    unmergedCommits: (payload: GitUnmergedCommitsPayload): Promise<GitUnmergedCommitsResult> =>
+      ipcRenderer.invoke(IPC.GIT_UNMERGED_COMMITS, payload),
   },
 
   // Window controls

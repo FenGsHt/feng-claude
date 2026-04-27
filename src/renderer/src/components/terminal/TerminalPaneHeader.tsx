@@ -13,6 +13,11 @@ interface WorktreeInfo {
   isMain: boolean
 }
 
+interface UnmergedInfo {
+  branch: string
+  count: number
+}
+
 interface Props {
   sessionId: string
   focused: boolean
@@ -71,6 +76,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const [showWorktreeDialog, setShowWorktreeDialog] = useState(false)
   const [isGitRepo, setIsGitRepo] = useState(false)
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
+  const [unmergedInfo, setUnmergedInfo] = useState<UnmergedInfo[]>([])
   const [showMergeReminder, setShowMergeReminder] = useState(false)
 
   const candidates = useMemo(
@@ -92,8 +98,21 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         const wtResult = await window.electronAPI.git?.worktreeList(sess.workdir)
         if (wtResult) {
           setWorktrees(wtResult.worktrees)
-          // 如果有多个 worktree，显示合并提醒
-          setShowMergeReminder(wtResult.worktrees.length > 1)
+
+          // 检查每个 worktree 分支是否有未合并的提交
+          const unmerged: UnmergedInfo[] = []
+          for (const wt of wtResult.worktrees.filter(w => !w.isMain)) {
+            const result = await window.electronAPI.git?.unmergedCommits({
+              repoPath: sess.workdir,
+              branch: wt.branch,
+            })
+            if (result && result.count > 0) {
+              unmerged.push({ branch: wt.branch, count: result.count })
+            }
+          }
+          setUnmergedInfo(unmerged)
+          // 如果有未合并的提交，显示合并提醒
+          setShowMergeReminder(unmerged.length > 0)
         }
       }
     } catch (e) {
@@ -199,7 +218,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           {/* 合并提醒 */}
           {showMergeReminder && (
             <HeaderBtn
-              title={`有 ${worktrees.length} 个 worktree，点击查看/合并`}
+              title={`${unmergedInfo.length} 个分支有未合并提交：${unmergedInfo.map(u => `${u.branch}(${u.count})`).join(', ')}`}
               onClick={() => setShowWorktreeDialog(true)}
               warning
             >

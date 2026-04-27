@@ -3,6 +3,7 @@ import type { ClaudeSettings } from '../../types/settings'
 import { DEFAULT_SETTINGS } from '../../types/settings'
 import { useGlobalTokenStore, DEFAULT_PRICING, type Pricing } from '../../store/globalTokenStore'
 import { useI18n, useLangStore } from '../../i18n'
+import type { UpdateStatusPayload } from '../../types/ipc'
 
 export function SettingsPanel(): React.ReactElement {
   const [form, setForm] = useState<ClaudeSettings>(DEFAULT_SETTINGS)
@@ -10,7 +11,20 @@ export function SettingsPanel(): React.ReactElement {
   const [loading, setLoading] = useState(true)
   const { pricing, setPricing } = useGlobalTokenStore()
   const [pricingForm, setPricingForm] = useState<Pricing>(pricing)
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
+
+  // Update status
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateStatus) return
+    const unsub = window.electronAPI.onUpdateStatus((payload) => {
+      setUpdateStatus(payload)
+      setChecking(false)
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     setPricingForm(pricing)
@@ -246,6 +260,49 @@ export function SettingsPanel(): React.ReactElement {
         >
           {saved ? `✓ ${t.settings.saved}` : t.settings.save}
         </button>
+
+        {/* Check update button */}
+        <div className="pt-2 border-t border-claude-border">
+          <button
+            onClick={() => { setChecking(true); window.electronAPI?.checkForUpdates() }}
+            disabled={checking}
+            className={`w-full py-1.5 rounded text-xs font-medium transition-colors ${
+              updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
+                ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                : 'bg-claude-border text-claude-muted hover:bg-claude-border/80'
+            } disabled:opacity-50`}
+          >
+            {checking
+              ? (lang === 'zh' ? '检查中...' : 'Checking...')
+              : updateStatus?.status === 'available'
+                ? (lang === 'zh' ? `发现新版本 ${updateStatus.version}` : `Update ${updateStatus.version} available`)
+                : updateStatus?.status === 'downloaded'
+                  ? (lang === 'zh' ? '安装更新' : 'Install update')
+                  : (lang === 'zh' ? '检查更新' : 'Check for updates')}
+          </button>
+          {updateStatus?.status === 'available' && (
+            <button
+              onClick={() => window.electronAPI?.downloadUpdate()}
+              className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600/20 text-green-400 hover:bg-green-600/30"
+            >
+              {lang === 'zh' ? '下载更新' : 'Download update'}
+            </button>
+          )}
+          {updateStatus?.status === 'downloaded' && (
+            <button
+              onClick={() => window.electronAPI?.installUpdate()}
+              className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-500"
+            >
+              {lang === 'zh' ? '立即安装' : 'Install now'}
+            </button>
+          )}
+          {updateStatus?.status === 'error' && (
+            <p className="text-[10px] text-red-400 mt-1">{updateStatus.error}</p>
+          )}
+          {updateStatus?.status === 'not-available' && (
+            <p className="text-[10px] text-claude-muted mt-1">{lang === 'zh' ? '已是最新版本' : 'You are up to date'}</p>
+          )}
+        </div>
 
         <p className="text-[10px] text-claude-muted text-center leading-snug">
           Settings apply to new sessions.
