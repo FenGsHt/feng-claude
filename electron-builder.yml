@@ -23,6 +23,9 @@ portable:
   artifactName: '${name}-${version}-portable.${ext}'
 nsis:
   artifactName: '${name}-${version}-setup.${ext}'
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
   shortcutName: '${productName}'
   uninstallDisplayName: '${productName}'
   createDesktopShortcut: always
