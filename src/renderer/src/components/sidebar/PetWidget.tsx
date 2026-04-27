@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { usePetStore, type PetType } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
-import { useToolCallStore } from '../../store/toolCallStore'
+import { useTokenUsageStore } from '../../store/tokenUsageStore'
 
 // ── ASCII 帧库 ────────────────────────────────────────────────────
 type Activity = 'look' | 'sleep' | 'play' | 'curious' | 'thinking' | 'excited'
@@ -242,7 +242,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
 }
 
 // ── Main ─────────────────────────────────────────────────────────
-const COOLDOWN_MS = 30_000
+const COOLDOWN_MS = 45_000       // 两次触发最小间隔
+const TRIGGER_PROBABILITY = 0.4  // 40% 概率响应
 
 const IDLE_ACTIVITIES = IDLE_CYCLE.map((c) => c.activity)
 
@@ -254,24 +255,21 @@ export function PetWidget(): React.ReactElement {
   const { config, speech, history, lastAutoAt,
           setSpeech, pushHistory, setLastAutoAt } = usePetStore()
   const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
-  const toolCalls = useToolCallStore((s) => s.calls)
+  // output token 计数是最准确的"Claude Code 完成了一轮回答"的信号
+  const outputTokens = useTokenUsageStore((s) =>
+    activeSessionId ? (s.bySession[activeSessionId]?.output ?? 0) : 0
+  )
 
-  // 当前展示状态（含空闲子活动）
   const [activity, setActivity] = useState<Activity>('look')
-  const [isLoading, setIsLoading] = useState(false)   // API 调用中
-  const [showBubble, setShowBubble] = useState(false)  // 气泡可见性
+  const [isLoading, setIsLoading] = useState(false)
+  const [showBubble, setShowBubble] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
-  // 空闲轮换 timer
   const idleCycleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleIndexRef = useRef(0)
-  // 讲话后回到空闲的 timer
   const talkEndRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 自动触发 debounce
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 上次看到的 prompt / tool count
-  const lastPromptRef = useRef<string>('')
-  const lastToolCountRef = useRef(0)
+  // 上次看到的 output token 数，用于检测新增
+  const lastOutputRef = useRef(0)
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
@@ -289,7 +287,6 @@ export function PetWidget(): React.ReactElement {
     step()
   }, [])
 
-  // 启动时开始轮换
   useEffect(() => {
     startIdleCycle()
     return () => { if (idleCycleRef.current) clearTimeout(idleCycleRef.current) }
@@ -299,8 +296,6 @@ export function PetWidget(): React.ReactElement {
   const triggerPet = useCallback(
     async (userMsg: string) => {
       if (isLoading) return
-
-      // 暂停空闲轮换，切换到 thinking
       if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
       if (talkEndRef.current) clearTimeout(talkEndRef.current)
 
@@ -321,7 +316,6 @@ export function PetWidget(): React.ReactElement {
         setActivity('excited')
         setIsLoading(false)
 
-        // 讲完后 12 秒隐藏气泡，宠物回到空闲
         talkEndRef.current = setTimeout(() => {
           setShowBubble(false)
           startIdleCycle()
@@ -336,7 +330,7 @@ export function PetWidget(): React.ReactElement {
     [config, history, isLoading, setSpeech, pushHistory, startIdleCycle]
   )
 
-  // ── 自动触发 (debounce) ───────────────────────────────────────
+  // ── 构建上下文 ────────────────────────────────────────────────
   const buildContext = useCallback((): string => {
     const workdir = activeSession?.workdir ?? '(未知目录)'
     const rec = activeSession
@@ -346,60 +340,42 @@ export function PetWidget(): React.ReactElement {
         )
       : null
     const lastPrompt = rec?.lastUserPrompt ?? ''
-    const recentTools = toolCalls
-      .filter((c) => c.sessionId === activeSessionId)
-      .slice(0, 5)
-      .map((c) => c.name)
-      .filter((v, i, a) => a.indexOf(v) === i)
     const lines = [`工作目录: ${workdir}`]
-    if (lastPrompt) lines.push(`最近输入: ${lastPrompt}`)
-    if (recentTools.length) lines.push(`最近工具: ${recentTools.join(', ')}`)
+    if (lastPrompt) lines.push(`用户最近的问题/操作: ${lastPrompt}`)
     return lines.join('\n')
-  }, [activeSession, activeSessionId, sessionHistory, toolCalls])
+  }, [activeSession, sessionHistory])
 
-  const scheduleAutoTrigger = useCallback((reason: string) => {
-    const delaySec = config.autoDelaySec
-    if (delaySec <= 0) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      const now = Date.now()
-      if (now - lastAutoAt < COOLDOWN_MS) return
-      setLastAutoAt(now)
-      const ctx = buildContext()
-      void triggerPet(`[上下文]\n${ctx}\n\n[触发]\n${reason}\n\n根据以上，给出一条最前沿最激进的技术建议。`)
-    }, delaySec * 1000)
-  }, [config.autoDelaySec, lastAutoAt, buildContext, triggerPet, setLastAutoAt])
-
-  // 监听 lastUserPrompt
+  // ── 核心触发：监听 output tokens 增加 ────────────────────────
+  // output tokens 增加 = Claude Code 完成了一轮回答 = 用户之前发送了一个问题
   useEffect(() => {
-    if (!activeSession) return
-    const rec = sessionHistory.find(
-      (r) => r.workdir.replace(/\\/g, '/').toLowerCase() ===
-             activeSession.workdir.replace(/\\/g, '/').toLowerCase()
+    if (outputTokens <= lastOutputRef.current) {
+      lastOutputRef.current = outputTokens
+      return
+    }
+    // 有新的 output tokens
+    const delta = outputTokens - lastOutputRef.current
+    lastOutputRef.current = outputTokens
+
+    // 跳过太小的增量（可能是噪音）
+    if (delta < 10) return
+
+    // 概率门控：40% 概率触发
+    if (Math.random() > TRIGGER_PROBABILITY) return
+
+    // 冷却检查
+    const now = Date.now()
+    if (now - lastAutoAt < COOLDOWN_MS) return
+
+    setLastAutoAt(now)
+    const ctx = buildContext()
+    void triggerPet(
+      `[上下文]\n${ctx}\n\n用户刚刚在 Claude Code 中提交了一个问题并得到了回答（${delta} output tokens）。用你的人格，给出一条激进的技术点评或建议。`
     )
-    const prompt = rec?.lastUserPrompt ?? ''
-    if (prompt && prompt !== lastPromptRef.current) {
-      lastPromptRef.current = prompt
-      scheduleAutoTrigger(`用户输入: "${prompt}"`)
-    }
-  }, [sessionHistory, activeSession, scheduleAutoTrigger])
+  }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt])
 
-  // 监听新 toolCall
+  // session 切换时重置 token 计数基线
   useEffect(() => {
-    const active = toolCalls.filter((c) => c.sessionId === activeSessionId)
-    if (active.length > lastToolCountRef.current) {
-      const newOnes = active.slice(0, active.length - lastToolCountRef.current)
-      lastToolCountRef.current = active.length
-      if (newOnes.length > 0) {
-        scheduleAutoTrigger(`工具调用: ${newOnes.map((c) => c.name).join(', ')}`)
-      }
-    }
-  }, [toolCalls, activeSessionId, scheduleAutoTrigger])
-
-  // session 切换时重置
-  useEffect(() => {
-    lastToolCountRef.current = toolCalls.filter((c) => c.sessionId === activeSessionId).length
-    lastPromptRef.current = ''
+    lastOutputRef.current = outputTokens
   }, [activeSessionId])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 气泡是否可见：loading 时 or talking 时

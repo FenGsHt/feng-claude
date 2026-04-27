@@ -206,8 +206,10 @@ export function registerIpcHandlers(
       { role: 'user' as const, content: message },
     ]
 
+    // 宠物用 haiku 模型，速度快费用低
+    const model = settings.haikuModel?.trim() || settings.model?.trim() || 'claude-haiku-4-5'
+
     try {
-      const model = settings.model || 'claude-haiku-4-5'
       const body = JSON.stringify({
         model,
         max_tokens: 400,
