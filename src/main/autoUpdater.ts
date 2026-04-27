@@ -1,5 +1,5 @@
 import { autoUpdater } from 'electron-updater'
-import { app, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 
 let mainWindow: BrowserWindow | null = null
@@ -88,17 +88,8 @@ export function downloadUpdate(): void {
 }
 
 export function installUpdate(): void {
-  // Destroy all windows immediately so the NSIS installer won't find a running process
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.destroy()
-  }
-
-  // 300 ms grace for PTY scrollback flush, then silent install + auto-restart
+  // quitAndInstall triggers app.quit() → before-quit → PTY cleanup → process exit
   // isSilent=true  → NSIS /S flag, no installer UI
   // isForceRunAfter=true → relaunch app after install
-  setTimeout(() => {
-    autoUpdater.quitAndInstall(true, true)
-    // Hard-exit fallback if quitAndInstall stalls
-    setTimeout(() => app.exit(0), 2000)
-  }, 300)
+  autoUpdater.quitAndInstall(true, true)
 }
