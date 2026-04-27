@@ -1,5 +1,9 @@
 import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
+
+// 抑制 EPIPE 错误（dev 模式下父进程断开管道时 console.log 会触发）
+process.stdout?.on('error', (err: NodeJS.ErrnoException) => { if (err.code === 'EPIPE') return })
+process.stderr?.on('error', (err: NodeJS.ErrnoException) => { if (err.code === 'EPIPE') return })
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PtyManager } from './ptyManager'
 import { FileSystemHandler } from './fileSystemHandler'

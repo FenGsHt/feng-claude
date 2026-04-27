@@ -164,6 +164,18 @@ export function ensureClaudeHudPluginDefaults(): void {
     changed = true
   }
 
+  // 禁用沙箱强制要求：Windows 上 sandbox 不可用，failIfUnavailable=true 会导致每次启动 claude 时崩溃
+  // skipDangerousModePermissionPrompt=true 在 2.1.120+ 会触发强制沙箱检测，需一并清除
+  const sandbox = (base.sandbox ?? {}) as Record<string, unknown>
+  if (sandbox.failIfUnavailable !== false) {
+    base.sandbox = { ...sandbox, failIfUnavailable: false }
+    changed = true
+  }
+  if (base.skipDangerousModePermissionPrompt !== undefined) {
+    delete base.skipDangerousModePermissionPrompt
+    changed = true
+  }
+
   if (tryMergeHudStatusLine(base, root)) changed = true
 
   if (!changed) return

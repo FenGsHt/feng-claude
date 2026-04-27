@@ -13,6 +13,14 @@ import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 // e.g. "E:\git3\claude-gui>" or "C:\Users\foo>"
 const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
 
+/**
+ * Claude Code 2.1.120+ 在 Windows 上以 --continue 启动时会触发 sandbox 初始化 bug：
+ * "FKH is not a function" / "sandbox required but unavailable"
+ * 检测到此错误后静默清屏并以不带 --continue 的方式重新启动。
+ */
+/** 检测 Claude Code 已就绪（显示输入提示符）*/
+const CLAUDE_READY_RE = /^\s*>\s*$/m
+
 /** 上游 IDE/CI 会带这些变量，Chalk「supports-color」会关色，Claude Code 全屏发灰 */
 const PTY_ENV_STRIP = [
   // CI / color-disable vars
@@ -115,12 +123,9 @@ function scrollbackPath(workdir: string): string {
 }
 
 /** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI） */
-function claudeLaunchLine(settings: ClaudeSettings, isWindows: boolean, resume?: boolean): string {
+function claudeLaunchLine(settings: ClaudeSettings, isWindows: boolean): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
   let line = `claude --permission-mode ${mode}`
-  if (resume) {
-    line += ' --continue'
-  }
   const addDir = resolveClaudeAddDir(settings).trim()
   if (addDir) {
     line += ` --add-dir ${quoteAddDirPath(addDir, isWindows)}`
@@ -136,8 +141,8 @@ interface PtySession {
   buffer: string
   /** Prevents scheduling multiple re-launches if shell prompt appears in rapid succession */
   relaunchPending: boolean
-  /** Whether this session was created with --continue (used for relaunches) */
-  resume: boolean
+  /** When true, send /resume once claude is ready (replaces --continue) */
+  pendingResume: boolean
   /** Rolling buffer of raw PTY output for scrollback persistence */
   scrollbackChunks: Buffer[]
   scrollbackSize: number
@@ -170,7 +175,7 @@ export class PtyManager {
 
     // Auto-launch claude CLI after shell is ready
     setTimeout(() => {
-      ptyProcess.write(claudeLaunchLine(s, isWindows, resume))
+      ptyProcess.write(claudeLaunchLine(s, isWindows))
     }, 300)
 
     const session: PtySession = {
@@ -180,7 +185,7 @@ export class PtyManager {
       claudeRunning: true,
       buffer: '',
       relaunchPending: false,
-      resume: resume ?? false,
+      pendingResume: resume ?? false,
       scrollbackChunks: [],
       scrollbackSize: 0
     }
@@ -188,7 +193,6 @@ export class PtyManager {
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return
 
-      // Forward to renderer
       this.win.webContents.send(IPC.PTY_OUTPUT, {
         sessionId,
         data,
@@ -206,7 +210,20 @@ export class PtyManager {
 
       // Detect if we've dropped back to the shell prompt (claude exited)
       // Keep a rolling buffer of recent output to match multi-chunk prompts
-      session.buffer = (session.buffer + data).slice(-256)
+      session.buffer = (session.buffer + data).slice(-512)
+
+      // 检测 Claude 就绪（显示输入提示符）后发送 /resume
+      if (session.pendingResume && CLAUDE_READY_RE.test(session.buffer)) {
+        session.pendingResume = false
+        session.buffer = ''
+        setTimeout(() => {
+          if (this.sessions.has(sessionId)) {
+            ptyProcess.write('/resume\r')
+          }
+        }, 150)
+        return
+      }
+
       if (session.claudeRunning && !session.relaunchPending && SHELL_PROMPT_RE.test(session.buffer)) {
         session.claudeRunning = false
         session.relaunchPending = true
@@ -218,7 +235,7 @@ export class PtyManager {
             session.claudeRunning = true
             const settings = this.settingsStore.get()
             // Relaunch without --continue: only the initial launch uses it
-            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', false))
+            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))
           }
         }, 500)
       }
