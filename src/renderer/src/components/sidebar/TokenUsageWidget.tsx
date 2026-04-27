@@ -38,7 +38,7 @@ function BudgetBar({ used, budget }: { used: number; budget: number }): React.Re
         </span>
         <span>{(pct * 100).toFixed(1)}%</span>
       </div>
-      <div className="h-1 rounded-full bg-claude-border overflow-hidden">
+      <div className="h-2 rounded-full bg-claude-border overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct * 100}%`, backgroundColor: color }}
