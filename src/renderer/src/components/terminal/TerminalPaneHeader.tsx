@@ -82,15 +82,22 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const checkGitStatus = useCallback(async () => {
     if (!sess?.workdir) return
     try {
-      const repoResult = await window.electronAPI.git.isRepo(sess.workdir)
+      const repoResult = await window.electronAPI.git?.isRepo(sess.workdir)
+      if (!repoResult) {
+        setIsGitRepo(false)
+        return
+      }
       setIsGitRepo(repoResult.isRepo)
       if (repoResult.isRepo) {
-        const wtResult = await window.electronAPI.git.worktreeList(sess.workdir)
-        setWorktrees(wtResult.worktrees)
-        // 如果有多个 worktree，显示合并提醒
-        setShowMergeReminder(wtResult.worktrees.length > 1)
+        const wtResult = await window.electronAPI.git?.worktreeList(sess.workdir)
+        if (wtResult) {
+          setWorktrees(wtResult.worktrees)
+          // 如果有多个 worktree，显示合并提醒
+          setShowMergeReminder(wtResult.worktrees.length > 1)
+        }
       }
-    } catch {
+    } catch (e) {
+      console.warn('[TerminalPaneHeader] git check failed:', e)
       setIsGitRepo(false)
     }
   }, [sess?.workdir])

@@ -293,7 +293,7 @@ export function TokenUsageWidget(): React.ReactElement {
       <LevelBar totalTokens={totalUsed} />
 
       {/* Budget progress bar — uses total when budget set, otherwise hidden */}
-      <BudgetBar used={budget > 0 ? totalUsed : todayUsed} budget={budget} />
+      {!hideDetailedTokens && <BudgetBar used={budget > 0 ? totalUsed : todayUsed} budget={budget} />}
     </div>
   )
 }

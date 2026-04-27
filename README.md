@@ -8,12 +8,35 @@ A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/cl
 - **File Tree**: Browse project files with drag-and-drop support for creating `@` references
 - **History**: Session history with labels, quick restore, and search
 - **Slash Commands**: Manage custom commands from `~/.claude/commands/`
-- **Token Usage**: Real-time token tracking with daily/weekly statistics
+- **Token Usage**: Real-time token tracking with daily/weekly statistics, 300-level progression system
 - **MCP Panel**: Monitor connected MCP servers
 - **Skills Panel**: Manage Claude Code skills/slash commands
 - **Plugins**: Install and manage Claude HUD plugins
 - **Multi-language**: Chinese / English support
 - **Workspace Persistence**: Save and restore terminal layouts across sessions
+- **Pet System**: Interactive ASCII pet with diverse idle activities, petting interaction, and content library
+- **Split Worktree**: Create git worktree in split pane for parallel development
+- **Merge Reminder**: Visual reminder when multiple worktrees exist
+
+## Pet System
+
+The pet (named "Bit" by default) displays in the sidebar and features:
+
+- **Idle Activities**: 13 different activities (look, blink, sleep, play, curious, yawn, stretch, hungry, sneeze, groom, wiggle, tilt, doze, walk)
+- **Weighted Random Selection**: Natural activity transitions with cooldown rules
+- **Petting Interaction**: Click the pet to trigger happy animation and random responses
+- **Walking Animation**: Horizontal movement with boundary bounce-back
+- **Content Library**: Preset jokes, tips, news, and chitchat; daily API updates; used items are removed
+- **Auto-trigger**: 8% probability during idle cycles
+- **Token Tracking**: Pet API calls are counted in global token usage
+
+## Split Worktree
+
+When working in a git repository, a worktree button appears in the pane header:
+
+- Create a new git worktree with existing or new branch
+- Opens the worktree in a split pane for parallel development
+- Visual reminder when multiple worktrees exist (merge reminder)
 
 ## Keyboard Shortcuts
 
@@ -70,9 +93,14 @@ claude-gui/
 │   │   └── historyStore.ts  # Session history
 │   ├── renderer/       # React frontend
 │   │   ├── components/      # UI components
+│   │   │   ├── sidebar/     # Sidebar panels (PetWidget, TokenUsage, etc.)
+│   │   │   └── terminal/    # Terminal components (WorktreeDialog, etc.)
 │   │   ├── store/           # Zustand state stores
+│   │   │   ├── petStore.ts        # Pet configuration and history
+│   │   │   ├── contentBankStore.ts # Content library for pet
+│   │   │   └── globalTokenStore.ts # Token usage tracking
 │   │   ├── hooks/           # React hooks
-│   │   ├── lib/             # Utilities
+│   │   ├── lib/             # Utilities (contentPresets.ts)
 │   │   └── i18n/            # Localization
 │   └── preload/        # Preload scripts
 ├── resources/          # App resources
