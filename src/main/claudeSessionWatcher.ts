@@ -48,16 +48,6 @@ function usageSum(u: ParsedUsage): number {
   return u.input + u.output + u.cacheCreate + u.cacheRead
 }
 
-/** 与上一条快照做差，避免多条 assistant 行携带相同 usage 时被渲染层反复 add */
-function usageDeltaSince(prev: ParsedUsage, cur: ParsedUsage): ParsedUsage {
-  return {
-    input: Math.max(0, cur.input - prev.input),
-    output: Math.max(0, cur.output - prev.output),
-    cacheCreate: Math.max(0, cur.cacheCreate - prev.cacheCreate),
-    cacheRead: Math.max(0, cur.cacheRead - prev.cacheRead)
-  }
-}
-
 interface SessionWatch {
   sessionId: string
   projectDir: string
@@ -69,12 +59,13 @@ interface SessionWatch {
   fileByteOffsets: Map<string, number>
   /**
    * Per-message-id last seen usage snapshot.
-   * Claude Code writes 2-3 JSONL lines per assistant response during streaming;
-   * all share the same message.id. We track the latest value per id and emit
-   * only the delta vs the previous value for that same id — this matches the
-   * billing truth (the last line has the final accurate counts).
+   * [2026-04-27] FIX: Claude streams multiple lines per message with different
+   * usage values (thinking stage vs final response). We now take the LAST value
+   * per message.id and emit it when the next message starts.
    */
   lastUsageByMessageId: Map<string, ParsedUsage>
+  /** Currently processing message.id (to detect new message start) */
+  currentMessageId: string | null
   /** Most recently seen JSONL file — used to detect a new claude conversation */
   latestFile: string | null
   timer: ReturnType<typeof setInterval> | null
@@ -105,6 +96,7 @@ export class ClaudeSessionWatcher {
       projectDir,
       fileByteOffsets: new Map(),
       lastUsageByMessageId: new Map(),
+      currentMessageId: null,
       latestFile: null,
       timer: null,
       lastTokenTime: null,
@@ -252,42 +244,51 @@ export class ClaudeSessionWatcher {
         // Skip synthetic model entries (Claude Code internal bookkeeping)
         if (model === '<synthetic>') continue
 
-        // Per-message-id delta: Claude streams 2-3 lines per response with the
-        // same message.id; each line's usage is a running total for that message,
-        // not an increment. We emit only the increase vs the last seen value for
-        // that specific message id.
-        const prev = sw.lastUsageByMessageId.get(messageId) ?? ZERO_USAGE
-        const d = usageDeltaSince(prev, usage)
+        // [2026-04-27] BUG FIX: Same message.id may appear multiple times with different
+        // usage values (thinking stage vs final response). Each record is a snapshot,
+        // NOT an increment. We should take the last value per message.id, not delta.
+        //
+        // Strategy: Store current message's usage. When we see a NEW message.id,
+        // emit the PREVIOUS message's final usage (as a "completed" increment).
+        const prevMsgId = sw.currentMessageId
+        if (prevMsgId && prevMsgId !== messageId) {
+          // New message started → emit previous message's final usage
+          const prevUsage = sw.lastUsageByMessageId.get(prevMsgId)
+          if (prevUsage && usageSum(prevUsage) > 0) {
+            console.log(
+              `[TokenWatcher] emit message complete: msgId=${prevMsgId} in=${prevUsage.input} out=${prevUsage.output} cc=${prevUsage.cacheCreate} cr=${prevUsage.cacheRead} reset=${needReset}`
+            )
+            if (!sw.runningNotified) {
+              this.emitStatus(sw.sessionId, 'running')
+              sw.runningNotified = true
+            }
+            sw.lastTokenTime = Date.now()
+            this.emit({
+              sessionId: sw.sessionId,
+              input: prevUsage.input,
+              output: prevUsage.output,
+              cacheCreate: prevUsage.cacheCreate,
+              cacheRead: prevUsage.cacheRead,
+              reset: needReset
+            })
+            needReset = false
+          }
+          // Clear previous message from map (no longer needed)
+          sw.lastUsageByMessageId.delete(prevMsgId)
+        }
+
+        // Update current message tracking
+        sw.currentMessageId = messageId
         sw.lastUsageByMessageId.set(messageId, usage)
-        // Cap map size to avoid unbounded growth in long-running sessions
-        if (sw.lastUsageByMessageId.size > 500) {
-          const oldest = sw.lastUsageByMessageId.keys().next().value
-          if (oldest) sw.lastUsageByMessageId.delete(oldest)
-        }
 
-        if (usageSum(d) === 0) {
-          needReset = false
-          continue
+        // Cap map size
+        if (sw.lastUsageByMessageId.size > 100) {
+          // Keep only current message and recent ones
+          const keys = [...sw.lastUsageByMessageId.keys()]
+          for (const k of keys.slice(0, -10)) {
+            if (k !== messageId) sw.lastUsageByMessageId.delete(k)
+          }
         }
-
-        console.log(
-          `[TokenWatcher] emit token delta: in=${d.input} out=${d.output} cc=${d.cacheCreate} cr=${d.cacheRead} reset=${needReset} msgId=${messageId}`
-        )
-        // [2026-04-27] Send 'running' status when we see token usage (Claude is thinking)
-        if (!sw.runningNotified) {
-          this.emitStatus(sw.sessionId, 'running')
-          sw.runningNotified = true
-        }
-        sw.lastTokenTime = Date.now()
-        this.emit({
-          sessionId: sw.sessionId,
-          input: d.input,
-          output: d.output,
-          cacheCreate: d.cacheCreate,
-          cacheRead: d.cacheRead,
-          reset: needReset
-        })
-        needReset = false
       }
     } catch (err) {
       console.error('[TokenWatcher] processNewBytes error:', err)
