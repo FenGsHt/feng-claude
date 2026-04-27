@@ -280,20 +280,19 @@ export function SettingsPanel(): React.ReactElement {
                   ? (lang === 'zh' ? '安装更新' : 'Install update')
                   : (lang === 'zh' ? '检查更新' : 'Check for updates')}
           </button>
+          {/* available: auto-downloading, show hint */}
           {updateStatus?.status === 'available' && (
-            <button
-              onClick={() => window.electronAPI?.downloadUpdate()}
-              className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600/20 text-green-400 hover:bg-green-600/30"
-            >
-              {lang === 'zh' ? '下载更新' : 'Download update'}
-            </button>
+            <p className="text-[10px] text-amber-400 mt-1">
+              {lang === 'zh' ? '正在后台下载…' : 'Downloading in background…'}
+            </p>
           )}
+          {/* downloaded: show install button (silent install, no UI) */}
           {updateStatus?.status === 'downloaded' && (
             <button
               onClick={() => window.electronAPI?.installUpdate()}
               className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-500"
             >
-              {lang === 'zh' ? '立即安装' : 'Install now'}
+              {lang === 'zh' ? '立即重启安装' : 'Restart & Install'}
             </button>
           )}
           {updateStatus?.status === 'error' && (

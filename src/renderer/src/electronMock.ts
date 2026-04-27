@@ -70,6 +70,7 @@ export function injectMockElectronAPI(): void {
       appMinimize: noop,
       appMaximize: noop,
       appClose: noop,
+      getVersion: async () => '0.0.0',
       showNotification: (_title: string, _body: string) => {},
       tokenData: {
         get: async () => null,

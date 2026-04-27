@@ -28,6 +28,7 @@ export const IPC = {
   APP_MINIMIZE: 'app:minimize',
   APP_MAXIMIZE: 'app:maximize',
   APP_CLOSE: 'app:close',
+  APP_GET_VERSION: 'app:getVersion',
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',

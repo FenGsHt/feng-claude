@@ -7,9 +7,9 @@ let mainWindow: BrowserWindow | null = null
 export function setupAutoUpdater(win: BrowserWindow): void {
   mainWindow = win
 
-  // Don't auto-download; let user decide
-  autoUpdater.autoDownload = false
-  // Auto-install on quit (user can still manually install)
+  // Auto-download silently in background; user only sees a notification when ready
+  autoUpdater.autoDownload = true
+  // Install silently on quit if user didn't manually trigger install
   autoUpdater.autoInstallOnAppQuit = true
 
   // Log for debugging
@@ -88,17 +88,17 @@ export function downloadUpdate(): void {
 }
 
 export function installUpdate(): void {
-  // Close all windows immediately so the NSIS installer can overwrite files
-  // without hitting "application is still running" dialog
+  // Destroy all windows immediately so the NSIS installer won't find a running process
   for (const win of BrowserWindow.getAllWindows()) {
-    win.destroy()   // destroy() skips close-event, forces immediate removal
+    win.destroy()
   }
 
-  // Give the main process 300 ms to flush PTY scrollback, then hard-exit
-  // so the installer never finds a running claude-gui.exe
+  // 300 ms grace for PTY scrollback flush, then silent install + auto-restart
+  // isSilent=true  → NSIS /S flag, no installer UI
+  // isForceRunAfter=true → relaunch app after install
   setTimeout(() => {
-    autoUpdater.quitAndInstall(false, true)
-    // Fallback: if quitAndInstall doesn't exit within 2 s, force-exit
+    autoUpdater.quitAndInstall(true, true)
+    // Hard-exit fallback if quitAndInstall stalls
     setTimeout(() => app.exit(0), 2000)
   }, 300)
 }

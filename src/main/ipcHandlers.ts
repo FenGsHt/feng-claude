@@ -1,4 +1,4 @@
-import { ipcMain, dialog, clipboard, Notification } from 'electron'
+import { ipcMain, dialog, clipboard, Notification, app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve } from 'path'
 import { IPC } from '../renderer/src/types/ipc'
@@ -17,7 +17,6 @@ import type { McpServerConfig } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 import { PetLogStore } from './petLogStore'
-import { v4 as uuidv4 } from 'uuid'
 
 const petLogStore = new PetLogStore()
 
@@ -183,6 +182,9 @@ export function registerIpcHandlers(
   })
   ipcMain.on(IPC.APP_CLOSE, (e) => {
     require('electron').BrowserWindow.fromWebContents(e.sender)?.close()
+  })
+  ipcMain.handle(IPC.APP_GET_VERSION, async () => {
+    return app.getVersion()
   })
 
   // ── Pet Agent ─────────────────────────────────────────────────

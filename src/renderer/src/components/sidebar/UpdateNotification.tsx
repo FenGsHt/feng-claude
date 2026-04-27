@@ -2,151 +2,136 @@ import React, { useState, useEffect } from 'react'
 import type { UpdateStatusPayload, UpdateProgressPayload } from '../../types/ipc'
 import { useI18n } from '../../i18n'
 
+function fmtBytes(b: number): string {
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function UpdateNotification(): React.ReactElement | null {
   const [status, setStatus] = useState<UpdateStatusPayload | null>(null)
   const [progress, setProgress] = useState<UpdateProgressPayload | null>(null)
   const [dismissed, setDismissed] = useState(false)
-  const { t, lang } = useI18n()
+  const { lang } = useI18n()
+  const zh = lang === 'zh'
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return
     const unsubStatus = window.electronAPI.onUpdateStatus((payload) => {
       setStatus(payload)
-      if (payload.status === 'not-available' || payload.status === 'error') {
-        // Auto-dismiss after 3 seconds for no-update or error
-        setTimeout(() => setDismissed(true), 3000)
-      }
+      setDismissed(false)
+      // Auto-dismiss transient states
+      if (payload.status === 'not-available') setTimeout(() => setDismissed(true), 2000)
+      if (payload.status === 'error')         setTimeout(() => setDismissed(true), 6000)
     })
     const unsubProgress = window.electronAPI.onUpdateProgress((payload) => {
       setProgress(payload)
     })
-    return () => {
-      unsubStatus()
-      unsubProgress()
-    }
+    return () => { unsubStatus(); unsubProgress() }
   }, [])
 
-  // Don't show if dismissed or no status
   if (dismissed || !status) return null
+  // Only show during download / ready / error; hide for not-available / checking
+  if (!['available', 'downloaded', 'error'].includes(status.status) && !progress) return null
 
-  // Only show for available, downloading, downloaded, or error
-  const visibleStatuses = ['available', 'downloaded', 'error']
-  if (!visibleStatuses.includes(status.status) && !progress) return null
-
-  const handleDownload = (): void => {
-    window.electronAPI?.downloadUpdate()
-  }
-
-  const handleInstall = (): void => {
-    window.electronAPI?.installUpdate()
-  }
-
-  const handleDismiss = (): void => {
-    setDismissed(true)
-  }
-
-  const formatBytes = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const formatSpeed = (bps: number): string => {
-    if (bps < 1024) return `${bps} B/s`
-    if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(0)} KB/s`
-    return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`
-  }
+  const isDownloading = !!progress && status.status !== 'downloaded'
+  const isReady      = status.status === 'downloaded'
+  const isError      = status.status === 'error'
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 animate-slide-up">
-      <div className="bg-claude-surface border border-claude-border rounded-lg shadow-lg p-3 max-w-xs">
-        {/* Header */}
-        <div className="flex items-center gap-2 mb-2">
-          {status.status === 'error' ? (
-            <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 15 15" stroke="currentColor">
-              <circle cx="7.5" cy="7.5" r="5" strokeWidth="1.1"/>
-              <path d="M7.5 4.5v3M7.5 9.5v.5" strokeWidth="1.1" strokeLinecap="round"/>
-            </svg>
-          ) : (
-            <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 15 15" stroke="currentColor">
-              <path d="M7.5 1v13M1 7.5h13" strokeWidth="1.1" strokeLinecap="round"/>
-              <circle cx="7.5" cy="7.5" r="5" strokeWidth="1.1"/>
-            </svg>
-          )}
-          <span className="text-sm font-medium text-claude-text">
-            {status.status === 'available' && (lang === 'zh' ? '发现新版本' : 'Update Available')}
-            {status.status === 'downloaded' && (lang === 'zh' ? '更新已就绪' : 'Update Ready')}
-            {status.status === 'error' && (lang === 'zh' ? '更新失败' : 'Update Error')}
-          </span>
-          <button
-            onClick={handleDismiss}
-            className="ml-auto text-claude-muted hover:text-claude-text"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 15 15" stroke="currentColor">
-              <path d="M3 3l9 9M12 3l-9 9" strokeWidth="1.2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
+    <div className="fixed bottom-4 right-4 z-50 max-w-[300px] w-72 animate-slide-up">
+      <div className="bg-claude-surface border border-claude-border rounded-lg shadow-xl overflow-hidden">
 
-        {/* Version info */}
-        {status.version && (
-          <div className="text-xs text-claude-muted mb-2">
-            {lang === 'zh' ? '版本 ' : 'Version '}{status.version}
-            {status.releaseDate && (
-              <span className="ml-2">
-                ({new Date(status.releaseDate).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US')})
-              </span>
+        {/* Top bar — color-coded */}
+        <div className={`h-0.5 w-full ${isError ? 'bg-red-500' : isReady ? 'bg-green-500' : 'bg-amber-400'}`} />
+
+        <div className="p-3 space-y-2">
+          {/* Title row */}
+          <div className="flex items-center gap-2">
+            {isError ? (
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0 text-red-400">
+                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M6.5 4v3M6.5 8.5v.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            ) : isReady ? (
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0 text-green-400">
+                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M3.5 6.5l2 2 4-4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0 text-amber-400 animate-spin" style={{ animationDuration: '2s' }}>
+                <path d="M6.5 1A5.5 5.5 0 1 1 1 6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
             )}
-          </div>
-        )}
 
-        {/* Download progress */}
-        {progress && (
-          <div className="mb-2">
-            <div className="flex justify-between text-xs text-claude-muted mb-1">
-              <span>{formatBytes(progress.transferred)} / {formatBytes(progress.total)}</span>
-              <span>{formatSpeed(progress.bytesPerSecond)}</span>
-            </div>
-            <div className="h-1.5 bg-claude-bg rounded-full overflow-hidden">
-              <div
-                className="h-full bg-green-500 transition-all duration-200"
-                style={{ width: `${Math.min(progress.percent, 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
+            <span className="text-[12px] font-semibold text-claude-text flex-1 leading-none">
+              {isError      && (zh ? '更新出错' : 'Update Failed')}
+              {isReady      && (zh ? '更新已就绪' : 'Update Ready')}
+              {isDownloading && (zh ? '后台下载更新中…' : 'Downloading update…')}
+              {status.status === 'available' && !progress && (zh ? '发现新版本' : 'New version found')}
+            </span>
 
-        {/* Error message */}
-        {status.status === 'error' && status.error && (
-          <div className="text-xs text-red-400 mb-2 truncate">
-            {status.error}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          {status.status === 'available' && !progress && (
             <button
-              onClick={handleDownload}
-              className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+              onClick={() => setDismissed(true)}
+              className="shrink-0 text-claude-muted hover:text-claude-text transition-colors"
+              aria-label="Dismiss"
             >
-              {lang === 'zh' ? '下载更新' : 'Download'}
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
             </button>
+          </div>
+
+          {/* Version */}
+          {status.version && (
+            <div className="text-[10px] text-claude-muted">
+              v{status.version}
+              {status.releaseDate && (
+                <span className="ml-1.5 opacity-70">
+                  {new Date(status.releaseDate).toLocaleDateString(zh ? 'zh-CN' : 'en-US')}
+                </span>
+              )}
+            </div>
           )}
-          {status.status === 'downloaded' && (
-            <button
-              onClick={handleInstall}
-              className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-            >
-              {lang === 'zh' ? '立即安装' : 'Install Now'}
-            </button>
+
+          {/* Download progress bar */}
+          {isDownloading && (
+            <div>
+              <div className="h-1 bg-claude-bg rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-400 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(progress!.percent, 100)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] text-claude-muted mt-0.5">
+                <span>{fmtBytes(progress!.transferred)} / {fmtBytes(progress!.total)}</span>
+                <span>{Math.round(progress!.percent)}%</span>
+              </div>
+            </div>
           )}
-          <button
-            onClick={handleDismiss}
-            className="px-3 py-1.5 text-xs text-claude-muted hover:text-claude-text transition-colors"
-          >
-            {lang === 'zh' ? '稍后' : 'Later'}
-          </button>
+
+          {/* Error detail */}
+          {isError && status.error && (
+            <div className="text-[10px] text-red-400 truncate">{status.error}</div>
+          )}
+
+          {/* Actions */}
+          {isReady && (
+            <div className="flex gap-2 pt-0.5">
+              <button
+                onClick={() => window.electronAPI?.installUpdate()}
+                className="flex-1 py-1.5 text-[11px] font-medium bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
+              >
+                {zh ? '立即重启安装' : 'Restart & Install'}
+              </button>
+              <button
+                onClick={() => setDismissed(true)}
+                title={zh ? '退出时自动安装' : 'Installs automatically on quit'}
+                className="px-2.5 py-1.5 text-[11px] text-claude-muted hover:text-claude-text border border-claude-border rounded transition-colors"
+              >
+                {zh ? '稍后' : 'Later'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

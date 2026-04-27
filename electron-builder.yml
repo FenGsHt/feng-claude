@@ -1,5 +1,5 @@
-appId: com.claudegui.app
-productName: Claude GUI
+appId: com.fengclaude.app
+productName: Feng Claude
 directories:
   buildResources: resources
   output: dist-build
@@ -14,7 +14,7 @@ asarUnpack:
   - resources/**
   - node_modules/node-pty/**
 win:
-  executableName: claude-gui
+  executableName: feng-claude
   forceCodeSigning: false
   target:
     - nsis

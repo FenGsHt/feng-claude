@@ -25,7 +25,7 @@ function notifyTaskDone(sessionId: string): void {
     return
   }
   console.log('[notify] sending notification')
-  window.electronAPI?.showNotification('Claude GUI', 'Task completed')
+  window.electronAPI?.showNotification('Feng Claude', 'Task completed')
 }
 
 export function usePty(): void {

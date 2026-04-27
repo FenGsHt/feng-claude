@@ -161,6 +161,7 @@ const electronAPI = {
   appMinimize: (): void => ipcRenderer.send(IPC.APP_MINIMIZE),
   appMaximize: (): void => ipcRenderer.send(IPC.APP_MAXIMIZE),
   appClose: (): void => ipcRenderer.send(IPC.APP_CLOSE),
+  getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_GET_VERSION),
 
   // Notifications
   showNotification: (title: string, body: string): void =>

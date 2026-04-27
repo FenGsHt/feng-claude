@@ -29,8 +29,13 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
   )
   const { lang } = useI18n()
 
+  const [version, setVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
   const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    window.electronAPI?.getVersion().then(setVersion)
+  }, [])
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return
@@ -63,20 +68,52 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
       className="flex items-center h-9 px-2 bg-claude-surface border-b border-claude-border select-none shrink-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      {/* Left: logo + app name */}
+      {/* Left: logo + app name + version */}
       <div className="flex items-center gap-2 w-48 shrink-0">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 opacity-70">
           <circle cx="7" cy="7" r="6" stroke="#f59e0b" strokeWidth="1.5" />
           <circle cx="7" cy="7" r="2.5" fill="#f59e0b" opacity="0.8" />
         </svg>
         <span className="text-[11px] text-claude-muted font-medium tracking-wide leading-none">
-          Claude GUI
+          Feng Claude
         </span>
+        {version && (
+          <span className="text-[9px] text-claude-muted/60 font-mono leading-none">
+            v{version}
+          </span>
+        )}
       </div>
 
-      {/* Center: active workdir */}
+      {/* Center: active workdir or update notice */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-4">
-        {activeSession ? (
+        {/* 优先显示更新提示 */}
+        {updateStatus?.status === 'available' ? (
+          <div
+            className="flex items-center gap-2 text-[11px] animate-pulse cursor-pointer"
+            onClick={handleDownload}
+            title={lang === 'zh' ? '点击下载更新' : 'Click to download update'}
+          >
+            <span className="text-green-400 font-medium">
+              {lang === 'zh' ? '发现新版本' : 'New version'} v{updateStatus.version}
+            </span>
+            <button className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
+              {lang === 'zh' ? '下载' : 'Download'}
+            </button>
+          </div>
+        ) : updateStatus?.status === 'downloaded' ? (
+          <div
+            className="flex items-center gap-2 text-[11px] cursor-pointer"
+            onClick={handleInstall}
+            title={lang === 'zh' ? '点击安装更新' : 'Click to install update'}
+          >
+            <span className="text-green-400 font-medium">
+              {lang === 'zh' ? '已下载，点击安装' : 'Ready, click to install'}
+            </span>
+            <button className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
+              {lang === 'zh' ? '安装并重启' : 'Install & Restart'}
+            </button>
+          </div>
+        ) : activeSession ? (
           <div
             className="flex items-center gap-1.5 max-w-xs"
             title={activeSession.workdir}
@@ -150,31 +187,6 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
             <line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/>
           </svg>
         </WinBtn>
-
-        {/* Update status dropdown */}
-        {updateStatus && updateStatus.status !== 'not-available' && updateStatus.status !== 'checking' && (
-          <div className="absolute top-full right-2 mt-1 bg-claude-bg border border-claude-border rounded shadow-lg p-2 text-[11px] z-50">
-            {updateStatus.status === 'available' && (
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">{lang === 'zh' ? '发现新版本' : 'Update available'}: v{updateStatus.version}</span>
-                <button onClick={handleDownload} className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
-                  {lang === 'zh' ? '下载' : 'Download'}
-                </button>
-              </div>
-            )}
-            {updateStatus.status === 'downloaded' && (
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">{lang === 'zh' ? '已就绪' : 'Ready'}</span>
-                <button onClick={handleInstall} className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
-                  {lang === 'zh' ? '安装' : 'Install'}
-                </button>
-              </div>
-            )}
-            {updateStatus.status === 'error' && (
-              <span className="text-red-400">{updateStatus.error}</span>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
