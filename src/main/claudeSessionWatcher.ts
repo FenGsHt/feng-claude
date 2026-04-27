@@ -79,6 +79,8 @@ export class ClaudeSessionWatcher {
   private win: BrowserWindow
   private claudeConfigDir: string
   private sessions = new Map<string, SessionWatch>()
+  /** [2026-04-27] Track which projectDirs are already being watched to avoid duplicate token counting */
+  private watchedProjectDirs = new Map<string, SessionWatch>()
 
   constructor(win: BrowserWindow, claudeConfigDir: string) {
     this.win = win
@@ -90,6 +92,16 @@ export class ClaudeSessionWatcher {
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
 
     console.log(`[TokenWatcher] watchSession ${sessionId} → ${projectDir}`)
+
+    // [2026-04-27] BUG FIX: If this projectDir is already being watched by another session,
+    // reuse the existing watcher to avoid duplicate token counting. Multiple sessions in
+    // the same workdir share the same JSONL file; token usage should be counted once.
+    const existing = this.watchedProjectDirs.get(projectDir)
+    if (existing) {
+      console.log(`[TokenWatcher] projectDir already watched by ${existing.sessionId}, sharing watcher`)
+      this.sessions.set(sessionId, existing)
+      return
+    }
 
     const sw: SessionWatch = {
       sessionId,
@@ -112,13 +124,21 @@ export class ClaudeSessionWatcher {
     sw.timer = setInterval(() => this.poll(sw), 1000)
 
     this.sessions.set(sessionId, sw)
+    this.watchedProjectDirs.set(projectDir, sw)
   }
 
   unwatchSession(sessionId: string): void {
     const sw = this.sessions.get(sessionId)
     if (sw) {
-      if (sw.timer) clearInterval(sw.timer)
+      // [2026-04-27] Only stop timer and remove from watchedProjectDirs if no other sessions
+      // are sharing this watcher
+      const sharingCount = [...this.sessions.values()].filter(s => s === sw).length
       this.sessions.delete(sessionId)
+      if (sharingCount === 1) {
+        // This was the last session using this watcher
+        if (sw.timer) clearInterval(sw.timer)
+        this.watchedProjectDirs.delete(sw.projectDir)
+      }
     }
   }
 
@@ -183,6 +203,25 @@ export class ClaudeSessionWatcher {
         const elapsed = Date.now() - sw.lastTokenTime
         if (elapsed > 3000) {
           console.log(`[TokenWatcher] idle detected, elapsed=${elapsed}ms`)
+          // Emit pending message's final usage before idle
+          if (sw.currentMessageId) {
+            const pendingUsage = sw.lastUsageByMessageId.get(sw.currentMessageId)
+            if (pendingUsage && usageSum(pendingUsage) > 0) {
+              console.log(
+                `[TokenWatcher] emit pending message on idle: msgId=${sw.currentMessageId} in=${pendingUsage.input} out=${pendingUsage.output} cr=${pendingUsage.cacheRead}`
+              )
+              this.emit({
+                sessionId: sw.sessionId,
+                input: pendingUsage.input,
+                output: pendingUsage.output,
+                cacheCreate: pendingUsage.cacheCreate,
+                cacheRead: pendingUsage.cacheRead,
+                reset: false
+              })
+              sw.lastUsageByMessageId.delete(sw.currentMessageId)
+              sw.currentMessageId = null
+            }
+          }
           this.emitStatus(sw.sessionId, 'idle')
           sw.runningNotified = false
         }
