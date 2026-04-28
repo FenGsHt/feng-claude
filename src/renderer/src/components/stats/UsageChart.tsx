@@ -3,6 +3,7 @@ import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type Token
 import type { ClaudeSettings } from '../../types/settings'
 
 const CHART_DAYS = 14
+const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#06b6d4', '#f97316', '#8b5cf6']
 
 function formatK(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -31,10 +32,93 @@ function shortDate(dateStr: string): string {
   return `${Number(m)}/${Number(d)}`
 }
 
-export function UsageChart(): React.ReactElement {
-  const { dailyHistory, total, today, perProfile, pricing: globalPricing } = useGlobalTokenStore()
+// ── Pie chart for per-profile distribution ──────────────────────
 
-  // [2026-04-28] Get settings for profile names and pricing — re-fetch on broadcast changes
+interface PieSlice {
+  label: string
+  value: number
+  color: string
+  percent: number
+}
+
+function buildPieSlices(settings: ClaudeSettings | null, perProfile: Record<string, TokenTotals>, total: TokenTotals): PieSlice[] {
+  if (!settings || Object.keys(perProfile).length === 0) return []
+  const totalTokens = tokenSum(total)
+  if (totalTokens === 0) return []
+
+  return settings.profiles.map((profile, i) => {
+    const t = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+    return {
+      label: profile.name,
+      value: tokenSum(t),
+      color: COLORS[i % COLORS.length],
+      percent: totalTokens > 0 ? tokenSum(t) / totalTokens : 0
+    }
+  }).filter(s => s.value > 0)
+}
+
+function PieChart({ slices }: { slices: PieSlice[] }): React.ReactElement | null {
+  if (slices.length === 0) return null
+
+  const SIZE = 120
+  const R = 52
+  const CX = SIZE / 2
+  const CY = SIZE / 2
+  const TOTAL = slices.reduce((s, p) => s + p.value, 0)
+
+  let cumAngle = -Math.PI / 2 // start from top
+
+  const paths = slices.map((slice) => {
+    const sliceAngle = (slice.value / TOTAL) * 2 * Math.PI
+    const startAngle = cumAngle
+    const endAngle = cumAngle + sliceAngle
+    cumAngle = endAngle
+
+    const largeArc = sliceAngle > Math.PI ? 1 : 0
+    const x1 = CX + R * Math.cos(startAngle)
+    const y1 = CY + R * Math.sin(startAngle)
+    const x2 = CX + R * Math.cos(endAngle)
+    const y2 = CY + R * Math.sin(endAngle)
+
+    const d = sliceAngle >= 2 * Math.PI - 0.01
+      ? `M ${CX},${CY - R} A ${R},${R} 0 1,0 ${CX},${CY + R} A ${R},${R} 0 1,0 ${CX},${CY - R}`
+      : `M ${CX},${CY} L ${x1},${y1} A ${R},${R} 0 ${largeArc} 1 ${x2},${y2} Z`
+
+    return { d, color: slice.color, label: slice.label, value: slice.value, percent: slice.percent }
+  })
+
+  return (
+    <div>
+      <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">各配置占比</div>
+      <div className="flex items-center gap-4">
+        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+          {paths.map((p, i) => (
+            <path key={i} d={p.d} fill={p.color} opacity={0.85}>
+              <title>{`${p.label}: ${formatK(p.value)} (${(p.percent * 100).toFixed(1)}%)`}</title>
+            </path>
+          ))}
+        </svg>
+        <div className="flex flex-col gap-1 flex-1">
+          {paths.map((p, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: p.color }} />
+              <span className="text-[10px] text-claude-muted flex-1 truncate">{p.label}</span>
+              <span className="text-[10px] text-claude-text font-mono">{formatK(p.value)}</span>
+              <span className="text-[9px] text-claude-muted w-10 text-right">{(p.percent * 100).toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main chart ──────────────────────────────────────────────────
+
+export function UsageChart(): React.ReactElement {
+  const { dailyHistory, total, today, todayDate, perProfile, pricing: globalPricing, dailyHistoryPerProfile } = useGlobalTokenStore()
+
+  // Get settings for profile names and pricing
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
@@ -42,73 +126,74 @@ export function UsageChart(): React.ReactElement {
       void window.electronAPI.settings.get().then(setSettings)
     })
   }, [])
+
   const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
   const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
-  const dayCosts = Object.fromEntries(
-    Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)])
-  )
+  const todayCost = computeCost(today, pricing)
+  const totalCost = computeCost(total, pricing)
 
+  // Today breakdown
+  const todayRows: { name: string; val: number; cost: number; color: string }[] = [
+    { name: 'Input', val: today.input, cost: (today.input / 1_000_000) * pricing.inputPerM, color: 'text-blue-400' },
+    { name: 'Output', val: today.output, cost: (today.output / 1_000_000) * pricing.outputPerM, color: 'text-green-400' },
+    { name: 'Cache↑', val: today.cacheCreate, cost: (today.cacheCreate / 1_000_000) * pricing.cacheCreatePerM, color: 'text-purple-400' },
+    { name: 'Cache↓', val: today.cacheRead, cost: (today.cacheRead / 1_000_000) * pricing.cacheReadPerM, color: 'text-amber-400' },
+  ]
+
+  // Per-profile pie chart
+  const pieSlices = buildPieSlices(settings, perProfile, total)
+
+  // Per-profile stats
+  const profileStats = settings?.profiles.map((profile, i) => {
+    const t = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+    const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
+    return {
+      id: profile.id,
+      name: profile.name,
+      tokens: tokenSum(t),
+      cost: computeCost(t, profilePricing),
+      color: COLORS[i % COLORS.length]
+    }
+  }) ?? []
+
+  // 14-day bar chart
   const dates = lastNDates(CHART_DAYS)
   const values = dates.map((d) => {
     const t = dailyHistory[d] ?? null
     return t ? tokenSum(t) : 0
   })
   const maxVal = Math.max(...values, 1)
+  const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)]))
 
   const BAR_H = 80
-  const BAR_W = 12
-
-  // [2026-04-28] Build per-profile stats - show ALL profiles including those with 0 usage
-  const allProfileStats = settings?.profiles.map((profile) => {
-    const totals = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
-    const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
-    return {
-      id: profile.id,
-      name: profile.name,
-      totals,
-      cost: computeCost(totals, profilePricing),
-      tokens: tokenSum(totals)
-    }
-  }) ?? []
-
-  // [2026-04-28] If there's total usage but no per-profile data, assign to active profile
-  const hasPerProfileData = Object.keys(perProfile).length > 0
-  const profileStats = allProfileStats.map((stat) => {
-    // If no per-profile tracking yet and this is active profile, show total
-    if (!hasPerProfileData && stat.id === settings?.activeProfileId && tokenSum(total) > 0) {
-      const profilePricing: Pricing = (settings?.profiles.find(p => p.id === stat.id)?.pricing) ?? DEFAULT_PRICING
-      return {
-        ...stat,
-        totals: total,
-        cost: computeCost(total, profilePricing),
-        tokens: tokenSum(total)
-      }
-    }
-    return stat
-  })
+  const BAR_W = 14
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
-      {/* Totals */}
+      {/* Summary cards */}
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label="今日" value={tokenSum(today)} cost={computeCost(today, pricing)} />
-        <StatCard label="累计" value={tokenSum(total)} cost={computeCost(total, pricing)} />
+        <SummaryCard label="今日" tokens={today} cost={todayCost} />
+        <SummaryCard label="累计" tokens={total} cost={totalCost} />
       </div>
 
-      {/* Breakdown today */}
-      <BreakdownRow label="今日明细" totals={today} pricing={pricing} />
+      {/* Today breakdown */}
+      <BreakdownSection label="今日明细" rows={todayRows} />
 
-      {/* [2026-04-28] Per-profile breakdown */}
-      {profileStats.length > 0 && (
+      {/* Per-profile pie chart */}
+      {pieSlices.length > 0 && <PieChart slices={pieSlices} />}
+
+      {/* Per-profile list (compact) */}
+      {profileStats.some(s => s.tokens > 0) && (
         <div>
-          <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">各配置用量</div>
+          <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">各配置用量</div>
           <div className="flex flex-col gap-1">
             {profileStats.map((stat) => (
-              <div key={stat.id} className="flex items-center text-[11px]">
-                <span className="text-amber-400 w-16 shrink-0 truncate">{stat.name}</span>
-                <span className="text-claude-text font-mono w-12 text-right shrink-0">{formatK(stat.tokens)}</span>
-                <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(stat.cost)}</span>
+              <div key={stat.id} className="flex items-center gap-2 text-[11px]">
+                <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: stat.color }} />
+                <span className="flex-1 truncate" style={{ color: stat.color }}>{stat.name}</span>
+                <span className="font-mono text-claude-text">{formatK(stat.tokens)}</span>
+                <span className="text-[10px] text-claude-muted font-mono ml-1">{formatCost(stat.cost)}</span>
               </div>
             ))}
           </div>
@@ -122,12 +207,12 @@ export function UsageChart(): React.ReactElement {
           {dates.map((date, i) => {
             const v = values[i]
             const barH = v > 0 ? Math.max(3, Math.round((v / maxVal) * BAR_H)) : 2
-            const isToday = date === new Date().toISOString().slice(0, 10)
+            const isToday = date === todayDate
             return (
               <div key={date} className="flex flex-col items-center gap-0.5" style={{ width: BAR_W }}>
                 <div
                   title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                  className={`w-full rounded-sm transition-all ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-600/70' : 'bg-claude-border/30'}`}
+                  className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-600/70' : 'bg-claude-border/30'}`}
                   style={{ height: barH, marginTop: BAR_H - barH }}
                 />
                 {(i === 0 || i === CHART_DAYS - 1 || isToday) && (
@@ -139,43 +224,35 @@ export function UsageChart(): React.ReactElement {
             )
           })}
         </div>
-      </div>
-
-      {/* Legend */}
-      <div className="text-[10px] text-claude-muted text-center">
-        最高: <span className="text-claude-text">{formatK(maxVal)}</span> tokens/天
+        <div className="text-[10px] text-claude-muted text-center mt-2">
+          最高: <span className="text-claude-text">{formatK(maxVal)}</span> tokens/天
+        </div>
       </div>
     </div>
   )
 }
 
-function StatCard({ label, value, cost }: { label: string; value: number; cost: number }) {
+function SummaryCard({ label, tokens, cost }: { label: string; tokens: TokenTotals; cost: number }) {
   return (
-    <div className="bg-claude-surface rounded-md p-2.5 border border-claude-border">
-      <div className="text-[10px] text-claude-muted mb-1">{label}</div>
-      <div className="text-base font-semibold text-claude-text">{formatK(value)}</div>
-      <div className="text-[9px] text-claude-muted">tokens</div>
-      <div className="text-[10px] text-amber-400 mt-0.5 font-mono">{formatCost(cost)}</div>
+    <div className="bg-claude-surface rounded-lg p-3 border border-claude-border">
+      <div className="text-[10px] text-claude-muted mb-1.5">{label}</div>
+      <div className="text-lg font-semibold text-claude-text leading-none">{formatK(tokenSum(tokens))}</div>
+      <div className="text-[9px] text-claude-muted mt-0.5 mb-1.5">tokens</div>
+      <div className="text-[11px] text-amber-400 font-mono">{formatCost(cost)}</div>
     </div>
   )
 }
 
-function BreakdownRow({ label, totals, pricing }: { label: string; totals: TokenTotals; pricing: Pricing }) {
-  const rows: [string, number, number, string][] = [
-    ['Input', totals.input, (totals.input / 1_000_000) * pricing.inputPerM, 'text-blue-400'],
-    ['Output', totals.output, (totals.output / 1_000_000) * pricing.outputPerM, 'text-green-400'],
-    ['Cache↑', totals.cacheCreate, (totals.cacheCreate / 1_000_000) * pricing.cacheCreatePerM, 'text-purple-400'],
-    ['Cache↓', totals.cacheRead, (totals.cacheRead / 1_000_000) * pricing.cacheReadPerM, 'text-amber-400'],
-  ]
+function BreakdownSection({ label, rows }: { label: string; rows: { name: string; val: number; cost: number; color: string }[] }) {
   return (
     <div>
       <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">{label}</div>
-      <div className="flex flex-col gap-0.5">
-        {rows.map(([name, val, cost, color]) => (
+      <div className="flex flex-col gap-1">
+        {rows.filter(r => r.val > 0).map(({ name, val, cost, color }) => (
           <div key={name} className="flex items-center text-[11px]">
-            <span className={`${color} w-16 shrink-0`}>{name}</span>
-            <span className="text-claude-text font-mono w-12 text-right shrink-0">{formatK(val)}</span>
-            <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(cost)}</span>
+            <span className={`${color} w-14 shrink-0`}>{name}</span>
+            <span className="text-claude-text font-mono text-right flex-1">{formatK(val)}</span>
+            <span className="text-[10px] text-claude-muted font-mono ml-3">{formatCost(cost)}</span>
           </div>
         ))}
       </div>
