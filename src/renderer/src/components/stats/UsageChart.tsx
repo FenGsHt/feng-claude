@@ -56,9 +56,8 @@ export function UsageChart(): React.ReactElement {
   const BAR_H = 80
   const BAR_W = 12
 
-  // [2026-04-28] Build per-profile stats
-  // If no perProfile data exists but there's total usage, show active profile's usage
-  let profileStats = settings?.profiles.map((profile) => {
+  // [2026-04-28] Build per-profile stats - show ALL profiles including those with 0 usage
+  const allProfileStats = settings?.profiles.map((profile) => {
     const totals = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
     const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
     return {
@@ -68,22 +67,23 @@ export function UsageChart(): React.ReactElement {
       cost: computeCost(totals, profilePricing),
       tokens: tokenSum(totals)
     }
-  }).filter((s) => s.tokens > 0) ?? []
+  }) ?? []
 
-  // [2026-04-28] Fallback: if no per-profile data, show total under active profile
-  if (profileStats.length === 0 && tokenSum(total) > 0 && settings?.activeProfileId) {
-    const activeProf = settings.profiles.find(p => p.id === settings.activeProfileId) ?? settings.profiles[0]
-    if (activeProf) {
-      const profilePricing: Pricing = activeProf.pricing ?? DEFAULT_PRICING
-      profileStats = [{
-        id: activeProf.id,
-        name: activeProf.name,
+  // [2026-04-28] If there's total usage but no per-profile data, assign to active profile
+  const hasPerProfileData = Object.keys(perProfile).length > 0
+  const profileStats = allProfileStats.map((stat) => {
+    // If no per-profile tracking yet and this is active profile, show total
+    if (!hasPerProfileData && stat.id === settings?.activeProfileId && tokenSum(total) > 0) {
+      const profilePricing: Pricing = (settings?.profiles.find(p => p.id === stat.id)?.pricing) ?? DEFAULT_PRICING
+      return {
+        ...stat,
         totals: total,
         cost: computeCost(total, profilePricing),
         tokens: tokenSum(total)
-      }]
+      }
     }
-  }
+    return stat
+  })
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
