@@ -65,13 +65,17 @@ export function usePty(): void {
       // widget: for a single pane, pane total == today total.
       useTokenUsageStore.getState().ingest(sessionId, input, output, 'add', { cacheCreate, cacheRead })
 
-      // Persist into global all-time / today counters
+      // [2026-04-28] Get profileId for this session to track per-profile usage
+      const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
+      const profileId = session?.profileId
+
+      // Persist into global all-time / today counters with profileId
       useGlobalTokenStore.getState().ingest({
         input,
         output,
         cacheCreate: cacheCreate ?? 0,
         cacheRead: cacheRead ?? 0
-      })
+      }, profileId)
     })
 
     // ── Tool call updates ─────────────────────────────────────

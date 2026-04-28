@@ -32,9 +32,9 @@ function shortDate(dateStr: string): string {
 }
 
 export function UsageChart(): React.ReactElement {
-  const { dailyHistory, total, today, pricing: globalPricing } = useGlobalTokenStore()
+  const { dailyHistory, total, today, perProfile, pricing: globalPricing } = useGlobalTokenStore()
 
-  // [2026-04-28] Get active profile's pricing
+  // [2026-04-28] Get settings for profile names and pricing
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
@@ -55,7 +55,19 @@ export function UsageChart(): React.ReactElement {
 
   const BAR_H = 80
   const BAR_W = 12
-  const GAP = 4
+
+  // [2026-04-28] Build per-profile stats
+  const profileStats = settings?.profiles.map((profile) => {
+    const totals = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+    const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
+    return {
+      id: profile.id,
+      name: profile.name,
+      totals,
+      cost: computeCost(totals, profilePricing),
+      tokens: tokenSum(totals)
+    }
+  }).filter((s) => s.tokens > 0) ?? []
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
@@ -67,6 +79,22 @@ export function UsageChart(): React.ReactElement {
 
       {/* Breakdown today */}
       <BreakdownRow label="今日明细" totals={today} pricing={pricing} />
+
+      {/* [2026-04-28] Per-profile breakdown */}
+      {profileStats.length > 1 && (
+        <div>
+          <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">各配置用量</div>
+          <div className="flex flex-col gap-1">
+            {profileStats.map((stat) => (
+              <div key={stat.id} className="flex items-center text-[11px]">
+                <span className="text-amber-400 w-16 shrink-0 truncate">{stat.name}</span>
+                <span className="text-claude-text font-mono w-10 text-right shrink-0">{formatK(stat.tokens)}</span>
+                <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(stat.cost)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Bar chart */}
       <div>
