@@ -44,9 +44,17 @@ export function injectMockElectronAPI(): void {
         get: async () => undefined
       },
       onTokenUsageUpdate: listener,
+      onSettingsChanged: listener,
       settings: {
         get: async () => ({ ...DEFAULT_SETTINGS }),
         set: async () => ({ success: true })
+      },
+      profiles: {
+        add: async () => ({ success: true }),
+        update: async () => ({ success: true }),
+        delete: async () => ({ success: true }),
+        setActive: async () => ({ success: true }),
+        getActive: async () => ({ profile: { ...DEFAULT_SETTINGS.profiles[0]! } }),
       },
       workspace: {
         save: async (w: PersistedWorkspace | null) => {

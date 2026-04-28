@@ -163,6 +163,17 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
+                        onCreate(wt.path, wt.branch)
+                        onClose()
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30"
+                      title={`打开 ${wt.branch} 的 worktree 会话`}
+                    >
+                      打开
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
                         handleMerge(wt.branch)
                       }}
                       disabled={mergeLoading === wt.branch || unmergedCounts[wt.branch] === 0}

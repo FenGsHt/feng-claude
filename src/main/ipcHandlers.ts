@@ -1,4 +1,4 @@
-import { ipcMain, dialog, clipboard, Notification, app } from 'electron'
+import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve } from 'path'
 import { IPC } from '../renderer/src/types/ipc'
@@ -35,6 +35,12 @@ function scheduleEnsureClaudeHudAfterSession(): void {
   })
 }
 
+function broadcastSettingsChanged(): void {
+  BrowserWindow.getAllWindows().forEach(win => {
+    win.webContents.send(IPC.SETTINGS_CHANGED)
+  })
+}
+
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   fsHandler: FileSystemHandler,
@@ -54,6 +60,7 @@ export function registerIpcHandlers(
     // Merge with defaults to sanitize — unknown/missing keys fall back to safe values
     const merged = { ...DEFAULT_SETTINGS, ...(settings && typeof settings === 'object' ? settings : {}) }
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
+    broadcastSettingsChanged()
     return { success: true }
   })
 
@@ -61,24 +68,28 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.PROFILE_ADD, async (_e, payload) => {
     const { profile } = payload as { profile: import('../renderer/src/types/settings').ApiProfile }
     settingsStore.addProfile(profile)
+    broadcastSettingsChanged()
     return { success: true, profile }
   })
 
   ipcMain.handle(IPC.PROFILE_UPDATE, async (_e, payload) => {
     const { profileId, updates } = payload as { profileId: string; updates: Partial<import('../renderer/src/types/settings').ApiProfile> }
     settingsStore.updateProfile(profileId, updates)
+    broadcastSettingsChanged()
     return { success: true }
   })
 
   ipcMain.handle(IPC.PROFILE_DELETE, async (_e, payload) => {
     const { profileId } = payload as { profileId: string }
     const result = settingsStore.deleteProfile(profileId)
+    broadcastSettingsChanged()
     return result
   })
 
   ipcMain.handle(IPC.PROFILE_SET_ACTIVE, async (_e, payload) => {
     const { profileId } = payload as { profileId: string }
     const result = settingsStore.setActiveProfile(profileId)
+    broadcastSettingsChanged()
     return result
   })
 

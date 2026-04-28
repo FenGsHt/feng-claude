@@ -161,7 +161,9 @@ export function SettingsPanel(): React.ReactElement {
           <select
             value={form.activeProfileId}
             onChange={(e) => handleProfileSwitch(e.target.value)}
-            className="field-input flex-1 min-w-0"
+            className="field-input"
+            style={{ flex: 1, minWidth: 0 }}
+            title={form.profiles.find(p => p.id === form.activeProfileId)?.model ?? ''}
           >
             {form.profiles.map(p => (
               <option key={p.id} value={p.id}>{p.name} ({p.model})</option>
@@ -244,6 +246,19 @@ export function SettingsPanel(): React.ReactElement {
               />
             </Field>
           ))}
+
+          {/* Context Window */}
+          <Field label={lang === 'zh' ? '上下文窗口' : 'Context Window'} hint="K tokens (e.g. 200 = 200K)">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={activeProfile.contextWindow ?? ''}
+              onChange={(e) => handleProfileChange('contextWindow', e.target.value ? parseInt(e.target.value) || 0 : (undefined as any))}
+              placeholder={lang === 'zh' ? '例如：200' : 'e.g. 200'}
+              className="field-input"
+            />
+          </Field>
 
           {/* Disable experimental betas */}
           <div className="flex items-center justify-between py-1">
@@ -542,6 +557,19 @@ function ProfileEditor({
               />
             </Field>
           ))}
+
+          {/* Context Window */}
+          <Field label={lang === 'zh' ? '上下文窗口' : 'Context Window'} hint="K tokens (e.g. 200 = 200K)">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.contextWindow ?? ''}
+              onChange={(e) => handleChange('contextWindow', e.target.value ? parseInt(e.target.value) || 0 : (undefined as any))}
+              placeholder={lang === 'zh' ? '例如：200' : 'e.g. 200'}
+              className="field-input"
+            />
+          </Field>
 
           {/* Disable experimental betas */}
           <div className="flex items-center justify-between py-1">

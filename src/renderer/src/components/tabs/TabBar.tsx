@@ -79,9 +79,12 @@ function ProfileDropdown({
               : 'text-[#e5e5e5] hover:bg-[#2a2a2a]'
           } ${idx === 0 ? 'rounded-t-md' : ''} ${idx === profiles.length - 1 ? 'rounded-b-md' : ''}`}
         >
-          <span className="font-medium">{p.name}</span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-medium">{p.name}</span>
+            <span className="text-[9px] text-claude-muted">{p.model}</span>
+          </div>
           {currentProfileId === p.id && (
-            <span className="ml-2 text-[10px] opacity-60">●</span>
+            <span className="ml-2 text-[10px] opacity-60 shrink-0">●</span>
           )}
         </button>
       ))}
@@ -98,9 +101,12 @@ export function TabBar(): React.ReactElement {
   const [dropdownAnchor, setDropdownAnchor] = useState<{ sessionId: string; rect: { top: number; right: number } } | null>(null)
   const badgeRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
 
-  // Load settings to get profiles
+  // Load settings to get profiles — re-fetch on broadcast changes
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
+    return window.electronAPI.onSettingsChanged(() => {
+      void window.electronAPI.settings.get().then(setSettings)
+    })
   }, [])
 
   const handleNewTab = async () => {
@@ -180,7 +186,7 @@ export function TabBar(): React.ReactElement {
               </span>
 
               {/* Profile badge - click to open dropdown */}
-              {settings && settings.profiles.length > 1 && (
+              {settings && settings.profiles.length > 0 && (
                 <button
                   ref={(el) => { if (el) badgeRefs.current.set(sess.id, el) }}
                   onClick={(e) => {

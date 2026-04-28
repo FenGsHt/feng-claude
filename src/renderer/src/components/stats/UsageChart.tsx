@@ -34,10 +34,13 @@ function shortDate(dateStr: string): string {
 export function UsageChart(): React.ReactElement {
   const { dailyHistory, total, today, perProfile, pricing: globalPricing } = useGlobalTokenStore()
 
-  // [2026-04-28] Get settings for profile names and pricing
+  // [2026-04-28] Get settings for profile names and pricing — re-fetch on broadcast changes
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
+    return window.electronAPI.onSettingsChanged(() => {
+      void window.electronAPI.settings.get().then(setSettings)
+    })
   }, [])
   const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
   const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING

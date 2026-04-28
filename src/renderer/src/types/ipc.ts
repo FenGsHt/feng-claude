@@ -33,6 +33,8 @@ export const IPC = {
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  /** 主进程广播 settings 变更，渲染层重新拉取 */
+  SETTINGS_CHANGED: 'settings:changed',
 
   /** [2026-04-28] API Profile 管理 */
   PROFILE_ADD: 'profile:add',
