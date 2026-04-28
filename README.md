@@ -43,11 +43,12 @@
 - **Git Worktree 支持**：一键创建 worktree 并在新分屏打开，并行开发不同分支
 - **合并提醒**：多个 worktree 存在时显示提示
 
-#### 💾 工作区持久化
+#### 💾 工作区持久化 + 快速恢复
 
 - 自动保存终端布局、分屏比例
 - 重启后恢复上次工作状态（目录、会话、分屏）
-- 支持 `/resume` 恢复上次 Claude 对话
+- **侧边栏历史记录**：一键恢复任意 Claude Code 会话
+- **多窗口支持**：不同工作目录的历史独立保存，任意恢复
 
 ### 功能一览
 
@@ -55,7 +56,7 @@
 |------|------|
 | **终端集成** | xterm.js + node-pty，支持分屏、多会话 |
 | **文件树** | 浏览项目文件，拖拽生成 `@` 引用 |
-| **历史记录** | 会话历史，支持标签、搜索、快速恢复 |
+| **历史记录** | 会话历史，支持标签、搜索、快速恢复（多窗口独立保存） |
 | **Slash Commands** | 管理 `~/.claude/commands/` 自定义命令 |
 | **MCP 面板** | 可视化管理 MCP 服务器连接 |
 | **Skills 面板** | 管理 Claude Code skills/slash 命令 |
@@ -188,11 +189,12 @@ Each profile stores: API Key, Base URL, default model, pricing, etc. New session
 - **Git Worktree**: create and open in split pane for parallel development
 - **Merge reminder**: visual hint when multiple worktrees exist
 
-#### 💾 Workspace Persistence
+#### 💾 Workspace Persistence + Quick Resume
 
 - Auto-save terminal layout, split ratios
 - Restore on restart (directories, sessions, splits)
-- `/resume` to continue last Claude conversation
+- **Sidebar History**: one-click resume any Claude Code session
+- **Multi-window Support**: separate history per working directory, resume any session
 
 ### Feature Overview
 
@@ -200,7 +202,7 @@ Each profile stores: API Key, Base URL, default model, pricing, etc. New session
 |---------|-------------|
 | **Terminal Integration** | xterm.js + node-pty, split panes, multi-session |
 | **File Tree** | Browse files, drag to create `@` references |
-| **History** | Session history with labels, search, restore |
+| **History** | Session history with labels, search, quick resume (multi-window independent) |
 | **Slash Commands** | Manage `~/.claude/commands/` |
 | **MCP Panel** | Visual MCP server management |
 | **Skills Panel** | Manage Claude Code skills |
