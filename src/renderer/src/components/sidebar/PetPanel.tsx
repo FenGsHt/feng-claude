@@ -4,6 +4,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import type { PetLogRecord } from '../../types/ipc'
 import { useI18n } from '../../i18n'
+import { PetGrowthPanel } from './PetGrowthPanel'
 
 // ── ASCII Art ────────────────────────────────────────────────────
 // 每个 PetType 3 帧（idle 循环），thinking 状态用独立帧
@@ -263,7 +264,7 @@ export function PetPanel(): React.ReactElement {
     activeSessionId ? s.prompts.get(activeSessionId) : undefined
   )
 
-  const [subTab, setSubTab] = useState<'chat' | 'logs'>('chat')
+  const [subTab, setSubTab] = useState<'chat' | 'growth' | 'logs'>('chat')
   const [input, setInput] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [draftName, setDraftName] = useState(config.name)
@@ -363,7 +364,7 @@ export function PetPanel(): React.ReactElement {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex shrink-0 border-b border-claude-border">
-        {(['chat', 'logs'] as const).map((tab) => (
+        {(['chat', 'growth', 'logs'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -373,12 +374,14 @@ export function PetPanel(): React.ReactElement {
                 : 'text-claude-muted hover:text-claude-text'
             }`}
           >
-            {tab === 'chat' ? '💬 聊天' : '📋 日志'}
+            {tab === 'chat' ? '💬 聊天' : tab === 'growth' ? '🌱 养成' : '📋 日志'}
           </button>
         ))}
       </div>
 
-      {subTab === 'logs' ? <PetLogSubPanel /> : (
+      {subTab === 'logs' ? <PetLogSubPanel /> : subTab === 'growth' ? (
+        <PetGrowthPanel />
+      ) : (
       <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
 
         {/* Pet display */}
