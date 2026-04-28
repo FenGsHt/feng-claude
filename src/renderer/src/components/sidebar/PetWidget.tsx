@@ -293,21 +293,29 @@ function AsciiPet({
 function Bubble({ text, loading }: { text: string; loading: boolean }): React.ReactElement {
   const [shown, setShown] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 是否已打字完成
+  const [typingDone, setTypingDone] = useState(false)
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    if (loading) { setShown(''); return }
+    if (loading) { setShown(''); setTypingDone(false); return }
     let i = 0
     setShown('')
+    setTypingDone(false)
     const tick = (): void => {
-      if (i < text.length) { setShown(text.slice(0, ++i)); timerRef.current = setTimeout(tick, 15) }
+      if (i < text.length) {
+        setShown(text.slice(0, ++i))
+        timerRef.current = setTimeout(tick, 15)
+      } else {
+        setTypingDone(true)
+      }
     }
     timerRef.current = setTimeout(tick, 60)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [text, loading])
 
   return (
-    <div className="flex-1 min-w-0 rounded-lg bg-slate-700/80 border border-slate-600/50 px-2 py-1.5 text-[9.5px] text-slate-200 leading-snug relative">
+    <div className="flex-1 min-w-0 max-w-[200px] rounded-lg bg-slate-700/80 border border-slate-600/50 px-2 py-1.5 text-[9.5px] text-slate-200 leading-snug relative overflow-hidden">
       {/* 三角指向左侧宠物 */}
       <span
         className="absolute top-3 -left-[5px] w-0 h-0"
@@ -328,12 +336,12 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
           ))}
         </span>
       ) : (
-        <>
-          {shown}
-          {shown.length < text.length && (
+        <div className="overflow-y-auto max-h-[60px] pr-1 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent">
+          <span className="break-words whitespace-pre-wrap">{shown}</span>
+          {!typingDone && (
             <span className="inline-block w-[2px] h-[9px] bg-amber-400/80 animate-pulse align-middle ml-0.5" />
           )}
-        </>
+        </div>
       )}
     </div>
   )
