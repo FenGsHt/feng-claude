@@ -315,10 +315,17 @@ export function registerIpcHandlers(
         error?: { message?: string }
       }
       if (json.error) {
+        console.error('[pet:ask] API error:', json.error)
         return { error: json.error.message ?? 'API error' }
       }
 
       const replyText = json.content?.[0]?.text ?? ''
+
+      if (!replyText) {
+        // 空响应：把原始 JSON 打印出来便于排查
+        console.warn('[pet:ask] empty content, raw response:', text.slice(0, 500))
+        return { error: `API 响应为空 (model: ${model}, status check: see main process log)` }
+      }
 
       // 保存宠物日志
       petLogStore.add({

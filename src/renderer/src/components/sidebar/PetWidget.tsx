@@ -650,6 +650,7 @@ export function PetWidget(): React.ReactElement {
           petConfig: { name: config.name, personality: config.personality, type: config.type },
           triggerType: 'auto',
         })
+        console.log('[pet:ask result]', JSON.stringify(result))
         const reply = result.text?.trim() || result.error || '喵？没有响应...'
         pushHistory('assistant', reply)
         setSpeech(reply)

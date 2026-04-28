@@ -32,6 +32,8 @@ export interface ApiProfile {
   opusModel: string
   /** 子代理模型 */
   subagentModel: string
+  /** 模型上下文窗口大小（K tokens, e.g. 200 = 200K） */
+  contextWindow?: number
   /** 禁用实验性 Beta */
   disableExperimentalBetas: boolean
   /** [2026-04-28] 费用估算（每百万 token 价格） */

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { usePetStore, type PetType } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
+import type { PetLogRecord } from '../../types/ipc'
+import { useI18n } from '../../i18n'
 
 // ── ASCII Art ────────────────────────────────────────────────────
 // 每个 PetType 3 帧（idle 循环），thinking 状态用独立帧
@@ -183,16 +185,85 @@ function SpeechBubble({
   )
 }
 
+// ── Log sub-panel ────────────────────────────────────────────────
+function PetLogSubPanel(): React.ReactElement {
+  const [logs, setLogs] = useState<PetLogRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const { lang } = useI18n()
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true)
+    try { setLogs(await window.electronAPI.pet.getLogs(100)) } catch {}
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { void loadLogs() }, [loadLogs])
+
+  const handleClear = async (): Promise<void> => {
+    await window.electronAPI.pet.clearLogs()
+    setLogs([])
+  }
+
+  const fmt = (ts: number): string =>
+    new Date(ts).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    })
+
+  const triggerLabel: Record<string, string> = {
+    auto: lang === 'zh' ? '自动' : 'Auto',
+    manual: lang === 'zh' ? '手动' : 'Manual',
+    pet: lang === 'zh' ? '抚摸' : 'Pet',
+    'content-bank': lang === 'zh' ? '内容库' : 'Content',
+  }
+
+  if (loading) return <div className="flex items-center justify-center py-8 text-claude-muted text-xs">加载中...</div>
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-claude-border shrink-0">
+        <span className="text-[11px] text-claude-muted">{logs.length} 条记录</span>
+        <div className="flex gap-1">
+          <button onClick={loadLogs} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 hover:bg-slate-700">刷新</button>
+          <button onClick={handleClear} className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">清空</button>
+        </div>
+      </div>
+      {logs.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-claude-muted text-xs">暂无日志</div>
+      ) : (
+        <div className="flex-1 overflow-y-auto py-1">
+          {logs.map((log) => (
+            <div key={log.id} className="px-2 py-2 hover:bg-claude-border/30 border-b border-claude-border/30 last:border-b-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] text-claude-muted font-mono">{fmt(log.timestamp)}</span>
+                <span className="text-[10px] px-1 py-0.5 rounded bg-slate-700/50 text-slate-300">{log.petName}</span>
+                <span className="text-[10px] px-1 py-0.5 rounded bg-amber-600/20 text-amber-400">{triggerLabel[log.triggerType] ?? log.triggerType}</span>
+              </div>
+              <div className="text-[11px] text-claude-text mb-1 leading-snug">
+                <span className="text-claude-muted">问: </span>
+                {log.userMessage.length > 100 ? log.userMessage.slice(0, 100) + '...' : log.userMessage}
+              </div>
+              <div className="text-[11px] text-slate-300 leading-snug">
+                <span className="text-claude-muted">答: </span>
+                {log.assistantMessage.length > 150 ? log.assistantMessage.slice(0, 150) + '...' : log.assistantMessage}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Panel ───────────────────────────────────────────────────
 export function PetPanel(): React.ReactElement {
   const { config, mood, speech, history, setConfig, setMood, setSpeech, pushHistory, clearHistory } =
     usePetStore()
   const { sessions, activeSessionId } = useSessionStore()
-  // [2026-04-27] 实时用户问题
   const userPrompt = useUserPromptStore((s) =>
     activeSessionId ? s.prompts.get(activeSessionId) : undefined
   )
 
+  const [subTab, setSubTab] = useState<'chat' | 'logs'>('chat')
   const [input, setInput] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [draftName, setDraftName] = useState(config.name)
@@ -239,8 +310,8 @@ export function PetPanel(): React.ReactElement {
           history: history.slice(-10),
           petConfig: config,
         })
-
-        const reply = result.text ?? '喵？好像出了点问题...'
+        console.log('[pet:ask result]', JSON.stringify(result))
+        const reply = result.text?.trim() || result.error || '喵？好像出了点问题...'
         pushHistory('assistant', reply)
         setSpeech(reply)
         setMood('talking')
@@ -290,6 +361,24 @@ export function PetPanel(): React.ReactElement {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Sub-tab bar */}
+      <div className="flex shrink-0 border-b border-claude-border">
+        {(['chat', 'logs'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setSubTab(tab)}
+            className={`flex-1 text-[10.5px] py-1 transition-colors ${
+              subTab === tab
+                ? 'text-amber-400 border-b-2 border-amber-500 -mb-px'
+                : 'text-claude-muted hover:text-claude-text'
+            }`}
+          >
+            {tab === 'chat' ? '💬 聊天' : '📋 日志'}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'logs' ? <PetLogSubPanel /> : (
       <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
 
         {/* Pet display */}
@@ -450,6 +539,7 @@ export function PetPanel(): React.ReactElement {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

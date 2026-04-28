@@ -10,12 +10,12 @@ import { GuidePanel } from '../guide/GuidePanel'
 import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
-import { PetLogPanel } from './PetLogPanel'
+import { PetPanel } from './PetPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet-logs'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet'
 
 interface TabConfig {
   id: Tab
@@ -122,6 +122,17 @@ function IconPetLog(): React.ReactElement {
   )
 }
 
+function IconPet(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M3 3.5C3 2.7 3.7 2 4.5 2S6 2.7 6 3.5 5.3 5 4.5 5 3 4.3 3 3.5Z" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M9 3.5C9 2.7 9.7 2 10.5 2S12 2.7 12 3.5 11.3 5 10.5 5 9 4.3 9 3.5Z" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M2 8.5C2 6.6 4.5 5 7.5 5S13 6.6 13 8.5c0 2.5-2.5 4.5-5.5 4.5S2 11 2 8.5Z" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M5.5 9.5c.5.5 1 .8 2 .8s1.5-.3 2-.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -137,7 +148,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'plugins', label: t.sidebar.plugins, icon: <IconPlugins /> },
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
-    { id: 'pet-logs', label: lang === 'zh' ? '宠物日志' : 'Pet Logs', icon: <IconPetLog /> },
+    { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -211,8 +222,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <SkillsPanel />
           ) : activeTab === 'mcp' ? (
             <McpPanel />
-          ) : activeTab === 'pet-logs' ? (
-            <PetLogPanel />
+          ) : activeTab === 'pet' ? (
+            <PetPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (
