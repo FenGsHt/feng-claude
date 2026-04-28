@@ -186,7 +186,8 @@ export const usePetStore = create<PetStore>()(
           newXp -= xpToNext
           level++
           xpToNext = xpForLevel(level)
-          skillPoints++
+          // 每 3 级获得 1 个技能点
+          if (level % 3 === 0) skillPoints++
         }
 
         return {
