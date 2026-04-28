@@ -438,9 +438,12 @@ export function SettingsPanel(): React.ReactElement {
               ...prev,
               petApi: { ...prev.petApi, baseUrl: e.target.value, authToken: prev.petApi?.authToken ?? '', model: prev.petApi?.model ?? '' }
             }))}
-            placeholder="https://api.anthropic.com"
+            placeholder="https://api.anthropic.com/v1/messages"
             className="field-input"
           />
+          <p className="text-[9px] text-claude-muted mt-0.5">
+            {lang === 'zh' ? '填写完整的 endpoint URL（如 /v1/messages 或 /v1/chat/completions）' : 'Full endpoint URL (e.g. /v1/messages or /v1/chat/completions)'}
+          </p>
         </Field>
 
         {/* 宠物 Model */}

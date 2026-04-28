@@ -326,7 +326,8 @@ export function registerIpcHandlers(
         messages,
       })
 
-      const url = new URL(`${baseUrl}/v1/messages`)
+      // [2026-04-28] 直接使用 baseUrl 作为完整 endpoint，不再拼接 /v1/messages
+      const url = new URL(baseUrl)
       const isHttps = url.protocol === 'https:'
       const { request } = isHttps ? await import('https') : await import('http')
 
