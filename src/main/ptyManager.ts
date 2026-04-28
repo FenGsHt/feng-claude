@@ -170,6 +170,10 @@ interface PtySession {
   /** Rolling buffer of raw PTY output for scrollback persistence */
   scrollbackChunks: Buffer[]
   scrollbackSize: number
+  /** Whether this session was started with --continue (so we can fall back on failure) */
+  usedContinue: boolean
+  /** Guard: only fall back from --continue once */
+  continueFallbackDone: boolean
 }
 
 export class PtyManager {
@@ -217,7 +221,9 @@ export class PtyManager {
       relaunchPending: false,
       firstAutoLaunchAt: 0,
       scrollbackChunks: [],
-      scrollbackSize: 0
+      scrollbackSize: 0,
+      usedContinue: !!resume,
+      continueFallbackDone: false
     }
 
     setTimeout(() => {
@@ -247,6 +253,30 @@ export class PtyManager {
       // Detect if we've dropped back to the shell prompt (claude exited)
       // Keep a rolling buffer of recent output to match multi-chunk prompts
       session.buffer = (session.buffer + data).slice(-512)
+
+      // [2026-04-28] --continue 失败时 Claude 打印 "No conversation found to continue" 并退回 shell
+      // 检测到后立即降级为不带 --continue 重新启动，避免停在空 shell。
+      if (
+        session.usedContinue &&
+        !session.continueFallbackDone &&
+        !session.relaunchPending &&
+        session.buffer.includes('No conversation found to continue')
+      ) {
+        session.continueFallbackDone = true
+        session.claudeRunning = false
+        session.relaunchPending = true
+        session.buffer = ''
+        setTimeout(() => {
+          session.relaunchPending = false
+          if (this.sessions.has(sessionId)) {
+            session.claudeRunning = true
+            session.firstAutoLaunchAt = Date.now()
+            const settings = this.settingsStore.get()
+            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))
+          }
+        }, 300)
+        return
+      }
 
       /* [2026-04-23] 曾在此检测就绪后发 `/resume`；已改为首启命令行 `claude --continue`（见 claudeLaunchLine）。 */
 
