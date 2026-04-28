@@ -12,11 +12,12 @@ import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
 import { PetPanel } from './PetPanel'
 import { TestPanel } from './TestPanel'
+import { PetGrowthPanel } from './PetGrowthPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'petGrowth'
 
 // Global state for external tab control
 let setActiveTabExternal: ((tab: Tab) => void) | null = null
@@ -152,6 +153,16 @@ function IconTest(): React.ReactElement {
   )
 }
 
+function IconPetGrowth(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M7.5 2v5M5 4l2.5 2.5L10 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="7.5" cy="10" r="3" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M6 10h3" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -175,6 +186,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
     { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
     { id: 'test', label: t.sidebar.test, icon: <IconTest /> },
+    { id: 'petGrowth', label: lang === 'zh' ? '养成' : 'Growth', icon: <IconPetGrowth /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -252,6 +264,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <PetPanel />
           ) : activeTab === 'test' ? (
             <TestPanel />
+          ) : activeTab === 'petGrowth' ? (
+            <PetGrowthPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (

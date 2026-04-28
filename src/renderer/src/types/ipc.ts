@@ -234,6 +234,11 @@ export interface PetAskPayload {
   history: Array<{ role: 'user' | 'assistant'; content: string }>
   petConfig: { name: string; personality: string; type?: string }
   triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
+  growth?: {
+    level: number
+    affection: number
+    skills: Array<{ id: string; level: number }>
+  }
 }
 
 export interface PetAskResult {

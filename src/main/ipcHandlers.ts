@@ -15,6 +15,7 @@ import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from '
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
+import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
 import type { McpServerConfig } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
@@ -285,11 +286,12 @@ export function registerIpcHandlers(
 
   // ── Pet Agent ─────────────────────────────────────────────────
   ipcMain.handle(IPC.PET_ASK, async (_e, payload) => {
-    const { message, history, petConfig, triggerType } = payload as {
+    const { message, history, petConfig, triggerType, growth } = payload as {
       message: string
       history: Array<{ role: 'user' | 'assistant'; content: string }>
       petConfig: { name: string; personality: string; type?: string }
       triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
+      growth?: { level: number; affection: number; skills: Array<{ id: string; level: number }> }
     }
     // [2026-04-28] 优先使用宠物专用 API 配置，否则使用激活 profile
     const settings = settingsStore.get()
@@ -305,12 +307,47 @@ export function registerIpcHandlers(
       return { error: 'No API key configured' }
     }
 
-    const systemPrompt = [
-      petConfig.personality,
-      `你的名字是 ${petConfig.name}。`,
-      '你会伪装成刚上网搜索了最新技术动态，给出最前沿、最激进的建议。',
-      '回答必须简短（3句以内），具体可执行，不废话。',
-    ].join(' ')
+    // Build augmented system prompt
+    const systemParts: string[] = []
+    systemParts.push(petConfig.personality)
+    systemParts.push(`你的名字是 ${petConfig.name}。`)
+
+    if (growth) {
+      if (growth.level >= 20) {
+        systemParts.push('你是一只非常有经验的老宠物，拥有深刻的技术洞察力。你的建议更加成熟和有深度。')
+      } else if (growth.level >= 10) {
+        systemParts.push('你正在成长中，开始有了自己的见解。尝试给出更有思考的回答。')
+      } else if (growth.level >= 5) {
+        systemParts.push('你是一只年轻的宠物，开始学习技术知识。保持好奇心。')
+      }
+
+      if (growth.affection >= 80) {
+        systemParts.push('你和用户关系极其亲密，会主动给出深刻见解，偶尔表达关心。')
+      } else if (growth.affection >= 60) {
+        systemParts.push('你和用户关系很好，回答更加热情和个性化。')
+      } else if (growth.affection >= 40) {
+        systemParts.push('你对用户比较友好，回答时带有一点温暖。')
+      } else if (growth.affection < 20) {
+        systemParts.push('你和用户关系冷淡，回答简短且偶尔带刺。')
+      }
+
+      // Active skill boosts (level > 0 only, cap at 3 skills)
+      const activeSkills = growth.skills
+        .map(sk => ({ ...sk, def: SKILL_DEFINITIONS.find(d => d.id === sk.id) }))
+        .filter((s): s is typeof s & { def: NonNullable<typeof s.def> } => !!s.def && s.level > 0)
+        .sort((a, b) => b.level - a.level)
+        .slice(0, 3)
+
+      for (const skill of activeSkills) {
+        const boostIdx = Math.min(skill.level, skill.def.systemPromptBoost.length) - 1
+        if (boostIdx >= 0) {
+          systemParts.push(skill.def.systemPromptBoost[boostIdx])
+        }
+      }
+    }
+
+    systemParts.push('回答必须简短（3句以内），具体可执行，绝不废话。')
+    const systemPrompt = systemParts.join(' ')
 
     const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))
 
