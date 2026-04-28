@@ -167,7 +167,8 @@ export function UsageChart(): React.ReactElement {
   const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)]))
 
   const BAR_H = 80
-  const BAR_W = 10
+  const BAR_W = 32
+  const BAR_GAP = 8
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
@@ -203,24 +204,26 @@ export function UsageChart(): React.ReactElement {
       {/* Bar chart */}
       <div>
         <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">近 {CHART_DAYS} 天</div>
-        <div className="flex items-end gap-[4px]" style={{ height: BAR_H + 18 }}>
-          {dates.map((date, i) => {
-            const v = values[i]
-            const barH = v > 0 ? Math.max(3, Math.round((v / maxVal) * BAR_H)) : 2
-            const isToday = date === todayDate
-            return (
-              <div key={date} className="flex flex-col items-center gap-0.5" style={{ width: BAR_W }}>
-                <div
-                  title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                  className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-400/70' : 'bg-claude-border/30'}`}
-                  style={{ height: barH, marginTop: BAR_H - barH }}
-                />
-                <span className={`text-[8px] leading-none ${isToday ? 'text-amber-400 font-semibold' : 'text-claude-muted/50'}`}>
-                  {shortDate(date)}
-                </span>
-              </div>
-            )
-          })}
+        <div className="overflow-x-auto pb-1 -mx-3 px-3">
+          <div className="flex items-end gap-[8px]" style={{ width: CHART_DAYS * (BAR_W + BAR_GAP), minWidth: '100%', height: BAR_H + 22 }}>
+            {dates.map((date, i) => {
+              const v = values[i]
+              const barH = v > 0 ? Math.max(3, Math.round((v / maxVal) * BAR_H)) : 2
+              const isToday = date === todayDate
+              return (
+                <div key={date} className="flex flex-col items-center gap-1 shrink-0" style={{ width: BAR_W }}>
+                  <div
+                    title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
+                    className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-400/70' : 'bg-claude-border/30'}`}
+                    style={{ height: barH, marginTop: BAR_H - barH }}
+                  />
+                  <span className={`text-[9px] leading-none ${isToday ? 'text-amber-400 font-semibold' : 'text-claude-muted/50'}`}>
+                    {shortDate(date)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
         </div>
         <div className="text-[10px] text-claude-muted text-center mt-2">
           最高: <span className="text-claude-text">{formatK(maxVal)}</span> tokens/天
