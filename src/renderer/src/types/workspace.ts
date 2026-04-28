@@ -19,6 +19,8 @@ export interface PersistedWorkspace {
   version: typeof WORKSPACE_VERSION
   /** 与顶部 Tab 顺序一致；每个 slot 对应一个工作目录 */
   sessionWorkdirs: string[]
+  /** [2026-04-28] 每个 sessionWorkdir 对应的 profileId（可选，缺失则用全局 active） */
+  profileIds?: string[]
   layoutRoot: PersistedPaneNode | null
   /** 上次激活的会话在 sessionWorkdirs 中的下标 */
   activeSlotIndex: number

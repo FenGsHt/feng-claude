@@ -42,9 +42,14 @@ export function workspaceToPersisted(
     if (i !== undefined) activeSlotIndex = i
   }
 
+  // [2026-04-28] Collect profileIds for each session (keep all, including nulls)
+  const profileIds = sessions.map((s) => s.profileId)
+
   return {
     version: WORKSPACE_VERSION,
     sessionWorkdirs: sessions.map((s) => s.workdir),
+    // Only include profileIds if at least one is set
+    profileIds: profileIds.some((id) => id != null) ? profileIds as string[] : undefined,
     layoutRoot: layoutPersisted,
     activeSlotIndex
   }
@@ -88,5 +93,10 @@ export function parsePersistedWorkspace(raw: unknown): PersistedWorkspace | null
   if (o.sessionWorkdirs.some((w) => typeof w !== 'string')) return null
   if (typeof o.activeSlotIndex !== 'number' || o.activeSlotIndex < 0) return null
   if (o.layoutRoot !== null && typeof o.layoutRoot !== 'object') return null
+  // [2026-04-28] Validate profileIds if present
+  if (o.profileIds !== undefined && Array.isArray(o.profileIds)) {
+    if (o.profileIds.some((id) => typeof id !== 'string')) return null
+    if (o.profileIds.length !== o.sessionWorkdirs.length) return null
+  }
   return o as PersistedWorkspace
 }

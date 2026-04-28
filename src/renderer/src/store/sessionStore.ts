@@ -319,9 +319,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     resetAllTokenUsageParsing()
 
     const sessions: Session[] = []
-    for (const wd of pw.sessionWorkdirs) {
+    // [2026-04-28] Restore sessions with their saved profileIds
+    for (let i = 0; i < pw.sessionWorkdirs.length; i++) {
+      const wd = pw.sessionWorkdirs[i]
+      const profileId = pw.profileIds?.[i]
       try {
-        const result = await window.electronAPI.createSession(wd, true)
+        const result = await window.electronAPI.createSession(wd, true, profileId)
         const resolvedWd = result.workdir ?? wd
         if (result.scrollback) {
           preFillTerminal(result.sessionId, result.scrollback)
@@ -334,7 +337,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           messages: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          ptyPid: result.pid
+          ptyPid: result.pid,
+          profileId: result.profileId ?? profileId
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently
