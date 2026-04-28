@@ -204,7 +204,7 @@ export function UsageChart(): React.ReactElement {
       {/* Bar chart */}
       <div>
         <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">近 {CHART_DAYS} 天</div>
-        <div className="overflow-x-auto pb-1 -mx-3 px-3">
+        <div ref={(el) => { if (el) el.scrollLeft = el.scrollWidth }} className="overflow-x-auto pb-1 -mx-3 px-3">
           <div className="flex items-end gap-[8px]" style={{ width: CHART_DAYS * (BAR_W + BAR_GAP), minWidth: '100%', height: BAR_H + 22 }}>
             {dates.map((date, i) => {
               const v = values[i]
