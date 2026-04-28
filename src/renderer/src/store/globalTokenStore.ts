@@ -37,6 +37,16 @@ export function computeCost(t: TokenTotals, p: Pricing): number {
 
 const ZERO: TokenTotals = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
 
+/** [2026-04-28] Ensure TokenTotals has no null values (corrupted data fix) */
+function sanitize(t: Partial<TokenTotals> | null | undefined): TokenTotals {
+  return {
+    input: Number(t?.input ?? 0) || 0,
+    output: Number(t?.output ?? 0) || 0,
+    cacheCreate: Number(t?.cacheCreate ?? 0) || 0,
+    cacheRead: Number(t?.cacheRead ?? 0) || 0
+  }
+}
+
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -99,8 +109,19 @@ function scheduleSave(state: PersistedTokenData): void {
 
 // Immediate save (for user-initiated actions like setBudget/resetTotal)
 function saveImmediately(state: PersistedTokenData): void {
-  const { total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile, perProfile, pricing, hideDetailedTokens } = state
-  window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile, perProfile, pricing, hideDetailedTokens })
+  // [2026-04-28] Sanitize before save to prevent null values in persisted data
+  const sanitizedState = {
+    total: sanitize(state.total),
+    today: sanitize(state.today),
+    todayDate: state.todayDate,
+    budget: state.budget,
+    dailyHistory: Object.fromEntries(Object.entries(state.dailyHistory).map(([k, v]) => [k, sanitize(v)])),
+    dailyHistoryPerProfile: Object.fromEntries(Object.entries(state.dailyHistoryPerProfile).map(([k, profiles]) => [k, Object.fromEntries(Object.entries(profiles).map(([pid, v]) => [pid, sanitize(v)]))])),
+    perProfile: Object.fromEntries(Object.entries(state.perProfile).map(([k, v]) => [k, sanitize(v)])),
+    pricing: state.pricing,
+    hideDetailedTokens: state.hideDetailedTokens
+  }
+  window.electronAPI.tokenData?.set(sanitizedState)
     .catch((e: unknown) => console.error('[tokenStore] save failed:', e))
 }
 
@@ -121,14 +142,15 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
       const raw = await window.electronAPI.tokenData?.get()
       if (raw && typeof raw === 'object') {
         const d = raw as Partial<PersistedTokenData>
+        // [2026-04-28] Sanitize all loaded token data to fix corrupted null values
         set({
-          total: d.total ?? { ...ZERO },
-          today: d.today ?? { ...ZERO },
+          total: sanitize(d.total),
+          today: sanitize(d.today),
           todayDate: d.todayDate ?? todayStr(),
           budget: d.budget ?? 0,
-          dailyHistory: d.dailyHistory ?? {},
-          dailyHistoryPerProfile: d.dailyHistoryPerProfile ?? {},
-          perProfile: d.perProfile ?? {},
+          dailyHistory: Object.fromEntries(Object.entries(d.dailyHistory ?? {}).map(([k, v]) => [k, sanitize(v)])),
+          dailyHistoryPerProfile: Object.fromEntries(Object.entries(d.dailyHistoryPerProfile ?? {}).map(([k, profiles]) => [k, Object.fromEntries(Object.entries(profiles ?? {}).map(([pid, v]) => [pid, sanitize(v)]))])),
+          perProfile: Object.fromEntries(Object.entries(d.perProfile ?? {}).map(([k, v]) => [k, sanitize(v)])),
           pricing: d.pricing ?? { ...DEFAULT_PRICING },
           hideDetailedTokens: d.hideDetailedTokens ?? false,
           _hydrated: true
@@ -144,10 +166,11 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
             const state = parsed?.state ?? parsed
             if (state && typeof state === 'object') {
               const budget = state.budget ?? 0
-              const total = state.total ?? { ...ZERO }
-              const today = state.today ?? { ...ZERO }
+              // [2026-04-28] Sanitize migrated data too
+              const total = sanitize(state.total)
+              const today = sanitize(state.today)
               const todayDate = state.todayDate ?? todayStr()
-              const dailyHistory = state.dailyHistory ?? {}
+              const dailyHistory = Object.fromEntries(Object.entries(state.dailyHistory ?? {}).map(([k, v]) => [k, sanitize(v)]))
               const pricing = state.pricing ?? { ...DEFAULT_PRICING }
               set({ total, today, todayDate, budget, dailyHistory, pricing, dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
               await window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile: {}, perProfile: {}, pricing })
