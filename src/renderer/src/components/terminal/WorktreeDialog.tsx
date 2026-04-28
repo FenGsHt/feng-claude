@@ -18,6 +18,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [mergeLoading, setMergeLoading] = useState<string | null>(null) // 正在合并的分支名
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null) // 正在删除的分支名
 
   // 加载分支和 worktree 信息
   const loadData = useCallback(async () => {
@@ -120,6 +121,30 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setMergeLoading(null)
   }
 
+  const handleDelete = async (worktreePath: string, branch: string): void => {
+    // 确认删除
+    if (!confirm(`确定要删除 worktree "${branch}" 吗？\n\n路径: ${worktreePath}\n\n这将删除该 worktree 目录和分支。`)) {
+      return
+    }
+    setDeleteLoading(branch)
+    setError('')
+    try {
+      const result = await window.electronAPI.git.worktreeRemove({
+        worktreePath,
+        force: true,
+      })
+      if (!result.success) {
+        setError(`删除 ${branch} 失败: ${result.error}`)
+      } else {
+        // 删除成功，刷新数据
+        await loadData()
+      }
+    } catch (e) {
+      setError(String(e))
+    }
+    setDeleteLoading(null)
+  }
+
   // 已存在的 worktree 分支
   const existingWorktreeBranches = worktrees.map(wt => wt.branch)
 
@@ -185,6 +210,17 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
                       title={unmergedCounts[wt.branch] > 0 ? `合并 ${wt.branch} 到 ${currentBranch}` : '无未合并提交'}
                     >
                       {mergeLoading === wt.branch ? '合并中...' : '合并'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDelete(wt.path, wt.branch)
+                      }}
+                      disabled={deleteLoading === wt.branch}
+                      className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-red-600/20 text-red-400 hover:bg-red-600/30 disabled:opacity-50"
+                      title={`删除 ${wt.branch} 的 worktree`}
+                    >
+                      {deleteLoading === wt.branch ? '删除中...' : '删除'}
                     </button>
                   </div>
                 ))}
