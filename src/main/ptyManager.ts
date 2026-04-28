@@ -5,7 +5,7 @@ import { dirname, join } from 'path'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import type { ClaudeSettings, SettingsStore } from './settingsStore'
+import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 
@@ -158,10 +158,16 @@ export class PtyManager {
     this.settingsStore = settingsStore
   }
 
-  createSession(sessionId: string, workdir: string, settings?: ClaudeSettings, resume?: boolean): { pid: number } {
+  createSession(
+    sessionId: string,
+    workdir: string,
+    profile: ApiProfile,
+    settings?: ClaudeSettings,
+    resume?: boolean
+  ): { pid: number } {
     const s = settings ?? this.settingsStore.get()
-    // [2026-04-28] 使用 toEnv() 获取激活 profile 的 API 配置
-    const claudeEnv = this.settingsStore.toEnv()
+    // [2026-04-28] 使用指定的 profile 获取 API 配置
+    const claudeEnv = this.settingsStore.profileToEnv(profile)
 
     const isWindows = process.platform === 'win32'
     const shell = isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash')

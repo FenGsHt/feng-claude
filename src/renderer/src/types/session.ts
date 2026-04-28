@@ -30,6 +30,8 @@ export interface Session {
   createdAt: number
   updatedAt: number
   ptyPid?: number
+  /** [2026-04-28] 该 session 使用的 API profile ID（null 表示使用全局激活的 profile）*/
+  profileId?: string | null
 }
 
 export interface HistoryRecord {

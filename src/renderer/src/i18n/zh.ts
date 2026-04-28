@@ -162,7 +162,8 @@ export const zh = {
   tabs: {
     newSession: '新建会话（选择文件夹）',
     closeTab: '关闭标签',
-    restartSession: '重启会话'
+    restartSession: '重启会话',
+    switchProfile: '切换 API 配置'
   },
   // File tree
   files: {

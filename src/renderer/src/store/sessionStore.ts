@@ -73,8 +73,9 @@ interface SessionStore {
   /**
    * @param splitFromSessionId 分屏时从该 session 所在格拆出；缺省则使用当前 active（与点哪个窗格上的分屏一致）
    * @param resume 传 true 时以 --continue 恢复该目录上次对话上下文
+   * @param profileId [2026-04-28] 指定使用的 API profile ID（可选）
    */
-  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean) => Promise<void>
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
 
@@ -94,7 +95,10 @@ interface SessionStore {
   restoreWorkspace: (pw: PersistedWorkspace) => Promise<void>
 
   /** 原地重启：关闭当前 PTY，在相同 workdir 重新创建，保持 tab 位置不变 */
-  restartSession: (id: string) => Promise<void>
+  restartSession: (id: string, newProfileId?: string) => Promise<void>
+
+  /** [2026-04-28] 更新会话的 profileId（切换配置） */
+  updateSessionProfileId: (sessionId: string, profileId: string) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -107,15 +111,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     workdir: string,
     mode: CreateSessionMode = 'fullscreen',
     splitFromSessionId?: string,
-    resume?: boolean
+    resume?: boolean,
+    profileId?: string
   ) => {
     /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const result = await window.electronAPI.createSession(workdir, resume)
+    const result = await window.electronAPI.createSession(workdir, resume, profileId)
     // Use the resolved absolute path returned by main — avoids '.' being stored
     const resolvedWorkdir = result.workdir ?? workdir
+    // [2026-04-28] Use returned profileId if provided, otherwise use passed one
+    const sessionProfileId = result.profileId ?? profileId
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -124,7 +131,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      ptyPid: result.pid
+      ptyPid: result.pid,
+      profileId: sessionProfileId
     }
 
     set((s) => {
@@ -262,9 +270,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await get().loadHistory()
   },
 
-  restartSession: async (id: string) => {
+  restartSession: async (id: string, newProfileId?: string) => {
     const sess = get().sessions.find((s) => s.id === id)
     if (!sess) return
+    // [2026-04-28] Use newProfileId if provided, otherwise keep existing
+    const targetProfileId = newProfileId ?? sess.profileId
     const { workdir, createdAt } = sess
 
     destroyTerminal(id)
@@ -272,7 +282,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useTokenUsageStore.getState().clearSession(id)
     window.electronAPI.closeSession(id)
 
-    const result = await window.electronAPI.createSession(workdir)
+    const result = await window.electronAPI.createSession(workdir, undefined, targetProfileId)
     const resolvedWorkdir = result.workdir ?? workdir
     const newSession: Session = {
       id: result.sessionId,
@@ -282,7 +292,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       messages: [],
       createdAt,
       updatedAt: Date.now(),
-      ptyPid: result.pid
+      ptyPid: result.pid,
+      profileId: targetProfileId
     }
 
     function replaceLeafId(node: PaneNode, oldId: string, newId: string): PaneNode {
@@ -356,5 +367,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     set({ sessions, layoutRoot, activeSessionId })
     await get().loadHistory()
+  },
+
+  updateSessionProfileId: (sessionId: string, profileId: string) => {
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, profileId } : sess
+      )
+    }))
   }
 }))

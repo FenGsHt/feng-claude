@@ -153,7 +153,8 @@ export const en: Translations = {
   tabs: {
     newSession: 'New session (pick folder)',
     closeTab: 'Close tab',
-    restartSession: 'Restart session'
+    restartSession: 'Restart session',
+    switchProfile: 'Switch API profile'
   },
   files: {
     changeDir: 'Change directory',

@@ -61,7 +61,9 @@ export function AppShell(): React.ReactElement {
   useEffect(() => {
     void window.electronAPI.settings.get().then((s) => {
       if (s.language) useLangStore.getState().setLang(s.language)
-      if (!s.authToken) setShowSetup(true)
+      // [2026-04-28] Check profiles array for authToken instead of flat field (migration)
+      const hasToken = s.profiles?.some(p => p.authToken?.trim())
+      if (!hasToken) setShowSetup(true)
     })
   }, [])
 
@@ -102,7 +104,20 @@ function SetupOverlay({ onDone }: { onDone: () => void }): React.ReactElement {
     if (!token.trim()) { setError(zh ? '请输入 API Key' : 'Please enter your API Key'); return }
     setSaving(true)
     const current = await window.electronAPI.settings.get()
-    await window.electronAPI.settings.set({ ...current, authToken: token.trim() })
+    // [2026-04-28] Save token into first profile instead of flat authToken field
+    if (current.profiles?.length > 0) {
+      const updatedProfiles = current.profiles.map((p, i) =>
+        i === 0 ? { ...p, authToken: token.trim() } : p
+      )
+      await window.electronAPI.settings.set({ ...current, profiles: updatedProfiles })
+    } else {
+      // Fallback: create default profile with token
+      await window.electronAPI.settings.set({
+        ...current,
+        profiles: [{ id: 'default', name: 'Default', authToken: token.trim(), baseUrl: 'https://api.anthropic.com', model: '', sonnetModel: '', haikuModel: '', opusModel: '', subagentModel: '', disableExperimentalBetas: false }],
+        activeProfileId: 'default'
+      })
+    }
     setSaving(false)
     onDone()
   }

@@ -149,6 +149,8 @@ export interface TokenUsageUpdatePayload {
 export interface SessionCreatePayload {
   workdir: string
   resume?: boolean
+  /** [2026-04-28] 指定使用的 API profile ID（可选，默认使用全局激活的 profile）*/
+  profileId?: string
 }
 
 export interface SessionCreateResult {
@@ -158,6 +160,8 @@ export interface SessionCreateResult {
   workdir: string
   /** Base64-encoded raw terminal data from previous session in this workdir */
   scrollback?: string | null
+  /** [2026-04-28] The profile ID used for this session */
+  profileId?: string
 }
 
 export interface PtyInputPayload {

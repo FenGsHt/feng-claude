@@ -232,16 +232,46 @@ export function SettingsPanel(): React.ReactElement {
             />
           </Field>
 
-          {/* Default Model */}
-          <Field label={lang === 'zh' ? '默认模型' : 'Default Model'} hint="ANTHROPIC_MODEL">
-            <input
-              type="text"
-              value={activeProfile.model}
-              onChange={(e) => handleProfileChange('model', e.target.value)}
-              placeholder="model-name"
-              className="field-input"
-            />
-          </Field>
+          {/* All Models */}
+          {(
+            [
+              ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL'],
+              ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+              ['haikuModel', 'Haiku Model', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
+              ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+              ['subagentModel', 'Subagent Model', 'CLAUDE_CODE_SUBAGENT_MODEL'],
+            ] as [keyof ApiProfile, string, string][]
+          ).map(([key, label, hint]) => (
+            <Field key={key} label={label} hint={hint}>
+              <input
+                type="text"
+                value={activeProfile[key] as string}
+                onChange={(e) => handleProfileChange(key, e.target.value)}
+                placeholder="model-name"
+                className="field-input"
+              />
+            </Field>
+          ))}
+
+          {/* Disable experimental betas */}
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <div className="text-xs text-claude-text">{lang === 'zh' ? '禁用实验性功能' : 'Disable Experimental Betas'}</div>
+              <div className="text-[10px] text-claude-muted">CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS</div>
+            </div>
+            <button
+              onClick={() => handleProfileChange('disableExperimentalBetas', !activeProfile.disableExperimentalBetas)}
+              className={`relative w-8 h-4 rounded-full transition-colors ${
+                activeProfile.disableExperimentalBetas ? 'bg-amber-500' : 'bg-claude-border'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                  activeProfile.disableExperimentalBetas ? 'left-4.5' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       )}
 
