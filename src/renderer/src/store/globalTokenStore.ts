@@ -143,14 +143,43 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
       if (raw && typeof raw === 'object') {
         const d = raw as Partial<PersistedTokenData>
         // [2026-04-28] Sanitize all loaded token data to fix corrupted null values
+        const sanitizedTotal = sanitize(d.total)
+        const sanitizedToday = sanitize(d.today)
+        const sanitizedPerProfile = Object.fromEntries(Object.entries(d.perProfile ?? {}).map(([k, v]) => [k, sanitize(v)]))
+        const sanitizedDailyHistory = Object.fromEntries(Object.entries(d.dailyHistory ?? {}).map(([k, v]) => [k, sanitize(v)]))
+        const sanitizedDailyPerProfile = Object.fromEntries(Object.entries(d.dailyHistoryPerProfile ?? {}).map(([k, profiles]) => [k, Object.fromEntries(Object.entries(profiles ?? {}).map(([pid, v]) => [pid, sanitize(v)]))]))
+
+        // [2026-04-28] Recover total/input/output from perProfile if they were corrupted to 0
+        const now = todayStr()
+        let recoveredTotal = sanitizedTotal
+        if (sanitizedTotal.input === 0 && sanitizedTotal.output === 0 && Object.keys(sanitizedPerProfile).length > 0) {
+          recoveredTotal = Object.values(sanitizedPerProfile).reduce((acc, t) => add(acc, t), { ...ZERO })
+          console.log(`[tokenStore] recovered total from perProfile: in=${recoveredTotal.input} out=${recoveredTotal.output}`)
+        }
+        let recoveredToday = sanitizedToday
+        const todayProfiles = sanitizedDailyPerProfile[now]
+        if (sanitizedToday.input === 0 && sanitizedToday.output === 0 && todayProfiles && Object.keys(todayProfiles).length > 0) {
+          recoveredToday = Object.values(todayProfiles).reduce((acc, t) => add(acc, t), { ...ZERO })
+          console.log(`[tokenStore] recovered today from perProfile: in=${recoveredToday.input} out=${recoveredToday.output}`)
+        }
+        // Recover dailyHistory entries from dailyHistoryPerProfile
+        const recoveredDailyHistory = { ...sanitizedDailyHistory }
+        for (const [date, profiles] of Object.entries(sanitizedDailyPerProfile)) {
+          const existing = sanitizedDailyHistory[date]
+          if (existing && existing.input === 0 && existing.output === 0 && Object.keys(profiles).length > 0) {
+            recoveredDailyHistory[date] = Object.values(profiles).reduce((acc, t) => add(acc, t), { ...ZERO })
+            console.log(`[tokenStore] recovered dailyHistory[${date}] from perProfile`)
+          }
+        }
+
         set({
-          total: sanitize(d.total),
-          today: sanitize(d.today),
-          todayDate: d.todayDate ?? todayStr(),
+          total: recoveredTotal,
+          today: recoveredToday,
+          todayDate: d.todayDate ?? now,
           budget: d.budget ?? 0,
-          dailyHistory: Object.fromEntries(Object.entries(d.dailyHistory ?? {}).map(([k, v]) => [k, sanitize(v)])),
-          dailyHistoryPerProfile: Object.fromEntries(Object.entries(d.dailyHistoryPerProfile ?? {}).map(([k, profiles]) => [k, Object.fromEntries(Object.entries(profiles ?? {}).map(([pid, v]) => [pid, sanitize(v)]))])),
-          perProfile: Object.fromEntries(Object.entries(d.perProfile ?? {}).map(([k, v]) => [k, sanitize(v)])),
+          dailyHistory: recoveredDailyHistory,
+          dailyHistoryPerProfile: sanitizedDailyPerProfile,
+          perProfile: sanitizedPerProfile,
           pricing: d.pricing ?? { ...DEFAULT_PRICING },
           hideDetailedTokens: d.hideDetailedTokens ?? false,
           _hydrated: true
