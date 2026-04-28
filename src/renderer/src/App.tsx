@@ -41,8 +41,24 @@ export default function App(): React.ReactElement {
       } finally {
         if (!cancelled) {
           setBootstrapped(true)
-          // Show onboarding only after bootstrapped and if not complete
-          setShowOnboarding(!isOnboardingComplete())
+          // Show onboarding only if: localStorage flag not set AND no configured API profiles
+          let shouldOnboard = !isOnboardingComplete()
+          if (shouldOnboard) {
+            try {
+              const settings = await window.electronAPI.settings.get()
+              // If any profile already has an authToken configured, skip onboarding
+              const hasConfiguredProfile = settings?.profiles?.some(
+                (p: { authToken?: string }) => p.authToken && p.authToken.trim().length > 0
+              )
+              if (hasConfiguredProfile) {
+                localStorage.setItem('claude-gui-onboarding-complete', 'true')
+                shouldOnboard = false
+              }
+            } catch {
+              // If settings can't be loaded, fall back to original behavior
+            }
+          }
+          setShowOnboarding(shouldOnboard)
           setOnboardingReady(true)
         }
       }
