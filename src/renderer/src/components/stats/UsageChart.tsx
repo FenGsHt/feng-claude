@@ -167,7 +167,7 @@ export function UsageChart(): React.ReactElement {
   const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)]))
 
   const BAR_H = 80
-  const BAR_W = 14
+  const BAR_W = 10
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
@@ -215,11 +215,9 @@ export function UsageChart(): React.ReactElement {
                   className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-600/70' : 'bg-claude-border/30'}`}
                   style={{ height: barH, marginTop: BAR_H - barH }}
                 />
-                {(i === 0 || i === CHART_DAYS - 1 || isToday) && (
-                  <span className={`text-[8px] leading-none ${isToday ? 'text-amber-400' : 'text-claude-border'}`}>
-                    {shortDate(date)}
-                  </span>
-                )}
+                <span className={`text-[8px] leading-none ${isToday ? 'text-amber-400 font-semibold' : 'text-claude-border'}`}>
+                  {shortDate(date)}
+                </span>
               </div>
             )
           })}
