@@ -17,6 +17,15 @@ import { useI18n } from '../../i18n'
 
 type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet-logs'
 
+// Global state for external tab control
+let setActiveTabExternal: ((tab: Tab) => void) | null = null
+
+export function navigateToSettingsTab(): void {
+  if (setActiveTabExternal) {
+    setActiveTabExternal('settings')
+  }
+}
+
 interface TabConfig {
   id: Tab
   label: string
@@ -128,6 +137,12 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
   const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
   const { t, lang } = useI18n()
+
+  // Register external tab control callback
+  useEffect(() => {
+    setActiveTabExternal = setActiveTab
+    return () => { setActiveTabExternal = null }
+  }, [setActiveTab])
 
   const TABS: TabConfig[] = [
     { id: 'files', label: t.sidebar.files, icon: <IconFiles /> },
