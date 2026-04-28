@@ -212,10 +212,10 @@ export function UsageChart(): React.ReactElement {
               <div key={date} className="flex flex-col items-center gap-0.5" style={{ width: BAR_W }}>
                 <div
                   title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                  className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-600/70' : 'bg-claude-border/30'}`}
+                  className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-400/70' : 'bg-claude-border/30'}`}
                   style={{ height: barH, marginTop: BAR_H - barH }}
                 />
-                <span className={`text-[8px] leading-none ${isToday ? 'text-amber-400 font-semibold' : 'text-claude-border'}`}>
+                <span className={`text-[8px] leading-none ${isToday ? 'text-amber-400 font-semibold' : 'text-claude-muted/50'}`}>
                   {shortDate(date)}
                 </span>
               </div>
