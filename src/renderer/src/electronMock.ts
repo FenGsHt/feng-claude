@@ -13,9 +13,13 @@ export function injectMockElectronAPI(): void {
 
     ;(window as any).electronAPI = {
       readClipboardTextSync: () => '',
-      createSession: async (_workdir: string) => ({
+      createSession: async (workdir: string, _resume?: boolean, profileId?: string) => ({
+        ok: true as const,
         sessionId: 'mock-session-' + Math.random().toString(36).slice(2),
-        pid: 0
+        pid: 0,
+        workdir: workdir || '.',
+        scrollback: undefined as string | undefined,
+        profileId
       }),
       closeSession: async () => ({ success: true }),
       sendInput: noop,
@@ -44,9 +48,17 @@ export function injectMockElectronAPI(): void {
         get: async () => undefined
       },
       onTokenUsageUpdate: listener,
+      onSettingsChanged: listener,
       settings: {
         get: async () => ({ ...DEFAULT_SETTINGS }),
         set: async () => ({ success: true })
+      },
+      profiles: {
+        add: async () => ({ success: true }),
+        update: async () => ({ success: true }),
+        delete: async () => ({ success: true }),
+        setActive: async () => ({ success: true }),
+        getActive: async () => ({ profile: { ...DEFAULT_SETTINGS.profiles[0]! } }),
       },
       workspace: {
         save: async (w: PersistedWorkspace | null) => {
@@ -70,6 +82,7 @@ export function injectMockElectronAPI(): void {
       appMinimize: noop,
       appMaximize: noop,
       appClose: noop,
+      getVersion: async () => '0.0.0',
       showNotification: (_title: string, _body: string) => {},
       tokenData: {
         get: async () => null,
@@ -82,12 +95,19 @@ export function injectMockElectronAPI(): void {
         generate: async () => ({ items: [] })
       },
       git: {
-        isRepo: async () => ({ isRepo: false }),
-        branchList: async () => ({ branches: [], currentBranch: '' }),
-        worktreeList: async () => ({ worktrees: [], mainPath: '' }),
-        worktreeCreate: async () => ({ worktreePath: '', branch: '' }),
-        worktreeRemove: async () => ({ success: false })
-      }
+        isRepo: async () => ({ isRepo: true }),
+        branchList: async () => ({ branches: [{ name: 'main', isCurrent: true, isRemote: false }], currentBranch: 'main' }),
+        worktreeList: async () => ({ worktrees: [{ path: '/mock', branch: 'main', commit: 'abc123', isMain: true }], mainPath: '/mock' }),
+        worktreeCreate: async () => ({ worktreePath: '/mock-worktree', branch: 'feat/test' }),
+        worktreeRemove: async () => ({ success: true }),
+        mergeBranch: async () => ({ success: true }),
+        unmergedCommits: async () => ({ count: 0, commits: [] })
+      },
+      onUpdateStatus: listener,
+      onUpdateProgress: listener,
+      checkForUpdates: async () => ({ success: true }),
+      downloadUpdate: async () => ({ success: true }),
+      installUpdate: async () => ({ success: true })
     }
   }
 }

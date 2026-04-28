@@ -11,6 +11,7 @@ import { useTokenUsageStore } from './tokenUsageStore'
 import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeTokenUsageParse'
 import type { PersistedWorkspace } from '../types/workspace'
 import { persistedPaneToLive, persistedSlotsValid } from '../lib/workspaceSerialize'
+import type { SessionCreateOk, SessionCreateErr } from '../types/ipc'
 
 /** Debounce timers for notifyTerminalCommittedLine — avoids concurrent history writes per session */
 const notifyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -26,6 +27,48 @@ function normalizeCommittedTerminalLine(raw: string): string | null {
   const lower = capped.toLowerCase()
   if (SKIP_TERMINAL_LINES.has(lower)) return null
   return capped
+}
+
+/**
+ * [2026-04-23] 主进程未重编时可能仍返回无 `ok` 字段的旧成功体；此时 `!raw.ok` 为真会误判失败，且 `error` 为 undefined。
+ * 同时将 `ok:false` 但空的 error 归为默认文案。
+ */
+function normalizeCreateSessionResult(raw: unknown, fallbackWorkdir: string): SessionCreateOk | SessionCreateErr {
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, error: 'createSession 无有效返回', workdir: fallbackWorkdir }
+  }
+  const r = raw as Record<string, unknown>
+  if (r.ok === true && typeof r.sessionId === 'string' && typeof r.pid === 'number') {
+    return {
+      ok: true,
+      sessionId: r.sessionId,
+      pid: r.pid,
+      workdir: typeof r.workdir === 'string' ? r.workdir : fallbackWorkdir,
+      scrollback: r.scrollback as SessionCreateOk['scrollback'],
+      profileId: typeof r.profileId === 'string' ? r.profileId : undefined
+    }
+  }
+  if (r.ok === false) {
+    const err =
+      typeof r.error === 'string' && r.error.trim().length > 0 ? r.error : '创建终端会话失败'
+    return {
+      ok: false,
+      error: err,
+      workdir: typeof r.workdir === 'string' ? r.workdir : fallbackWorkdir
+    }
+  }
+  /* 旧主进程成功体：无 ok */
+  if (typeof r.sessionId === 'string' && typeof r.pid === 'number') {
+    return {
+      ok: true,
+      sessionId: r.sessionId,
+      pid: r.pid,
+      workdir: typeof r.workdir === 'string' ? r.workdir : fallbackWorkdir,
+      scrollback: r.scrollback as SessionCreateOk['scrollback'],
+      profileId: typeof r.profileId === 'string' ? r.profileId : undefined
+    }
+  }
+  return { ok: false, error: 'createSession 返回格式异常', workdir: fallbackWorkdir }
 }
 
 /* [2026-04-23] 原 upsert 未保留 topic/lastUserPrompt，重写为可选覆盖 lastUserPrompt、其余字段从 prev 合并
@@ -73,8 +116,9 @@ interface SessionStore {
   /**
    * @param splitFromSessionId 分屏时从该 session 所在格拆出；缺省则使用当前 active（与点哪个窗格上的分屏一致）
    * @param resume 传 true 时以 --continue 恢复该目录上次对话上下文
+   * @param profileId [2026-04-28] 指定使用的 API profile ID（可选）
    */
-  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean) => Promise<void>
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
 
@@ -94,7 +138,10 @@ interface SessionStore {
   restoreWorkspace: (pw: PersistedWorkspace) => Promise<void>
 
   /** 原地重启：关闭当前 PTY，在相同 workdir 重新创建，保持 tab 位置不变 */
-  restartSession: (id: string) => Promise<void>
+  restartSession: (id: string, newProfileId?: string) => Promise<void>
+
+  /** [2026-04-28] 更新会话的 profileId（切换配置） */
+  updateSessionProfileId: (sessionId: string, profileId: string) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -107,15 +154,25 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     workdir: string,
     mode: CreateSessionMode = 'fullscreen',
     splitFromSessionId?: string,
-    resume?: boolean
+    resume?: boolean,
+    profileId?: string
   ) => {
     /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const result = await window.electronAPI.createSession(workdir, resume)
+    const raw = await window.electronAPI.createSession(workdir, resume, profileId)
+    const result = normalizeCreateSessionResult(raw, workdir)
+    /* [2026-04-23] 原假定 invoke 恒成功；主进程 PTY 失败时改为 ok 判别。
+     * [2026-04-23] 若在 !ok 时 throw，App 启动与 restoreFromHistory 等路径未全部 try/catch，会 Uncaught (in promise)；失败时仅打日志并 return */
+    if (!result.ok) {
+      console.warn('[sessionStore] createSession failed:', result.error, result.workdir)
+      return
+    }
     // Use the resolved absolute path returned by main — avoids '.' being stored
     const resolvedWorkdir = result.workdir ?? workdir
+    // [2026-04-28] Always use returned profileId (IPC returns active profile if not specified)
+    const sessionProfileId = result.profileId
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -124,7 +181,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      ptyPid: result.pid
+      ptyPid: result.pid,
+      profileId: sessionProfileId ?? undefined
     }
 
     set((s) => {
@@ -262,9 +320,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await get().loadHistory()
   },
 
-  restartSession: async (id: string) => {
+  restartSession: async (id: string, newProfileId?: string) => {
     const sess = get().sessions.find((s) => s.id === id)
     if (!sess) return
+    // [2026-04-28] Use newProfileId if provided, otherwise keep existing
+    const targetProfileId = newProfileId ?? sess.profileId
     const { workdir, createdAt } = sess
 
     destroyTerminal(id)
@@ -272,7 +332,37 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useTokenUsageStore.getState().clearSession(id)
     window.electronAPI.closeSession(id)
 
-    const result = await window.electronAPI.createSession(workdir)
+    /* [2026-04-30] 重新打开同一会话时 /resume 恢复该目录对话（与重开应用行为一致）
+     * [2026-04-23] 原未处理创建失败：旧 PTY 已关，若仍假定 result 必有 sessionId 会破坏状态 */
+    let result = normalizeCreateSessionResult(
+      await window.electronAPI.createSession(workdir, true, targetProfileId),
+      workdir
+    )
+    if (!result.ok) {
+      console.warn('[restartSession] 带 resume 创建失败，尝试普通启动:', result.error)
+      result = normalizeCreateSessionResult(
+        await window.electronAPI.createSession(workdir, false, targetProfileId),
+        workdir
+      )
+    }
+    if (!result.ok) {
+      console.error('[restartSession] 创建会话失败:', result.error)
+      set((s) => {
+        const remaining = s.sessions.filter((sess) => sess.id !== id)
+        let layoutRoot = s.layoutRoot ? removeSessionFromLayout(s.layoutRoot, id) : null
+        if (layoutRoot === null && remaining.length > 0) {
+          layoutRoot = { type: 'leaf', sessionId: remaining[remaining.length - 1].id }
+        }
+        const newActive =
+          s.activeSessionId === id
+            ? remaining.length > 0
+              ? remaining[remaining.length - 1].id
+              : null
+            : s.activeSessionId
+        return { sessions: remaining, activeSessionId: newActive, layoutRoot }
+      })
+      return
+    }
     const resolvedWorkdir = result.workdir ?? workdir
     const newSession: Session = {
       id: result.sessionId,
@@ -282,7 +372,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       messages: [],
       createdAt,
       updatedAt: Date.now(),
-      ptyPid: result.pid
+      ptyPid: result.pid,
+      profileId: targetProfileId
     }
 
     function replaceLeafId(node: PaneNode, oldId: string, newId: string): PaneNode {
@@ -308,9 +399,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     resetAllTokenUsageParsing()
 
     const sessions: Session[] = []
-    for (const wd of pw.sessionWorkdirs) {
+    // [2026-04-28] Restore sessions with their saved profileIds
+    for (let i = 0; i < pw.sessionWorkdirs.length; i++) {
+      const wd = pw.sessionWorkdirs[i]
+      const profileId = pw.profileIds?.[i]
       try {
-        const result = await window.electronAPI.createSession(wd, true)
+        const result = normalizeCreateSessionResult(await window.electronAPI.createSession(wd, true, profileId), wd)
+        /* [2026-04-23] 原仅 catch 网络式错误；结构化 ok:false 不会抛，须显式跳过以免误用字段 */
+        if (!result.ok) {
+          console.warn(`[workspace restore] skipped (${result.error}): ${wd}`)
+          continue
+        }
         const resolvedWd = result.workdir ?? wd
         if (result.scrollback) {
           preFillTerminal(result.sessionId, result.scrollback)
@@ -323,7 +422,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           messages: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          ptyPid: result.pid
+          ptyPid: result.pid,
+          profileId: result.profileId ?? profileId
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently
@@ -356,5 +456,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     set({ sessions, layoutRoot, activeSessionId })
     await get().loadHistory()
+  },
+
+  updateSessionProfileId: (sessionId: string, profileId: string) => {
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, profileId } : sess
+      )
+    }))
   }
 }))

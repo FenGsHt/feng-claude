@@ -10,7 +10,8 @@ export const zh = {
     petGrowth: '宠物',
     mcp: 'MCP',
     guide: '指南',
-    settings: '设置'
+    settings: '设置',
+    test: '测试'
   },
   // Common actions
   common: {
@@ -135,7 +136,17 @@ export const zh = {
     pricingCacheCreate: '缓存写',
     pricingCacheRead: '缓存读',
     pricingReset: '重置默认',
-    disableExperimentalBetas: '禁用实验性功能'
+    disableExperimentalBetas: '禁用实验性功能',
+    // [2026-04-28] API Profile 管理
+    profileTitle: 'API 配置',
+    profileAdd: '添加配置',
+    profileEdit: '编辑配置',
+    profileDelete: '删除配置',
+    profileName: '配置名称',
+    profileDefault: '默认',
+    profileActive: '当前使用',
+    profileCannotDeleteLast: '无法删除最后一个配置',
+    profileSwitchHint: '切换配置后，新创建的会话将使用新配置'
   },
   // Guide panel
   guide: {
@@ -153,7 +164,8 @@ export const zh = {
   tabs: {
     newSession: '新建会话（选择文件夹）',
     closeTab: '关闭标签',
-    restartSession: '重启会话'
+    restartSession: '重启会话',
+    switchProfile: '切换 API 配置'
   },
   // File tree
   files: {
@@ -168,6 +180,24 @@ export const zh = {
     waiting: '等待输入',
     error: '错误',
     exited: '已退出'
+  },
+  // Test panel
+  test: {
+    runnerMode: '独立模式',
+    aiMode: 'AI 模式',
+    detecting: '检测框架...',
+    noFramework: '未检测到测试框架',
+    runTests: '运行测试',
+    running: '运行中...',
+    cancel: '取消',
+    noResults: '暂无测试结果',
+    passed: '通过',
+    failed: '失败',
+    skipped: '跳过',
+    coverage: '覆盖率',
+    duration: '耗时',
+    totalTests: '测试总数',
+    askAi: '让 AI 分析测试结果'
   }
 } as const
 

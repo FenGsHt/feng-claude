@@ -1,6 +1,7 @@
-import { ipcMain, dialog, clipboard, Notification } from 'electron'
+import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve } from 'path'
+import { existsSync } from 'fs'
 import { IPC } from '../renderer/src/types/ipc'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import type { PtyManager } from './ptyManager'
@@ -9,7 +10,8 @@ import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
-import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
+import type { TestManager } from './testManager'
+import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
@@ -17,19 +19,16 @@ import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
 import type { McpServerConfig } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
+import { PetLogStore } from './petLogStore'
+
+const petLogStore = new PetLogStore()
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
-function scheduleEnsureClaudeHudAfterSession(): void {
-  if (hudEnsureAfterSessionScheduled) return
-  hudEnsureAfterSessionScheduled = true
-  setImmediate(() => {
-    hudEnsureAfterSessionScheduled = false
-    try {
-      ensureClaudeHudPluginDefaults()
-    } catch (e) {
-      console.warn('[ipc] ensureClaudeHudPluginDefaults:', e)
-    }
+
+function broadcastSettingsChanged(): void {
+  BrowserWindow.getAllWindows().forEach(win => {
+    win.webContents.send(IPC.SETTINGS_CHANGED)
   })
 }
 
@@ -39,8 +38,28 @@ export function registerIpcHandlers(
   historyStore: HistoryStore,
   settingsStore: SettingsStore,
   workspaceStore: WorkspaceStore,
-  sessionWatcher: ClaudeSessionWatcher
+  sessionWatcher: ClaudeSessionWatcher,
+  testManager: TestManager
 ): void {
+  // [2026-04-30] ensure 合并 HUD 后再次写入 skip 标志，且须能读取 settingsStore（故放在 register 内）
+  const scheduleEnsureClaudeHudAfterSession = (): void => {
+    if (hudEnsureAfterSessionScheduled) return
+    hudEnsureAfterSessionScheduled = true
+    setImmediate(() => {
+      hudEnsureAfterSessionScheduled = false
+      try {
+        ensureClaudeHudPluginDefaults()
+      } catch (e) {
+        console.warn('[ipc] ensureClaudeHudPluginDefaults:', e)
+      }
+      try {
+        mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
+      } catch (e2) {
+        console.warn('[ipc] mergeSkipDangerousPromptFromApp:', e2)
+      }
+    })
+  }
+
   /* [2026-04-24] 渲染层 xterm 对 Ctrl+V 有时拿不到剪贴板；sendSync + clipboard.readText 与系统一致 */
   ipcMain.on(IPC.CLIPBOARD_READ_TEXT_SYNC, (event) => {
     event.returnValue = clipboard.readText()
@@ -52,7 +71,43 @@ export function registerIpcHandlers(
     // Merge with defaults to sanitize — unknown/missing keys fall back to safe values
     const merged = { ...DEFAULT_SETTINGS, ...(settings && typeof settings === 'object' ? settings : {}) }
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
+    // [2026-04-29] 同步到 CLAUDE_CONFIG_DIR/settings.json，Claude Code 才识别 skipDangerousModePermissionPrompt
+    mergeSkipDangerousPromptFromApp(Boolean(merged.skipDangerousModePermissionPrompt))
+    broadcastSettingsChanged()
     return { success: true }
+  })
+
+  // ── API Profile 管理 [2026-04-28] ───────────────────────────────────
+  ipcMain.handle(IPC.PROFILE_ADD, async (_e, payload) => {
+    const { profile } = payload as { profile: import('../renderer/src/types/settings').ApiProfile }
+    settingsStore.addProfile(profile)
+    broadcastSettingsChanged()
+    return { success: true, profile }
+  })
+
+  ipcMain.handle(IPC.PROFILE_UPDATE, async (_e, payload) => {
+    const { profileId, updates } = payload as { profileId: string; updates: Partial<import('../renderer/src/types/settings').ApiProfile> }
+    settingsStore.updateProfile(profileId, updates)
+    broadcastSettingsChanged()
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC.PROFILE_DELETE, async (_e, payload) => {
+    const { profileId } = payload as { profileId: string }
+    const result = settingsStore.deleteProfile(profileId)
+    broadcastSettingsChanged()
+    return result
+  })
+
+  ipcMain.handle(IPC.PROFILE_SET_ACTIVE, async (_e, payload) => {
+    const { profileId } = payload as { profileId: string }
+    const result = settingsStore.setActiveProfile(profileId)
+    broadcastSettingsChanged()
+    return result
+  })
+
+  ipcMain.handle(IPC.PROFILE_GET_ACTIVE, async () => {
+    return { profile: settingsStore.getActiveProfile() }
   })
 
   ipcMain.handle(IPC.WORKSPACE_SAVE, async (_e, workspace) => {
@@ -67,17 +122,61 @@ export function registerIpcHandlers(
     const sessionId = uuidv4()
     // Resolve relative paths (e.g. '.') so the token watcher can locate the correct JSONL project dir
     const workdir = resolve(payload.workdir ?? '.')
-    const resume = payload.resume ?? false
-    const settings = settingsStore.get()
-    // Read scrollback before creating session (file written by previous session's close)
-    const scrollback = ptyManager.readScrollback(workdir)
-    const result = ptyManager.createSession(sessionId, workdir, settings, resume)
-    // Start watching JSONL for accurate per-session token counting
-    sessionWatcher.watchSession(sessionId, workdir)
-    // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
-    // ensureClaudeHudPluginDefaults()
-    scheduleEnsureClaudeHudAfterSession()
-    return { sessionId, pid: result.pid, workdir, scrollback }
+
+    /* [2026-04-23] 原直接 spawn + watch，异常抛回渲染进程且无结构化错误；cwd 不存在时 node-pty 亦常抛同步异常 */
+    try {
+      if (!existsSync(workdir)) {
+        return {
+          ok: false as const,
+          error: `工作目录不存在或不可访问: ${workdir}`,
+          workdir
+        }
+      }
+
+      const resume = payload.resume ?? false
+      const profileId = payload.profileId as string | undefined
+      const settings = settingsStore.get()
+
+      // [2026-04-28] 获取指定的 profile 或使用全局激活的
+      const profile = profileId
+        ? settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile()
+        : settingsStore.getActiveProfile()
+
+      // Read scrollback before creating session (file written by previous session's close)
+      const scrollback = ptyManager.readScrollback(workdir)
+      const result = ptyManager.createSession(sessionId, workdir, profile, settings, resume)
+      // Start watching JSONL for accurate per-session token counting
+      sessionWatcher.watchSession(sessionId, workdir)
+      // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
+      // ensureClaudeHudPluginDefaults()
+      scheduleEnsureClaudeHudAfterSession()
+      return {
+        ok: true as const,
+        sessionId,
+        pid: result.pid,
+        workdir,
+        scrollback,
+        profileId: profile.id
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('[SESSION_CREATE]', e)
+      try {
+        ptyManager.closeSession(sessionId)
+      } catch {
+        /* already dead or not registered */
+      }
+      try {
+        sessionWatcher.unwatchSession(sessionId)
+      } catch {
+        /* noop */
+      }
+      return {
+        ok: false as const,
+        error: msg || '创建终端会话失败',
+        workdir
+      }
+    }
   })
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {
@@ -181,21 +280,32 @@ export function registerIpcHandlers(
   ipcMain.on(IPC.APP_CLOSE, (e) => {
     require('electron').BrowserWindow.fromWebContents(e.sender)?.close()
   })
+  ipcMain.handle(IPC.APP_GET_VERSION, async () => {
+    return app.getVersion()
+  })
 
   // ── Pet Agent ─────────────────────────────────────────────────
   ipcMain.handle(IPC.PET_ASK, async (_e, payload) => {
-    const { message, history, petConfig, growth } = payload as {
+    const { message, history, petConfig, triggerType, growth } = payload as {
       message: string
       history: Array<{ role: 'user' | 'assistant'; content: string }>
-      petConfig: { name: string; personality: string }
+      petConfig: { name: string; personality: string; type?: string }
+      triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
       growth?: { level: number; affection: number; skills: Array<{ id: string; level: number }> }
     }
+    // [2026-04-28] 优先使用宠物专用 API 配置，否则使用激活 profile
     const settings = settingsStore.get()
-    const apiKey = settings.authToken
-    const rawBase = settings.baseUrl?.trim() || 'https://api.anthropic.com'
-    const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
+    const petApi = settings.petApi
+    const activeProfile = settingsStore.getActiveProfile()
 
-    if (!apiKey) return { error: 'No API key configured' }
+    const apiKey = petApi?.authToken?.trim() || activeProfile.authToken
+    const rawBase = petApi?.baseUrl?.trim() || activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
+    const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
+    const petModel = petApi?.model?.trim() || activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
+
+    if (!apiKey) {
+      return { error: 'No API key configured' }
+    }
 
     // Build augmented system prompt
     const systemParts: string[] = []
@@ -239,23 +349,57 @@ export function registerIpcHandlers(
     systemParts.push('回答必须简短（3句以内），具体可执行，绝不废话。')
     const systemPrompt = systemParts.join(' ')
 
-    const messages = [
-      ...history.map((h) => ({ role: h.role, content: h.content })),
-      { role: 'user' as const, content: message },
-    ]
-
-    // 宠物用 haiku 模型，速度快费用低
-    const model = settings.haikuModel?.trim() || settings.model?.trim() || 'claude-haiku-4-5'
+    const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))
 
     try {
-      const body = JSON.stringify({
-        model,
-        max_tokens: 400,
-        system: systemPrompt,
-        messages,
-      })
+      let body: string
+      let endpoint: string
+      let headers: Record<string, string>
 
-      const url = new URL(`${baseUrl}/v1/messages`)
+      // 格式判断：URL 以 /v1/messages 结尾 → Anthropic 格式（含 DeepSeek /anthropic/v1/messages）
+      // 以 /chat/completions 结尾 → OpenAI 兼容；否则按域名推断并自动补路径
+      const endsWithMessages     = baseUrl.endsWith('/v1/messages')
+      const endsWithCompletions  = baseUrl.endsWith('/chat/completions') || baseUrl.endsWith('/v1/chat/completions')
+      const isAnthropicDomain    = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
+      const isAnthropic          = endsWithMessages || (!endsWithCompletions && isAnthropicDomain)
+
+      if (isAnthropic) {
+        // Anthropic 原生格式
+        endpoint = endsWithMessages ? baseUrl : `${baseUrl}/v1/messages`
+        body = JSON.stringify({
+          model: petModel,
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: [...historyMessages, { role: 'user', content: message }],
+        })
+        headers = {
+          'Content-Type': 'application/json',
+          'Content-Length': String(Buffer.byteLength(body)),
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        }
+      } else {
+        // OpenAI 兼容格式（deepseek、openai、本地等）
+        // stream: false 防止部分 API 默认返回 SSE 流式响应导致 JSON 解析失败
+        endpoint = endsWithCompletions ? baseUrl : `${baseUrl}/v1/chat/completions`
+        body = JSON.stringify({
+          model: petModel,
+          max_tokens: 400,
+          stream: false,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...historyMessages,
+            { role: 'user', content: message },
+          ],
+        })
+        headers = {
+          'Content-Type': 'application/json',
+          'Content-Length': String(Buffer.byteLength(body)),
+          'Authorization': `Bearer ${apiKey}`,
+        }
+      }
+
+      const url = new URL(endpoint)
       const isHttps = url.protocol === 'https:'
       const { request } = isHttps ? await import('https') : await import('http')
 
@@ -266,12 +410,7 @@ export function registerIpcHandlers(
             port: url.port || (isHttps ? 443 : 80),
             path: url.pathname + url.search,
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(body),
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
+            headers,
             timeout: 30_000,
           },
           (res) => {
@@ -286,19 +425,55 @@ export function registerIpcHandlers(
         req.end()
       })
 
-      const json = JSON.parse(text) as {
+      // 解析响应：兼容 Anthropic 和 OpenAI 两种格式
+      if (!text.trim()) {
+        console.error('[pet:ask] empty response body, endpoint:', endpoint)
+        return { error: 'API 返回空响应，请检查 API Key 和 Base URL 配置' }
+      }
+
+      let json: {
         content?: Array<{ text?: string }>
-        usage?: {
-          input_tokens: number
-          output_tokens: number
-          cache_creation_input_tokens?: number
-          cache_read_input_tokens?: number
-        }
+        usage?: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }
+        choices?: Array<{ message?: { content?: string } }>
         error?: { message?: string }
       }
-      if (json.error) return { error: json.error.message ?? 'API error' }
+      try {
+        json = JSON.parse(text)
+      } catch {
+        console.error('[pet:ask] JSON parse failed, raw response:', text.slice(0, 500))
+        return { error: `响应解析失败: ${text.slice(0, 120)}` }
+      }
+
+
+
+      if (json.error) {
+        console.error('[pet:ask] API error:', json.error)
+        return { error: json.error.message ?? 'API error' }
+      }
+
+      const replyText =
+        json.content?.[0]?.text?.trim() ||        // Anthropic
+        json.choices?.[0]?.message?.content?.trim() || // OpenAI-compatible
+        ''
+
+      if (!replyText) {
+        console.warn('[pet:ask] empty content, raw response:', text.slice(0, 500))
+        return { error: `API 响应为空 (model: ${petModel}, endpoint: ${isAnthropic ? 'anthropic' : 'openai-compat'})` }
+      }
+
+      // 保存宠物日志
+      petLogStore.add({
+        id: uuidv4(),
+        timestamp: Date.now(),
+        userMessage: message,
+        assistantMessage: replyText,
+        petName: petConfig.name,
+        petType: petConfig.type ?? 'cat',
+        triggerType: triggerType ?? 'auto',
+      })
+
       return {
-        text: json.content?.[0]?.text ?? '',
+        text: replyText,
         usage: json.usage ? {
           input: json.usage.input_tokens,
           output: json.usage.output_tokens,
@@ -312,15 +487,25 @@ export function registerIpcHandlers(
     }
   })
 
+  // ── Pet Logs ──────────────────────────────────────────────────
+  ipcMain.handle(IPC.PET_LOG_LIST, async (_e, { limit }: { limit?: number }) => {
+    return petLogStore.list(limit ?? 100)
+  })
+  ipcMain.handle(IPC.PET_LOG_CLEAR, async () => {
+    petLogStore.clear()
+    return { success: true }
+  })
+
   // ── Content Bank Generate ─────────────────────────────────────
   ipcMain.handle(IPC.CONTENT_BANK_GENERATE, async (_e, payload) => {
     const { category, count } = payload as {
       category: 'chitchat' | 'joke' | 'news' | 'tip'
       count: number
     }
-    const settings = settingsStore.get()
-    const apiKey = settings.authToken
-    const rawBase = settings.baseUrl?.trim() || 'https://api.anthropic.com'
+    // [2026-04-28] 使用激活 profile 的 API 配置
+    const activeProfile = settingsStore.getActiveProfile()
+    const apiKey = activeProfile.authToken
+    const rawBase = activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
     const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
 
     if (!apiKey) return { items: [], error: 'No API key configured' }
@@ -332,7 +517,7 @@ export function registerIpcHandlers(
       chitchat: `生成 ${count} 条可爱的闲聊语句（宠物对程序员说的话），用 JSON 数组格式返回，每条一句话以内，中文，格式如：["语句1", "语句2", ...]`,
     }
 
-    const model = settings.haikuModel?.trim() || settings.model?.trim() || 'claude-haiku-4-5'
+    const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
 
     try {
       const body = JSON.stringify({
@@ -515,6 +700,50 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle(IPC.GIT_MERGE_BRANCH, async (_e, payload) => {
+    const { repoPath, branch } = payload as { repoPath: string; branch: string }
+    try {
+      const { execSync } = await import('child_process')
+      // 合并指定分支到当前分支
+      const output = execSync(`git merge "${branch}"`, { cwd: repoPath, encoding: 'utf-8' })
+      return { success: true, output, error: undefined }
+    } catch (e) {
+      // 合并可能有冲突，返回错误信息
+      return { success: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_UNMERGED_COMMITS, async (_e, payload) => {
+    const { repoPath, branch } = payload as { repoPath: string; branch: string }
+    try {
+      const { execSync } = await import('child_process')
+      // 获取当前分支名
+      const currentBranch = execSync('git branch --show-current', { cwd: repoPath, encoding: 'utf-8' }).trim()
+      // 检查 branch 是否有领先于当前分支的提交（未合并的提交）
+      const countStr = execSync(`git rev-list --count HEAD..${branch}`, { cwd: repoPath, encoding: 'utf-8' }).trim()
+      const count = parseInt(countStr, 10) || 0
+
+      if (count === 0) {
+        return { count: 0, commits: [], error: undefined }
+      }
+
+      // 获取未合并的提交详情
+      const logOutput = execSync(
+        `git log HEAD..${branch} --format="%H|%s|%an|%ad" --date=short`,
+        { cwd: repoPath, encoding: 'utf-8' }
+      ).trim()
+
+      const commits = logOutput.split('\n').filter(Boolean).map((line) => {
+        const [hash, message, author, date] = line.split('|')
+        return { hash: hash ?? '', message: message ?? '', author: author ?? '', date: date ?? '' }
+      })
+
+      return { count, commits, error: undefined }
+    } catch (e) {
+      return { count: 0, commits: [], error: String(e) }
+    }
+  })
+
   // ── Notifications ────────────────────────────────────────────
   ipcMain.on(IPC.NOTIFICATION_SHOW, (_e, { title, body }) => {
     console.log('[notification] show:', title, body)
@@ -539,6 +768,19 @@ export function registerIpcHandlers(
   })
   ipcMain.handle(IPC.UPDATE_INSTALL, async () => {
     installUpdate()
+    return { success: true }
+  })
+
+  // [2026-04-28] 测试验收
+  ipcMain.handle(IPC.TEST_DETECT_FRAMEWORK, async (_e, { workdir }: { workdir: string }) => {
+    return testManager.detectFramework(workdir)
+  })
+  ipcMain.handle(IPC.TEST_RUN, async (_e, { sessionId, workdir, framework }) => {
+    testManager.runTest(sessionId, workdir, framework)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.TEST_CANCEL, async (_e, { sessionId }: { sessionId: string }) => {
+    testManager.cancelTest(sessionId)
     return { success: true }
   })
 }

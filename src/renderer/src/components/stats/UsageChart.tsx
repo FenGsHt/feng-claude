@@ -1,5 +1,6 @@
-import React from 'react'
-import { useGlobalTokenStore, tokenSum, computeCost, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
+import React, { useState, useEffect } from 'react'
+import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
+import type { ClaudeSettings } from '../../types/settings'
 
 const CHART_DAYS = 14
 
@@ -31,7 +32,19 @@ function shortDate(dateStr: string): string {
 }
 
 export function UsageChart(): React.ReactElement {
-  const { dailyHistory, total, today, pricing } = useGlobalTokenStore()
+  const { dailyHistory, total, today, perProfile, pricing: globalPricing } = useGlobalTokenStore()
+
+  // [2026-04-28] Get settings for profile names and pricing — re-fetch on broadcast changes
+  const [settings, setSettings] = useState<ClaudeSettings | null>(null)
+  useEffect(() => {
+    void window.electronAPI.settings.get().then(setSettings)
+    return window.electronAPI.onSettingsChanged(() => {
+      void window.electronAPI.settings.get().then(setSettings)
+    })
+  }, [])
+  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
+  const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
+
   const dayCosts = Object.fromEntries(
     Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)])
   )
@@ -45,7 +58,35 @@ export function UsageChart(): React.ReactElement {
 
   const BAR_H = 80
   const BAR_W = 12
-  const GAP = 4
+
+  // [2026-04-28] Build per-profile stats - show ALL profiles including those with 0 usage
+  const allProfileStats = settings?.profiles.map((profile) => {
+    const totals = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+    const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
+    return {
+      id: profile.id,
+      name: profile.name,
+      totals,
+      cost: computeCost(totals, profilePricing),
+      tokens: tokenSum(totals)
+    }
+  }) ?? []
+
+  // [2026-04-28] If there's total usage but no per-profile data, assign to active profile
+  const hasPerProfileData = Object.keys(perProfile).length > 0
+  const profileStats = allProfileStats.map((stat) => {
+    // If no per-profile tracking yet and this is active profile, show total
+    if (!hasPerProfileData && stat.id === settings?.activeProfileId && tokenSum(total) > 0) {
+      const profilePricing: Pricing = (settings?.profiles.find(p => p.id === stat.id)?.pricing) ?? DEFAULT_PRICING
+      return {
+        ...stat,
+        totals: total,
+        cost: computeCost(total, profilePricing),
+        tokens: tokenSum(total)
+      }
+    }
+    return stat
+  })
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
@@ -57,6 +98,22 @@ export function UsageChart(): React.ReactElement {
 
       {/* Breakdown today */}
       <BreakdownRow label="今日明细" totals={today} pricing={pricing} />
+
+      {/* [2026-04-28] Per-profile breakdown */}
+      {profileStats.length > 0 && (
+        <div>
+          <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">各配置用量</div>
+          <div className="flex flex-col gap-1">
+            {profileStats.map((stat) => (
+              <div key={stat.id} className="flex items-center text-[11px]">
+                <span className="text-amber-400 w-16 shrink-0 truncate">{stat.name}</span>
+                <span className="text-claude-text font-mono w-12 text-right shrink-0">{formatK(stat.tokens)}</span>
+                <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(stat.cost)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Bar chart */}
       <div>
@@ -116,8 +173,8 @@ function BreakdownRow({ label, totals, pricing }: { label: string; totals: Token
       <div className="flex flex-col gap-0.5">
         {rows.map(([name, val, cost, color]) => (
           <div key={name} className="flex items-center text-[11px]">
-            <span className={`${color} w-12 shrink-0`}>{name}</span>
-            <span className="text-claude-text font-mono w-10 text-right shrink-0">{formatK(val)}</span>
+            <span className={`${color} w-16 shrink-0`}>{name}</span>
+            <span className="text-claude-text font-mono w-12 text-right shrink-0">{formatK(val)}</span>
             <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(cost)}</span>
           </div>
         ))}

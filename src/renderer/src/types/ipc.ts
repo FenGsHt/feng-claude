@@ -1,4 +1,5 @@
 import type { HistoryRecord } from './session'
+import type { ApiProfile } from './settings'
 
 export const IPC = {
   SESSION_CREATE: 'session:create',
@@ -28,9 +29,19 @@ export const IPC = {
   APP_MINIMIZE: 'app:minimize',
   APP_MAXIMIZE: 'app:maximize',
   APP_CLOSE: 'app:close',
+  APP_GET_VERSION: 'app:getVersion',
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  /** 主进程广播 settings 变更，渲染层重新拉取 */
+  SETTINGS_CHANGED: 'settings:changed',
+
+  /** [2026-04-28] API Profile 管理 */
+  PROFILE_ADD: 'profile:add',
+  PROFILE_UPDATE: 'profile:update',
+  PROFILE_DELETE: 'profile:delete',
+  PROFILE_SET_ACTIVE: 'profile:setActive',
+  PROFILE_GET_ACTIVE: 'profile:getActive',
 
   WORKSPACE_SAVE: 'workspace:save',
   WORKSPACE_LOAD: 'workspace:load',
@@ -65,6 +76,8 @@ export const IPC = {
 
   /** 宠物 Agent：调用 Anthropic API 返回建议 */
   PET_ASK: 'pet:ask',
+  PET_LOG_LIST: 'pet:logList',
+  PET_LOG_CLEAR: 'pet:logClear',
 
   /** 内容库生成：调用 API 生成笑话/技巧/新闻 */
   CONTENT_BANK_GENERATE: 'content-bank:generate',
@@ -75,6 +88,8 @@ export const IPC = {
   GIT_WORKTREE_REMOVE: 'git:worktreeRemove',
   GIT_BRANCH_LIST: 'git:branchList',
   GIT_IS_REPO: 'git:isRepo',
+  GIT_MERGE_BRANCH: 'git:mergeBranch',
+  GIT_UNMERGED_COMMITS: 'git:unmergedCommits',
 
   /** 自动更新状态 */
   UPDATE_STATUS: 'update:status',
@@ -82,6 +97,13 @@ export const IPC = {
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
+
+  /** [2026-04-28] 测试验收 */
+  TEST_DETECT_FRAMEWORK: 'test:detectFramework',
+  TEST_RUN: 'test:run',
+  TEST_OUTPUT: 'test:output',
+  TEST_STATUS: 'test:status',
+  TEST_CANCEL: 'test:cancel',
 } as const
 
 export interface SkillEntry {
@@ -136,15 +158,30 @@ export interface TokenUsageUpdatePayload {
 export interface SessionCreatePayload {
   workdir: string
   resume?: boolean
+  /** [2026-04-28] 指定使用的 API profile ID（可选，默认使用全局激活的 profile）*/
+  profileId?: string
 }
 
-export interface SessionCreateResult {
+/** [2026-04-23] 原仅有成功字段；PTY spawn 失败时 invoke 抛错导致渲染层大量未捕获 rejection，改为判别联合 */
+export type SessionCreateResult = SessionCreateOk | SessionCreateErr
+
+export interface SessionCreateOk {
+  ok: true
   sessionId: string
   pid: number
   /** Resolved absolute workdir — always an absolute path, even if '.' was passed */
   workdir: string
   /** Base64-encoded raw terminal data from previous session in this workdir */
   scrollback?: string | null
+  /** [2026-04-28] The profile ID used for this session */
+  profileId?: string
+}
+
+export interface SessionCreateErr {
+  ok: false
+  error: string
+  /** resolve 后的绝对路径，便于 UI 提示 */
+  workdir: string
 }
 
 export interface PtyInputPayload {
@@ -195,7 +232,8 @@ export interface ToolCallPayload {
 export interface PetAskPayload {
   message: string
   history: Array<{ role: 'user' | 'assistant'; content: string }>
-  petConfig: { name: string; personality: string }
+  petConfig: { name: string; personality: string; type?: string }
+  triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
   growth?: {
     level: number
     affection: number
@@ -270,6 +308,39 @@ export interface GitBranchListResult {
   error?: string
 }
 
+export interface GitMergeBranchPayload {
+  repoPath: string
+  branch: string
+  targetBranch?: string  // 合并到哪个分支，默认当前分支
+}
+
+export interface GitMergeBranchResult {
+  success: boolean
+  error?: string
+}
+
+export interface GitUnmergedCommitsPayload {
+  repoPath: string
+  branch: string
+}
+
+export interface GitUnmergedCommitsResult {
+  count: number
+  commits: Array<{ hash: string; message: string; author: string; date: string }>
+  error?: string
+}
+
+// Pet Log
+export interface PetLogRecord {
+  id: string
+  timestamp: number
+  userMessage: string
+  assistantMessage: string
+  petName: string
+  petType: string
+  triggerType: 'auto' | 'manual' | 'pet' | 'content-bank'
+}
+
 // Auto update
 export interface UpdateStatusPayload {
   status: 'checking' | 'available' | 'not-available' | 'downloaded' | 'error'
@@ -284,4 +355,83 @@ export interface UpdateProgressPayload {
   bytesPerSecond: number
   transferred: number
   total: number
+}
+
+// [2026-04-28] API Profile 管理
+export interface ProfileAddPayload {
+  profile: ApiProfile
+}
+
+export interface ProfileUpdatePayload {
+  profileId: string
+  updates: Partial<ApiProfile>
+}
+
+export interface ProfileDeletePayload {
+  profileId: string
+}
+
+export interface ProfileSetActivePayload {
+  profileId: string
+}
+
+export interface ProfileResult {
+  success: boolean
+  error?: string
+  profile?: ApiProfile
+}
+
+// [2026-04-28] 测试验收
+export type TestFrameworkName = 'vitest' | 'jest' | 'playwright' | 'mocha' | 'none'
+
+export interface TestFrameworkInfo {
+  name: TestFrameworkName
+  configFile?: string
+  testCommand: string
+  jsonReporterAvailable: boolean
+}
+
+export interface TestRunPayload {
+  sessionId: string
+  workdir: string
+  framework: TestFrameworkInfo
+}
+
+export interface TestOutputPayload {
+  sessionId: string
+  data: string
+  timestamp: number
+}
+
+export type TestStatus = 'idle' | 'running' | 'passed' | 'failed' | 'cancelled' | 'error'
+
+export interface TestStatusPayload {
+  sessionId: string
+  status: TestStatus
+  summary?: TestSummary
+}
+
+export interface TestSummary {
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  duration: number
+  coverage?: TestCoverage
+}
+
+export interface TestCoverage {
+  lines: number
+  branches: number
+  functions: number
+  statements: number
+}
+
+export interface TestResultItem {
+  name: string
+  status: 'passed' | 'failed' | 'skipped'
+  duration: number
+  error?: string
+  file?: string
+  line?: number
 }

@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
+import { getConfigDir } from './configDir'
 
 interface Schema {
   workspace: PersistedWorkspace | null
@@ -8,6 +9,7 @@ interface Schema {
 export class WorkspaceStore {
   private store = new Store<Schema>({
     name: 'claude-workspace',
+    cwd: getConfigDir(),
     defaults: { workspace: null }
   })
 

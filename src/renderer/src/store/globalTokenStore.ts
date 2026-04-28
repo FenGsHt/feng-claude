@@ -54,12 +54,20 @@ export function tokenSum(t: TokenTotals): number {
   return t.input + t.output + t.cacheCreate + t.cacheRead
 }
 
-interface PersistedTokenData {
+/** [2026-04-28] Per-profile token usage stats */
+export interface PerProfileUsage {
+  /** profileId → cumulative totals */
+  perProfile: Record<string, TokenTotals>
+}
+
+interface PersistedTokenData extends PerProfileUsage {
   total: TokenTotals
   today: TokenTotals
   todayDate: string
   budget: number
   dailyHistory: Record<string, TokenTotals>
+  /** [2026-04-28] Daily history per profile: date → profileId → totals */
+  dailyHistoryPerProfile: Record<string, Record<string, TokenTotals>>
   pricing: Pricing
   /** 屏蔽详细 token 数字，只显示等级 */
   hideDetailedTokens: boolean
@@ -69,7 +77,8 @@ interface GlobalTokenStore extends PersistedTokenData {
   /** true after initial load from disk completes */
   _hydrated: boolean
 
-  ingest: (delta: TokenTotals) => void
+  /** [2026-04-28] Ingest token delta with optional profileId for per-profile tracking */
+  ingest: (delta: TokenTotals, profileId?: string) => void
   setBudget: (n: number) => void
   resetTotal: () => void
   setPricing: (p: Pricing) => void
@@ -90,8 +99,8 @@ function scheduleSave(state: PersistedTokenData): void {
 
 // Immediate save (for user-initiated actions like setBudget/resetTotal)
 function saveImmediately(state: PersistedTokenData): void {
-  const { total, today, todayDate, budget, dailyHistory, pricing, hideDetailedTokens } = state
-  window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing, hideDetailedTokens })
+  const { total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile, perProfile, pricing, hideDetailedTokens } = state
+  window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile, perProfile, pricing, hideDetailedTokens })
     .catch((e: unknown) => console.error('[tokenStore] save failed:', e))
 }
 
@@ -101,6 +110,8 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
   todayDate: todayStr(),
   budget: 0,
   dailyHistory: {},
+  dailyHistoryPerProfile: {},
+  perProfile: {},
   pricing: { ...DEFAULT_PRICING },
   hideDetailedTokens: false,
   _hydrated: false,
@@ -116,14 +127,14 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           todayDate: d.todayDate ?? todayStr(),
           budget: d.budget ?? 0,
           dailyHistory: d.dailyHistory ?? {},
+          dailyHistoryPerProfile: d.dailyHistoryPerProfile ?? {},
+          perProfile: d.perProfile ?? {},
           pricing: d.pricing ?? { ...DEFAULT_PRICING },
           hideDetailedTokens: d.hideDetailedTokens ?? false,
           _hydrated: true
         })
       } else {
         // [2026-04-27] Migration: localStorage (old) → IPC (new)
-        // Previous version used zustand persist middleware with key 'global-token-usage'
-        // If IPC returns null (no token-data.json yet), try localStorage migration
         const lsKey = 'global-token-usage'
         const lsRaw = localStorage.getItem(lsKey)
         let migrated = false
@@ -138,9 +149,8 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
               const todayDate = state.todayDate ?? todayStr()
               const dailyHistory = state.dailyHistory ?? {}
               const pricing = state.pricing ?? { ...DEFAULT_PRICING }
-              set({ total, today, todayDate, budget, dailyHistory, pricing, _hydrated: true })
-              // Write migrated data to IPC so future loads work
-              await window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, pricing })
+              set({ total, today, todayDate, budget, dailyHistory, pricing, dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
+              await window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile: {}, perProfile: {}, pricing })
               migrated = true
               console.log('[tokenStore] migrated from localStorage to IPC')
             }
@@ -148,21 +158,20 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
             // Invalid localStorage data, ignore
           }
         }
-        // Clean up localStorage after successful migration
         if (migrated) {
           localStorage.removeItem(lsKey)
         }
         if (!migrated) {
-          set({ _hydrated: true })
+          set({ dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
         }
       }
     } catch (e) {
       console.error('[tokenStore] hydrate failed:', e)
-      set({ _hydrated: true })
+      set({ dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
     }
   },
 
-  ingest: (delta) =>
+  ingest: (delta, profileId) =>
     set((s) => {
       const now = todayStr()
       const isSameDay = s.todayDate === now
@@ -173,7 +182,27 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
       const keys = Object.keys(allDays).sort().slice(-30)
       const dailyHistory = Object.fromEntries(keys.map((k) => [k, allDays[k]]))
 
-      const next = { total: add(s.total, delta), today, todayDate: now, dailyHistory }
+      // [2026-04-28] Track per-profile usage
+      const perProfile = { ...s.perProfile }
+      if (profileId) {
+        perProfile[profileId] = add(perProfile[profileId] ?? { ...ZERO }, delta)
+      }
+
+      // [2026-04-28] Track daily history per profile
+      const dailyHistoryPerProfile = { ...s.dailyHistoryPerProfile }
+      if (profileId) {
+        const dayProfiles = { ...dailyHistoryPerProfile[now] }
+        dayProfiles[profileId] = add(dayProfiles[profileId] ?? { ...ZERO }, delta)
+        dailyHistoryPerProfile[now] = dayProfiles
+        // Keep only last 30 days
+        const dateKeys = Object.keys(dailyHistoryPerProfile).sort().slice(-30)
+        const trimmedDailyPerProfile = Object.fromEntries(dateKeys.map((k) => [k, dailyHistoryPerProfile[k]]))
+        const next = { total: add(s.total, delta), today, todayDate: now, dailyHistory, dailyHistoryPerProfile: trimmedDailyPerProfile, perProfile }
+        if (s._hydrated) scheduleSave({ ...s, ...next })
+        return next
+      }
+
+      const next = { total: add(s.total, delta), today, todayDate: now, dailyHistory, perProfile }
       if (s._hydrated) scheduleSave({ ...s, ...next })
       return next
     }),
@@ -187,7 +216,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
   },
 
   resetTotal: () => {
-    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr() }
+    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr(), perProfile: {}, dailyHistoryPerProfile: {} }
     set(next)
     const s = get()
     // [2026-04-27] User-initiated action: save immediately

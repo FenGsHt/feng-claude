@@ -10,12 +10,23 @@ import { GuidePanel } from '../guide/GuidePanel'
 import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
+import { PetPanel } from './PetPanel'
+import { TestPanel } from './TestPanel'
 import { PetGrowthPanel } from './PetGrowthPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'petGrowth'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'petGrowth'
+
+// Global state for external tab control
+let setActiveTabExternal: ((tab: Tab) => void) | null = null
+
+export function navigateToSettingsTab(): void {
+  if (setActiveTabExternal) {
+    setActiveTabExternal('settings')
+  }
+}
 
 interface TabConfig {
   id: Tab
@@ -112,11 +123,42 @@ function IconStats(): React.ReactElement {
   )
 }
 
+function IconPetLog(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M4 10c1.5-1 3.5-1 7 0" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <path d="M3 12h9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconPet(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M3 3.5C3 2.7 3.7 2 4.5 2S6 2.7 6 3.5 5.3 5 4.5 5 3 4.3 3 3.5Z" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M9 3.5C9 2.7 9.7 2 10.5 2S12 2.7 12 3.5 11.3 5 10.5 5 9 4.3 9 3.5Z" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M2 8.5C2 6.6 4.5 5 7.5 5S13 6.6 13 8.5c0 2.5-2.5 4.5-5.5 4.5S2 11 2 8.5Z" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M5.5 9.5c.5.5 1 .8 2 .8s1.5-.3 2-.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconTest(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M5 7.5l1.5 1.5L10 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 function IconPetGrowth(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-      <path d="M7.5 1.5L9.5 5.5L14 6.2L10.75 9.3L11.5 13.5L7.5 11.4L3.5 13.5L4.25 9.3L1 6.2L5.5 5.5L7.5 1.5Z"
-        stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15"/>
+      <path d="M7.5 2v5M5 4l2.5 2.5L10 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="7.5" cy="10" r="3" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M6 10h3" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
     </svg>
   )
 }
@@ -126,7 +168,13 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
   const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
+
+  // Register external tab control callback
+  useEffect(() => {
+    setActiveTabExternal = setActiveTab
+    return () => { setActiveTabExternal = null }
+  }, [setActiveTab])
 
   const TABS: TabConfig[] = [
     { id: 'files', label: t.sidebar.files, icon: <IconFiles /> },
@@ -135,8 +183,10 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'stats', label: t.sidebar.stats, icon: <IconStats /> },
     { id: 'plugins', label: t.sidebar.plugins, icon: <IconPlugins /> },
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
-    { id: 'petGrowth', label: t.sidebar.petGrowth ?? '宠物', icon: <IconPetGrowth /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
+    { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
+    { id: 'test', label: t.sidebar.test, icon: <IconTest /> },
+    { id: 'petGrowth', label: lang === 'zh' ? '养成' : 'Growth', icon: <IconPetGrowth /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -208,10 +258,14 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <PluginsPanel />
           ) : activeTab === 'skills' ? (
             <SkillsPanel />
-          ) : activeTab === 'petGrowth' ? (
-            <PetGrowthPanel />
           ) : activeTab === 'mcp' ? (
             <McpPanel />
+          ) : activeTab === 'pet' ? (
+            <PetPanel />
+          ) : activeTab === 'test' ? (
+            <TestPanel />
+          ) : activeTab === 'petGrowth' ? (
+            <PetGrowthPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (

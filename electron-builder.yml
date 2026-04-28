@@ -1,5 +1,5 @@
-appId: com.claudegui.app
-productName: Claude GUI
+appId: com.fengclaude.app
+productName: Feng Claude
 directories:
   buildResources: resources
   output: dist-build
@@ -14,7 +14,7 @@ asarUnpack:
   - resources/**
   - node_modules/node-pty/**
 win:
-  executableName: claude-gui
+  executableName: feng-claude
   forceCodeSigning: false
   target:
     - nsis
@@ -23,6 +23,10 @@ portable:
   artifactName: '${name}-${version}-portable.${ext}'
 nsis:
   artifactName: '${name}-${version}-setup.${ext}'
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
   shortcutName: '${productName}'
   uninstallDisplayName: '${productName}'
   createDesktopShortcut: always

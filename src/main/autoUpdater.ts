@@ -1,5 +1,5 @@
 import { autoUpdater } from 'electron-updater'
-import { BrowserWindow, dialog } from 'electron'
+import { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 
 let mainWindow: BrowserWindow | null = null
@@ -7,9 +7,9 @@ let mainWindow: BrowserWindow | null = null
 export function setupAutoUpdater(win: BrowserWindow): void {
   mainWindow = win
 
-  // Don't auto-download; let user decide
-  autoUpdater.autoDownload = false
-  // Auto-install on quit (user can still manually install)
+  // Auto-download silently in background; user only sees a notification when ready
+  autoUpdater.autoDownload = true
+  // Install silently on quit if user didn't manually trigger install
   autoUpdater.autoInstallOnAppQuit = true
 
   // Log for debugging
@@ -59,6 +59,11 @@ export function setupAutoUpdater(win: BrowserWindow): void {
       error: error?.message || String(error),
     })
   })
+
+  // 启动后延迟 3 秒自动检查更新（避免阻塞启动）
+  setTimeout(() => {
+    checkForUpdates()
+  }, 3000)
 }
 
 export function checkForUpdates(): void {
@@ -83,6 +88,8 @@ export function downloadUpdate(): void {
 }
 
 export function installUpdate(): void {
-  // quitAndInstall will close all windows and restart the app
-  autoUpdater.quitAndInstall(false, true)
+  // quitAndInstall triggers app.quit() → before-quit → PTY cleanup → process exit
+  // isSilent=true  → NSIS /S flag, no installer UI
+  // isForceRunAfter=true → relaunch app after install
+  autoUpdater.quitAndInstall(true, true)
 }

@@ -11,9 +11,52 @@ import { HistoryStore } from './historyStore'
 import { SettingsStore } from './settingsStore'
 import { WorkspaceStore } from './workspaceStore'
 import { ClaudeSessionWatcher } from './claudeSessionWatcher'
+import { TestManager } from './testManager'
 import { registerIpcHandlers } from './ipcHandlers'
-import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
+import {
+  ensureClaudeHudPluginDefaults,
+  mergeSkipDangerousPromptFromApp,
+  migrateLegacyClaudeSessionDirOnce,
+  claudeSessionConfigDir
+} from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
+import { existsSync, copyFileSync, mkdirSync } from 'fs'
+import { getConfigDir } from './configDir'
+
+/** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
+function migrateLegacyTokenDataOnce(): void {
+  const newPath = join(getConfigDir(), 'token-data.json')
+  if (existsSync(newPath)) return
+  const oldPath = join(app.getPath('userData'), 'token-data.json')
+  if (!existsSync(oldPath)) return
+  try {
+    mkdirSync(getConfigDir(), { recursive: true })
+    copyFileSync(oldPath, newPath)
+    console.log('[claude-gui] 已迁移 token-data.json:', oldPath, '→', newPath)
+  } catch (e) {
+    console.warn('[claude-gui] token-data.json 迁移失败:', e)
+  }
+}
+
+/** 一次性迁移 scrollback 目录（打包版首次升级时） */
+function migrateLegacyScrollbackOnce(): void {
+  const { cpSync, readdirSync } = require('fs') as typeof import('fs')
+  const newDir = join(getConfigDir(), 'scrollback')
+  const oldDir = join(app.getPath('userData'), 'scrollback')
+  if (oldDir === newDir) return
+  if (!existsSync(oldDir)) return
+  try {
+    // Only migrate if new dir is empty or doesn't exist
+    const newExists = existsSync(newDir)
+    const newEmpty = !newExists || readdirSync(newDir).length === 0
+    if (!newEmpty) return
+    mkdirSync(newDir, { recursive: true })
+    cpSync(oldDir, newDir, { recursive: true })
+    console.log('[claude-gui] 已迁移 scrollback:', oldDir, '→', newDir)
+  } catch (e) {
+    console.warn('[claude-gui] scrollback 迁移失败:', e)
+  }
+}
 
 let ptyManager: PtyManager
 let mainWindow: BrowserWindow
@@ -48,13 +91,17 @@ function createWindow(): BrowserWindow {
 
   const settingsStore = new SettingsStore()
   const workspaceStore = new WorkspaceStore()
-  const claudeConfigDir = join(app.getPath('userData'), 'claude-session')
+  const claudeConfigDir = claudeSessionConfigDir()
   const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir)
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
+  const testManager = new TestManager(win)
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager)
+
+  // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
+  mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
 
   // Setup auto updater
   setupAutoUpdater(win)
@@ -95,12 +142,17 @@ app.whenReady().then(() => {
 
   // [2026-04-27] For Windows notifications to work, AppUserModelId must match the executable path
   // in portable mode. In installed mode, the installer creates a Start Menu shortcut with this ID.
-  const appId = app.isPackaged ? 'com.claudegui' : process.execPath
+  const appId = app.isPackaged ? 'com.fengclaude.app' : process.execPath
   electronApp.setAppUserModelId(appId)
   console.log('[main] AppUserModelId set to:', appId)
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+  // [2026-04-30] 与 getConfigDir 对齐后再建窗口，避免 claude-session 仍留在旧路径
+  migrateLegacyClaudeSessionDirOnce()
+  // [2026-04-28] token-data.json 也需迁移到 getConfigDir()（打包版）
+  migrateLegacyTokenDataOnce()
+  migrateLegacyScrollbackOnce()
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
   setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)
@@ -114,7 +166,10 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
-  ptyManager?.flushAll()
+  ptyManager?.flushAll()   // save scrollback
+  ptyManager?.closeAll()   // kill PTY child processes so they don't keep the process alive
+  // Hard-exit after 1 s as a backstop (e.g. NSIS installer update flow)
+  setTimeout(() => process.exit(0), 1000).unref()
 })
 
 app.on('window-all-closed', () => {

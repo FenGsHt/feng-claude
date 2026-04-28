@@ -1,6 +1,9 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useToolCallStore } from '../../store/toolCallStore'
+import type { UpdateStatusPayload } from '../../types/ipc'
+import { useI18n } from '../../i18n'
+import appIcon from '../../assets/icon.png'
 
 /** Shorten a workdir path for display in the title bar */
 function formatWorkdir(workdir: string): string {
@@ -25,6 +28,37 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
   const recentCallCount = useToolCallStore((s) =>
     s.calls.filter((c) => c.sessionId === activeSessionId && Date.now() - c.timestamp < 60_000).length
   )
+  const { lang } = useI18n()
+
+  const [version, setVersion] = useState('')
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    window.electronAPI?.getVersion().then(setVersion)
+  }, [])
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateStatus) return
+    const unsub = window.electronAPI.onUpdateStatus((payload) => {
+      setUpdateStatus(payload)
+      setChecking(false)
+    })
+    return unsub
+  }, [])
+
+  const handleCheckUpdate = () => {
+    setChecking(true)
+    window.electronAPI?.checkForUpdates()
+  }
+
+  const handleDownload = () => {
+    window.electronAPI?.downloadUpdate()
+  }
+
+  const handleInstall = () => {
+    window.electronAPI?.installUpdate()
+  }
 
   const handleMinimize = () => window.electronAPI.appMinimize()
   const handleMaximize = () => window.electronAPI.appMaximize()
@@ -35,20 +69,49 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
       className="flex items-center h-9 px-2 bg-claude-surface border-b border-claude-border select-none shrink-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      {/* Left: logo + app name */}
-      <div className="flex items-center gap-2 w-48 shrink-0">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 opacity-70">
-          <circle cx="7" cy="7" r="6" stroke="#f59e0b" strokeWidth="1.5" />
-          <circle cx="7" cy="7" r="2.5" fill="#f59e0b" opacity="0.8" />
-        </svg>
-        <span className="text-[11px] text-claude-muted font-medium tracking-wide leading-none">
-          Claude GUI
+      {/* Left: logo + app name + version */}
+      <div className="flex items-center gap-1.5 w-40 shrink-0">
+        <img src={appIcon} width="16" height="16" className="shrink-0" alt="" />
+        <span className="text-[11px] text-claude-text font-medium tracking-wide leading-none">
+          Feng Claude
         </span>
+        {version && (
+          <span className="text-[9px] text-claude-muted/70 font-mono leading-none ml-0.5">
+            v{version}
+          </span>
+        )}
       </div>
 
-      {/* Center: active workdir */}
+      {/* Center: active workdir or update notice */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-4">
-        {activeSession ? (
+        {/* 优先显示更新提示 */}
+        {updateStatus?.status === 'available' ? (
+          <div
+            className="flex items-center gap-2 text-[11px] animate-pulse cursor-pointer"
+            onClick={handleDownload}
+            title={lang === 'zh' ? '点击下载更新' : 'Click to download update'}
+          >
+            <span className="text-green-400 font-medium">
+              {lang === 'zh' ? '发现新版本' : 'New version'} v{updateStatus.version}
+            </span>
+            <button className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
+              {lang === 'zh' ? '下载' : 'Download'}
+            </button>
+          </div>
+        ) : updateStatus?.status === 'downloaded' ? (
+          <div
+            className="flex items-center gap-2 text-[11px] cursor-pointer"
+            onClick={handleInstall}
+            title={lang === 'zh' ? '点击安装更新' : 'Click to install update'}
+          >
+            <span className="text-green-400 font-medium">
+              {lang === 'zh' ? '已下载，点击安装' : 'Ready, click to install'}
+            </span>
+            <button className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
+              {lang === 'zh' ? '安装并重启' : 'Install & Restart'}
+            </button>
+          </div>
+        ) : activeSession ? (
           <div
             className="flex items-center gap-1.5 max-w-xs"
             title={activeSession.workdir}
@@ -70,11 +133,45 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
         )}
       </div>
 
-      {/* Right: tool panel toggle + window controls */}
+      {/* Right: author + repo + tool panel toggle + update button + window controls */}
       <div
-        className="flex items-center gap-0.5 w-48 justify-end shrink-0"
+        className="flex items-center gap-0.5 w-56 justify-end shrink-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
+        {/* Repo link */}
+        <a
+          href="https://github.com/FenGsHt/feng-claude"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="GitHub 仓库"
+          className="w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors"
+          onClick={(e) => { e.preventDefault(); window.open('https://github.com/FenGsHt/feng-claude') }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+        </a>
+
+        {/* Update button */}
+        <button
+          onClick={handleCheckUpdate}
+          title={lang === 'zh' ? '检查更新' : 'Check for updates'}
+          className={`w-8 h-7 flex items-center justify-center rounded transition-colors ${
+            updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
+              ? 'text-green-400 bg-green-500/10'
+              : checking
+                ? 'text-amber-400 animate-pulse'
+                : 'text-claude-muted hover:text-claude-text hover:bg-claude-border'
+          }`}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="6" cy="9.5" r="1.5" stroke="currentColor" strokeWidth="1"/>
+          </svg>
+          {(updateStatus?.status === 'available' || updateStatus?.status === 'downloaded') && (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-400 rounded-full" />
+          )}
+        </button>
         <button
           onClick={onToggleTools}
           title="Toggle tool call panel"

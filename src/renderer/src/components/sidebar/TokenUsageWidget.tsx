@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
-import { useGlobalTokenStore, tokenSum, computeCost } from '../../store/globalTokenStore'
+import React, { useState, useEffect } from 'react'
+import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals } from '../../store/globalTokenStore'
 import { fmtTokens } from '../../lib/formatTokens'
 import { useI18n } from '../../i18n'
+import type { ClaudeSettings } from '../../types/settings'
 
 function fmtCost(usd: number): string {
   if (usd < 0.001) return '<$0.001'
@@ -137,12 +138,66 @@ function BudgetBar({ used, budget }: { used: number; budget: number }): React.Re
 export function TokenUsageWidget(): React.ReactElement {
   const total = useGlobalTokenStore((s) => s.total)
   const today = useGlobalTokenStore((s) => s.today)
+  const todayDate = useGlobalTokenStore((s) => s.todayDate)
   const budget = useGlobalTokenStore((s) => s.budget)
-  const pricing = useGlobalTokenStore((s) => s.pricing)
+  const globalPricing = useGlobalTokenStore((s) => s.pricing)
+  const perProfile = useGlobalTokenStore((s) => s.perProfile)
+  const dailyHistoryPerProfile = useGlobalTokenStore((s) => s.dailyHistoryPerProfile)
   const hideDetailedTokens = useGlobalTokenStore((s) => s.hideDetailedTokens)
   const setBudget = useGlobalTokenStore((s) => s.setBudget)
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
   const setHideDetailedTokens = useGlobalTokenStore((s) => s.setHideDetailedTokens)
+
+  // [2026-04-28] Get profile pricing map — re-fetch on broadcast changes
+  const [settings, setSettings] = useState<ClaudeSettings | null>(null)
+  useEffect(() => {
+    void window.electronAPI.settings.get().then(setSettings)
+    return window.electronAPI.onSettingsChanged(() => {
+      void window.electronAPI.settings.get().then(setSettings)
+    })
+  }, [])
+
+  // Fallback: single pricing for global aggregates (migration / no per-profile data)
+  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
+  const singlePricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
+
+  // [2026-04-28] Compute costs using each profile's own pricing.
+  // Also adds unattributed remainder (tokens ingested before per-profile tracking) at singlePricing.
+  function computePerProfileCost(totals: Record<string, TokenTotals>, globalRef?: TokenTotals): number {
+    if (!settings) return 0
+    let cost = 0
+    let sumInput = 0, sumOutput = 0, sumCC = 0, sumCR = 0
+    for (const [profileId, t] of Object.entries(totals)) {
+      const profile = settings.profiles.find(p => p.id === profileId)
+      const p = profile?.pricing ?? globalPricing ?? DEFAULT_PRICING
+      cost += computeCost(t, p)
+      sumInput += t.input; sumOutput += t.output; sumCC += t.cacheCreate; sumCR += t.cacheRead
+    }
+    // Add unattributed tokens (present in global aggregate but not in any profile bucket)
+    if (globalRef) {
+      const unattributed: TokenTotals = {
+        input: Math.max(0, globalRef.input - sumInput),
+        output: Math.max(0, globalRef.output - sumOutput),
+        cacheCreate: Math.max(0, globalRef.cacheCreate - sumCC),
+        cacheRead: Math.max(0, globalRef.cacheRead - sumCR)
+      }
+      if (unattributed.input + unattributed.output + unattributed.cacheCreate + unattributed.cacheRead > 0) {
+        cost += computeCost(unattributed, singlePricing)
+      }
+    }
+    return cost
+  }
+
+  const hasPerProfileData = Object.keys(perProfile).length > 0
+  const todayPerProfileTotals = dailyHistoryPerProfile[todayDate] ?? {}
+  const hasTodayPerProfileData = Object.keys(todayPerProfileTotals).length > 0
+
+  const todayCost = hasTodayPerProfileData
+    ? computePerProfileCost(todayPerProfileTotals, today)
+    : computeCost(today, singlePricing)
+  const totalCost = hasPerProfileData
+    ? computePerProfileCost(perProfile, total)
+    : computeCost(total, singlePricing)
 
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetDraft, setBudgetDraft] = useState('')
@@ -254,13 +309,13 @@ export function TokenUsageWidget(): React.ReactElement {
           <div className="flex justify-between items-baseline">
             <span className="text-claude-muted">{t.token.today}</span>
             <span className="font-mono tabular-nums text-right text-amber-400">
-              {fmtCost(computeCost(today, pricing))}
+              {fmtCost(todayCost)}
             </span>
           </div>
           <div className="flex justify-between items-baseline">
             <span className="text-claude-muted">{t.token.total}</span>
             <span className="font-mono tabular-nums text-right text-amber-400">
-              {fmtCost(computeCost(total, pricing))}
+              {fmtCost(totalCost)}
             </span>
           </div>
         </div>
@@ -273,7 +328,7 @@ export function TokenUsageWidget(): React.ReactElement {
               {today.cacheRead > 0 && (
                 <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
               )}
-              <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(today, pricing))}</span>
+              <span className="text-amber-400 ml-1.5">{fmtCost(todayCost)}</span>
             </span>
           </div>
           <div className="flex justify-between items-baseline">
@@ -283,7 +338,7 @@ export function TokenUsageWidget(): React.ReactElement {
               {total.cacheRead > 0 && (
                 <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
               )}
-              <span className="text-amber-400 ml-1.5">{fmtCost(computeCost(total, pricing))}</span>
+              <span className="text-amber-400 ml-1.5">{fmtCost(totalCost)}</span>
             </span>
           </div>
         </div>

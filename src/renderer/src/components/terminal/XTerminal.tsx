@@ -5,6 +5,7 @@ import { WebLinksAddon } from 'xterm-addon-web-links'
 import 'xterm/css/xterm.css'
 import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
+import { useUserPromptStore } from '../../store/userPromptStore'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 
 interface Props {
@@ -15,8 +16,26 @@ interface Props {
 // Map sessionId → Terminal instance (shared across re-renders)
 const terminals = new Map<string, { term: Terminal; fitAddon: FitAddon }>()
 
-/** 当前行缓冲，遇 \\r/\\n 提交为「最后一问」候选（与 PTY send 并行） */
+/** 当前行缓冲，遇 \r/\n 提交为「最后一问」候选（与 PTY send 并行） */
 const terminalLineBuffers = new Map<string, string>()
+
+/** [2026-04-27] 用户输入缓冲：多行文本合并为完整问题 */
+const userInputBuffers = new Map<string, string[]>()
+
+/** [2026-04-28] 通用的输入缓冲函数：将发送到 PTY 的数据同时缓冲到 userInputBuffers */
+function bufferUserInput(sessionId: string, data: string): void {
+  // 按换行分割，每行单独缓冲
+  const lines = data.split(/\r?\n/)
+  let buf = userInputBuffers.get(sessionId) ?? []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.length > 0) {
+      buf.push(trimmed)
+      if (buf.length > 30) buf = buf.slice(-30)
+    }
+  }
+  userInputBuffers.set(sessionId, buf)
+}
 
 /** 合并同一帧内多次 fit 请求，减轻 xterm 内部 requestIdleCallback 队列积压 */
 const pendingFitRafBySession = new Map<string, number>()
@@ -73,6 +92,8 @@ export function destroyTerminal(sessionId: string): void {
     pendingFitRafBySession.delete(sessionId)
   }
   terminalLineBuffers.delete(sessionId)
+  userInputBuffers.delete(sessionId)
+  useUserPromptStore.getState().clearSession(sessionId)
   const entry = terminals.get(sessionId)
   if (entry) {
     entry.term.dispose()
@@ -94,6 +115,31 @@ export function preFillTerminal(sessionId: string, rawBase64: string): void {
   const { term } = getOrCreateTerminal(sessionId)
   const bytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0))
   term.write(bytes)
+  // After replaying raw PTY bytes (which may contain alternate-screen switches,
+  // absolute cursor positions, etc.), restore the terminal to a clean state so
+  // the new Claude session starts on a fresh line without visual corruption.
+  //   \x1b[?1049l  — exit alternate screen (safe no-op if already in normal screen)
+  //   \x1b[m       — reset all SGR attributes
+  //   \x1b[?25h    — ensure cursor is visible
+  //   \r\n         — move to a fresh line
+  term.write('\x1b[?1049l\x1b[m\x1b[?25h\r\n')
+}
+
+/** [2026-04-27] 提交用户问题：将缓冲的多行合并为完整问题，存入 userPromptStore */
+export function commitUserPrompt(sessionId: string): void {
+  const lines = userInputBuffers.get(sessionId)
+  if (!lines || lines.length === 0) return
+  // 合并多行，过滤空行，限制长度
+  const prompt = lines
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .join('\n')
+    .slice(0, 2000)
+  if (prompt) {
+    useUserPromptStore.getState().setPrompt(sessionId, prompt)
+  }
+  // 清空缓冲
+  userInputBuffers.set(sessionId, [])
 }
 
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {
@@ -165,6 +211,9 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
         }
       }
       terminalLineBuffers.set(sessionId, buf)
+
+      // [2026-04-28] 使用统一的缓冲函数
+      bufferUserInput(sessionId, data)
     })
 
     /** 资源管理器「复制文件」后 Ctrl+V：Electron clipboard 的 File 带 path，转成 @ 引用注入 PTY */
@@ -181,6 +230,8 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
         const f = files[i] as File & { path?: string }
         if (!f.path) continue
         const ref = formatFileRefForClaudeCode(f.path, wd, false)
+        // [2026-04-28] 同时缓冲用户输入
+        bufferUserInput(sessionId, ref)
         window.electronAPI?.sendInput(sessionId, `${ref} `)
       }
     }

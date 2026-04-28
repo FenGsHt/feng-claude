@@ -49,6 +49,26 @@ function writeSessionSettings(settings: Record<string, unknown>): void {
   writeFileSync(join(dir, 'settings.json'), `${JSON.stringify(settings, null, 2)}\n`, 'utf-8')
 }
 
+interface MarketplacePlugin {
+  name: string
+  description: string
+  version?: string
+  source?: { source?: string; url?: string }
+}
+
+interface MarketplaceJson {
+  name?: string
+  plugins?: MarketplacePlugin[]
+}
+
+function readMarketplaceJson(marketplaceDir: string): MarketplaceJson | null {
+  try {
+    const path = join(marketplaceDir, '.claude-plugin', 'marketplace.json')
+    if (!existsSync(path)) return null
+    return JSON.parse(readFileSync(path, 'utf-8')) as MarketplaceJson
+  } catch { return null }
+}
+
 function extractDescription(readmePath: string): string {
   try {
     const lines = readFileSync(readmePath, 'utf-8').split('\n')
@@ -142,23 +162,45 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
   try {
     for (const mkt of readdirSync(marketplacesDir, { withFileTypes: true })) {
       if (!mkt.isDirectory()) continue
-      const pluginsDir = join(marketplacesDir, mkt.name, 'plugins')
-      if (!existsSync(pluginsDir)) continue
+      const mktDir = join(marketplacesDir, mkt.name)
 
-      for (const plugin of readdirSync(pluginsDir, { withFileTypes: true })) {
-        if (!plugin.isDirectory()) continue
-        const id = `${plugin.name}@${mkt.name}`
-        const description = extractDescription(join(pluginsDir, plugin.name, 'README.md'))
+      // Check .claude-plugin/marketplace.json first (preferred format)
+      const marketplaceJson = readMarketplaceJson(mktDir)
+      if (marketplaceJson?.plugins && marketplaceJson.plugins.length > 0) {
+        for (const plugin of marketplaceJson.plugins) {
+          const id = `${plugin.name}@${mkt.name}`
+          plugins.push({
+            id,
+            name: plugin.name,
+            marketplace: mkt.name,
+            description: plugin.description || '',
+            installCount: counts.get(id) ?? 0,
+            isEnabled: enabled[id] === true,
+            isInstalled: isPluginInstalled(plugin.name)
+          })
+        }
+        // marketplace.json exists with plugins - skip plugins/ directory to avoid duplicates
+        continue
+      }
 
-        plugins.push({
-          id,
-          name: plugin.name,
-          marketplace: mkt.name,
-          description,
-          installCount: counts.get(id) ?? 0,
-          isEnabled: enabled[id] === true,
-          isInstalled: isPluginInstalled(plugin.name)
-        })
+      // Fall back to plugins/ directory (traditional format) only if marketplace.json doesn't exist or is empty
+      const pluginsDir = join(mktDir, 'plugins')
+      if (existsSync(pluginsDir)) {
+        for (const plugin of readdirSync(pluginsDir, { withFileTypes: true })) {
+          if (!plugin.isDirectory()) continue
+          const id = `${plugin.name}@${mkt.name}`
+          const description = extractDescription(join(pluginsDir, plugin.name, 'README.md'))
+
+          plugins.push({
+            id,
+            name: plugin.name,
+            marketplace: mkt.name,
+            description,
+            installCount: counts.get(id) ?? 0,
+            isEnabled: enabled[id] === true,
+            isInstalled: isPluginInstalled(plugin.name)
+          })
+        }
       }
     }
   } catch { /* ignore */ }

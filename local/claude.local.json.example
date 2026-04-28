@@ -8,5 +8,6 @@
   "subagentModel": "glm-5",
   "disableExperimentalBetas": true,
   "permissionPreset": "acceptEdits",
-  "sharedSkillAddDir": ""
+  "sharedSkillAddDir": "",
+  "skipDangerousModePermissionPrompt": false
 }

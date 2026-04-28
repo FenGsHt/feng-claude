@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import type { HistoryRecord } from '../renderer/src/types/session'
+import { getConfigDir } from './configDir'
 
 interface StoreSchema {
   history: HistoryRecord[]
@@ -7,6 +8,7 @@ interface StoreSchema {
 
 const store = new Store<StoreSchema>({
   name: 'history',
+  cwd: getConfigDir(),
   defaults: { history: [] }
 })
 

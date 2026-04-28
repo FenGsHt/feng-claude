@@ -13,6 +13,11 @@ interface WorktreeInfo {
   isMain: boolean
 }
 
+interface UnmergedInfo {
+  branch: string
+  count: number
+}
+
 interface Props {
   sessionId: string
   focused: boolean
@@ -71,6 +76,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const [showWorktreeDialog, setShowWorktreeDialog] = useState(false)
   const [isGitRepo, setIsGitRepo] = useState(false)
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
+  const [unmergedInfo, setUnmergedInfo] = useState<UnmergedInfo[]>([])
   const [showMergeReminder, setShowMergeReminder] = useState(false)
 
   const candidates = useMemo(
@@ -83,19 +89,33 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     if (!sess?.workdir) return
     try {
       const repoResult = await window.electronAPI.git?.isRepo(sess.workdir)
-      if (!repoResult) {
+      if (!repoResult?.isRepo) {
         setIsGitRepo(false)
         return
       }
-      setIsGitRepo(repoResult.isRepo)
-      if (repoResult.isRepo) {
-        const wtResult = await window.electronAPI.git?.worktreeList(sess.workdir)
-        if (wtResult) {
-          setWorktrees(wtResult.worktrees)
-          // 如果有多个 worktree，显示合并提醒
-          setShowMergeReminder(wtResult.worktrees.length > 1)
+      setIsGitRepo(true)
+
+      const wtResult = await window.electronAPI.git?.worktreeList(sess.workdir)
+      if (!wtResult) return
+      setWorktrees(wtResult.worktrees)
+
+      // 检查每个 worktree 分支是否有未合并的提交
+      const unmerged: UnmergedInfo[] = []
+      for (const wt of wtResult.worktrees.filter(w => !w.isMain)) {
+        try {
+          const result = await window.electronAPI.git?.unmergedCommits({
+            repoPath: sess.workdir,
+            branch: wt.branch,
+          })
+          if (result && result.count > 0) {
+            unmerged.push({ branch: wt.branch, count: result.count })
+          }
+        } catch (e) {
+          console.warn('[TerminalPaneHeader] unmergedCommits check failed for', wt.branch, e)
         }
       }
+      setUnmergedInfo(unmerged)
+      setShowMergeReminder(unmerged.length > 0)
     } catch (e) {
       console.warn('[TerminalPaneHeader] git check failed:', e)
       setIsGitRepo(false)
@@ -118,7 +138,13 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     )
     if (dirs.length === 0) {
       const dir = await window.electronAPI.openDirDialog()
-      if (dir) await createSession(dir, mode, sessionId)
+      if (dir) {
+        try {
+          await createSession(dir, mode, sessionId)
+        } catch (e) {
+          console.warn('[TerminalPaneHeader] 分屏创建会话失败', e)
+        }
+      }
       return
     }
     setSplitMode(mode)
@@ -126,7 +152,12 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
 
   const handleWorktreeCreate = async (worktreePath: string, branch: string): void => {
     // 在 worktree 路径创建新会话
-    await createSession(worktreePath, 'split-right', sessionId)
+    try {
+      await createSession(worktreePath, 'split-right', sessionId)
+    } catch (e) {
+      console.warn('[TerminalPaneHeader] worktree 会话创建失败', e)
+      return
+    }
     void checkGitStatus() // 更新 worktree 状态
   }
 
@@ -199,11 +230,8 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           {/* 合并提醒 */}
           {showMergeReminder && (
             <HeaderBtn
-              title={`有 ${worktrees.length} 个 worktree，记得合并！`}
-              onClick={() => {
-                // 点击显示提示
-                alert(`提示：当前仓库有 ${worktrees.length} 个 worktree。\n分支：${worktrees.filter(wt => !wt.isMain).map(wt => wt.branch).join(', ')}\n请在完成开发后合并并清理 worktree。`)
-              }}
+              title={`${unmergedInfo.length} 个分支有未合并提交：${unmergedInfo.map(u => `${u.branch}(${u.count})`).join(', ')}`}
+              onClick={() => setShowWorktreeDialog(true)}
               warning
             >
               <MergeIcon />
@@ -237,12 +265,20 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           mode={splitMode}
           currentWorkdir={sess?.workdir}
           onPick={(workdir) => {
-            void createSession(workdir, splitMode, sessionId)
+            void createSession(workdir, splitMode, sessionId).catch((e) =>
+              console.warn('[TerminalPaneHeader] 分屏创建会话失败', e)
+            )
             setSplitMode(null)
           }}
           onPickOther={async () => {
             const dir = await window.electronAPI.openDirDialog()
-            if (dir) await createSession(dir, splitMode, sessionId)
+            if (dir) {
+              try {
+                await createSession(dir, splitMode, sessionId)
+              } catch (e) {
+                console.warn('[TerminalPaneHeader] 分屏创建会话失败', e)
+              }
+            }
             setSplitMode(null)
           }}
           onClose={() => setSplitMode(null)}

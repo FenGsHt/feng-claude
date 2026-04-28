@@ -17,13 +17,14 @@ permissions:
   contents: write
 
 jobs:
-  # 手动触发时先创建 draft release
   create-release:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
-      release-id: ${{ steps.create.outputs.id }}
+      tag-name: ${{ steps.version.outputs.TAG }}
       upload-url: ${{ steps.create.outputs.upload_url }}
+      # [2026-04-23] workflow 触发时的默认 ref 不包含「刚 push 的版本号提交」；若无此输出，build 仍用旧 package.json，安装包文件名与 tag 不一致
+      commit-sha: ${{ steps.export-build-sha.outputs.SHA }}
 
     steps:
       - name: Checkout
@@ -32,19 +33,72 @@ jobs:
       - name: Get version
         id: version
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            VERSION=$(node -p "require('./package.json').version")
-            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          fi
+          # 获取当前 package.json 版本
+          CURRENT_VER=$(node -p "require('./package.json').version")
 
-      - name: Create draft release
+          if [ -n "${{ inputs.version }}" ]; then
+            # 用户指定了版本
+            TAG="v${{ inputs.version }}"
+            NEED_COMMIT=false
+          else
+            # 自动递增版本号（patch 版本）
+            # 例如 0.5.1 -> 0.5.2, 1.2.9 -> 1.2.10
+            MAJOR=$(echo $CURRENT_VER | cut -d. -f1)
+            MINOR=$(echo $CURRENT_VER | cut -d. -f2)
+            PATCH=$(echo $CURRENT_VER | cut -d. -f3)
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VER="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            TAG="v${NEW_VER}"
+
+            # 更新 package.json
+            node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.version='${NEW_VER}';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+
+            echo "Auto incrementing version: $CURRENT_VER -> ${NEW_VER}"
+            NEED_COMMIT=true
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "NEED_COMMIT=$NEED_COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        if: steps.version.outputs.NEED_COMMIT == 'true'
+        run: |
+          TAG="${{ steps.version.outputs.TAG }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${TAG}"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Fetch existing tags
+          git fetch --tags
+          # Check if tag already exists on remote
+          TAG="${{ steps.version.outputs.TAG }}"
+          if git tag -l | grep -q "^${TAG}$"; then
+            echo "Tag ${TAG} already exists, skipping creation"
+          else
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # [2026-04-23] 必须在 bump + push 之后取 HEAD；供 build matrix 检出同一代码树，保证 electron-builder 产物版本与 tag 对齐
+      - name: Export commit SHA for builds
+        id: export-build-sha
+        run: echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
         id: create
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          name: v${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: ${{ steps.version.outputs.TAG }}
           draft: ${{ inputs.draft }}
           generate_release_notes: true
         env:
@@ -69,8 +123,22 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      # [2026-04-23] 原先默认检出 workflow 起始 SHA；workflow_dispatch 时 create-release 可能已在本分支 push 新版本号，必须用 tag 或 export 的 SHA。release 事件则检出对应 tag。
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.create-release.outputs.commit-sha }}
+
+      - name: Get tag name
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "TAG=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${{ needs.create-release.outputs.tag-name }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -105,6 +173,16 @@ jobs:
     if: always() && needs.build.result == 'success'
 
     steps:
+      - name: Get tag name
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "TAG=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${{ needs.create-release.outputs.tag-name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
@@ -123,10 +201,12 @@ jobs:
           name: linux
           path: dist-build/linux
 
+      # [2026-04-23] 覆盖同名 asset，避免重复跑 workflow 时旧文件残留；与 action 默认一致但显式写出便于维护
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          release_id: ${{ needs.create-release.outputs.release-id }}
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          overwrite: true
           files: |
             dist-build/win/*
             dist-build/mac/*

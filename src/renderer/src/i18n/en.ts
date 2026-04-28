@@ -11,7 +11,8 @@ export const en: Translations = {
     petGrowth: 'Pet',
     mcp: 'MCP',
     guide: 'Guide',
-    settings: 'Settings'
+    settings: 'Settings',
+    test: 'Test'
   },
   common: {
     save: 'Save',
@@ -128,7 +129,17 @@ export const en: Translations = {
     pricingCacheCreate: 'Cache write',
     pricingCacheRead: 'Cache read',
     pricingReset: 'Reset defaults',
-    disableExperimentalBetas: 'Disable experimental betas'
+    disableExperimentalBetas: 'Disable experimental betas',
+    // [2026-04-28] API Profile management
+    profileTitle: 'API Configuration',
+    profileAdd: 'Add Profile',
+    profileEdit: 'Edit Profile',
+    profileDelete: 'Delete Profile',
+    profileName: 'Profile Name',
+    profileDefault: 'Default',
+    profileActive: 'Active',
+    profileCannotDeleteLast: 'Cannot delete the last profile',
+    profileSwitchHint: 'New sessions will use the switched profile'
   },
   guide: {
     searchPlaceholder: 'Search tips...',
@@ -144,7 +155,8 @@ export const en: Translations = {
   tabs: {
     newSession: 'New session (pick folder)',
     closeTab: 'Close tab',
-    restartSession: 'Restart session'
+    restartSession: 'Restart session',
+    switchProfile: 'Switch API profile'
   },
   files: {
     changeDir: 'Change directory',
@@ -157,5 +169,22 @@ export const en: Translations = {
     waiting: 'Waiting for input',
     error: 'Error',
     exited: 'Exited'
+  },
+  test: {
+    runnerMode: 'Runner',
+    aiMode: 'AI',
+    detecting: 'Detecting...',
+    noFramework: 'No test framework detected',
+    runTests: 'Run Tests',
+    running: 'Running...',
+    cancel: 'Cancel',
+    noResults: 'No test results',
+    passed: 'Passed',
+    failed: 'Failed',
+    skipped: 'Skipped',
+    coverage: 'Coverage',
+    duration: 'Duration',
+    totalTests: 'Total',
+    askAi: 'Ask AI to analyze'
   }
 }

@@ -3,9 +3,9 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
-import type { ClaudeSettings } from '../renderer/src/types/settings'
+import type { ClaudeSettings, ApiProfile } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -14,8 +14,8 @@ const electronAPI = {
   },
 
   // Session
-  createSession: (workdir: string, resume?: boolean): Promise<SessionCreateResult> =>
-    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume }),
+  createSession: (workdir: string, resume?: boolean, profileId?: string): Promise<SessionCreateResult> =>
+    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId }),
 
   closeSession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC.SESSION_CLOSE, { sessionId }),
@@ -66,6 +66,26 @@ const electronAPI = {
     get: (): Promise<ClaudeSettings> => ipcRenderer.invoke(IPC.SETTINGS_GET),
     set: (s: ClaudeSettings): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC.SETTINGS_SET, s)
+  },
+
+  onSettingsChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on(IPC.SETTINGS_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.SETTINGS_CHANGED, handler)
+  },
+
+  // [2026-04-28] API Profile 管理
+  profiles: {
+    add: (profile: ApiProfile): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_ADD, { profile }),
+    update: (profileId: string, updates: Partial<ApiProfile>): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_UPDATE, { profileId, updates }),
+    delete: (profileId: string): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_DELETE, { profileId }),
+    setActive: (profileId: string): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_SET_ACTIVE, { profileId }),
+    getActive: (): Promise<{ profile: ApiProfile }> =>
+      ipcRenderer.invoke(IPC.PROFILE_GET_ACTIVE),
   },
 
   onTokenUsageUpdate: (callback: (payload: TokenUsageUpdatePayload) => void): (() => void) => {
@@ -126,7 +146,11 @@ const electronAPI = {
   // Pet Agent
   pet: {
     ask: (payload: PetAskPayload): Promise<PetAskResult> =>
-      ipcRenderer.invoke(IPC.PET_ASK, payload)
+      ipcRenderer.invoke(IPC.PET_ASK, payload),
+    getLogs: (limit?: number): Promise<PetLogRecord[]> =>
+      ipcRenderer.invoke(IPC.PET_LOG_LIST, { limit }),
+    clearLogs: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.PET_LOG_CLEAR),
   },
 
   // Content Bank
@@ -147,12 +171,17 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.GIT_WORKTREE_CREATE, payload),
     worktreeRemove: (payload: GitWorktreeRemovePayload): Promise<GitWorktreeRemoveResult> =>
       ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, payload),
+    mergeBranch: (payload: GitMergeBranchPayload): Promise<GitMergeBranchResult> =>
+      ipcRenderer.invoke(IPC.GIT_MERGE_BRANCH, payload),
+    unmergedCommits: (payload: GitUnmergedCommitsPayload): Promise<GitUnmergedCommitsResult> =>
+      ipcRenderer.invoke(IPC.GIT_UNMERGED_COMMITS, payload),
   },
 
   // Window controls
   appMinimize: (): void => ipcRenderer.send(IPC.APP_MINIMIZE),
   appMaximize: (): void => ipcRenderer.send(IPC.APP_MAXIMIZE),
   appClose: (): void => ipcRenderer.send(IPC.APP_CLOSE),
+  getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_GET_VERSION),
 
   // Notifications
   showNotification: (title: string, body: string): void =>
@@ -177,6 +206,28 @@ const electronAPI = {
     ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
   installUpdate: (): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC.UPDATE_INSTALL),
+
+  // [2026-04-28] 测试验收
+  test: {
+    detectFramework: (workdir: string): Promise<TestFrameworkInfo> =>
+      ipcRenderer.invoke(IPC.TEST_DETECT_FRAMEWORK, { workdir }),
+    run: (sessionId: string, workdir: string, framework: TestFrameworkInfo): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.TEST_RUN, { sessionId, workdir, framework }),
+    cancel: (sessionId: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.TEST_CANCEL, { sessionId }),
+  },
+  onTestOutput: (callback: (payload: TestOutputPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: TestOutputPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.TEST_OUTPUT, handler)
+    return () => ipcRenderer.removeListener(IPC.TEST_OUTPUT, handler)
+  },
+  onTestStatus: (callback: (payload: TestStatusPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: TestStatusPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.TEST_STATUS, handler)
+    return () => ipcRenderer.removeListener(IPC.TEST_STATUS, handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
