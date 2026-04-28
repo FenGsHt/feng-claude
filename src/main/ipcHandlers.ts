@@ -346,7 +346,7 @@ export function registerIpcHandlers(
       }
     }
 
-    systemParts.push('回答必须简短（3句以内），具体可执行，绝不废话。')
+    systemParts.push('回答必须简短（1到2句），具体可执行，绝不废话。')
     const systemPrompt = systemParts.join(' ')
 
     const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))
