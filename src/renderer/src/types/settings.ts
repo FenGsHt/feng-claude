@@ -34,6 +34,13 @@ export interface ApiProfile {
   subagentModel: string
   /** 禁用实验性 Beta */
   disableExperimentalBetas: boolean
+  /** [2026-04-28] 费用估算（每百万 token 价格） */
+  pricing?: {
+    inputPerM: number
+    outputPerM: number
+    cacheCreatePerM: number
+    cacheReadPerM: number
+  }
 }
 
 export interface ClaudeSettings {
@@ -62,8 +69,22 @@ export function createDefaultProfile(name: string, id: string): ApiProfile {
     haikuModel: 'glm-5',
     opusModel: 'glm-5',
     subagentModel: 'glm-5',
-    disableExperimentalBetas: true
+    disableExperimentalBetas: true,
+    pricing: {
+      inputPerM: 3,
+      outputPerM: 15,
+      cacheCreatePerM: 3.75,
+      cacheReadPerM: 0.30
+    }
   }
+}
+
+/** [2026-04-28] 默认费用估算 */
+export const DEFAULT_PRICING = {
+  inputPerM: 3,
+  outputPerM: 15,
+  cacheCreatePerM: 3.75,
+  cacheReadPerM: 0.30
 }
 
 const DEFAULT_PROFILE_ID = 'default'

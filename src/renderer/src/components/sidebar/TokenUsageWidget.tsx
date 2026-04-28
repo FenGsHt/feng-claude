@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
-import { useGlobalTokenStore, tokenSum, computeCost } from '../../store/globalTokenStore'
+import React, { useState, useEffect } from 'react'
+import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type Pricing } from '../../store/globalTokenStore'
 import { fmtTokens } from '../../lib/formatTokens'
 import { useI18n } from '../../i18n'
+import type { ClaudeSettings } from '../../types/settings'
 
 function fmtCost(usd: number): string {
   if (usd < 0.001) return '<$0.001'
@@ -138,11 +139,19 @@ export function TokenUsageWidget(): React.ReactElement {
   const total = useGlobalTokenStore((s) => s.total)
   const today = useGlobalTokenStore((s) => s.today)
   const budget = useGlobalTokenStore((s) => s.budget)
-  const pricing = useGlobalTokenStore((s) => s.pricing)
+  const globalPricing = useGlobalTokenStore((s) => s.pricing)
   const hideDetailedTokens = useGlobalTokenStore((s) => s.hideDetailedTokens)
   const setBudget = useGlobalTokenStore((s) => s.setBudget)
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
   const setHideDetailedTokens = useGlobalTokenStore((s) => s.setHideDetailedTokens)
+
+  // [2026-04-28] Get active profile's pricing
+  const [settings, setSettings] = useState<ClaudeSettings | null>(null)
+  useEffect(() => {
+    void window.electronAPI.settings.get().then(setSettings)
+  }, [])
+  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
+  const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetDraft, setBudgetDraft] = useState('')

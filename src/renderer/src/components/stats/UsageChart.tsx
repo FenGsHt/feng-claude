@@ -1,5 +1,6 @@
-import React from 'react'
-import { useGlobalTokenStore, tokenSum, computeCost, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
+import React, { useState, useEffect } from 'react'
+import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
+import type { ClaudeSettings } from '../../types/settings'
 
 const CHART_DAYS = 14
 
@@ -31,7 +32,16 @@ function shortDate(dateStr: string): string {
 }
 
 export function UsageChart(): React.ReactElement {
-  const { dailyHistory, total, today, pricing } = useGlobalTokenStore()
+  const { dailyHistory, total, today, pricing: globalPricing } = useGlobalTokenStore()
+
+  // [2026-04-28] Get active profile's pricing
+  const [settings, setSettings] = useState<ClaudeSettings | null>(null)
+  useEffect(() => {
+    void window.electronAPI.settings.get().then(setSettings)
+  }, [])
+  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
+  const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
+
   const dayCosts = Object.fromEntries(
     Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)])
   )
