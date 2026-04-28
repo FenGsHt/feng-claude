@@ -21,9 +21,16 @@ const SKIP_TERMINAL_LINES = new Set(['claude', 'clear', 'exit', 'cls'])
 
 
 function normalizeCommittedTerminalLine(raw: string): string | null {
-  const s0 = raw.replace(/\r/g, '').trim()
-  if (!s0) return null
-  const capped = s0.length > 200 ? s0.slice(0, 200) : s0
+  // [2026-04-28] Strip ANSI escape sequences and orphaned cursor codes
+  // Arrow keys send \x1b[A/B/C/D; ESC (code 27) is filtered out in XTerminal
+  // leaving orphan [A, [B, etc. in the buffer.
+  let s = raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')  // full CSI sequences
+  s = s.replace(/\x1b[()][AB012]/g, '')               // charset sequences
+  s = s.replace(/\x1b[\[\](){}#%;><=~^_\\]/g, '')     // orphaned ESC + intro char
+  s = s.replace(/\[[0-9;]*[A-Za-z]/g, '')             // orphaned CSI (ESC already stripped)
+  s = s.replace(/\r/g, '').trim()
+  if (!s) return null
+  const capped = s.length > 200 ? s.slice(0, 200) : s
   const lower = capped.toLowerCase()
   if (SKIP_TERMINAL_LINES.has(lower)) return null
   return capped
