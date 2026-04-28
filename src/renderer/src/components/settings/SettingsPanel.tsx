@@ -438,11 +438,13 @@ export function SettingsPanel(): React.ReactElement {
               ...prev,
               petApi: { ...prev.petApi, baseUrl: e.target.value, authToken: prev.petApi?.authToken ?? '', model: prev.petApi?.model ?? '' }
             }))}
-            placeholder="https://api.anthropic.com/v1/messages"
+            placeholder="https://api.deepseek.com"
             className="field-input"
           />
           <p className="text-[9px] text-claude-muted mt-0.5">
-            {lang === 'zh' ? '填写完整的 endpoint URL（如 /v1/messages 或 /v1/chat/completions）' : 'Full endpoint URL (e.g. /v1/messages or /v1/chat/completions)'}
+            {lang === 'zh'
+              ? '填 Base URL 即可（如 https://api.deepseek.com），路径自动补全；也可填完整 endpoint'
+              : 'Base URL (e.g. https://api.deepseek.com), path is auto-appended; full endpoint also accepted'}
           </p>
         </Field>
 

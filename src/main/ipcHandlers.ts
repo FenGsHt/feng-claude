@@ -321,9 +321,13 @@ export function registerIpcHandlers(
       let endpoint: string
       let headers: Record<string, string>
 
+      // 若 URL 已包含 endpoint 路径则直接使用，否则拼接（兼容填完整 URL 和只填 base 两种情况）
+      const alreadyHasPath = (u: string, suffix: string): boolean =>
+        u.endsWith(suffix) || u.includes(suffix + '?')
+
       if (isAnthropic) {
         // Anthropic 原生格式
-        endpoint = `${baseUrl}/v1/messages`
+        endpoint = alreadyHasPath(baseUrl, '/v1/messages') ? baseUrl : `${baseUrl}/v1/messages`
         body = JSON.stringify({
           model: petModel,
           max_tokens: 400,
@@ -339,7 +343,7 @@ export function registerIpcHandlers(
       } else {
         // OpenAI 兼容格式（deepseek、openai、本地等）
         // stream: false 防止部分 API 默认返回 SSE 流式响应导致 JSON 解析失败
-        endpoint = `${baseUrl}/v1/chat/completions`
+        endpoint = alreadyHasPath(baseUrl, '/chat/completions') ? baseUrl : `${baseUrl}/v1/chat/completions`
         body = JSON.stringify({
           model: petModel,
           max_tokens: 400,
