@@ -19,6 +19,23 @@ import {
   claudeSessionConfigDir
 } from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
+import { existsSync, copyFileSync, mkdirSync } from 'fs'
+import { getConfigDir } from './configDir'
+
+/** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
+function migrateLegacyTokenDataOnce(): void {
+  const newPath = join(getConfigDir(), 'token-data.json')
+  if (existsSync(newPath)) return
+  const oldPath = join(app.getPath('userData'), 'token-data.json')
+  if (!existsSync(oldPath)) return
+  try {
+    mkdirSync(getConfigDir(), { recursive: true })
+    copyFileSync(oldPath, newPath)
+    console.log('[claude-gui] 已迁移 token-data.json:', oldPath, '→', newPath)
+  } catch (e) {
+    console.warn('[claude-gui] token-data.json 迁移失败:', e)
+  }
+}
 
 let ptyManager: PtyManager
 let mainWindow: BrowserWindow
@@ -111,6 +128,8 @@ app.whenReady().then(() => {
   })
   // [2026-04-30] 与 getConfigDir 对齐后再建窗口，避免 claude-session 仍留在旧路径
   migrateLegacyClaudeSessionDirOnce()
+  // [2026-04-28] token-data.json 也需迁移到 getConfigDir()（打包版）
+  migrateLegacyTokenDataOnce()
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
   setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)

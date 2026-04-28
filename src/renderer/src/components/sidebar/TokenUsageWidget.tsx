@@ -157,31 +157,46 @@ export function TokenUsageWidget(): React.ReactElement {
     })
   }, [])
 
-  // [2026-04-28] Compute costs using each profile's own pricing
-  function computePerProfileCost(totals: Record<string, TokenTotals>): number {
+  // Fallback: single pricing for global aggregates (migration / no per-profile data)
+  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
+  const singlePricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
+
+  // [2026-04-28] Compute costs using each profile's own pricing.
+  // Also adds unattributed remainder (tokens ingested before per-profile tracking) at singlePricing.
+  function computePerProfileCost(totals: Record<string, TokenTotals>, globalRef?: TokenTotals): number {
     if (!settings) return 0
     let cost = 0
+    let sumInput = 0, sumOutput = 0, sumCC = 0, sumCR = 0
     for (const [profileId, t] of Object.entries(totals)) {
       const profile = settings.profiles.find(p => p.id === profileId)
       const p = profile?.pricing ?? globalPricing ?? DEFAULT_PRICING
       cost += computeCost(t, p)
+      sumInput += t.input; sumOutput += t.output; sumCC += t.cacheCreate; sumCR += t.cacheRead
+    }
+    // Add unattributed tokens (present in global aggregate but not in any profile bucket)
+    if (globalRef) {
+      const unattributed: TokenTotals = {
+        input: Math.max(0, globalRef.input - sumInput),
+        output: Math.max(0, globalRef.output - sumOutput),
+        cacheCreate: Math.max(0, globalRef.cacheCreate - sumCC),
+        cacheRead: Math.max(0, globalRef.cacheRead - sumCR)
+      }
+      if (unattributed.input + unattributed.output + unattributed.cacheCreate + unattributed.cacheRead > 0) {
+        cost += computeCost(unattributed, singlePricing)
+      }
     }
     return cost
   }
-
-  // Fallback: single pricing for global aggregates (migration / no per-profile data)
-  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
-  const singlePricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
   const hasPerProfileData = Object.keys(perProfile).length > 0
   const todayPerProfileTotals = dailyHistoryPerProfile[todayDate] ?? {}
   const hasTodayPerProfileData = Object.keys(todayPerProfileTotals).length > 0
 
   const todayCost = hasTodayPerProfileData
-    ? computePerProfileCost(todayPerProfileTotals)
+    ? computePerProfileCost(todayPerProfileTotals, today)
     : computeCost(today, singlePricing)
   const totalCost = hasPerProfileData
-    ? computePerProfileCost(perProfile)
+    ? computePerProfileCost(perProfile, total)
     : computeCost(total, singlePricing)
 
   const [editingBudget, setEditingBudget] = useState(false)
