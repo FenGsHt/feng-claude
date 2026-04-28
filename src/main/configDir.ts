@@ -1,13 +1,16 @@
 import { app } from 'electron'
-import { join, dirname } from 'path'
+import { join } from 'path'
+import { homedir } from 'os'
 
 /** Returns the directory where all app config/data files should be stored.
- *  Packaged: <exeDir>/data/   (e.g. AppData\Local\Programs\feng-claude\data)
- *  Dev:      default userData  (AppData\Roaming\Feng Claude)
+ *  Packaged Windows: AppData\Local\feng-claude\   ← survives reinstalls/upgrades
+ *  Packaged Mac/Linux: default userData
+ *  Dev: default userData (AppData\Roaming\Feng Claude)
  */
 export function getConfigDir(): string {
-  if (app.isPackaged) {
-    return join(dirname(app.getPath('exe')), 'data')
+  if (app.isPackaged && process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
+    return join(localAppData, 'feng-claude')
   }
   return app.getPath('userData')
 }
