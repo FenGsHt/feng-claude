@@ -10,7 +10,7 @@
  * 讲话时：右侧出现打字机气泡，讲完后气泡消失宠物继续玩
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { usePetStore, type PetType } from '../../store/petStore'
+import { usePetStore, type PetType, getAffectionTier, getTriggerProbability } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
@@ -29,11 +29,14 @@ type Activity =
   | 'happy'
   // 走动
   | 'walk'
+  // 等级解锁
+  | 'dance' | 'meditate' | 'fly' | 'crown' | 'legend'
 
 // 空闲活动列表（不含触发状态）
 const IDLE_ACTIVITIES: Activity[] = [
   'look', 'sleep', 'play', 'curious',
-  'blink', 'stretch', 'yawn', 'hungry', 'sneeze', 'groom', 'wiggle', 'tilt', 'doze', 'walk'
+  'blink', 'stretch', 'yawn', 'hungry', 'sneeze', 'groom', 'wiggle', 'tilt', 'doze', 'walk',
+  'dance', 'meditate', 'fly', 'crown', 'legend',
 ]
 
 const FRAMES: Record<Activity, Record<PetType, string[][]>> = {
@@ -142,6 +145,37 @@ const FRAMES: Record<Activity, Record<PetType, string[][]>> = {
     dragon: [['∩___∩', '(◕ ▷◕)', ' ~^> '], ['∩___∩', '(◕◁ ◕)', ' <^~ ']],
     ghost:  [['.--.', '(O  O)', ' ∿→ '], ['.--.', '(O  O)', ' ←∿ ']],
   },
+  // 等级解锁活动
+  dance: {
+    cat:    [[' /\\_/\\', '(^ω^ )', ' ≈♪≈ '], [' /\\_/\\', '( >ω<)', '♪   ♪'], [' /\\_/\\', '(^ω^ )', ' ≈♪≈ ']],
+    robot:  [['[★  ★]', '[ ↑  ]', '[═══]'], ['[◉  ◉]', '[ ♪  ]', '[═══]'], ['[★  ★]', '[ ↓  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ‿ ◕)', ' ♪^♪ '], ['∩___∩', '(◕ ▽ ◕)', '^♪^ '], ['∩___∩', '(◕ ‿ ◕)', ' ♪^♪ ']],
+    ghost:  [['.--.', '(★  ★)', '♪∿♪ '], ['.--.', '(◉  ◉)', '∿♪∿'], ['.--.', '(★  ★)', '♪∿♪ ']],
+  },
+  meditate: {
+    cat:    [[' /\\_/\\', '( ·ω·)', '  ~  '], [' /\\_/\\', '( ·ω·)', '     ']],
+    robot:  [['[·  ·]', '[ ◦  ]', '[═══]'], ['[·  ·]', '[    ]', '[═══]']],
+    dragon: [['∩___∩', '(·  ·)', '  ~  '], ['∩___∩', '(·  ·)', '     ']],
+    ghost:  [['.--.', '(·  ·)', ' ∿~∿'], ['.--.', '(·  ·)', ' ∿  ']],
+  },
+  fly: {
+    cat:    [[' /\\_/\\', '(^ω^)', ' ≈≈≈ '], ['   ~ ', '  ^  ', ' ≈≈≈ '], [' /\\_/\\', '(^ω^)', ' ≈≈≈ ']],
+    robot:  [['  ~  ', '[◉  ◉]', '[═══]'], [' ~~~ ', '[★  ★]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽ ◕)', ' ∿∿∿∿'], [' ~~~ ', '  ^  ', '∿∿∿∿ ']],
+    ghost:  [['.--.', '(★  ★)', '∿✨∿✨'], [' ~~~ ', '  ★  ', '∿∿∿∿ ']],
+  },
+  crown: {
+    cat:    [[' /\\_/\\', ' (★ω★)', '  >-< '], [' /★_★\\', '( ★ω★)', '  >-< ']],
+    robot:  [[' ★★  ', '[◉  ◉]', '[ ▽  ]', '[═══]'], ['★  ★ ', '[◉  ◉]', '[ ▽  ]', '[═══]']],
+    dragon: [[' ∩_∩ ', '(◕ ★◕)', '  ~^~ '], [' ★ ★ ', '(◕ ▽ ◕)', '  ~^~ ']],
+    ghost:  [[' ★  ', '.--.', '(★  ★)', ' ∿∿∿ '], ['  ★ ', '.--.', '(★  ★)', ' ∿∿∿ ']],
+  },
+  legend: {
+    cat:    [[' /★_/\\', '(★ω★)', '!!! !!'], [' /\\_/\\', '(★★★)', ' ✨✨ '], [' /★_/\\', '(★ω★)', '!! !!!']],
+    robot:  [['★★★★', '[★  ★]', '[ !!!]', '[═══]'], ['[★★★★]', '[★  ★]', '[ !!!]', '[═══]']],
+    dragon: [['★∩_∩★', '(★ ★★)', '✨✨✨'], [' ∩_∩ ', '(★★★★)', ' ✨✨ ']],
+    ghost:  [['.★--.', '(★  ★)', '✨∿✨ '], ['.--. ', '(★★★★)', '∿✨✨']],
+  },
 }
 
 // 加权随机空闲池
@@ -151,6 +185,7 @@ interface IdlePoolEntry {
   msRange: [number, number]
   cooldown: number
   forbiddenAfter: Activity[]
+  unlockLevel?: number  // 需要宠物等级才能解锁
 }
 
 const IDLE_POOL: IdlePoolEntry[] = [
@@ -168,6 +203,12 @@ const IDLE_POOL: IdlePoolEntry[] = [
   { activity: 'play',    weight: 2,  msRange: [4000, 8000],  cooldown: 4, forbiddenAfter: ['sleep', 'doze'] },
   { activity: 'hungry',  weight: 2,  msRange: [3000, 5000],  cooldown: 5, forbiddenAfter: ['sleep', 'doze'] },
   { activity: 'sneeze',  weight: 1,  msRange: [800, 1500],   cooldown: 6, forbiddenAfter: ['sleep', 'doze'] },
+  // 等级解锁活动
+  { activity: 'dance',    weight: 3, msRange: [3000, 6000],  cooldown: 4, forbiddenAfter: ['sleep', 'doze'], unlockLevel: 5 },
+  { activity: 'meditate', weight: 2, msRange: [6000, 10000], cooldown: 4, forbiddenAfter: [], unlockLevel: 10 },
+  { activity: 'fly',      weight: 2, msRange: [4000, 8000],  cooldown: 4, forbiddenAfter: ['sleep', 'doze'], unlockLevel: 15 },
+  { activity: 'crown',    weight: 1, msRange: [5000, 9000],  cooldown: 5, forbiddenAfter: [], unlockLevel: 20 },
+  { activity: 'legend',   weight: 1, msRange: [6000, 12000], cooldown: 6, forbiddenAfter: [], unlockLevel: 25 },
 ]
 
 // 空闲状态跟踪
@@ -177,19 +218,21 @@ interface IdleState {
 }
 
 // 加权随机选择下一个空闲活动
-function selectNextIdleActivity(state: IdleState): { activity: Activity; msRange: [number, number] } {
+function selectNextIdleActivity(state: IdleState, level = 1): { activity: Activity; msRange: [number, number] } {
   // 1. 更新 cooldown 计数器
   for (const [act, cd] of state.cooldowns) {
     if (cd <= 1) state.cooldowns.delete(act)
     else state.cooldowns.set(act, cd - 1)
   }
 
-  // 2. 构建候选池
+  // 2. 构建候选池（含等级过滤）
   const candidates = IDLE_POOL.filter((entry) => {
     // 不在 cooldown 中
     if (state.cooldowns.has(entry.activity)) return false
     // 不是 forbiddenAfter 当前活动
     if (entry.forbiddenAfter.includes(state.lastActivity)) return false
+    // 等级解锁
+    if (entry.unlockLevel && level < entry.unlockLevel) return false
     return true
   })
 
@@ -238,6 +281,8 @@ const FRAME_INTERVAL: Record<Activity, number> = {
   happy: 400,
   // 走动
   walk: 500,
+  // 等级解锁
+  dance: 350, meditate: 1500, fly: 600, crown: 800, legend: 400,
 }
 
 const ACTIVITY_COLOR: Record<Activity, string> = {
@@ -250,6 +295,8 @@ const ACTIVITY_COLOR: Record<Activity, string> = {
   happy: '#f9a8d4',
   // 走动
   walk: '#60a5fa',
+  // 等级解锁
+  dance: '#f9a8d4', meditate: '#a78bfa', fly: '#7dd3fc', crown: '#fbbf24', legend: '#f472b6',
 }
 
 // ── ASCII 宠物渲染 ─────────────────────────────────────────────────
@@ -341,7 +388,7 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
 
 // ── 设置面板 ─────────────────────────────────────────────────────
 function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement {
-  const { config, setConfig, clearHistory, history } = usePetStore()
+  const { config, setConfig, clearHistory, history, growth } = usePetStore()
   const [name, setName] = useState(config.name)
   const [persona, setPersona] = useState(config.personality)
   const [delay, setDelay] = useState(String(config.autoDelaySec))
@@ -352,6 +399,11 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
     { id: 'dragon', label: '🐉' },
     { id: 'ghost', label: '👻' },
   ]
+
+  const tier = getAffectionTier(growth.affection)
+  const tierLabels: Record<string, string> = {
+    cold: '冷淡', normal: '普通', friendly: '友好', close: '亲密', soulmate: '灵魂伴侣',
+  }
 
   return (
     <div className="border-t border-slate-700/60 px-2.5 py-2 space-y-2 bg-slate-800/50">
@@ -375,6 +427,18 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 成长信息 */}
+      <div className="flex gap-2 items-center text-[9px] text-slate-400">
+        <span className="text-amber-400 font-semibold">Lv.{growth.level}</span>
+        {growth.level < 30 && (
+          <span>XP {growth.xp}/{growth.xpToNext}</span>
+        )}
+        {growth.skillPoints > 0 && (
+          <span className="text-amber-300">⚡ 技能点 ×{growth.skillPoints}</span>
+        )}
+        <span>好感 {tierLabels[tier]}</span>
       </div>
 
       <div className="flex items-center gap-1.5">
@@ -421,7 +485,6 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
 
 // ── Main ─────────────────────────────────────────────────────────
 const COOLDOWN_MS = 45_000       // 两次自动触发最小间隔
-const TRIGGER_PROBABILITY = 0.4  // 40% 概率响应
 const PET_COOLDOWN_MS = 3_000    // 抚摸冷却 3 秒
 
 // 抚摸预设回复
@@ -434,8 +497,9 @@ function randomPick<T>(arr: T[]): T {
 }
 
 export function PetWidget(): React.ReactElement {
-  const { config, speech, history, lastAutoAt, lastPetAt,
-          setSpeech, pushHistory, setLastAutoAt, setLastPetAt } = usePetStore()
+  const { config, speech, history, lastAutoAt, lastPetAt, growth,
+          setSpeech, pushHistory, setLastAutoAt, setLastPetAt,
+          addXp, addAffection } = usePetStore()
   const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
   // output token 计数是最准确的"Claude Code 完成了一轮回答"的信号
   const outputTokens = useTokenUsageStore((s) =>
@@ -451,6 +515,10 @@ export function PetWidget(): React.ReactElement {
   // 走动位置（0-100 百分比）
   const [petX, setPetX] = useState(50)
   const [walkDirection, setWalkDirection] = useState<'left' | 'right'>('right')
+  // 升级庆祝
+  const [celebrating, setCelebrating] = useState(false)
+  // XP 条可见性
+  const [showXpBar, setShowXpBar] = useState(false)
 
   const idleCycleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleStateRef = useRef<IdleState>({ lastActivity: 'look', cooldowns: new Map() })
@@ -507,11 +575,28 @@ export function PetWidget(): React.ReactElement {
     }
   }, [activity, showBubble, isLoading, walkDirection, petX])
 
+  // ── 好感度衰减（挂载时计算）─────────────────────────────────────────
+  useEffect(() => {
+    const now = Date.now()
+    const oneDayMs = 24 * 60 * 60 * 1000
+    const daysSinceInteraction = (now - growth.lastInteractionAt) / oneDayMs
+    if (daysSinceInteraction >= 1) {
+      const decayAmount = daysSinceInteraction >= 3
+        ? 5 * Math.floor(daysSinceInteraction)
+        : 1 * Math.floor(daysSinceInteraction)
+      if (decayAmount > 0) {
+        // Direct state update via store setter
+        const { addAffection } = usePetStore.getState()
+        addAffection(-decayAmount)
+      }
+    }
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── 空闲轮换（加权随机）──────────────────────────────────────────
   const startIdleCycle = useCallback(() => {
     if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
     const step = (): void => {
-      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current)
+      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, growth.level)
       setActivity(nextActivity)
       const ms = randRange(msRange[0], msRange[1])
       idleCycleRef.current = setTimeout(step, ms)
@@ -554,6 +639,8 @@ export function PetWidget(): React.ReactElement {
 
     setLastAutoAt(now)
     markUsed(item.id)
+    addXp(2, 'contentBank')
+    addAffection(1)
 
     // 停止空闲轮换
     if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
@@ -578,7 +665,7 @@ export function PetWidget(): React.ReactElement {
         triggerContentBank()
         return
       }
-      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current)
+      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, growth.level)
       setActivity(nextActivity)
       const ms = randRange(msRange[0], msRange[1])
       idleCycleRef.current = setTimeout(step, ms)
@@ -596,6 +683,8 @@ export function PetWidget(): React.ReactElement {
     if (now - lastPetAt < PET_COOLDOWN_MS) return
 
     setLastPetAt(now)
+    addXp(5, 'pet')
+    addAffection(3)
 
     // 停止空闲轮换
     if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
@@ -633,9 +722,16 @@ export function PetWidget(): React.ReactElement {
           message: userMsg,
           history: history.slice(-12),
           petConfig: { name: config.name, personality: config.personality },
+          growth: {
+            level: growth.level,
+            affection: growth.affection,
+            skills: growth.skills.filter(sk => sk.level > 0),
+          },
         })
         const reply = result.text?.trim() || '喵？没有响应...'
         pushHistory('assistant', reply)
+        addXp(10, 'chat')
+        addAffection(5)
         setSpeech(reply)
         setActivity('excited')
         setIsLoading(false)
@@ -693,24 +789,44 @@ export function PetWidget(): React.ReactElement {
     // 跳过太小的增量（可能是噪音）
     if (delta < 10) return
 
-    // 概率门控：40% 概率触发
-    if (Math.random() > TRIGGER_PROBABILITY) return
+    // 概率门控：根据好感度动态调整
+    const tier = getAffectionTier(growth.affection)
+    const triggerProb = getTriggerProbability(tier)
+    if (Math.random() > triggerProb) return
 
     // 冷却检查
     const now = Date.now()
     if (now - lastAutoAt < COOLDOWN_MS) return
 
     setLastAutoAt(now)
+    addXp(3, 'autoTrigger')
+    addAffection(2)
     const ctx = buildContext()
     void triggerPet(
       `[上下文]\n${ctx}\n\n用户刚刚在 Claude Code 中提交了一个问题并得到了回答（${delta} output tokens）。用你的人格，给出一条激进的技术点评或建议。`
     )
-  }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt])
+  }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt, growth.affection, addXp, addAffection])
 
   // session 切换时重置 token 计数基线
   useEffect(() => {
     lastOutputRef.current = outputTokens
   }, [activeSessionId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 升级庆祝
+  const prevLevelRef = useRef(growth.level)
+  useEffect(() => {
+    if (growth.level > prevLevelRef.current) {
+      setCelebrating(true)
+      setActivity('excited')
+      if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
+      setTimeout(() => setCelebrating(false), 3000)
+      // 显示系统通知
+      try {
+        window.electronAPI.showNotification?.(`${config.name} 升级！`, `恭喜！${config.name} 达到了 Lv.${growth.level}！获得 1 个技能点。`)
+      } catch {}
+    }
+    prevLevelRef.current = growth.level
+  }, [growth.level, config.name])
 
   // 气泡是否可见：loading 时 or talking 时
   const bubbleVisible = showBubble
@@ -720,6 +836,9 @@ export function PetWidget(): React.ReactElement {
 
   // 当前活动在空闲列表中
   const isIdleActivity = IDLE_ACTIVITIES.includes(activity)
+
+  // 升级时覆盖活动显示
+  const effectiveActivity = celebrating ? 'excited' : activity
 
   // 走动时的样式
   const walkStyle = activity === 'walk' ? {
@@ -740,17 +859,19 @@ export function PetWidget(): React.ReactElement {
       >
         {/* 宠物 + 名字（点击抚摸，带位置动画）*/}
         <div
-          className="flex flex-col items-center gap-0 cursor-pointer shrink-0"
+          className="flex flex-col items-center gap-0 cursor-pointer shrink-0 relative"
           onClick={handlePet}
           title="点击抚摸"
+          onMouseEnter={() => setShowXpBar(true)}
+          onMouseLeave={() => setShowXpBar(false)}
           style={walkStyle}
         >
-          <AsciiPet type={config.type} activity={activity} large={idleMode} />
+          <AsciiPet type={config.type} activity={effectiveActivity} large={idleMode} />
           <span
             className="text-[8.5px] font-semibold leading-none mt-0.5 transition-colors duration-300"
             style={{ color: ACTIVITY_COLOR[activity] }}
           >
-            {config.name}
+            {config.name} <span className="opacity-60">Lv.{growth.level}</span>
             {isIdleActivity && activity !== 'look' && activity !== 'blink' && (
               <span className="ml-1 opacity-60">
                 {activity === 'sleep' || activity === 'doze' ? 'zzz' :
@@ -761,13 +882,25 @@ export function PetWidget(): React.ReactElement {
                  activity === 'hungry' ? '!' :
                  activity === 'sneeze' ? '~' :
                  activity === 'stretch' ? '↔' :
-                 activity === 'walk' ? walkIndicator : ''}
+                 activity === 'walk' ? walkIndicator :
+                 activity === 'dance' ? '♪' :
+                 activity === 'meditate' ? '～' :
+                 activity === 'fly' ? '↑' :
+                 activity === 'crown' ? '★' :
+                 activity === 'legend' ? '✦' : ''}
               </span>
             )}
           </span>
+          {/* XP 进度条（悬停显示）*/}
+          {showXpBar && growth.level < 30 && (
+            <div className="w-16 h-1 bg-slate-700 rounded-full overflow-hidden mt-0.5">
+              <div
+                className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                style={{ width: `${(growth.xp / growth.xpToNext) * 100}%` }}
+              />
+            </div>
+          )}
         </div>
-
-        {/* 气泡（仅讲话时显示）*/}
         {bubbleVisible && (
           <Bubble text={speech} loading={isLoading} />
         )}

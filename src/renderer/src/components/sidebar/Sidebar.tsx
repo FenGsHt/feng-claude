@@ -10,11 +10,12 @@ import { GuidePanel } from '../guide/GuidePanel'
 import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
+import { PetGrowthPanel } from './PetGrowthPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'petGrowth'
 
 interface TabConfig {
   id: Tab
@@ -111,6 +112,15 @@ function IconStats(): React.ReactElement {
   )
 }
 
+function IconPetGrowth(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M7.5 1.5L9.5 5.5L14 6.2L10.75 9.3L11.5 13.5L7.5 11.4L3.5 13.5L4.25 9.3L1 6.2L5.5 5.5L7.5 1.5Z"
+        stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15"/>
+    </svg>
+  )
+}
+
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -125,6 +135,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'stats', label: t.sidebar.stats, icon: <IconStats /> },
     { id: 'plugins', label: t.sidebar.plugins, icon: <IconPlugins /> },
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
+    { id: 'petGrowth', label: t.sidebar.petGrowth ?? '宠物', icon: <IconPetGrowth /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
@@ -197,6 +208,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <PluginsPanel />
           ) : activeTab === 'skills' ? (
             <SkillsPanel />
+          ) : activeTab === 'petGrowth' ? (
+            <PetGrowthPanel />
           ) : activeTab === 'mcp' ? (
             <McpPanel />
           ) : activeTab === 'guide' ? (

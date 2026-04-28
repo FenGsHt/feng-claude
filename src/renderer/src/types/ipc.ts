@@ -196,6 +196,11 @@ export interface PetAskPayload {
   message: string
   history: Array<{ role: 'user' | 'assistant'; content: string }>
   petConfig: { name: string; personality: string }
+  growth?: {
+    level: number
+    affection: number
+    skills: Array<{ id: string; level: number }>
+  }
 }
 
 export interface PetAskResult {
