@@ -764,7 +764,7 @@ export function PetWidget(): React.ReactElement {
         const reply = result.text?.trim() || '喵？没有响应...'
         pushHistory('assistant', reply)
         addXp(10, 'chat')
-        addAffection(5)
+        addAffection(1)
         setSpeech(reply)
         setActivity('excited')
         setIsLoading(false)
