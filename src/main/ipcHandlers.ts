@@ -312,22 +312,21 @@ export function registerIpcHandlers(
 
     const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))
 
-    // 判断是 Anthropic 原生 API 还是 OpenAI 兼容接口
-    // DashScope 的 /apps/anthropic 路径也走 Anthropic 格式
-    const isAnthropic = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic') || /\/apps\/anthropic/.test(baseUrl)
-
     try {
       let body: string
       let endpoint: string
       let headers: Record<string, string>
 
-      // 若 URL 已包含 endpoint 路径则直接使用，否则拼接（兼容填完整 URL 和只填 base 两种情况）
-      const alreadyHasPath = (u: string, suffix: string): boolean =>
-        u.endsWith(suffix) || u.includes(suffix + '?')
+      // 格式判断：URL 以 /v1/messages 结尾 → Anthropic 格式（含 DeepSeek /anthropic/v1/messages）
+      // 以 /chat/completions 结尾 → OpenAI 兼容；否则按域名推断并自动补路径
+      const endsWithMessages     = baseUrl.endsWith('/v1/messages')
+      const endsWithCompletions  = baseUrl.endsWith('/chat/completions') || baseUrl.endsWith('/v1/chat/completions')
+      const isAnthropicDomain    = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
+      const isAnthropic          = endsWithMessages || (!endsWithCompletions && isAnthropicDomain)
 
       if (isAnthropic) {
         // Anthropic 原生格式
-        endpoint = alreadyHasPath(baseUrl, '/v1/messages') ? baseUrl : `${baseUrl}/v1/messages`
+        endpoint = endsWithMessages ? baseUrl : `${baseUrl}/v1/messages`
         body = JSON.stringify({
           model: petModel,
           max_tokens: 400,
@@ -343,7 +342,7 @@ export function registerIpcHandlers(
       } else {
         // OpenAI 兼容格式（deepseek、openai、本地等）
         // stream: false 防止部分 API 默认返回 SSE 流式响应导致 JSON 解析失败
-        endpoint = alreadyHasPath(baseUrl, '/chat/completions') ? baseUrl : `${baseUrl}/v1/chat/completions`
+        endpoint = endsWithCompletions ? baseUrl : `${baseUrl}/v1/chat/completions`
         body = JSON.stringify({
           model: petModel,
           max_tokens: 400,
