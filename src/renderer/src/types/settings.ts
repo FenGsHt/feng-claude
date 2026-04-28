@@ -53,6 +53,11 @@ export interface ClaudeSettings {
    * 任意 cwd 会话也会合并该目录下的 skills（见 Claude Code 文档）。
    */
   sharedSkillAddDir: string
+  /**
+   * 为 true 时同步到 `CLAUDE_CONFIG_DIR/settings.json` 的 `skipDangerousModePermissionPrompt`，
+   * 使用 bypass 等模式时不再每次出现「Yes, I accept」确认（仅限可信环境）。
+   */
+  skipDangerousModePermissionPrompt: boolean
   /** [2026-04-28] 所有 API 配置 */
   profiles: ApiProfile[]
   /** [2026-04-28] 当前激活的配置 ID */
@@ -95,6 +100,7 @@ export const DEFAULT_SETTINGS: ClaudeSettings = {
   language: 'zh',
   permissionPreset: 'acceptEdits',
   sharedSkillAddDir: '',
+  skipDangerousModePermissionPrompt: false,
   profiles: [createDefaultProfile('Default', DEFAULT_PROFILE_ID)],
   activeProfileId: DEFAULT_PROFILE_ID
 }
@@ -120,6 +126,7 @@ export function migrateOldSettings(old: Record<string, unknown>): ClaudeSettings
     language: String(old.language ?? 'zh') as AppLanguage,
     permissionPreset: String(old.permissionPreset ?? 'acceptEdits') as ClaudePermissionPreset,
     sharedSkillAddDir: String(old.sharedSkillAddDir ?? ''),
+    skipDangerousModePermissionPrompt: Boolean(old.skipDangerousModePermissionPrompt),
     profiles: [migratedProfile],
     activeProfileId: migratedProfile.id
   }

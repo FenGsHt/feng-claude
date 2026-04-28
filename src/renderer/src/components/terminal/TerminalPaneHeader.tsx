@@ -138,7 +138,13 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     )
     if (dirs.length === 0) {
       const dir = await window.electronAPI.openDirDialog()
-      if (dir) await createSession(dir, mode, sessionId)
+      if (dir) {
+        try {
+          await createSession(dir, mode, sessionId)
+        } catch (e) {
+          console.warn('[TerminalPaneHeader] 分屏创建会话失败', e)
+        }
+      }
       return
     }
     setSplitMode(mode)
@@ -146,7 +152,12 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
 
   const handleWorktreeCreate = async (worktreePath: string, branch: string): void => {
     // 在 worktree 路径创建新会话
-    await createSession(worktreePath, 'split-right', sessionId)
+    try {
+      await createSession(worktreePath, 'split-right', sessionId)
+    } catch (e) {
+      console.warn('[TerminalPaneHeader] worktree 会话创建失败', e)
+      return
+    }
     void checkGitStatus() // 更新 worktree 状态
   }
 
@@ -254,12 +265,20 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           mode={splitMode}
           currentWorkdir={sess?.workdir}
           onPick={(workdir) => {
-            void createSession(workdir, splitMode, sessionId)
+            void createSession(workdir, splitMode, sessionId).catch((e) =>
+              console.warn('[TerminalPaneHeader] 分屏创建会话失败', e)
+            )
             setSplitMode(null)
           }}
           onPickOther={async () => {
             const dir = await window.electronAPI.openDirDialog()
-            if (dir) await createSession(dir, splitMode, sessionId)
+            if (dir) {
+              try {
+                await createSession(dir, splitMode, sessionId)
+              } catch (e) {
+                console.warn('[TerminalPaneHeader] 分屏创建会话失败', e)
+              }
+            }
             setSplitMode(null)
           }}
           onClose={() => setSplitMode(null)}

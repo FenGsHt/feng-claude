@@ -9,17 +9,29 @@ import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 
-// Detect cmd.exe shell prompt: any path ending with ">"
-// e.g. "E:\git3\claude-gui>" or "C:\Users\foo>"
-const SHELL_PROMPT_RE = /[A-Za-z]:\\[^\r\n]*>\s*$/m
+/* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
 
-/**
- * Claude Code 2.1.120+ 在 Windows 上以 --continue 启动时会触发 sandbox 初始化 bug：
- * "FKH is not a function" / "sandbox required but unavailable"
- * 检测到此错误后静默清屏并以不带 --continue 的方式重新启动。
- */
-/** 检测 Claude Code 已就绪（显示输入提示符）*/
-const CLAUDE_READY_RE = /^\s*>\s*$/m
+/** 去掉常见 ANSI/OSC 序列，便于跨终端匹配裸提示符（仅用于就绪/壳检测，不改变原始输出）。 */
+function stripAnsiForPromptMatch(s: string): string {
+  return s
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+    .replace(/\x1b\][^\x1b]*\x1b\\/g, '')
+}
+
+/** 回到交互式 shell：Windows cmd 路径>；Unix 常见行尾 `$`（bash）、`%`（zsh）、`#`（root）。 */
+function looksLikeShellPrompt(buffer: string): boolean {
+  const tail = stripAnsiForPromptMatch(buffer).slice(-512)
+  if (/[A-Za-z]:\\[^\r\n]*>\s*$/m.test(tail)) return true
+  if (process.platform !== 'win32') {
+    if (/[\r\n][^\r\n]*?\$\s*$/m.test(tail)) return true
+    if (/[\r\n][^\r\n]*?%\s*$/m.test(tail)) return true
+    if (/[\r\n]#[ \t]*$/m.test(tail)) return true
+  }
+  return false
+}
+
+/* 续会话：首启使用 `claude --continue`；若极旧版 Windows 上仍见 sandbox 与 --continue 冲突，需升级 Claude Code 或见官方 issue。 */
 
 /** 上游 IDE/CI 会带这些变量，Chalk「supports-color」会关色，Claude Code 全屏发灰 */
 const PTY_ENV_STRIP = [
@@ -113,6 +125,9 @@ function resolveClaudeAddDir(settings: ClaudeSettings): string {
 
 const MAX_SCROLLBACK_BYTES = 200 * 1024
 
+/** 首次自动启动 claude 后短时间内，启动日志里可能出现类似 cmd 的 `盘符:\...>` 行，勿当作「已退回 shell」 */
+const SHELL_RELAUNCH_GRACE_MS = 4500
+
 function scrollbackDir(): string {
   return join(app.getPath('userData'), 'scrollback')
 }
@@ -122,10 +137,18 @@ function scrollbackPath(workdir: string): string {
   return join(scrollbackDir(), `${hash}.log`)
 }
 
-/** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI） */
-function claudeLaunchLine(settings: ClaudeSettings, isWindows: boolean): string {
+/** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI）
+ * [2026-04-23] resume 时使用官方 `claude --continue`（当前 cwd 接上最近一次会话）；原先就绪后再发 `/resume` 常打开会话选择器，无法等价于 `--continue`。 */
+function claudeLaunchLine(
+  settings: ClaudeSettings,
+  isWindows: boolean,
+  opts?: { continueSession?: boolean }
+): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
   let line = `claude --permission-mode ${mode}`
+  if (opts?.continueSession) {
+    line += ' --continue'
+  }
   const addDir = resolveClaudeAddDir(settings).trim()
   if (addDir) {
     line += ` --add-dir ${quoteAddDirPath(addDir, isWindows)}`
@@ -141,8 +164,8 @@ interface PtySession {
   buffer: string
   /** Prevents scheduling multiple re-launches if shell prompt appears in rapid succession */
   relaunchPending: boolean
-  /** When true, send /resume once claude is ready (replaces --continue) */
-  pendingResume: boolean
+  /** 首次自动写入 claude 的时刻（ms）；用于宽限期内忽略壳提示符误检 */
+  firstAutoLaunchAt: number
   /** Rolling buffer of raw PTY output for scrollback persistence */
   scrollbackChunks: Buffer[]
   scrollbackSize: number
@@ -181,21 +204,26 @@ export class PtyManager {
     })
 
     // Auto-launch claude CLI after shell is ready
-    setTimeout(() => {
-      ptyProcess.write(claudeLaunchLine(s, isWindows))
-    }, 300)
-
+    /* [2026-04-23] 须在首次 write 之后再置 true：原先初始为 true 时，cmd/bash 会先打出壳提示符，
+     * looksLikeShellPrompt 误判为「Claude 已退出」并在 ~500ms 再次 claudeLaunchLine，与上方 300ms 首启叠加 → 终端里出现第二条启动命令 */
     const session: PtySession = {
       id: sessionId,
       ptyProcess,
       workdir,
-      claudeRunning: true,
+      /* [2026-04-23] 原 true — 见上 setTimeout 注释；壳提示符早于首次自动启动会触发「重回 shell → 重跑 claude」逻辑 */
+      claudeRunning: false,
       buffer: '',
       relaunchPending: false,
-      pendingResume: resume ?? false,
+      firstAutoLaunchAt: 0,
       scrollbackChunks: [],
       scrollbackSize: 0
     }
+
+    setTimeout(() => {
+      session.firstAutoLaunchAt = Date.now()
+      ptyProcess.write(claudeLaunchLine(s, isWindows, { continueSession: !!resume }))
+      session.claudeRunning = true
+    }, 300)
 
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return
@@ -219,19 +247,15 @@ export class PtyManager {
       // Keep a rolling buffer of recent output to match multi-chunk prompts
       session.buffer = (session.buffer + data).slice(-512)
 
-      // 检测 Claude 就绪（显示输入提示符）后发送 /resume
-      if (session.pendingResume && CLAUDE_READY_RE.test(session.buffer)) {
-        session.pendingResume = false
-        session.buffer = ''
-        setTimeout(() => {
-          if (this.sessions.has(sessionId)) {
-            ptyProcess.write('/resume\r')
-          }
-        }, 150)
-        return
-      }
+      /* [2026-04-23] 曾在此检测就绪后发 `/resume`；已改为首启命令行 `claude --continue`（见 claudeLaunchLine）。 */
 
-      if (session.claudeRunning && !session.relaunchPending && SHELL_PROMPT_RE.test(session.buffer)) {
+      const sinceFirstLaunch = session.firstAutoLaunchAt ? Date.now() - session.firstAutoLaunchAt : 0
+      if (
+        session.claudeRunning &&
+        !session.relaunchPending &&
+        sinceFirstLaunch >= SHELL_RELAUNCH_GRACE_MS &&
+        looksLikeShellPrompt(session.buffer)
+      ) {
         session.claudeRunning = false
         session.relaunchPending = true
         session.buffer = ''
@@ -240,6 +264,7 @@ export class PtyManager {
           session.relaunchPending = false
           if (this.sessions.has(sessionId)) {
             session.claudeRunning = true
+            session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
             // Relaunch without --continue: only the initial launch uses it
             ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))

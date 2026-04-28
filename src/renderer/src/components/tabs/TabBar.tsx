@@ -111,7 +111,12 @@ export function TabBar(): React.ReactElement {
 
   const handleNewTab = async () => {
     const dir = await window.electronAPI.openDirDialog()
-    if (dir) await createSession(dir, 'fullscreen')
+    if (!dir) return
+    try {
+      await createSession(dir, 'fullscreen')
+    } catch (e) {
+      console.warn('[TabBar] 创建会话失败', e)
+    }
   }
 
   // Get profile name for a session

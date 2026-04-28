@@ -304,6 +304,38 @@ export function SettingsPanel(): React.ReactElement {
           </select>
         </Field>
 
+        {/* [2026-04-29] 同步 skipDangerousModePermissionPrompt 至 CLAUDE_CONFIG_DIR/settings.json（Claude Code 官方字段） */}
+        <div className="rounded border border-amber-600/25 bg-amber-500/5 px-2 py-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-xs text-claude-text">
+                {lang === 'zh' ? '跳过「危险 / 绕过权限」模式启动确认' : 'Skip bypass-mode startup confirmation'}
+              </div>
+              <p className="mt-0.5 text-[9px] leading-snug text-claude-muted">
+                {lang === 'zh'
+                  ? '开启后写入与「应用设置」同根的 claude-session/settings.json（便携版为 exe 同目录 data\\claude-session，与 CLAUDE_CONFIG_DIR 一致）。使用 bypass 等模式时将不再每次出现「Yes, I accept」。修改后请保存并新开终端会话。'
+                  : 'Writes to claude-session/settings.json next to your app data (portable: <exe>/data/claude-session). Save, then open a new session. Do not enable on untrusted machines.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label={lang === 'zh' ? '切换跳过启动确认' : 'Toggle skip startup prompt'}
+              onClick={() =>
+                handleChange('skipDangerousModePermissionPrompt', !form.skipDangerousModePermissionPrompt)
+              }
+              className={`relative mt-0.5 h-4 w-8 shrink-0 rounded-full transition-colors ${
+                form.skipDangerousModePermissionPrompt ? 'bg-amber-500' : 'bg-claude-border'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+                  form.skipDangerousModePermissionPrompt ? 'left-4.5' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
         <Field label={lang === 'zh' ? '额外技能目录（可选）' : 'Extra skills directory (optional)'} hint="claude --add-dir">
           <div className="flex gap-1">
             <input

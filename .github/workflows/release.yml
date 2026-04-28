@@ -23,6 +23,8 @@ jobs:
     outputs:
       tag-name: ${{ steps.version.outputs.TAG }}
       upload-url: ${{ steps.create.outputs.upload_url }}
+      # [2026-04-23] workflow 触发时的默认 ref 不包含「刚 push 的版本号提交」；若无此输出，build 仍用旧 package.json，安装包文件名与 tag 不一致
+      commit-sha: ${{ steps.export-build-sha.outputs.SHA }}
 
     steps:
       - name: Checkout
@@ -86,6 +88,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # [2026-04-23] 必须在 bump + push 之后取 HEAD；供 build matrix 检出同一代码树，保证 electron-builder 产物版本与 tag 对齐
+      - name: Export commit SHA for builds
+        id: export-build-sha
+        run: echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Create release
         id: create
         uses: softprops/action-gh-release@v2
@@ -116,8 +123,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      # [2026-04-23] 原先默认检出 workflow 起始 SHA；workflow_dispatch 时 create-release 可能已在本分支 push 新版本号，必须用 tag 或 export 的 SHA。release 事件则检出对应 tag。
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.create-release.outputs.commit-sha }}
 
       - name: Get tag name
         id: tag
@@ -190,10 +201,12 @@ jobs:
           name: linux
           path: dist-build/linux
 
+      # [2026-04-23] 覆盖同名 asset，避免重复跑 workflow 时旧文件残留；与 action 默认一致但显式写出便于维护
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.TAG }}
+          overwrite: true
           files: |
             dist-build/win/*
             dist-build/mac/*

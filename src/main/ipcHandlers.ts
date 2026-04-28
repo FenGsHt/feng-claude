@@ -1,6 +1,7 @@
 import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve } from 'path'
+import { existsSync } from 'fs'
 import { IPC } from '../renderer/src/types/ipc'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import type { PtyManager } from './ptyManager'
@@ -9,7 +10,7 @@ import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
-import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
+import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
@@ -22,18 +23,6 @@ const petLogStore = new PetLogStore()
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
-function scheduleEnsureClaudeHudAfterSession(): void {
-  if (hudEnsureAfterSessionScheduled) return
-  hudEnsureAfterSessionScheduled = true
-  setImmediate(() => {
-    hudEnsureAfterSessionScheduled = false
-    try {
-      ensureClaudeHudPluginDefaults()
-    } catch (e) {
-      console.warn('[ipc] ensureClaudeHudPluginDefaults:', e)
-    }
-  })
-}
 
 function broadcastSettingsChanged(): void {
   BrowserWindow.getAllWindows().forEach(win => {
@@ -49,6 +38,25 @@ export function registerIpcHandlers(
   workspaceStore: WorkspaceStore,
   sessionWatcher: ClaudeSessionWatcher
 ): void {
+  // [2026-04-30] ensure 合并 HUD 后再次写入 skip 标志，且须能读取 settingsStore（故放在 register 内）
+  const scheduleEnsureClaudeHudAfterSession = (): void => {
+    if (hudEnsureAfterSessionScheduled) return
+    hudEnsureAfterSessionScheduled = true
+    setImmediate(() => {
+      hudEnsureAfterSessionScheduled = false
+      try {
+        ensureClaudeHudPluginDefaults()
+      } catch (e) {
+        console.warn('[ipc] ensureClaudeHudPluginDefaults:', e)
+      }
+      try {
+        mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
+      } catch (e2) {
+        console.warn('[ipc] mergeSkipDangerousPromptFromApp:', e2)
+      }
+    })
+  }
+
   /* [2026-04-24] 渲染层 xterm 对 Ctrl+V 有时拿不到剪贴板；sendSync + clipboard.readText 与系统一致 */
   ipcMain.on(IPC.CLIPBOARD_READ_TEXT_SYNC, (event) => {
     event.returnValue = clipboard.readText()
@@ -60,6 +68,8 @@ export function registerIpcHandlers(
     // Merge with defaults to sanitize — unknown/missing keys fall back to safe values
     const merged = { ...DEFAULT_SETTINGS, ...(settings && typeof settings === 'object' ? settings : {}) }
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
+    // [2026-04-29] 同步到 CLAUDE_CONFIG_DIR/settings.json，Claude Code 才识别 skipDangerousModePermissionPrompt
+    mergeSkipDangerousPromptFromApp(Boolean(merged.skipDangerousModePermissionPrompt))
     broadcastSettingsChanged()
     return { success: true }
   })
@@ -109,24 +119,61 @@ export function registerIpcHandlers(
     const sessionId = uuidv4()
     // Resolve relative paths (e.g. '.') so the token watcher can locate the correct JSONL project dir
     const workdir = resolve(payload.workdir ?? '.')
-    const resume = payload.resume ?? false
-    const profileId = payload.profileId as string | undefined
-    const settings = settingsStore.get()
 
-    // [2026-04-28] 获取指定的 profile 或使用全局激活的
-    const profile = profileId
-      ? settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile()
-      : settingsStore.getActiveProfile()
+    /* [2026-04-23] 原直接 spawn + watch，异常抛回渲染进程且无结构化错误；cwd 不存在时 node-pty 亦常抛同步异常 */
+    try {
+      if (!existsSync(workdir)) {
+        return {
+          ok: false as const,
+          error: `工作目录不存在或不可访问: ${workdir}`,
+          workdir
+        }
+      }
 
-    // Read scrollback before creating session (file written by previous session's close)
-    const scrollback = ptyManager.readScrollback(workdir)
-    const result = ptyManager.createSession(sessionId, workdir, profile, settings, resume)
-    // Start watching JSONL for accurate per-session token counting
-    sessionWatcher.watchSession(sessionId, workdir)
-    // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
-    // ensureClaudeHudPluginDefaults()
-    scheduleEnsureClaudeHudAfterSession()
-    return { sessionId, pid: result.pid, workdir, scrollback, profileId: profile.id }
+      const resume = payload.resume ?? false
+      const profileId = payload.profileId as string | undefined
+      const settings = settingsStore.get()
+
+      // [2026-04-28] 获取指定的 profile 或使用全局激活的
+      const profile = profileId
+        ? settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile()
+        : settingsStore.getActiveProfile()
+
+      // Read scrollback before creating session (file written by previous session's close)
+      const scrollback = ptyManager.readScrollback(workdir)
+      const result = ptyManager.createSession(sessionId, workdir, profile, settings, resume)
+      // Start watching JSONL for accurate per-session token counting
+      sessionWatcher.watchSession(sessionId, workdir)
+      // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
+      // ensureClaudeHudPluginDefaults()
+      scheduleEnsureClaudeHudAfterSession()
+      return {
+        ok: true as const,
+        sessionId,
+        pid: result.pid,
+        workdir,
+        scrollback,
+        profileId: profile.id
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('[SESSION_CREATE]', e)
+      try {
+        ptyManager.closeSession(sessionId)
+      } catch {
+        /* already dead or not registered */
+      }
+      try {
+        sessionWatcher.unwatchSession(sessionId)
+      } catch {
+        /* noop */
+      }
+      return {
+        ok: false as const,
+        error: msg || '创建终端会话失败',
+        workdir
+      }
+    }
   })
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {

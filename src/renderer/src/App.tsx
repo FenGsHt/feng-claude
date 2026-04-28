@@ -22,11 +22,17 @@ export default function App(): React.ReactElement {
         if (pw && pw.sessionWorkdirs.length > 0) {
           await useSessionStore.getState().restoreWorkspace(pw)
         } else if (useSessionStore.getState().sessions.length === 0) {
-          await useSessionStore.getState().createSession('.', 'fullscreen')
+          // [2026-04-30] 无工作区快照时仍用 resume，重新打开应用后 /resume 恢复该目录上次 Claude 对话
+          await useSessionStore.getState().createSession('.', 'fullscreen', undefined, true)
         }
       } catch {
         if (!cancelled && useSessionStore.getState().sessions.length === 0) {
-          await useSessionStore.getState().createSession('.', 'fullscreen')
+          /* [2026-04-23] fallback 若再失败不应把 rejection 抛出 effect（此前 createSession throw 会导致此处二次 uncaught） */
+          try {
+            await useSessionStore.getState().createSession('.', 'fullscreen', undefined, true)
+          } catch (e) {
+            console.warn('[App] bootstrap fallback createSession failed', e)
+          }
         }
       } finally {
         if (!cancelled) setBootstrapped(true)

@@ -155,7 +155,11 @@ export interface SessionCreatePayload {
   profileId?: string
 }
 
-export interface SessionCreateResult {
+/** [2026-04-23] 原仅有成功字段；PTY spawn 失败时 invoke 抛错导致渲染层大量未捕获 rejection，改为判别联合 */
+export type SessionCreateResult = SessionCreateOk | SessionCreateErr
+
+export interface SessionCreateOk {
+  ok: true
   sessionId: string
   pid: number
   /** Resolved absolute workdir — always an absolute path, even if '.' was passed */
@@ -164,6 +168,13 @@ export interface SessionCreateResult {
   scrollback?: string | null
   /** [2026-04-28] The profile ID used for this session */
   profileId?: string
+}
+
+export interface SessionCreateErr {
+  ok: false
+  error: string
+  /** resolve 后的绝对路径，便于 UI 提示 */
+  workdir: string
 }
 
 export interface PtyInputPayload {

@@ -12,7 +12,12 @@ import { SettingsStore } from './settingsStore'
 import { WorkspaceStore } from './workspaceStore'
 import { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { registerIpcHandlers } from './ipcHandlers'
-import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
+import {
+  ensureClaudeHudPluginDefaults,
+  mergeSkipDangerousPromptFromApp,
+  migrateLegacyClaudeSessionDirOnce,
+  claudeSessionConfigDir
+} from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 
 let ptyManager: PtyManager
@@ -48,13 +53,16 @@ function createWindow(): BrowserWindow {
 
   const settingsStore = new SettingsStore()
   const workspaceStore = new WorkspaceStore()
-  const claudeConfigDir = join(app.getPath('userData'), 'claude-session')
+  const claudeConfigDir = claudeSessionConfigDir()
   const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir)
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
 
   registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher)
+
+  // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
+  mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
 
   // Setup auto updater
   setupAutoUpdater(win)
@@ -101,6 +109,8 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+  // [2026-04-30] 与 getConfigDir 对齐后再建窗口，避免 claude-session 仍留在旧路径
+  migrateLegacyClaudeSessionDirOnce()
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
   setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)
