@@ -54,9 +54,13 @@ export function setupAutoUpdater(win: BrowserWindow): void {
   })
 
   autoUpdater.on('error', (error) => {
+    const msg = error?.message || String(error)
+    // [2026-04-29] Suppress CDN-propagation noise (404 on latest.yml right after release)
+    if (msg.includes('404') && msg.includes('latest.yml')) return
+    if (msg.includes('404') && msg.includes('release')) return
     mainWindow?.webContents.send(IPC.UPDATE_STATUS, {
       status: 'error',
-      error: error?.message || String(error),
+      error: msg,
     })
   })
 
@@ -69,10 +73,16 @@ export function setupAutoUpdater(win: BrowserWindow): void {
 export function checkForUpdates(): void {
   if (!mainWindow) return
   autoUpdater.checkForUpdates().catch((err) => {
+    const msg = err?.message || String(err)
+    // [2026-04-29] Suppress CDN-propagation noise (404 on latest.yml right after release)
+    if (msg.includes('404') && (msg.includes('latest.yml') || msg.includes('release'))) {
+      console.debug('[autoUpdater] silenced 404 (release not yet propagated):', msg)
+      return
+    }
     console.error('[autoUpdater] checkForUpdates error:', err)
     mainWindow?.webContents.send(IPC.UPDATE_STATUS, {
       status: 'error',
-      error: err?.message || String(err),
+      error: msg,
     })
   })
 }
