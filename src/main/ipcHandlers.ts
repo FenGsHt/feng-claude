@@ -313,7 +313,8 @@ export function registerIpcHandlers(
     const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))
 
     // 判断是 Anthropic 原生 API 还是 OpenAI 兼容接口
-    const isAnthropic = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
+    // DashScope 的 /apps/anthropic 路径也走 Anthropic 格式
+    const isAnthropic = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic') || /\/apps\/anthropic/.test(baseUrl)
 
     try {
       let body: string
