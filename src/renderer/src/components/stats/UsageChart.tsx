@@ -107,7 +107,7 @@ export function UsageChart(): React.ReactElement {
             {profileStats.map((stat) => (
               <div key={stat.id} className="flex items-center text-[11px]">
                 <span className="text-amber-400 w-16 shrink-0 truncate">{stat.name}</span>
-                <span className="text-claude-text font-mono w-10 text-right shrink-0">{formatK(stat.tokens)}</span>
+                <span className="text-claude-text font-mono w-12 text-right shrink-0">{formatK(stat.tokens)}</span>
                 <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(stat.cost)}</span>
               </div>
             ))}
@@ -173,8 +173,8 @@ function BreakdownRow({ label, totals, pricing }: { label: string; totals: Token
       <div className="flex flex-col gap-0.5">
         {rows.map(([name, val, cost, color]) => (
           <div key={name} className="flex items-center text-[11px]">
-            <span className={`${color} w-12 shrink-0`}>{name}</span>
-            <span className="text-claude-text font-mono w-10 text-right shrink-0">{formatK(val)}</span>
+            <span className={`${color} w-16 shrink-0`}>{name}</span>
+            <span className="text-claude-text font-mono w-12 text-right shrink-0">{formatK(val)}</span>
             <span className="text-[10px] text-claude-muted font-mono ml-auto text-right">{formatCost(cost)}</span>
           </div>
         ))}

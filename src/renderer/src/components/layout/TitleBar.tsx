@@ -3,6 +3,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useToolCallStore } from '../../store/toolCallStore'
 import type { UpdateStatusPayload } from '../../types/ipc'
 import { useI18n } from '../../i18n'
+import appIcon from '../../assets/icon.png'
 
 /** Shorten a workdir path for display in the title bar */
 function formatWorkdir(workdir: string): string {
@@ -70,10 +71,7 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
     >
       {/* Left: logo + app name + version */}
       <div className="flex items-center gap-2 w-48 shrink-0">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 opacity-70">
-          <circle cx="7" cy="7" r="6" stroke="#f59e0b" strokeWidth="1.5" />
-          <circle cx="7" cy="7" r="2.5" fill="#f59e0b" opacity="0.8" />
-        </svg>
+        <img src={appIcon} width="16" height="16" className="shrink-0" alt="" />
         <span className="text-[11px] text-claude-muted font-medium tracking-wide leading-none">
           Feng Claude
         </span>
