@@ -435,9 +435,7 @@ function SettingsPanel({ onClose, onShowGrowth }: { onClose: () => void; onShowG
       {/* 成长信息 */}
       <div className="flex gap-2 items-center text-[9px] text-slate-400">
         <span className="text-amber-400 font-semibold">Lv.{growth.level}</span>
-        {growth.level < 30 && (
-          <span>XP {growth.xp}/{growth.xpToNext}</span>
-        )}
+        <span>XP {growth.xp}/{growth.xpToNext}</span>
         {growth.skillPoints > 0 && (
           <span className="text-amber-300">⚡ 技能点 ×{growth.skillPoints}</span>
         )}
@@ -930,7 +928,7 @@ export function PetWidget(): React.ReactElement {
             )}
           </span>
           {/* XP 进度条（悬停显示）*/}
-          {showXpBar && growth.level < 30 && (
+          {showXpBar && (
             <div className="w-16 h-1 bg-slate-700 rounded-full overflow-hidden mt-0.5">
               <div
                 className="h-full rounded-full bg-amber-500 transition-all duration-300"

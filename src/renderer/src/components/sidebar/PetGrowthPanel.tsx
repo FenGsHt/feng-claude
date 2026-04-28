@@ -44,24 +44,17 @@ export function PetGrowthPanel(): React.ReactElement {
             <span className="text-amber-400 font-bold text-[11px]">
               Lv.{growth.level}
             </span>
-            {growth.level < 30 && (
-              <span className="text-slate-400 text-[9.5px]">
-                XP {growth.xp} / {growth.xpToNext}
-              </span>
-            )}
+            <span className="text-slate-400 text-[9.5px]">
+              XP {growth.xp} / {growth.xpToNext}
+            </span>
           </div>
           {/* XP 进度条 */}
-          {growth.level < 30 && (
-            <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-amber-500 transition-all duration-300"
-                style={{ width: `${(growth.xp / growth.xpToNext) * 100}%` }}
-              />
-            </div>
-          )}
-          {growth.level >= 30 && (
-            <div className="text-[9.5px] text-amber-400">已满级！</div>
-          )}
+          <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+              style={{ width: `${(growth.xp / growth.xpToNext) * 100}%` }}
+            />
+          </div>
           {growth.skillPoints > 0 && (
             <div className="mt-1.5 text-[9.5px] text-amber-300">
               ⚡ 可用技能点 ×{growth.skillPoints}
