@@ -10,7 +10,7 @@
  * 讲话时：右侧出现打字机气泡，讲完后气泡消失宠物继续玩
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { usePetStore, type PetType, getAffectionTier, getTriggerProbability } from '../../store/petStore'
+import { usePetStore, type PetType, getAffectionTier, calculateActualTriggerProbability } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
@@ -354,7 +354,7 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
   }, [text, loading])
 
   return (
-    <div className="flex-1 min-w-0 rounded-lg bg-slate-700/80 border border-slate-600/50 px-2 py-1.5 text-[9.5px] text-slate-200 leading-snug relative max-h-[100px] overflow-y-auto">
+    <div className="flex-1 min-w-0 rounded-lg bg-slate-700/80 border border-slate-600/50 px-2.5 py-2 text-[10px] text-slate-200 leading-snug relative max-h-[150px] overflow-y-auto">
       {/* 三角指向左侧宠物 */}
       <span
         className="absolute top-3 -left-[5px] w-0 h-0"
@@ -395,7 +395,7 @@ const PET_TYPES: Array<{ id: PetType; label: string }> = [
   { id: 'ghost', label: '👻' },
 ]
 
-const BUBBLE_DISPLAY_MS = 20_000  // 回复气泡显示时长
+const BUBBLE_DISPLAY_MS = 30_000  // 回复气泡显示时长（30秒）
 
 function SettingsPanel({ onClose, onShowGrowth }: { onClose: () => void; onShowGrowth: () => void }): React.ReactElement {
   const { config, setConfig, clearHistory, history, growth } = usePetStore()
@@ -821,12 +821,15 @@ export function PetWidget(): React.ReactElement {
     const delta = outputTokens - lastOutputRef.current
     lastOutputRef.current = outputTokens
 
-    // 跳过太小的增量（可能是噪音）
-    if (delta < 10) return
+    // [2026-04-28] 窗口不在前台时不触发
+    if (!document.hasFocus()) return
 
-    // 概率门控：根据好感度动态调整
+    // [2026-04-28] 跳过太小的增量（agent 调用产生的噪音），只响应较大增量（用户提问的回答）
+    if (delta < 100) return
+
+    // 概率门控：考虑用户设置和好感度
     const tier = getAffectionTier(growth.affection)
-    const triggerProb = getTriggerProbability(tier)
+    const triggerProb = calculateActualTriggerProbability(config.triggerProbability, tier)
     if (Math.random() > triggerProb) return
 
     // 冷却检查

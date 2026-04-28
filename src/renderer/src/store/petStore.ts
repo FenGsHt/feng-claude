@@ -55,6 +55,10 @@ export function getAffectionTier(score: number): AffectionTier {
   return 'cold'
 }
 
+/**
+ * 根据好感度等级计算触发概率基数
+ * 用户设置的 triggerProbability 会在此基础上调整
+ */
 export function getTriggerProbability(tier: AffectionTier): number {
   switch (tier) {
     case 'soulmate': return 0.6
@@ -63,6 +67,24 @@ export function getTriggerProbability(tier: AffectionTier): number {
     case 'normal': return 0.3
     case 'cold': return 0.15
   }
+}
+
+/**
+ * 计算实际触发概率（考虑用户设置和好感度）
+ * @param userProbability 用户设置的触发概率（0-100）
+ * @param tier 当前好感度等级
+ * @returns 实际触发概率（0-1）
+ */
+export function calculateActualTriggerProbability(userProbability: number, tier: AffectionTier): number {
+  // 用户设置为 0 时永远不触发，100 时永远触发
+  if (userProbability <= 0) return 0
+  if (userProbability >= 100) return 1
+
+  // 基础概率来自好感度等级
+  const base = getTriggerProbability(tier)
+  // 用户设置的概率作为权重：userProbability / 100 * base
+  // 例如：用户设置 20%，好感度 normal(0.3)，实际概率 = 0.2 * 0.3 = 0.06 (6%)
+  return (userProbability / 100) * base
 }
 
 function defaultGrowth(): PetGrowth {

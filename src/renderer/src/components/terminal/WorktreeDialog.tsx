@@ -129,16 +129,27 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setDeleteLoading(branch)
     setError('')
     try {
+      // 1. 删除 worktree
       const result = await window.electronAPI.git.worktreeRemove({
         worktreePath,
         force: true,
       })
       if (!result.success) {
-        setError(`删除 ${branch} 失败: ${result.error}`)
-      } else {
-        // 删除成功，刷新数据
-        await loadData()
+        setError(`删除 ${branch} worktree 失败: ${result.error}`)
+        setDeleteLoading(null)
+        return
       }
+
+      // 2. 删除分支（需要切换到主仓库目录）
+      try {
+        await window.electronAPI.git.branchDelete({ repoPath, branch, force: true })
+      } catch (branchErr) {
+        // 分支删除失败不影响整体，可能分支已被合并或有其他引用
+        console.warn('删除分支失败:', branchErr)
+      }
+
+      // 删除成功，刷新数据
+      await loadData()
     } catch (e) {
       setError(String(e))
     }

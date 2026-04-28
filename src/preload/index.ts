@@ -165,6 +165,8 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.GIT_IS_REPO, { path }),
     branchList: (repoPath: string): Promise<GitBranchListResult> =>
       ipcRenderer.invoke(IPC.GIT_BRANCH_LIST, { repoPath }),
+    branchDelete: (payload: { repoPath: string; branch: string; force?: boolean }): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC.GIT_BRANCH_DELETE, payload),
     worktreeList: (repoPath: string): Promise<GitWorktreeListResult> =>
       ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST, { repoPath }),
     worktreeCreate: (payload: GitWorktreeCreatePayload): Promise<GitWorktreeCreateResult> =>

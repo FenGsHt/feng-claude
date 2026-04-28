@@ -87,6 +87,7 @@ export const IPC = {
   GIT_WORKTREE_CREATE: 'git:worktreeCreate',
   GIT_WORKTREE_REMOVE: 'git:worktreeRemove',
   GIT_BRANCH_LIST: 'git:branchList',
+  GIT_BRANCH_DELETE: 'git:branchDelete',
   GIT_IS_REPO: 'git:isRepo',
   GIT_MERGE_BRANCH: 'git:mergeBranch',
   GIT_UNMERGED_COMMITS: 'git:unmergedCommits',

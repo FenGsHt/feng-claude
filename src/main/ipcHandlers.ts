@@ -617,6 +617,16 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle(IPC.GIT_BRANCH_DELETE, async (_e, { repoPath, branch, force }) => {
+    try {
+      const { execSync } = await import('child_process')
+      execSync(`git branch -D "${branch}"`, { cwd: repoPath, encoding: 'utf-8' })
+      return { success: true, error: undefined }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
   ipcMain.handle(IPC.GIT_WORKTREE_LIST, async (_e, { repoPath }) => {
     try {
       const { execSync } = await import('child_process')
