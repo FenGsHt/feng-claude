@@ -121,8 +121,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const result = await window.electronAPI.createSession(workdir, resume, profileId)
     // Use the resolved absolute path returned by main — avoids '.' being stored
     const resolvedWorkdir = result.workdir ?? workdir
-    // [2026-04-28] Use returned profileId if provided, otherwise use passed one
-    const sessionProfileId = result.profileId ?? profileId
+    // [2026-04-28] Always use returned profileId (IPC returns active profile if not specified)
+    const sessionProfileId = result.profileId
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -132,7 +132,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       createdAt: Date.now(),
       updatedAt: Date.now(),
       ptyPid: result.pid,
-      profileId: sessionProfileId
+      profileId: sessionProfileId ?? undefined
     }
 
     set((s) => {

@@ -57,7 +57,8 @@ export function UsageChart(): React.ReactElement {
   const BAR_W = 12
 
   // [2026-04-28] Build per-profile stats
-  const profileStats = settings?.profiles.map((profile) => {
+  // If no perProfile data exists but there's total usage, show active profile's usage
+  let profileStats = settings?.profiles.map((profile) => {
     const totals = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
     const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
     return {
@@ -68,6 +69,21 @@ export function UsageChart(): React.ReactElement {
       tokens: tokenSum(totals)
     }
   }).filter((s) => s.tokens > 0) ?? []
+
+  // [2026-04-28] Fallback: if no per-profile data, show total under active profile
+  if (profileStats.length === 0 && tokenSum(total) > 0 && settings?.activeProfileId) {
+    const activeProf = settings.profiles.find(p => p.id === settings.activeProfileId) ?? settings.profiles[0]
+    if (activeProf) {
+      const profilePricing: Pricing = activeProf.pricing ?? DEFAULT_PRICING
+      profileStats = [{
+        id: activeProf.id,
+        name: activeProf.name,
+        totals: total,
+        cost: computeCost(total, profilePricing),
+        tokens: tokenSum(total)
+      }]
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
@@ -81,7 +97,7 @@ export function UsageChart(): React.ReactElement {
       <BreakdownRow label="今日明细" totals={today} pricing={pricing} />
 
       {/* [2026-04-28] Per-profile breakdown */}
-      {profileStats.length > 1 && (
+      {profileStats.length > 0 && (
         <div>
           <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">各配置用量</div>
           <div className="flex flex-col gap-1">
