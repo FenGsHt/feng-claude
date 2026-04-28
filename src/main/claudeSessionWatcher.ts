@@ -392,10 +392,10 @@ function parseLineWithId(line: string): ParsedLine | null {
     if (!messageId) return null
     const u = msg.usage
     if (!u) return null
-    const input = Number(u.input_tokens ?? 0)
-    const output = Number(u.output_tokens ?? 0)
-    const cacheCreate = Number(u.cache_creation_input_tokens ?? 0)
-    const cacheRead = Number(u.cache_read_input_tokens ?? 0)
+    const input = Number(u.input_tokens) || 0
+    const output = Number(u.output_tokens) || 0
+    const cacheCreate = Number(u.cache_creation_input_tokens) || 0
+    const cacheRead = Number(u.cache_read_input_tokens) || 0
     if (input + output + cacheCreate + cacheRead === 0) return null
     return {
       messageId,

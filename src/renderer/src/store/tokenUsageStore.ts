@@ -44,24 +44,27 @@ export const useTokenUsageStore = create<TokenUsageStore>((set) => ({
   ingest: (sessionId, input, output, mode, extra) =>
     set((s) => {
       const cur = s.bySession[sessionId] ?? { ...ZERO }
-      const cacheCreate = extra?.cacheCreate ?? 0
-      const cacheRead = extra?.cacheRead ?? 0
+      // [2026-04-28] Guard against NaN from corrupted JSONL data
+      const safeInput = Number.isFinite(input) ? input : 0
+      const safeOutput = Number.isFinite(output) ? output : 0
+      const cacheCreate = Number.isFinite(extra?.cacheCreate) ? extra?.cacheCreate ?? 0 : 0
+      const cacheRead = Number.isFinite(extra?.cacheRead) ? extra?.cacheRead ?? 0 : 0
       let next: SessionTokenTotals
 
       if (mode === 'override') {
-        next = { input, output, cacheCreate, cacheRead }
+        next = { input: safeInput, output: safeOutput, cacheCreate, cacheRead }
       } else if (mode === 'add') {
         next = {
-          input: cur.input + input,
-          output: cur.output + output,
+          input: cur.input + safeInput,
+          output: cur.output + safeOutput,
           cacheCreate: cur.cacheCreate + cacheCreate,
           cacheRead: cur.cacheRead + cacheRead
         }
       } else {
         // set — per-field max (regex fallback, only touches input/output)
         next = {
-          input: Math.max(cur.input, input),
-          output: Math.max(cur.output, output),
+          input: Math.max(cur.input, safeInput),
+          output: Math.max(cur.output, safeOutput),
           cacheCreate: Math.max(cur.cacheCreate, cacheCreate),
           cacheRead: Math.max(cur.cacheRead, cacheRead)
         }

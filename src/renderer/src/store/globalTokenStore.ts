@@ -196,36 +196,43 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
 
   ingest: (delta, profileId) =>
     set((s) => {
+      // [2026-04-28] Guard against NaN from corrupted JSONL data
+      const safe: TokenTotals = {
+        input: Number.isFinite(delta.input) ? delta.input : 0,
+        output: Number.isFinite(delta.output) ? delta.output : 0,
+        cacheCreate: Number.isFinite(delta.cacheCreate) ? delta.cacheCreate : 0,
+        cacheRead: Number.isFinite(delta.cacheRead) ? delta.cacheRead : 0,
+      }
       const now = todayStr()
       const isSameDay = s.todayDate === now
-      const today = isSameDay ? add(s.today, delta) : { ...delta }
+      const today = isSameDay ? add(s.today, safe) : { ...safe }
 
       const prevDay = s.dailyHistory[now] ?? { ...ZERO }
-      const allDays = { ...s.dailyHistory, [now]: add(prevDay, delta) }
+      const allDays = { ...s.dailyHistory, [now]: add(prevDay, safe) }
       const keys = Object.keys(allDays).sort().slice(-30)
       const dailyHistory = Object.fromEntries(keys.map((k) => [k, allDays[k]]))
 
       // [2026-04-28] Track per-profile usage
       const perProfile = { ...s.perProfile }
       if (profileId) {
-        perProfile[profileId] = add(perProfile[profileId] ?? { ...ZERO }, delta)
+        perProfile[profileId] = add(perProfile[profileId] ?? { ...ZERO }, safe)
       }
 
       // [2026-04-28] Track daily history per profile
       const dailyHistoryPerProfile = { ...s.dailyHistoryPerProfile }
       if (profileId) {
         const dayProfiles = { ...dailyHistoryPerProfile[now] }
-        dayProfiles[profileId] = add(dayProfiles[profileId] ?? { ...ZERO }, delta)
+        dayProfiles[profileId] = add(dayProfiles[profileId] ?? { ...ZERO }, safe)
         dailyHistoryPerProfile[now] = dayProfiles
         // Keep only last 30 days
         const dateKeys = Object.keys(dailyHistoryPerProfile).sort().slice(-30)
         const trimmedDailyPerProfile = Object.fromEntries(dateKeys.map((k) => [k, dailyHistoryPerProfile[k]]))
-        const next = { total: add(s.total, delta), today, todayDate: now, dailyHistory, dailyHistoryPerProfile: trimmedDailyPerProfile, perProfile }
+        const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, dailyHistoryPerProfile: trimmedDailyPerProfile, perProfile }
         if (s._hydrated) scheduleSave({ ...s, ...next })
         return next
       }
 
-      const next = { total: add(s.total, delta), today, todayDate: now, dailyHistory, perProfile }
+      const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, perProfile }
       if (s._hydrated) scheduleSave({ ...s, ...next })
       return next
     }),
