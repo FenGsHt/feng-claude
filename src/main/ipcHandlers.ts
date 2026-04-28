@@ -338,10 +338,12 @@ export function registerIpcHandlers(
         }
       } else {
         // OpenAI 兼容格式（deepseek、openai、本地等）
+        // stream: false 防止部分 API 默认返回 SSE 流式响应导致 JSON 解析失败
         endpoint = `${baseUrl}/v1/chat/completions`
         body = JSON.stringify({
           model: petModel,
           max_tokens: 400,
+          stream: false,
           messages: [
             { role: 'system', content: systemPrompt },
             ...historyMessages,
@@ -380,14 +382,25 @@ export function registerIpcHandlers(
       })
 
       // 解析响应：兼容 Anthropic 和 OpenAI 两种格式
-      const json = JSON.parse(text) as {
-        // Anthropic format
+      if (!text.trim()) {
+        console.error('[pet:ask] empty response body, endpoint:', endpoint)
+        return { error: 'API 返回空响应，请检查 API Key 和 Base URL 配置' }
+      }
+
+      let json: {
         content?: Array<{ text?: string }>
         usage?: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }
-        // OpenAI format
         choices?: Array<{ message?: { content?: string } }>
         error?: { message?: string }
       }
+      try {
+        json = JSON.parse(text)
+      } catch {
+        console.error('[pet:ask] JSON parse failed, raw response:', text.slice(0, 500))
+        return { error: `响应解析失败: ${text.slice(0, 120)}` }
+      }
+
+
 
       if (json.error) {
         console.error('[pet:ask] API error:', json.error)
