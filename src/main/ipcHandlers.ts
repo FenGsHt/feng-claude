@@ -272,6 +272,7 @@ export function registerIpcHandlers(
               'x-api-key': apiKey,
               'anthropic-version': '2023-06-01',
             },
+            timeout: 30_000,
           },
           (res) => {
             let data = ''
@@ -280,6 +281,7 @@ export function registerIpcHandlers(
           }
         )
         req.on('error', reject)
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')) })
         req.write(body)
         req.end()
       })
@@ -356,6 +358,7 @@ export function registerIpcHandlers(
               'x-api-key': apiKey,
               'anthropic-version': '2023-06-01',
             },
+            timeout: 30_000,
           },
           (res) => {
             let data = ''
@@ -364,6 +367,7 @@ export function registerIpcHandlers(
           }
         )
         req.on('error', reject)
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')) })
         req.write(body)
         req.end()
       })

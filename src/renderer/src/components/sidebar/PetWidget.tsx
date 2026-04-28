@@ -354,7 +354,7 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
   }, [text, loading])
 
   return (
-    <div className="flex-1 min-w-0 rounded-lg bg-slate-700/80 border border-slate-600/50 px-2 py-1.5 text-[9.5px] text-slate-200 leading-snug relative">
+    <div className="flex-1 min-w-0 rounded-lg bg-slate-700/80 border border-slate-600/50 px-2 py-1.5 text-[9.5px] text-slate-200 leading-snug relative max-h-[100px] overflow-y-auto">
       {/* 三角指向左侧宠物 */}
       <span
         className="absolute top-3 -left-[5px] w-0 h-0"
@@ -387,18 +387,21 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
 }
 
 // ── 设置面板 ─────────────────────────────────────────────────────
-function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement {
+
+const PET_TYPES: Array<{ id: PetType; label: string }> = [
+  { id: 'cat', label: '🐱' },
+  { id: 'robot', label: '🤖' },
+  { id: 'dragon', label: '🐉' },
+  { id: 'ghost', label: '👻' },
+]
+
+const BUBBLE_DISPLAY_MS = 20_000  // 回复气泡显示时长
+
+function SettingsPanel({ onClose, onShowGrowth }: { onClose: () => void; onShowGrowth: () => void }): React.ReactElement {
   const { config, setConfig, clearHistory, history, growth } = usePetStore()
   const [name, setName] = useState(config.name)
   const [persona, setPersona] = useState(config.personality)
   const [delay, setDelay] = useState(String(config.autoDelaySec))
-
-  const PET_TYPES: Array<{ id: PetType; label: string }> = [
-    { id: 'cat', label: '🐱' },
-    { id: 'robot', label: '🤖' },
-    { id: 'dragon', label: '🐉' },
-    { id: 'ghost', label: '👻' },
-  ]
 
   const tier = getAffectionTier(growth.affection)
   const tierLabels: Record<string, string> = {
@@ -461,6 +464,13 @@ function SettingsPanel({ onClose }: { onClose: () => void }): React.ReactElement
       />
 
       <div className="flex gap-1">
+        <button
+          onClick={onShowGrowth}
+          className="text-[9px] px-2 py-0.5 rounded border border-amber-600/40 text-amber-300 hover:bg-amber-600/20 transition-colors"
+          title="打开成长面板"
+        >
+          成长详情
+        </button>
         <button
           onClick={() => {
             const d = parseInt(delay, 10)
@@ -575,20 +585,22 @@ export function PetWidget(): React.ReactElement {
     }
   }, [activity, showBubble, isLoading, walkDirection, petX])
 
-  // ── 好感度衰减（挂载时计算）─────────────────────────────────────────
+  // ── 好感度衰减（挂载时计算，防止重复衰减）─────────────────────────
   useEffect(() => {
     const now = Date.now()
     const oneDayMs = 24 * 60 * 60 * 1000
+    // 检查是否已过一天以上
     const daysSinceInteraction = (now - growth.lastInteractionAt) / oneDayMs
-    if (daysSinceInteraction >= 1) {
-      const decayAmount = daysSinceInteraction >= 3
-        ? 5 * Math.floor(daysSinceInteraction)
-        : 1 * Math.floor(daysSinceInteraction)
-      if (decayAmount > 0) {
-        // Direct state update via store setter
-        const { addAffection } = usePetStore.getState()
-        addAffection(-decayAmount)
-      }
+    if (daysSinceInteraction < 1) return
+    // 检查是否已经衰减过（lastDecayAt 在一天内）
+    const daysSinceDecay = (now - growth.lastDecayAt) / oneDayMs
+    if (daysSinceDecay < 1) return
+
+    const decayAmount = daysSinceInteraction >= 3
+      ? 5 * Math.floor(daysSinceInteraction)
+      : 1 * Math.floor(daysSinceInteraction)
+    if (decayAmount > 0) {
+      usePetStore.getState().applyAffectionDecay(-decayAmount)
     }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -629,16 +641,37 @@ export function PetWidget(): React.ReactElement {
   // ── 内容库空闲触发 ──────────────────────────────────────────────────
   const IDLE_BANK_TRIGGER_PROBABILITY = 0.08 // 8% 概率触发
   const bankTriggerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastAutoRef = useRef(usePetStore.getState().lastAutoAt)
+
+  // 调度下一个空闲活动（供 triggerContentBank 内部 fallback 使用）
+  const scheduleNextIdle = useCallback(() => {
+    if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
+    const currentLevel = usePetStore.getState().growth.level
+    const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, currentLevel)
+    setActivity(nextActivity)
+    idleCycleRef.current = setTimeout(() => {
+      // 单次调度后重新交还给空闲循环 useEffect 接管
+    }, randRange(msRange[0], msRange[1]))
+  }, [])
 
   const triggerContentBank = useCallback(() => {
-    // 冷却检查
+    // 冷却检查（使用 ref 避免 deps 频繁变化）
     const now = Date.now()
-    if (now - lastAutoAt < COOLDOWN_MS) return
+    if (now - lastAutoRef.current < COOLDOWN_MS) {
+      // 冷却中，fallback 到空闲选择，不杀死循环
+      scheduleNextIdle()
+      return
+    }
 
     const item = getRandomUnused()
-    if (!item) return
+    if (!item) {
+      // 没有可用内容，fallback 到空闲选择
+      scheduleNextIdle()
+      return
+    }
 
-    setLastAutoAt(now)
+    lastAutoRef.current = now
+    usePetStore.getState().setLastAutoAt(now)
     markUsed(item.id)
     addXp(2, 'contentBank')
     addAffection(1)
@@ -650,12 +683,12 @@ export function PetWidget(): React.ReactElement {
     setSpeech(item.content)
     setShowBubble(true)
 
-    // 8秒后恢复空闲
+    // 恢复空闲轮换
     bankTriggerRef.current = setTimeout(() => {
       setShowBubble(false)
-      startIdleCycle()
+      scheduleNextIdle()
     }, 8000)
-  }, [lastAutoAt, setLastAutoAt, getRandomUnused, markUsed, setSpeech, startIdleCycle])
+  }, [getRandomUnused, markUsed, setSpeech, scheduleNextIdle])
 
   // 空闲轮换 + 内容库触发概率
   useEffect(() => {
@@ -751,7 +784,7 @@ export function PetWidget(): React.ReactElement {
         talkEndRef.current = setTimeout(() => {
           setShowBubble(false)
           startIdleCycle()
-        }, 12_000)
+        }, BUBBLE_DISPLAY_MS)
       } catch {
         setSpeech('喵！API 失联了')
         setIsLoading(false)
@@ -921,7 +954,7 @@ export function PetWidget(): React.ReactElement {
       </div>
 
       {/* 设置面板 */}
-      {expanded && <SettingsPanel onClose={() => setExpanded(false)} />}
+      {expanded && <SettingsPanel onClose={() => setExpanded(false)} onShowGrowth={() => { setExpanded(false); window.electronAPI.showNotification?.('成长详情', '请在侧边栏宠物标签页查看详细成长数据') }} />}
     </div>
   )
 }

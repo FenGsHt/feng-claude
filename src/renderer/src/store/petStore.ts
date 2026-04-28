@@ -20,6 +20,7 @@ export interface PetGrowth {
   skillPoints: number
   skills: PetSkill[]
   lastInteractionAt: number
+  lastDecayAt: number        // 上次衰减计算时间戳，防止重复衰减
   totalInteractions: number
 }
 
@@ -71,7 +72,27 @@ function defaultGrowth(): PetGrowth {
     skillPoints: 0,
     skills: SKILL_DEFINITIONS.map(s => ({ id: s.id, level: 0 })),
     lastInteractionAt: Date.now(),
+    lastDecayAt: Date.now(),
     totalInteractions: 0,
+  }
+}
+
+function mergeGrowth(state: Record<string, unknown>): void {
+  // 补充缺失技能
+  const g = state.growth as Record<string, unknown>
+  if (!g) {
+    state.growth = defaultGrowth()
+    return
+  }
+  const persistedSkills = (g.skills as PetSkill[] | undefined) ?? []
+  const persistedIds = new Set(persistedSkills.map(s => s.id))
+  const missing = SKILL_DEFINITIONS.filter(d => !persistedIds.has(d.id))
+  if (missing.length > 0) {
+    g.skills = [...persistedSkills, ...missing.map(s => ({ id: s.id, level: 0 }))]
+  }
+  // 补充缺失字段
+  if (g.lastDecayAt === undefined) {
+    g.lastDecayAt = g.lastInteractionAt ?? Date.now()
   }
 }
 
@@ -98,7 +119,9 @@ interface PetStore {
 
   addXp: (amount: number, type: InteractionType) => void
   addAffection: (amount: number) => void
-  upgradeSkill: (skillId: string) => void
+  /** 专用衰减方法，不重置 lastInteractionAt */
+  applyAffectionDecay: (amount: number) => void
+  upgradeSkill: (skillId: string) => boolean
   resetGrowth: () => void
 }
 
@@ -162,41 +185,53 @@ export const usePetStore = create<PetStore>()(
         },
       })),
 
-      upgradeSkill: (skillId) => set((s) => {
-        const skill = s.growth.skills.find(sk => sk.id === skillId)
-        const def = SKILL_DEFINITIONS.find(d => d.id === skillId)
-        if (!skill || !def || skill.level >= def.maxLevel || s.growth.skillPoints <= 0) {
-          return {}
-        }
-        if (s.growth.level < def.unlockLevel) {
-          return {}
-        }
-        return {
-          growth: {
-            ...s.growth,
-            skills: s.growth.skills.map(sk =>
-              sk.id === skillId ? { ...sk, level: sk.level + 1 } : sk
-            ),
-            skillPoints: s.growth.skillPoints - 1,
-          },
-        }
-      }),
+      applyAffectionDecay: (amount) => set((s) => ({
+        growth: {
+          ...s.growth,
+          affection: Math.max(0, s.growth.affection + amount),
+          lastDecayAt: Date.now(),
+        },
+      })),
+
+      upgradeSkill: (skillId) => {
+        let success = false
+        set((s) => {
+          const skill = s.growth.skills.find(sk => sk.id === skillId)
+          const def = SKILL_DEFINITIONS.find(d => d.id === skillId)
+          if (!skill || !def || skill.level >= def.maxLevel || s.growth.skillPoints <= 0) {
+            return {}
+          }
+          if (s.growth.level < def.unlockLevel) {
+            return {}
+          }
+          success = true
+          return {
+            growth: {
+              ...s.growth,
+              skills: s.growth.skills.map(sk =>
+                sk.id === skillId ? { ...sk, level: sk.level + 1 } : sk
+              ),
+              skillPoints: s.growth.skillPoints - 1,
+            },
+          }
+        })
+        return success
+      },
 
       resetGrowth: () => set({ growth: defaultGrowth() }),
     }),
     {
       name: 'pet-store',
+      version: 1,
       partialize: (s) => ({
         config: s.config,
         speech: s.speech,
         history: s.history,
         growth: s.growth,
       }),
-      migrate: (persisted: unknown) => {
+      migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>
-        if (!state.growth) {
-          state.growth = defaultGrowth()
-        }
+        mergeGrowth(state)
         return state as unknown
       },
     }

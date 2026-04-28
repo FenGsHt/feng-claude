@@ -1,7 +1,7 @@
 /**
  * PetGrowthPanel — 宠物成长面板，展示等级、XP、好感度、技能树
  */
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { usePetStore, getAffectionTier } from '../../store/petStore'
 import { SKILL_DEFINITIONS } from '../../lib/petSkills'
 
@@ -12,11 +12,31 @@ const TIER_LABELS: Record<string, string> = {
 export function PetGrowthPanel(): React.ReactElement {
   const { growth, upgradeSkill, resetGrowth } = usePetStore()
   const [showAffection, setShowAffection] = useState(false)
+  const [toast, setToast] = useState('')
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const tier = getAffectionTier(growth.affection)
 
+  const handleUpgradeSkill = (skillId: string) => {
+    const skill = SKILL_DEFINITIONS.find(s => s.id === skillId)
+    const success = upgradeSkill(skillId)
+    if (success) {
+      setToast(`${skill?.name} 升级成功！`)
+    } else {
+      setToast('升级失败：技能点不足或等级不够')
+    }
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(''), 2000)
+  }
+
   return (
-    <div className="flex flex-col h-full overflow-hidden text-[10px] text-slate-300">
+    <div className="flex flex-col h-full overflow-hidden text-[10px] text-slate-300 relative">
+      {/* Toast */}
+      {toast && (
+        <div className="absolute top-2 left-3 right-3 z-10 bg-amber-600/90 text-white text-[10px] px-2 py-1 rounded-lg text-center animate-pulse">
+          {toast}
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {/* 等级信息 */}
         <div className="bg-slate-800/60 rounded-lg p-2.5 border border-slate-700/50">
@@ -109,7 +129,7 @@ export function PetGrowthPanel(): React.ReactElement {
                   <div className="flex items-center gap-1">
                     {/* 技能等级点 */}
                     <div className="flex gap-0.5">
-                      {[1, 2, 3].map(i => (
+                      {Array.from({ length: skill.maxLevel }, (_, i) => i + 1).map(i => (
                         <span
                           key={i}
                           className={`inline-block w-1.5 h-1.5 rounded-full ${
@@ -121,7 +141,7 @@ export function PetGrowthPanel(): React.ReactElement {
                     {/* 升级按钮 */}
                     {canUpgrade && (
                       <button
-                        onClick={() => upgradeSkill(skill.id)}
+                        onClick={() => handleUpgradeSkill(skill.id)}
                         className="text-[9px] px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 border border-amber-600/40 text-amber-300 transition-colors"
                       >
                         ↑
