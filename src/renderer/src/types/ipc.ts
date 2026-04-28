@@ -97,6 +97,13 @@ export const IPC = {
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
+
+  /** [2026-04-28] 测试验收 */
+  TEST_DETECT_FRAMEWORK: 'test:detectFramework',
+  TEST_RUN: 'test:run',
+  TEST_OUTPUT: 'test:output',
+  TEST_STATUS: 'test:status',
+  TEST_CANCEL: 'test:cancel',
 } as const
 
 export interface SkillEntry {
@@ -367,4 +374,59 @@ export interface ProfileResult {
   success: boolean
   error?: string
   profile?: ApiProfile
+}
+
+// [2026-04-28] 测试验收
+export type TestFrameworkName = 'vitest' | 'jest' | 'playwright' | 'mocha' | 'none'
+
+export interface TestFrameworkInfo {
+  name: TestFrameworkName
+  configFile?: string
+  testCommand: string
+  jsonReporterAvailable: boolean
+}
+
+export interface TestRunPayload {
+  sessionId: string
+  workdir: string
+  framework: TestFrameworkInfo
+}
+
+export interface TestOutputPayload {
+  sessionId: string
+  data: string
+  timestamp: number
+}
+
+export type TestStatus = 'idle' | 'running' | 'passed' | 'failed' | 'cancelled' | 'error'
+
+export interface TestStatusPayload {
+  sessionId: string
+  status: TestStatus
+  summary?: TestSummary
+}
+
+export interface TestSummary {
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  duration: number
+  coverage?: TestCoverage
+}
+
+export interface TestCoverage {
+  lines: number
+  branches: number
+  functions: number
+  statements: number
+}
+
+export interface TestResultItem {
+  name: string
+  status: 'passed' | 'failed' | 'skipped'
+  duration: number
+  error?: string
+  file?: string
+  line?: number
 }

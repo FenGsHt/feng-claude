@@ -10,6 +10,7 @@ import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
+import type { TestManager } from './testManager'
 import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
@@ -36,7 +37,8 @@ export function registerIpcHandlers(
   historyStore: HistoryStore,
   settingsStore: SettingsStore,
   workspaceStore: WorkspaceStore,
-  sessionWatcher: ClaudeSessionWatcher
+  sessionWatcher: ClaudeSessionWatcher,
+  testManager: TestManager
 ): void {
   // [2026-04-30] ensure 合并 HUD 后再次写入 skip 标志，且须能读取 settingsStore（故放在 register 内）
   const scheduleEnsureClaudeHudAfterSession = (): void => {
@@ -725,6 +727,19 @@ export function registerIpcHandlers(
   })
   ipcMain.handle(IPC.UPDATE_INSTALL, async () => {
     installUpdate()
+    return { success: true }
+  })
+
+  // [2026-04-28] 测试验收
+  ipcMain.handle(IPC.TEST_DETECT_FRAMEWORK, async (_e, { workdir }: { workdir: string }) => {
+    return testManager.detectFramework(workdir)
+  })
+  ipcMain.handle(IPC.TEST_RUN, async (_e, { sessionId, workdir, framework }) => {
+    testManager.runTest(sessionId, workdir, framework)
+    return { success: true }
+  })
+  ipcMain.handle(IPC.TEST_CANCEL, async (_e, { sessionId }: { sessionId: string }) => {
+    testManager.cancelTest(sessionId)
     return { success: true }
   })
 }

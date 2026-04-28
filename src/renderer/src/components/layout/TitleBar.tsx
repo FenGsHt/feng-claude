@@ -69,20 +69,17 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
       className="flex items-center h-9 px-2 bg-claude-surface border-b border-claude-border select-none shrink-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      {/* Left: logo + app name + version + author */}
-      <div className="flex items-center gap-2 w-48 shrink-0">
+      {/* Left: logo + app name + version */}
+      <div className="flex items-center gap-1.5 w-40 shrink-0">
         <img src={appIcon} width="16" height="16" className="shrink-0" alt="" />
-        <span className="text-[11px] text-claude-muted font-medium tracking-wide leading-none">
+        <span className="text-[11px] text-claude-text font-medium tracking-wide leading-none">
           Feng Claude
         </span>
         {version && (
-          <span className="text-[9px] text-claude-muted/60 font-mono leading-none">
+          <span className="text-[9px] text-claude-muted/70 font-mono leading-none ml-0.5">
             v{version}
           </span>
         )}
-        <span className="text-[8px] text-claude-muted/40 leading-none">
-          by FenGsHt
-        </span>
       </div>
 
       {/* Center: active workdir or update notice */}

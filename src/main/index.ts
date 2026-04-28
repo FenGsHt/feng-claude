@@ -11,6 +11,7 @@ import { HistoryStore } from './historyStore'
 import { SettingsStore } from './settingsStore'
 import { WorkspaceStore } from './workspaceStore'
 import { ClaudeSessionWatcher } from './claudeSessionWatcher'
+import { TestManager } from './testManager'
 import { registerIpcHandlers } from './ipcHandlers'
 import {
   ensureClaudeHudPluginDefaults,
@@ -95,8 +96,9 @@ function createWindow(): BrowserWindow {
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
+  const testManager = new TestManager(win)
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager)
 
   // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
   mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))

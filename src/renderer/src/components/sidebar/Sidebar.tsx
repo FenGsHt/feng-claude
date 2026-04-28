@@ -11,11 +11,12 @@ import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
 import { PetPanel } from './PetPanel'
+import { TestPanel } from './TestPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test'
 
 // Global state for external tab control
 let setActiveTabExternal: ((tab: Tab) => void) | null = null
@@ -142,6 +143,15 @@ function IconPet(): React.ReactElement {
   )
 }
 
+function IconTest(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M5 7.5l1.5 1.5L10 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
@@ -164,6 +174,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
     { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
+    { id: 'test', label: t.sidebar.test, icon: <IconTest /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -239,6 +250,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <McpPanel />
           ) : activeTab === 'pet' ? (
             <PetPanel />
+          ) : activeTab === 'test' ? (
+            <TestPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (

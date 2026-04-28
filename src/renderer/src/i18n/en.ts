@@ -10,7 +10,8 @@ export const en: Translations = {
     skills: 'Skills',
     mcp: 'MCP',
     guide: 'Guide',
-    settings: 'Settings'
+    settings: 'Settings',
+    test: 'Test'
   },
   common: {
     save: 'Save',
@@ -167,5 +168,22 @@ export const en: Translations = {
     waiting: 'Waiting for input',
     error: 'Error',
     exited: 'Exited'
+  },
+  test: {
+    runnerMode: 'Runner',
+    aiMode: 'AI',
+    detecting: 'Detecting...',
+    noFramework: 'No test framework detected',
+    runTests: 'Run Tests',
+    running: 'Running...',
+    cancel: 'Cancel',
+    noResults: 'No test results',
+    passed: 'Passed',
+    failed: 'Failed',
+    skipped: 'Skipped',
+    coverage: 'Coverage',
+    duration: 'Duration',
+    totalTests: 'Total',
+    askAi: 'Ask AI to analyze'
   }
 }

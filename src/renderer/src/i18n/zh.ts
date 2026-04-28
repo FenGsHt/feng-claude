@@ -9,7 +9,8 @@ export const zh = {
     skills: 'Skills',
     mcp: 'MCP',
     guide: '指南',
-    settings: '设置'
+    settings: '设置',
+    test: '测试'
   },
   // Common actions
   common: {
@@ -178,6 +179,24 @@ export const zh = {
     waiting: '等待输入',
     error: '错误',
     exited: '已退出'
+  },
+  // Test panel
+  test: {
+    runnerMode: '独立模式',
+    aiMode: 'AI 模式',
+    detecting: '检测框架...',
+    noFramework: '未检测到测试框架',
+    runTests: '运行测试',
+    running: '运行中...',
+    cancel: '取消',
+    noResults: '暂无测试结果',
+    passed: '通过',
+    failed: '失败',
+    skipped: '跳过',
+    coverage: '覆盖率',
+    duration: '耗时',
+    totalTests: '测试总数',
+    askAi: '让 AI 分析测试结果'
   }
 } as const
 
