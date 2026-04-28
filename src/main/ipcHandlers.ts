@@ -310,24 +310,51 @@ export function registerIpcHandlers(
       '回答必须简短（3句以内），具体可执行，不废话。',
     ].join(' ')
 
-    const messages = [
-      ...history.map((h) => ({ role: h.role, content: h.content })),
-      { role: 'user' as const, content: message },
-    ]
+    const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))
 
-    // 宠物用配置的模型（通常是 haiku 或小模型）
-    const model = petModel
+    // 判断是 Anthropic 原生 API 还是 OpenAI 兼容接口
+    const isAnthropic = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
 
     try {
-      const body = JSON.stringify({
-        model,
-        max_tokens: 400,
-        system: systemPrompt,
-        messages,
-      })
+      let body: string
+      let endpoint: string
+      let headers: Record<string, string>
 
-      // [2026-04-28] 直接使用 baseUrl 作为完整 endpoint，不再拼接 /v1/messages
-      const url = new URL(baseUrl)
+      if (isAnthropic) {
+        // Anthropic 原生格式
+        endpoint = `${baseUrl}/v1/messages`
+        body = JSON.stringify({
+          model: petModel,
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: [...historyMessages, { role: 'user', content: message }],
+        })
+        headers = {
+          'Content-Type': 'application/json',
+          'Content-Length': String(Buffer.byteLength(body)),
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        }
+      } else {
+        // OpenAI 兼容格式（deepseek、openai、本地等）
+        endpoint = `${baseUrl}/v1/chat/completions`
+        body = JSON.stringify({
+          model: petModel,
+          max_tokens: 400,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...historyMessages,
+            { role: 'user', content: message },
+          ],
+        })
+        headers = {
+          'Content-Type': 'application/json',
+          'Content-Length': String(Buffer.byteLength(body)),
+          'Authorization': `Bearer ${apiKey}`,
+        }
+      }
+
+      const url = new URL(endpoint)
       const isHttps = url.protocol === 'https:'
       const { request } = isHttps ? await import('https') : await import('http')
 
@@ -338,12 +365,7 @@ export function registerIpcHandlers(
             port: url.port || (isHttps ? 443 : 80),
             path: url.pathname + url.search,
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(body),
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
+            headers,
           },
           (res) => {
             let data = ''
@@ -356,27 +378,29 @@ export function registerIpcHandlers(
         req.end()
       })
 
+      // 解析响应：兼容 Anthropic 和 OpenAI 两种格式
       const json = JSON.parse(text) as {
+        // Anthropic format
         content?: Array<{ text?: string }>
-        usage?: {
-          input_tokens: number
-          output_tokens: number
-          cache_creation_input_tokens?: number
-          cache_read_input_tokens?: number
-        }
+        usage?: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }
+        // OpenAI format
+        choices?: Array<{ message?: { content?: string } }>
         error?: { message?: string }
       }
+
       if (json.error) {
         console.error('[pet:ask] API error:', json.error)
         return { error: json.error.message ?? 'API error' }
       }
 
-      const replyText = json.content?.[0]?.text ?? ''
+      const replyText =
+        json.content?.[0]?.text?.trim() ||        // Anthropic
+        json.choices?.[0]?.message?.content?.trim() || // OpenAI-compatible
+        ''
 
       if (!replyText) {
-        // 空响应：把原始 JSON 打印出来便于排查
         console.warn('[pet:ask] empty content, raw response:', text.slice(0, 500))
-        return { error: `API 响应为空 (model: ${model}, status check: see main process log)` }
+        return { error: `API 响应为空 (model: ${petModel}, endpoint: ${isAnthropic ? 'anthropic' : 'openai-compat'})` }
       }
 
       // 保存宠物日志
