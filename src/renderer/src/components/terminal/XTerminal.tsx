@@ -115,6 +115,14 @@ export function preFillTerminal(sessionId: string, rawBase64: string): void {
   const { term } = getOrCreateTerminal(sessionId)
   const bytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0))
   term.write(bytes)
+  // After replaying raw PTY bytes (which may contain alternate-screen switches,
+  // absolute cursor positions, etc.), restore the terminal to a clean state so
+  // the new Claude session starts on a fresh line without visual corruption.
+  //   \x1b[?1049l  — exit alternate screen (safe no-op if already in normal screen)
+  //   \x1b[m       — reset all SGR attributes
+  //   \x1b[?25h    — ensure cursor is visible
+  //   \r\n         — move to a fresh line
+  term.write('\x1b[?1049l\x1b[m\x1b[?25h\r\n')
 }
 
 /** [2026-04-27] 提交用户问题：将缓冲的多行合并为完整问题，存入 userPromptStore */

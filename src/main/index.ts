@@ -37,6 +37,26 @@ function migrateLegacyTokenDataOnce(): void {
   }
 }
 
+/** 一次性迁移 scrollback 目录（打包版首次升级时） */
+function migrateLegacyScrollbackOnce(): void {
+  const { cpSync, readdirSync } = require('fs') as typeof import('fs')
+  const newDir = join(getConfigDir(), 'scrollback')
+  const oldDir = join(app.getPath('userData'), 'scrollback')
+  if (oldDir === newDir) return
+  if (!existsSync(oldDir)) return
+  try {
+    // Only migrate if new dir is empty or doesn't exist
+    const newExists = existsSync(newDir)
+    const newEmpty = !newExists || readdirSync(newDir).length === 0
+    if (!newEmpty) return
+    mkdirSync(newDir, { recursive: true })
+    cpSync(oldDir, newDir, { recursive: true })
+    console.log('[claude-gui] 已迁移 scrollback:', oldDir, '→', newDir)
+  } catch (e) {
+    console.warn('[claude-gui] scrollback 迁移失败:', e)
+  }
+}
+
 let ptyManager: PtyManager
 let mainWindow: BrowserWindow
 
@@ -130,6 +150,7 @@ app.whenReady().then(() => {
   migrateLegacyClaudeSessionDirOnce()
   // [2026-04-28] token-data.json 也需迁移到 getConfigDir()（打包版）
   migrateLegacyTokenDataOnce()
+  migrateLegacyScrollbackOnce()
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
   setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)

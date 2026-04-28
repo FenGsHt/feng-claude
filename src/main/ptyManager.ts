@@ -8,6 +8,7 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
+import { getConfigDir } from './configDir'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
 
@@ -129,7 +130,7 @@ const MAX_SCROLLBACK_BYTES = 200 * 1024
 const SHELL_RELAUNCH_GRACE_MS = 4500
 
 function scrollbackDir(): string {
-  return join(app.getPath('userData'), 'scrollback')
+  return join(getConfigDir(), 'scrollback')
 }
 
 function scrollbackPath(workdir: string): string {
