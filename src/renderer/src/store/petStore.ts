@@ -40,14 +40,6 @@ export interface PetContext {
   recentTools: string[]     // 最近几个 tool call 名称
 }
 
-const XP_DELTA: Record<InteractionType, number> = {
-  pet: 5, chat: 10, autoTrigger: 3, contentBank: 2,
-}
-
-const AFFECTION_DELTA: Record<InteractionType, number> = {
-  pet: 3, chat: 5, autoTrigger: 2, contentBank: 1,
-}
-
 function xpForLevel(level: number): number {
   return level * 20
 }

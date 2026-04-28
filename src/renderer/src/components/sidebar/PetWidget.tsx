@@ -596,7 +596,8 @@ export function PetWidget(): React.ReactElement {
   const startIdleCycle = useCallback(() => {
     if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
     const step = (): void => {
-      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, growth.level)
+      const currentLevel = usePetStore.getState().growth.level
+      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, currentLevel)
       setActivity(nextActivity)
       const ms = randRange(msRange[0], msRange[1])
       idleCycleRef.current = setTimeout(step, ms)
@@ -665,7 +666,8 @@ export function PetWidget(): React.ReactElement {
         triggerContentBank()
         return
       }
-      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, growth.level)
+      const currentLevel = usePetStore.getState().growth.level
+      const { activity: nextActivity, msRange } = selectNextIdleActivity(idleStateRef.current, currentLevel)
       setActivity(nextActivity)
       const ms = randRange(msRange[0], msRange[1])
       idleCycleRef.current = setTimeout(step, ms)
