@@ -3,9 +3,9 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
-import type { ClaudeSettings } from '../renderer/src/types/settings'
+import type { ClaudeSettings, ApiProfile } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -66,6 +66,20 @@ const electronAPI = {
     get: (): Promise<ClaudeSettings> => ipcRenderer.invoke(IPC.SETTINGS_GET),
     set: (s: ClaudeSettings): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC.SETTINGS_SET, s)
+  },
+
+  // [2026-04-28] API Profile 管理
+  profiles: {
+    add: (profile: ApiProfile): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_ADD, { profile }),
+    update: (profileId: string, updates: Partial<ApiProfile>): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_UPDATE, { profileId, updates }),
+    delete: (profileId: string): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_DELETE, { profileId }),
+    setActive: (profileId: string): Promise<ProfileResult> =>
+      ipcRenderer.invoke(IPC.PROFILE_SET_ACTIVE, { profileId }),
+    getActive: (): Promise<{ profile: ApiProfile }> =>
+      ipcRenderer.invoke(IPC.PROFILE_GET_ACTIVE),
   },
 
   onTokenUsageUpdate: (callback: (payload: TokenUsageUpdatePayload) => void): (() => void) => {

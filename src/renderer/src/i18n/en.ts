@@ -127,7 +127,17 @@ export const en: Translations = {
     pricingCacheCreate: 'Cache write',
     pricingCacheRead: 'Cache read',
     pricingReset: 'Reset defaults',
-    disableExperimentalBetas: 'Disable experimental betas'
+    disableExperimentalBetas: 'Disable experimental betas',
+    // [2026-04-28] API Profile management
+    profileTitle: 'API Configuration',
+    profileAdd: 'Add Profile',
+    profileEdit: 'Edit Profile',
+    profileDelete: 'Delete Profile',
+    profileName: 'Profile Name',
+    profileDefault: 'Default',
+    profileActive: 'Active',
+    profileCannotDeleteLast: 'Cannot delete the last profile',
+    profileSwitchHint: 'New sessions will use the switched profile'
   },
   guide: {
     searchPlaceholder: 'Search tips...',

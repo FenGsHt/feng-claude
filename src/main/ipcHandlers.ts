@@ -57,6 +57,35 @@ export function registerIpcHandlers(
     return { success: true }
   })
 
+  // ── API Profile 管理 [2026-04-28] ───────────────────────────────────
+  ipcMain.handle(IPC.PROFILE_ADD, async (_e, payload) => {
+    const { profile } = payload as { profile: import('../renderer/src/types/settings').ApiProfile }
+    settingsStore.addProfile(profile)
+    return { success: true, profile }
+  })
+
+  ipcMain.handle(IPC.PROFILE_UPDATE, async (_e, payload) => {
+    const { profileId, updates } = payload as { profileId: string; updates: Partial<import('../renderer/src/types/settings').ApiProfile> }
+    settingsStore.updateProfile(profileId, updates)
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC.PROFILE_DELETE, async (_e, payload) => {
+    const { profileId } = payload as { profileId: string }
+    const result = settingsStore.deleteProfile(profileId)
+    return result
+  })
+
+  ipcMain.handle(IPC.PROFILE_SET_ACTIVE, async (_e, payload) => {
+    const { profileId } = payload as { profileId: string }
+    const result = settingsStore.setActiveProfile(profileId)
+    return result
+  })
+
+  ipcMain.handle(IPC.PROFILE_GET_ACTIVE, async () => {
+    return { profile: settingsStore.getActiveProfile() }
+  })
+
   ipcMain.handle(IPC.WORKSPACE_SAVE, async (_e, workspace) => {
     workspaceStore.set(workspace ?? null)
     return { success: true }
@@ -195,12 +224,15 @@ export function registerIpcHandlers(
       petConfig: { name: string; personality: string; type?: string }
       triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
     }
-    const settings = settingsStore.get()
-    const apiKey = settings.authToken
-    const rawBase = settings.baseUrl?.trim() || 'https://api.anthropic.com'
+    // [2026-04-28] 使用激活 profile 的 API 配置
+    const activeProfile = settingsStore.getActiveProfile()
+    const apiKey = activeProfile.authToken
+    const rawBase = activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
     const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
 
-    if (!apiKey) return { error: 'No API key configured' }
+    if (!apiKey) {
+      return { error: 'No API key configured' }
+    }
 
     const systemPrompt = [
       petConfig.personality,
@@ -215,7 +247,7 @@ export function registerIpcHandlers(
     ]
 
     // 宠物用 haiku 模型，速度快费用低
-    const model = settings.haikuModel?.trim() || settings.model?.trim() || 'claude-haiku-4-5'
+    const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
 
     try {
       const body = JSON.stringify({
@@ -264,7 +296,9 @@ export function registerIpcHandlers(
         }
         error?: { message?: string }
       }
-      if (json.error) return { error: json.error.message ?? 'API error' }
+      if (json.error) {
+        return { error: json.error.message ?? 'API error' }
+      }
 
       const replyText = json.content?.[0]?.text ?? ''
 
@@ -309,9 +343,10 @@ export function registerIpcHandlers(
       category: 'chitchat' | 'joke' | 'news' | 'tip'
       count: number
     }
-    const settings = settingsStore.get()
-    const apiKey = settings.authToken
-    const rawBase = settings.baseUrl?.trim() || 'https://api.anthropic.com'
+    // [2026-04-28] 使用激活 profile 的 API 配置
+    const activeProfile = settingsStore.getActiveProfile()
+    const apiKey = activeProfile.authToken
+    const rawBase = activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
     const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
 
     if (!apiKey) return { items: [], error: 'No API key configured' }
@@ -323,7 +358,7 @@ export function registerIpcHandlers(
       chitchat: `生成 ${count} 条可爱的闲聊语句（宠物对程序员说的话），用 JSON 数组格式返回，每条一句话以内，中文，格式如：["语句1", "语句2", ...]`,
     }
 
-    const model = settings.haikuModel?.trim() || settings.model?.trim() || 'claude-haiku-4-5'
+    const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
 
     try {
       const body = JSON.stringify({

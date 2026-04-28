@@ -1,5 +1,5 @@
 import { app, BrowserWindow, shell, session } from 'electron'
-import { join, dirname } from 'path'
+import { join } from 'path'
 
 // 抑制 EPIPE 错误（dev 模式下父进程断开管道时 console.log 会触发）
 process.stdout?.on('error', (err: NodeJS.ErrnoException) => { if (err.code === 'EPIPE') return })
@@ -14,12 +14,6 @@ import { ClaudeSessionWatcher } from './claudeSessionWatcher'
 import { registerIpcHandlers } from './ipcHandlers'
 import { ensureClaudeHudPluginDefaults } from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
-
-// [2026-04-27] In packaged builds, store all config next to the exe instead of AppData\Roaming
-// → C:\Users\<user>\AppData\Local\Programs\feng-claude\data\
-if (app.isPackaged) {
-  app.setPath('userData', join(dirname(app.getPath('exe')), 'data'))
-}
 
 let ptyManager: PtyManager
 let mainWindow: BrowserWindow

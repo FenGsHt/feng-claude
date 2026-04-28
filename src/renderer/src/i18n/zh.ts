@@ -134,7 +134,17 @@ export const zh = {
     pricingCacheCreate: '缓存写',
     pricingCacheRead: '缓存读',
     pricingReset: '重置默认',
-    disableExperimentalBetas: '禁用实验性功能'
+    disableExperimentalBetas: '禁用实验性功能',
+    // [2026-04-28] API Profile 管理
+    profileTitle: 'API 配置',
+    profileAdd: '添加配置',
+    profileEdit: '编辑配置',
+    profileDelete: '删除配置',
+    profileName: '配置名称',
+    profileDefault: '默认',
+    profileActive: '当前使用',
+    profileCannotDeleteLast: '无法删除最后一个配置',
+    profileSwitchHint: '切换配置后，新创建的会话将使用新配置'
   },
   // Guide panel
   guide: {

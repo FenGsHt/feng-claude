@@ -160,7 +160,8 @@ export class PtyManager {
 
   createSession(sessionId: string, workdir: string, settings?: ClaudeSettings, resume?: boolean): { pid: number } {
     const s = settings ?? this.settingsStore.get()
-    const claudeEnv = this.settingsStore.toEnv(s)
+    // [2026-04-28] 使用 toEnv() 获取激活 profile 的 API 配置
+    const claudeEnv = this.settingsStore.toEnv()
 
     const isWindows = process.platform === 'win32'
     const shell = isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash')

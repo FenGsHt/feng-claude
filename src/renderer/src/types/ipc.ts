@@ -1,4 +1,5 @@
 import type { HistoryRecord } from './session'
+import type { ApiProfile } from './settings'
 
 export const IPC = {
   SESSION_CREATE: 'session:create',
@@ -32,6 +33,13 @@ export const IPC = {
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+
+  /** [2026-04-28] API Profile 管理 */
+  PROFILE_ADD: 'profile:add',
+  PROFILE_UPDATE: 'profile:update',
+  PROFILE_DELETE: 'profile:delete',
+  PROFILE_SET_ACTIVE: 'profile:setActive',
+  PROFILE_GET_ACTIVE: 'profile:getActive',
 
   WORKSPACE_SAVE: 'workspace:save',
   WORKSPACE_LOAD: 'workspace:load',
@@ -318,4 +326,28 @@ export interface UpdateProgressPayload {
   bytesPerSecond: number
   transferred: number
   total: number
+}
+
+// [2026-04-28] API Profile 管理
+export interface ProfileAddPayload {
+  profile: ApiProfile
+}
+
+export interface ProfileUpdatePayload {
+  profileId: string
+  updates: Partial<ApiProfile>
+}
+
+export interface ProfileDeletePayload {
+  profileId: string
+}
+
+export interface ProfileSetActivePayload {
+  profileId: string
+}
+
+export interface ProfileResult {
+  success: boolean
+  error?: string
+  profile?: ApiProfile
 }

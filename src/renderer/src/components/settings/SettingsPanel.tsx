@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import type { ClaudeSettings } from '../../types/settings'
-import { DEFAULT_SETTINGS } from '../../types/settings'
+import type { ClaudeSettings, ApiProfile } from '../../types/settings'
+import { DEFAULT_SETTINGS, createDefaultProfile } from '../../types/settings'
 import { useGlobalTokenStore, DEFAULT_PRICING, type Pricing } from '../../store/globalTokenStore'
 import { useI18n, useLangStore } from '../../i18n'
 import type { UpdateStatusPayload } from '../../types/ipc'
+import { v4 as uuidv4 } from 'uuid'
 
 export function SettingsPanel(): React.ReactElement {
   const [form, setForm] = useState<ClaudeSettings>(DEFAULT_SETTINGS)
@@ -16,6 +17,11 @@ export function SettingsPanel(): React.ReactElement {
   // Update status
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
   const [checking, setChecking] = useState(false)
+
+  // [2026-04-28] Profile 编辑弹窗
+  const [editingProfile, setEditingProfile] = useState<ApiProfile | null>(null)
+  const [showProfileEditor, setShowProfileEditor] = useState(false)
+  const [isNewProfile, setIsNewProfile] = useState(false)
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return
@@ -37,13 +43,81 @@ export function SettingsPanel(): React.ReactElement {
     })
   }, [])
 
+  // 获取当前激活的 profile
+  const activeProfile = form.profiles.find(p => p.id === form.activeProfileId) ?? form.profiles[0]
+
+  // 处理非 API 配置的变化
   const handleChange = <K extends keyof ClaudeSettings>(key: K, value: ClaudeSettings[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
     setSaved(false)
-    // Instantly apply language change to UI
     if (key === 'language') {
       useLangStore.getState().setLang(value as ClaudeSettings['language'])
     }
+  }
+
+  // [2026-04-28] 处理 profile 切换
+  const handleProfileSwitch = async (profileId: string) => {
+    const result = await window.electronAPI.profiles.setActive(profileId)
+    if (result.success) {
+      setForm(prev => ({ ...prev, activeProfileId: profileId }))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
+  }
+
+  // [2026-04-28] 处理 profile 字段变化
+  const handleProfileChange = <K extends keyof ApiProfile>(key: K, value: ApiProfile[K]) => {
+    if (!activeProfile) return
+    const updatedProfile = { ...activeProfile, [key]: value }
+    // 更新本地状态
+    setForm(prev => ({
+      ...prev,
+      profiles: prev.profiles.map(p => p.id === activeProfile.id ? updatedProfile : p)
+    }))
+    setSaved(false)
+    // 立即保存到主进程
+    void window.electronAPI.profiles.update(activeProfile.id, { [key]: value })
+  }
+
+  // [2026-04-28] 添加新 profile
+  const handleAddProfile = () => {
+    setIsNewProfile(true)
+    setEditingProfile(createDefaultProfile(lang === 'zh' ? '新配置' : 'New Profile', uuidv4()))
+    setShowProfileEditor(true)
+  }
+
+  // [2026-04-28] 编辑当前 profile
+  const handleEditProfile = () => {
+    if (!activeProfile) return
+    setIsNewProfile(false)
+    setEditingProfile(activeProfile)
+    setShowProfileEditor(true)
+  }
+
+  // [2026-04-28] 删除当前 profile
+  const handleDeleteProfile = async () => {
+    if (!activeProfile) return
+    if (form.profiles.length <= 1) return // 不能删除最后一个
+    const result = await window.electronAPI.profiles.delete(activeProfile.id)
+    if (result.success) {
+      const updated = await window.electronAPI.settings.get()
+      setForm(updated)
+    }
+  }
+
+  // [2026-04-28] 保存 profile 编辑
+  const handleProfileSave = async (profile: ApiProfile) => {
+    if (isNewProfile) {
+      await window.electronAPI.profiles.add(profile)
+      await window.electronAPI.profiles.setActive(profile.id)
+    } else {
+      await window.electronAPI.profiles.update(profile.id, profile)
+    }
+    const updated = await window.electronAPI.settings.get()
+    setForm(updated)
+    setShowProfileEditor(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   const handleSave = async () => {
@@ -85,40 +159,98 @@ export function SettingsPanel(): React.ReactElement {
         </div>
       </div>
 
+      {/* [2026-04-28] Profile selector */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider mb-1">
+          {lang === 'zh' ? 'API 配置' : 'API Configuration'}
+        </div>
+        <div className="flex items-center gap-1">
+          {/* Profile dropdown */}
+          <select
+            value={form.activeProfileId}
+            onChange={(e) => handleProfileSwitch(e.target.value)}
+            className="field-input flex-1 min-w-0"
+          >
+            {form.profiles.map(p => (
+              <option key={p.id} value={p.id}>{p.name} ({p.model})</option>
+            ))}
+          </select>
+          {/* Add button */}
+          <button
+            onClick={handleAddProfile}
+            title={lang === 'zh' ? '添加配置' : 'Add profile'}
+            className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-amber-500 hover:border-amber-600/50"
+          >
+            +
+          </button>
+          {/* Edit button */}
+          <button
+            onClick={handleEditProfile}
+            title={lang === 'zh' ? '编辑配置' : 'Edit profile'}
+            className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
+          >
+            ✏
+          </button>
+          {/* Delete button (only if more than 1 profile) */}
+          {form.profiles.length > 1 && (
+            <button
+              onClick={handleDeleteProfile}
+              title={lang === 'zh' ? '删除配置' : 'Delete profile'}
+              className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-red-400 hover:border-red-500/50"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+          {lang === 'zh' ? '切换配置后，新创建的会话将使用新配置' : 'New sessions will use the selected profile'}
+        </p>
+      </div>
+
+      {/* [2026-04-28] Active profile fields */}
+      {activeProfile && (
+        <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+          {/* Auth Token */}
+          <Field label="Auth Token" hint="ANTHROPIC_AUTH_TOKEN">
+            <input
+              type="password"
+              value={activeProfile.authToken}
+              onChange={(e) => handleProfileChange('authToken', e.target.value)}
+              placeholder="sk-sp-..."
+              className="field-input"
+            />
+          </Field>
+
+          {/* Base URL */}
+          <Field label="Base URL" hint="ANTHROPIC_BASE_URL">
+            <input
+              type="text"
+              value={activeProfile.baseUrl}
+              onChange={(e) => handleProfileChange('baseUrl', e.target.value)}
+              placeholder="https://api.anthropic.com"
+              className="field-input"
+            />
+          </Field>
+
+          {/* Default Model */}
+          <Field label={lang === 'zh' ? '默认模型' : 'Default Model'} hint="ANTHROPIC_MODEL">
+            <input
+              type="text"
+              value={activeProfile.model}
+              onChange={(e) => handleProfileChange('model', e.target.value)}
+              placeholder="model-name"
+              className="field-input"
+            />
+          </Field>
+        </div>
+      )}
+
       <div className="px-3 pb-2 text-[10px] font-semibold text-claude-muted uppercase tracking-wider border-t border-claude-border pt-2">
-        API Configuration
+        {lang === 'zh' ? '权限设置' : 'Permissions'}
       </div>
 
       <div className="px-3 space-y-3 pb-4">
-        {/* Auth Token */}
-        <Field label="Auth Token" hint="ANTHROPIC_AUTH_TOKEN">
-          <input
-            type="password"
-            value={form.authToken}
-            onChange={(e) => handleChange('authToken', e.target.value)}
-            placeholder="sk-sp-..."
-            className="field-input"
-          />
-        </Field>
-
-        {/* Base URL */}
-        <Field label="Base URL" hint="ANTHROPIC_BASE_URL">
-          <input
-            type="text"
-            value={form.baseUrl}
-            onChange={(e) => handleChange('baseUrl', e.target.value)}
-            placeholder="https://api.anthropic.com"
-            className="field-input"
-          />
-        </Field>
-
-        <div className="pt-1 pb-1 border-t border-claude-border">
-          <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider pt-2 pb-1">
-            Permissions / 权限
-          </div>
-        </div>
-
-        <Field label="默认权限模式" hint="claude --permission-mode">
+        <Field label={lang === 'zh' ? '默认权限模式' : 'Permission Mode'} hint="claude --permission-mode">
           <select
             value={form.permissionPreset}
             onChange={(e) =>
@@ -127,21 +259,21 @@ export function SettingsPanel(): React.ReactElement {
             className="field-input"
           >
             <option value="acceptEdits">
-              大部分自动批准（编辑与常用文件命令；其余仍会询问）
+              {lang === 'zh' ? '大部分自动批准（编辑与常用文件命令；其余仍会询问）' : 'Accept edits & common commands; ask for others'}
             </option>
             <option value="bypassPermissions">
-              允许几乎所有操作（跳过绝大多数确认；慎用）
+              {lang === 'zh' ? '允许几乎所有操作（跳过绝大多数确认；慎用）' : 'Allow almost all operations (use with caution)'}
             </option>
           </select>
         </Field>
 
-        <Field label="额外技能目录（可选）" hint="claude --add-dir">
+        <Field label={lang === 'zh' ? '额外技能目录（可选）' : 'Extra skills directory (optional)'} hint="claude --add-dir">
           <div className="flex gap-1">
             <input
               type="text"
               value={form.sharedSkillAddDir}
               onChange={(e) => handleChange('sharedSkillAddDir', e.target.value)}
-              placeholder="含 .claude/skills 的项目根绝对路径"
+              placeholder={lang === 'zh' ? '含 .claude/skills 的项目根绝对路径' : 'Absolute path containing .claude/skills'}
               className="field-input flex-1 min-w-0"
             />
             <button
@@ -152,76 +284,24 @@ export function SettingsPanel(): React.ReactElement {
               }}
               className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
             >
-              浏览…
+              {lang === 'zh' ? '浏览…' : 'Browse…'}
             </button>
           </div>
-          <p className="mt-1 text-[9px] leading-snug text-claude-muted">
-            任意会话 cwd 下合并该目录内 `.claude/skills`。留空时，若
-            <span className="text-claude-text"> 已安装/便携打包 </span>
-            且 exe 同目录或 resources 下存在 `.claude` 或 `.claude/skills`，将自动附加 `--add-dir`；源码开发启动不自动探测。保存后新开会话生效。
-            保存后新开 / 自动重启的 Claude 生效。
-          </p>
         </Field>
+      </div>
 
-        <div className="pt-1 pb-1 border-t border-claude-border">
-          <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider pt-2 pb-1">
-            Model Routing
-          </div>
-        </div>
-
-        {/* Models */}
-        {(
-          [
-            ['model', 'Default Model', 'ANTHROPIC_MODEL'],
-            ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
-            ['haikuModel', 'Haiku Model', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
-            ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
-            ['subagentModel', 'Subagent Model', 'CLAUDE_CODE_SUBAGENT_MODEL']
-          ] as [keyof ClaudeSettings, string, string][]
-        ).map(([key, label, hint]) => (
-          <Field key={key} label={label} hint={hint}>
-            <input
-              type="text"
-              value={form[key] as string}
-              onChange={(e) => handleChange(key, e.target.value)}
-              placeholder="model-name"
-              className="field-input"
-            />
-          </Field>
-        ))}
-
-        {/* Disable experimental betas */}
-        <div className="flex items-center justify-between py-1">
-          <div>
-            <div className="text-xs text-claude-text">{t.settings.disableExperimentalBetas}</div>
-            <div className="text-[10px] text-claude-muted">CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS</div>
-          </div>
-          <button
-            onClick={() => handleChange('disableExperimentalBetas', !form.disableExperimentalBetas)}
-            className={`relative w-8 h-4 rounded-full transition-colors ${
-              form.disableExperimentalBetas ? 'bg-amber-500' : 'bg-claude-border'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-                form.disableExperimentalBetas ? 'left-4.5 translate-x-0' : 'left-0.5'
-              }`}
-            />
-          </button>
-        </div>
-
-        <div className="pt-1 pb-1 border-t border-claude-border">
-          <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider pt-2 pb-1">
-            Pricing / 费用估算 <span className="normal-case font-normal">($ / M tokens)</span>
-          </div>
+      {/* Pricing */}
+      <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+        <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          {lang === 'zh' ? '费用估算' : 'Pricing'} <span className="normal-case font-normal">($ / M tokens)</span>
         </div>
 
         {(
           [
-            ['inputPerM', 'Input', '$3.00'],
-            ['outputPerM', 'Output', '$15.00'],
-            ['cacheCreatePerM', 'Cache Write', '$3.75'],
-            ['cacheReadPerM', 'Cache Read', '$0.30'],
+            ['inputPerM', lang === 'zh' ? '输入' : 'Input', '$3.00'],
+            ['outputPerM', lang === 'zh' ? '输出' : 'Output', '$15.00'],
+            ['cacheCreatePerM', lang === 'zh' ? '缓存写入' : 'Cache Write', '$3.75'],
+            ['cacheReadPerM', lang === 'zh' ? '缓存读取' : 'Cache Read', '$0.30'],
           ] as [keyof Pricing, string, string][]
         ).map(([key, label, placeholder]) => (
           <Field key={key} label={label} hint={`default: ${placeholder}`}>
@@ -248,8 +328,10 @@ export function SettingsPanel(): React.ReactElement {
             </div>
           </Field>
         ))}
+      </div>
 
-        {/* Save button */}
+      {/* Save button */}
+      <div className="px-3 pb-4">
         <button
           onClick={handleSave}
           className={`w-full py-1.5 rounded text-xs font-medium transition-colors ${
@@ -260,55 +342,59 @@ export function SettingsPanel(): React.ReactElement {
         >
           {saved ? `✓ ${t.settings.saved}` : t.settings.save}
         </button>
-
-        {/* Check update button */}
-        <div className="pt-2 border-t border-claude-border">
-          <button
-            onClick={() => { setChecking(true); window.electronAPI?.checkForUpdates() }}
-            disabled={checking}
-            className={`w-full py-1.5 rounded text-xs font-medium transition-colors ${
-              updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
-                ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
-                : 'bg-claude-border text-claude-muted hover:bg-claude-border/80'
-            } disabled:opacity-50`}
-          >
-            {checking
-              ? (lang === 'zh' ? '检查中...' : 'Checking...')
-              : updateStatus?.status === 'available'
-                ? (lang === 'zh' ? `发现新版本 ${updateStatus.version}` : `Update ${updateStatus.version} available`)
-                : updateStatus?.status === 'downloaded'
-                  ? (lang === 'zh' ? '安装更新' : 'Install update')
-                  : (lang === 'zh' ? '检查更新' : 'Check for updates')}
-          </button>
-          {/* available: auto-downloading, show hint */}
-          {updateStatus?.status === 'available' && (
-            <p className="text-[10px] text-amber-400 mt-1">
-              {lang === 'zh' ? '正在后台下载…' : 'Downloading in background…'}
-            </p>
-          )}
-          {/* downloaded: show install button (silent install, no UI) */}
-          {updateStatus?.status === 'downloaded' && (
-            <button
-              onClick={() => window.electronAPI?.installUpdate()}
-              className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-500"
-            >
-              {lang === 'zh' ? '立即重启安装' : 'Restart & Install'}
-            </button>
-          )}
-          {updateStatus?.status === 'error' && (
-            <p className="text-[10px] text-red-400 mt-1">{updateStatus.error}</p>
-          )}
-          {updateStatus?.status === 'not-available' && (
-            <p className="text-[10px] text-claude-muted mt-1">{lang === 'zh' ? '已是最新版本' : 'You are up to date'}</p>
-          )}
-        </div>
-
-        <p className="text-[10px] text-claude-muted text-center leading-snug">
-          Settings apply to new sessions.
-          <br />
-          Restart existing sessions to pick up changes.
-        </p>
       </div>
+
+      {/* Check update */}
+      <div className="px-3 pb-4 border-t border-claude-border pt-2">
+        <button
+          onClick={() => { setChecking(true); window.electronAPI?.checkForUpdates() }}
+          disabled={checking}
+          className={`w-full py-1.5 rounded text-xs font-medium transition-colors ${
+            updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
+              ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+              : 'bg-claude-border text-claude-muted hover:bg-claude-border/80'
+          } disabled:opacity-50`}
+        >
+          {checking
+            ? (lang === 'zh' ? '检查中...' : 'Checking...')
+            : updateStatus?.status === 'available'
+              ? (lang === 'zh' ? `发现新版本 ${updateStatus.version}` : `Update ${updateStatus.version} available`)
+              : updateStatus?.status === 'downloaded'
+                ? (lang === 'zh' ? '安装更新' : 'Install update')
+                : (lang === 'zh' ? '检查更新' : 'Check for updates')}
+        </button>
+        {updateStatus?.status === 'available' && (
+          <p className="text-[10px] text-amber-400 mt-1">
+            {lang === 'zh' ? '正在后台下载…' : 'Downloading in background…'}
+          </p>
+        )}
+        {updateStatus?.status === 'downloaded' && (
+          <button
+            onClick={() => window.electronAPI?.installUpdate()}
+            className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-500"
+          >
+            {lang === 'zh' ? '立即重启安装' : 'Restart & Install'}
+          </button>
+        )}
+        {updateStatus?.status === 'error' && (
+          <p className="text-[10px] text-red-400 mt-1">{updateStatus.error}</p>
+        )}
+        {updateStatus?.status === 'not-available' && (
+          <p className="text-[10px] text-claude-muted mt-1">{lang === 'zh' ? '已是最新版本' : 'You are up to date'}</p>
+        )}
+      </div>
+
+      {/* [2026-04-28] Profile 编辑弹窗 */}
+      {showProfileEditor && editingProfile && (
+        <ProfileEditor
+          profile={editingProfile}
+          isNew={isNewProfile}
+          onSave={handleProfileSave}
+          onCancel={() => setShowProfileEditor(false)}
+          onDelete={isNewProfile ? undefined : handleDeleteProfile}
+          lang={lang}
+        />
+      )}
 
       <style>{`
         .field-input {
@@ -333,22 +419,183 @@ export function SettingsPanel(): React.ReactElement {
   )
 }
 
+// [2026-04-28] Profile 编辑弹窗
+function ProfileEditor({
+  profile,
+  isNew,
+  onSave,
+  onCancel,
+  onDelete,
+  lang
+}: {
+  profile: ApiProfile
+  isNew: boolean
+  onSave: (profile: ApiProfile) => void
+  onCancel: () => void
+  onDelete?: () => void
+  lang: 'zh' | 'en'
+}): React.ReactElement {
+  const [form, setForm] = useState<ApiProfile>(profile)
+
+  const handleChange = <K extends keyof ApiProfile>(key: K, value: ApiProfile[K]) => {
+    setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleSave = () => {
+    onSave(form)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-[#1a1a1a] border border-claude-border rounded-lg w-[360px] max-h-[80vh] overflow-y-auto">
+        {/* Header */}
+        <div className="px-3 py-2 border-b border-claude-border flex items-center justify-between">
+          <span className="text-xs font-semibold text-claude-text">
+            {isNew
+              ? (lang === 'zh' ? '添加 API 配置' : 'Add API Profile')
+              : (lang === 'zh' ? '编辑 API 配置' : 'Edit API Profile')}
+          </span>
+          <button onClick={onCancel} className="text-claude-muted hover:text-claude-text text-sm">✕</button>
+        </div>
+
+        {/* Form */}
+        <div className="px-3 py-2 space-y-3">
+          {/* Profile Name */}
+          <Field label={lang === 'zh' ? '配置名称' : 'Profile Name'}>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => handleChange('name', e.target.value)}
+              placeholder={lang === 'zh' ? '例如：生产环境' : 'e.g. Production'}
+              className="field-input"
+            />
+          </Field>
+
+          {/* Auth Token */}
+          <Field label="Auth Token" hint="ANTHROPIC_AUTH_TOKEN">
+            <input
+              type="password"
+              value={form.authToken}
+              onChange={(e) => handleChange('authToken', e.target.value)}
+              placeholder="sk-..."
+              className="field-input"
+            />
+          </Field>
+
+          {/* Base URL */}
+          <Field label="Base URL" hint="ANTHROPIC_BASE_URL">
+            <input
+              type="text"
+              value={form.baseUrl}
+              onChange={(e) => handleChange('baseUrl', e.target.value)}
+              placeholder="https://api.anthropic.com"
+              className="field-input"
+            />
+          </Field>
+
+          {/* Models */}
+          {(
+            [
+              ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL'],
+              ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+              ['haikuModel', 'Haiku Model', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
+              ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+              ['subagentModel', 'Subagent Model', 'CLAUDE_CODE_SUBAGENT_MODEL'],
+            ] as [keyof ApiProfile, string, string][]
+          ).map(([key, label, hint]) => (
+            <Field key={key} label={label} hint={hint}>
+              <input
+                type="text"
+                value={form[key] as string}
+                onChange={(e) => handleChange(key, e.target.value)}
+                placeholder="model-name"
+                className="field-input"
+              />
+            </Field>
+          ))}
+
+          {/* Disable experimental betas */}
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <div className="text-xs text-claude-text">{lang === 'zh' ? '禁用实验性功能' : 'Disable Experimental Betas'}</div>
+              <div className="text-[10px] text-claude-muted">CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS</div>
+            </div>
+            <button
+              onClick={() => handleChange('disableExperimentalBetas', !form.disableExperimentalBetas)}
+              className={`relative w-8 h-4 rounded-full transition-colors ${
+                form.disableExperimentalBetas ? 'bg-amber-500' : 'bg-claude-border'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                  form.disableExperimentalBetas ? 'left-4.5' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-3 py-2 border-t border-claude-border flex gap-2">
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className="flex-1 py-1.5 rounded text-xs font-medium bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-600/30"
+            >
+              {lang === 'zh' ? '删除' : 'Delete'}
+            </button>
+          )}
+          <button
+            onClick={onCancel}
+            className="flex-1 py-1.5 rounded text-xs font-medium bg-claude-border text-claude-muted hover:bg-claude-border/80"
+          >
+            {t.common.cancel}
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex-1 py-1.5 rounded text-xs font-medium bg-amber-500 hover:bg-amber-400 text-black"
+          >
+            {t.common.save}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Field({
   label,
   hint,
   children
 }: {
   label: string
-  hint: string
+  hint?: string
   children: React.ReactNode
 }): React.ReactElement {
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between">
         <label className="text-xs text-claude-text">{label}</label>
-        <span className="text-[9px] text-claude-muted font-mono">{hint}</span>
+        {hint && <span className="text-[9px] text-claude-muted font-mono">{hint}</span>}
       </div>
       {children}
     </div>
   )
+}
+
+// 兼容旧的 t.settings
+const t = {
+  common: {
+    cancel: 'Cancel',
+    save: 'Save',
+    loading: 'Loading...'
+  },
+  settings: {
+    language: 'Language',
+    languageZh: '中文',
+    languageEn: 'English',
+    saved: 'Saved',
+    save: 'Save',
+    disableExperimentalBetas: 'Disable Experimental Betas'
+  }
 }

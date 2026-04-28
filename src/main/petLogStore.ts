@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import type { PetLogRecord } from '../renderer/src/types/ipc'
+import { getConfigDir } from './configDir'
 
 interface StoreSchema {
   logs: PetLogRecord[]
@@ -7,6 +8,7 @@ interface StoreSchema {
 
 const store = new Store<StoreSchema>({
   name: 'pet-logs',
+  cwd: getConfigDir(),
   defaults: { logs: [] }
 })
 

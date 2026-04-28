@@ -650,7 +650,7 @@ export function PetWidget(): React.ReactElement {
           petConfig: { name: config.name, personality: config.personality, type: config.type },
           triggerType: 'auto',
         })
-        const reply = result.text?.trim() || '喵？没有响应...'
+        const reply = result.text?.trim() || result.error || '喵？没有响应...'
         pushHistory('assistant', reply)
         setSpeech(reply)
         setActivity('excited')
@@ -670,7 +670,7 @@ export function PetWidget(): React.ReactElement {
           setShowBubble(false)
           startIdleCycle()
         }, 12_000)
-      } catch {
+      } catch (err) {
         setSpeech('喵！API 失联了')
         setIsLoading(false)
         setShowBubble(false)
@@ -708,8 +708,6 @@ export function PetWidget(): React.ReactElement {
       const now = Date.now()
       if (now - lastAutoAt < COOLDOWN_MS) continue
 
-      setLastAutoAt(now)
-
       // 获取该 session 的用户问题和工作目录
       const userPrompt = allUserPrompts.get(sessionId) ?? ''
       const session = sessions.find(s => s.id === sessionId)
@@ -717,14 +715,18 @@ export function PetWidget(): React.ReactElement {
       const ctx = `工作目录: ${workdir}\n${userPrompt ? `用户的问题: ${userPrompt}` : ''}`
 
       // 延迟 500ms 触发，确保 userPromptStore 已更新
-      const delayTimer = setTimeout(() => {
+      setTimeout(() => {
+        // 冷却检查（再次确认，因为 timer 延迟了）
+        const nowInner = Date.now()
+        if (nowInner - lastAutoAt < COOLDOWN_MS) return
+        setLastAutoAt(nowInner)
         void triggerPet(
           `[上下文]\n${ctx}\n\n用户刚刚在 Claude Code 中提交了一个问题并得到了回答（${delta} output tokens）。用你的人格，给出一条激进的技术点评或建议。`
         )
       }, 500)
 
-      // 只触发一次，找到后立即返回
-      return () => clearTimeout(delayTimer)
+      // 只触发一次，找到后立即跳出循环
+      break
     }
   }, [allOutputTokens, allUserPrompts, sessions, lastAutoAt, triggerPet, setLastAutoAt, config.triggerProbability])
 
