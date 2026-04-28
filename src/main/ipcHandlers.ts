@@ -289,11 +289,15 @@ export function registerIpcHandlers(
       petConfig: { name: string; personality: string; type?: string }
       triggerType?: 'auto' | 'manual' | 'pet' | 'content-bank'
     }
-    // [2026-04-28] 使用激活 profile 的 API 配置
+    // [2026-04-28] 优先使用宠物专用 API 配置，否则使用激活 profile
+    const settings = settingsStore.get()
+    const petApi = settings.petApi
     const activeProfile = settingsStore.getActiveProfile()
-    const apiKey = activeProfile.authToken
-    const rawBase = activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
+
+    const apiKey = petApi?.authToken?.trim() || activeProfile.authToken
+    const rawBase = petApi?.baseUrl?.trim() || activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
     const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
+    const petModel = petApi?.model?.trim() || activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
 
     if (!apiKey) {
       return { error: 'No API key configured' }
@@ -311,8 +315,8 @@ export function registerIpcHandlers(
       { role: 'user' as const, content: message },
     ]
 
-    // 宠物用 haiku 模型，速度快费用低
-    const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
+    // 宠物用配置的模型（通常是 haiku 或小模型）
+    const model = petModel
 
     try {
       const body = JSON.stringify({

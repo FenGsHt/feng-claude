@@ -406,6 +406,84 @@ export function SettingsPanel(): React.ReactElement {
         </div>
       )}
 
+      {/* [2026-04-28] 宠物专用 API 配置 */}
+      <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+        <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          {lang === 'zh' ? '宠物 API 配置' : 'Pet API Config'}
+        </div>
+        <p className="text-[9px] leading-snug text-claude-muted">
+          {lang === 'zh' ? '宠物使用独立的 API 配置，不影响主会话' : 'Pet uses separate API config, independent from main sessions'}
+        </p>
+
+        {/* 宠物 Auth Token */}
+        <Field label={lang === 'zh' ? '宠物 API Token' : 'Pet API Token'}>
+          <input
+            type="password"
+            value={form.petApi?.authToken ?? ''}
+            onChange={(e) => setForm(prev => ({
+              ...prev,
+              petApi: { ...prev.petApi, authToken: e.target.value, baseUrl: prev.petApi?.baseUrl ?? '', model: prev.petApi?.model ?? '' }
+            }))}
+            placeholder="sk-..."
+            className="field-input"
+          />
+        </Field>
+
+        {/* 宠物 Base URL */}
+        <Field label={lang === 'zh' ? '宠物 Base URL' : 'Pet Base URL'}>
+          <input
+            type="text"
+            value={form.petApi?.baseUrl ?? ''}
+            onChange={(e) => setForm(prev => ({
+              ...prev,
+              petApi: { ...prev.petApi, baseUrl: e.target.value, authToken: prev.petApi?.authToken ?? '', model: prev.petApi?.model ?? '' }
+            }))}
+            placeholder="https://api.anthropic.com"
+            className="field-input"
+          />
+        </Field>
+
+        {/* 宠物 Model */}
+        <Field label={lang === 'zh' ? '宠物模型' : 'Pet Model'}>
+          <input
+            type="text"
+            value={form.petApi?.model ?? ''}
+            onChange={(e) => setForm(prev => ({
+              ...prev,
+              petApi: { ...prev.petApi, model: e.target.value, authToken: prev.petApi?.authToken ?? '', baseUrl: prev.petApi?.baseUrl ?? '' }
+            }))}
+            placeholder="claude-haiku-4-5"
+            className="field-input"
+          />
+        </Field>
+
+        {/* 使用主配置开关 */}
+        <div className="flex items-center justify-between py-1">
+          <div>
+            <div className="text-xs text-claude-text">{lang === 'zh' ? '使用主配置' : 'Use Main Config'}</div>
+            <div className="text-[9px] text-claude-muted">
+              {lang === 'zh' ? '宠物 Token/URL 为空时使用主配置' : 'Fall back to main config if pet config is empty'}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              // 清空宠物配置即使用主配置
+              setForm(prev => ({ ...prev, petApi: undefined }))
+              setSaved(false)
+            }}
+            className={`relative w-8 h-4 rounded-full transition-colors ${
+              !form.petApi?.authToken && !form.petApi?.baseUrl ? 'bg-amber-500' : 'bg-claude-border'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                !form.petApi?.authToken && !form.petApi?.baseUrl ? 'left-4.5' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* Save button */}
       <div className="px-3 pb-4">
         <button

@@ -62,6 +62,15 @@ export interface ClaudeSettings {
   profiles: ApiProfile[]
   /** [2026-04-28] 当前激活的配置 ID */
   activeProfileId: string
+  /** [2026-04-28] 宠物专用 API 配置（独立于主配置） */
+  petApi?: {
+    /** 宠物 API Token */
+    authToken: string
+    /** 宠物 API Base URL */
+    baseUrl: string
+    /** 宠物使用的模型 */
+    model: string
+  }
 }
 
 /** 默认 API 配置 */
