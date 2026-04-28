@@ -140,12 +140,11 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
         return
       }
 
-      // 2. 删除分支（需要切换到主仓库目录）
-      try {
-        await window.electronAPI.git.branchDelete({ repoPath, branch, force: true })
-      } catch (branchErr) {
-        // 分支删除失败不影响整体，可能分支已被合并或有其他引用
-        console.warn('删除分支失败:', branchErr)
+      // 2. 删除分支
+      const branchResult = await window.electronAPI.git.branchDelete({ repoPath, branch, force: true })
+      if (!branchResult.success) {
+        setError(`worktree 已删除，但分支 ${branch} 删除失败: ${branchResult.error}`)
+        // 不 return，继续刷新列表
       }
 
       // 删除成功，刷新数据

@@ -620,7 +620,18 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.GIT_BRANCH_DELETE, async (_e, { repoPath, branch, force }) => {
     try {
       const { execSync } = await import('child_process')
-      execSync(`git branch -D "${branch}"`, { cwd: repoPath, encoding: 'utf-8' })
+      // [2026-04-29] 检查是否为主仓库当前分支
+      const currentBranch = execSync('git branch --show-current', { cwd: repoPath, encoding: 'utf-8' }).trim()
+      if (currentBranch === branch) {
+        return { success: false, error: `分支 ${branch} 是当前主仓库分支，无法删除` }
+      }
+      // 检查分支是否存在
+      try {
+        execSync(`git rev-parse --verify refs/heads/${branch}`, { cwd: repoPath, encoding: 'utf-8', stdio: 'pipe' })
+      } catch {
+        return { success: true } // 分支已不存在
+      }
+      execSync(`git branch ${force ? '-D' : '-d'} "${branch}"`, { cwd: repoPath, encoding: 'utf-8' })
       return { success: true, error: undefined }
     } catch (e) {
       return { success: false, error: String(e) }
