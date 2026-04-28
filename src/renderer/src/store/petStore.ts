@@ -136,7 +136,7 @@ export const usePetStore = create<PetStore>()(
         personality:
           '你是一只激进的技术宠物，名字叫 Bit。熟知最新前沿技术趋势，喜欢给出最激进最前沿的方案，语气毒舌但有趣，偶尔用 emoji。回答必须在 2-3 句以内，具体可执行，绝不废话。假装你刚搜索了最新技术动态。',
         autoDelaySec: 6,
-        triggerProbability: 40, // 默认 40% 概率
+        triggerProbability: 20, // 默认 20% 概率
       },
       mood: 'idle',
       speech: '喵~ 我在偷看你的代码',
