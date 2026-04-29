@@ -159,7 +159,7 @@ function SpeechBubble({
           borderBottom: '7px solid var(--claude-surface2)',
         }}
       />
-      <div className="rounded-lg bg-claude-surface2/80 border border-claude-border/60 px-2.5 py-2 text-[10.5px] text-claude-text leading-snug min-h-[40px]">
+      <div className="rounded-lg bg-claude-surface2 border border-claude-border/60 px-2.5 py-2 text-[10.5px] text-claude-text leading-snug min-h-[40px]">
         {isTyping ? (
           <span className="flex items-center gap-1 text-claude-muted">
             <span className="inline-flex gap-0.5">
@@ -224,7 +224,7 @@ function PetLogSubPanel(): React.ReactElement {
       <div className="flex items-center justify-between px-2 py-1 border-b border-claude-border shrink-0">
         <span className="text-[11px] text-claude-muted">{logs.length} 条记录</span>
         <div className="flex gap-1">
-          <button onClick={loadLogs} className="text-[10px] px-1.5 py-0.5 rounded bg-claude-border/50 text-claude-muted hover:bg-claude-border">刷新</button>
+          <button onClick={loadLogs} className="text-[10px] px-1.5 py-0.5 rounded bg-claude-border text-claude-muted hover:bg-claude-border/80">刷新</button>
           <button onClick={handleClear} className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">清空</button>
         </div>
       </div>
@@ -233,10 +233,10 @@ function PetLogSubPanel(): React.ReactElement {
       ) : (
         <div className="flex-1 overflow-y-auto py-1">
           {logs.map((log) => (
-            <div key={log.id} className="px-2 py-2 hover:bg-claude-border/30 border-b border-claude-border/30 last:border-b-0">
+            <div key={log.id} className="px-2 py-2 hover:bg-claude-border/40 border-b border-claude-border/30 last:border-b-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] text-claude-muted font-mono">{fmt(log.timestamp)}</span>
-                <span className="text-[10px] px-1 py-0.5 rounded bg-claude-border/50 text-claude-text">{log.petName}</span>
+                <span className="text-[10px] px-1 py-0.5 rounded bg-claude-border text-claude-text">{log.petName}</span>
                 <span className="text-[10px] px-1 py-0.5 rounded bg-claude-accent/20 text-claude-accent">{triggerLabel[log.triggerType] ?? log.triggerType}</span>
               </div>
               <div className="text-[11px] text-claude-text mb-1 leading-snug">
@@ -363,7 +363,7 @@ export function PetPanel(): React.ReactElement {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex shrink-0 border-b border-claude-border">
+      <div className="flex shrink-0 border-b border-claude-border/30">
         {(['chat', 'growth', 'logs'] as const).map((tab) => (
           <button
             key={tab}
@@ -407,7 +407,7 @@ export function PetPanel(): React.ReactElement {
           </button>
           <button
             onClick={clearHistory}
-            className="text-[10px] px-2 py-1 rounded bg-claude-surface2/50 hover:bg-claude-surface2 border border-claude-border/40 text-claude-muted transition-colors"
+            className="text-[10px] px-2 py-1 rounded bg-claude-surface2 hover:bg-claude-surface2/80 border border-claude-border text-claude-muted transition-colors"
             title="清除对话历史"
           >
             🗑
@@ -423,7 +423,7 @@ export function PetPanel(): React.ReactElement {
             onKeyDown={handleKeyDown}
             placeholder={`问问 ${config.name}...`}
             disabled={mood === 'thinking'}
-            className="flex-1 text-[10px] px-2 py-1.5 rounded border border-claude-border/60 bg-claude-surface2/60 text-claude-text placeholder-claude-muted/50 outline-none focus:border-claude-accent/60 disabled:opacity-40 font-mono"
+            className="flex-1 text-[10px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface2 text-claude-text placeholder-claude-muted outline-none focus:border-claude-accent/60 disabled:opacity-40 font-mono"
           />
           <button
             onClick={handleSend}
@@ -442,8 +442,8 @@ export function PetPanel(): React.ReactElement {
                 key={i}
                 className={`text-[9.5px] px-2 py-1 rounded leading-snug ${
                   h.role === 'user'
-                    ? 'bg-claude-surface2/40 text-claude-muted text-right'
-                    : 'bg-claude-surface2/60 text-claude-text'
+                    ? 'bg-claude-surface2 text-claude-muted text-right'
+                    : 'bg-claude-surface2 text-claude-text'
                 }`}
               >
                 <span className="text-[9px] text-claude-muted/50 mr-1">
@@ -471,14 +471,14 @@ export function PetPanel(): React.ReactElement {
 
         {/* Settings panel */}
         {showSettings && (
-          <div className="space-y-2 bg-claude-surface2/50 rounded-lg p-2.5 border border-claude-border/50">
+          <div className="space-y-2 bg-claude-surface2 rounded-lg p-2.5 border border-claude-border/50">
             {/* Name */}
             <div>
               <label className="text-[9px] text-claude-muted block mb-0.5">名字</label>
               <input
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
-                className="w-full text-[10px] px-2 py-1 rounded border border-claude-border/60 bg-claude-bg/60 text-claude-text outline-none focus:border-claude-accent/50"
+                className="w-full text-[10px] px-2 py-1 rounded border border-claude-border bg-claude-bg text-claude-text outline-none focus:border-claude-accent/50"
               />
             </div>
 
@@ -508,7 +508,7 @@ export function PetPanel(): React.ReactElement {
               <input
                 value={draftProbability}
                 onChange={(e) => setDraftProbability(e.target.value)}
-                className="w-full text-[10px] px-2 py-1 rounded border border-claude-border/60 bg-claude-bg/60 text-claude-text outline-none focus:border-claude-accent/50 font-mono"
+                className="w-full text-[10px] px-2 py-1 rounded border border-claude-border bg-claude-bg text-claude-text outline-none focus:border-claude-accent/50 font-mono"
                 placeholder="40"
               />
               <div className="text-[8px] text-claude-muted/50 mt-0.5">0-100，100 = 百分百触发</div>
@@ -521,7 +521,7 @@ export function PetPanel(): React.ReactElement {
                 value={draftPersonality}
                 onChange={(e) => setDraftPersonality(e.target.value)}
                 rows={4}
-                className="w-full text-[9.5px] px-2 py-1 rounded border border-claude-border/60 bg-claude-bg/60 text-claude-text outline-none focus:border-claude-accent/50 resize-none font-mono leading-relaxed"
+                className="w-full text-[9.5px] px-2 py-1 rounded border border-claude-border bg-claude-bg text-claude-text outline-none focus:border-claude-accent/50 resize-none font-mono leading-relaxed"
               />
             </div>
 

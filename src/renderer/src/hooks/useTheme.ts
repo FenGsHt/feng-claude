@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useThemeStore } from '../store/themeStore'
 
-/** ANSI 终端配色：暗色模式 */
-const DARK_THEME = {
+/** ANSI 终端配色：暗色模式（固定，不跟随主题） */
+export const DARK_THEME = {
   background: '#141414',
   foreground: '#e8e8e8',
   cursor: '#f59e0b',
@@ -51,14 +51,8 @@ const LIGHT_THEME = {
   brightWhite: '#e5e7eb'
 }
 
-/** [2026-05-01] 根据当前主题返回终端配色（供初始创建使用） */
-export function getTerminalTheme(): typeof DARK_THEME {
-  const theme = document.documentElement.dataset.theme ?? 'dark'
-  return theme === 'dark' ? DARK_THEME : LIGHT_THEME
-}
-
 /**
- * 应用主题模式到 document.documentElement，并同步更新终端配色。
+ * 应用主题模式到 document.documentElement。
  * - 'dark' → data-theme="dark"
  * - 'light' → data-theme="light"
  * - 'auto' → 跟随系统 prefers-color-scheme，动态切换

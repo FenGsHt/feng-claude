@@ -7,7 +7,7 @@ import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
-import { getTerminalTheme } from '../../hooks/useTheme'
+import { DARK_THEME } from '../../hooks/useTheme'
 
 interface Props {
   sessionId: string
@@ -44,13 +44,12 @@ const pendingFitRafBySession = new Map<string, number>()
 function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: FitAddon } {
   if (terminals.has(sessionId)) return terminals.get(sessionId)!
 
-  const initialTheme = getTerminalTheme()
   const term = new Terminal({
     fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
     fontSize: 13,
     lineHeight: 1.45,
     letterSpacing: 0.3,
-    theme: initialTheme,
+    theme: DARK_THEME,
     // [2026-04-23] 原 5000；resize/fit 时 xterm 重算缓冲更重，打包后易触发 task queue deadline 警告，略降 scrollback
     scrollback: 2000,
     allowProposedApi: true,
@@ -294,7 +293,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden"
-      style={{ background: 'var(--claude-bg)' }}
+      style={{ background: DARK_THEME.background }}
     />
   )
 }
