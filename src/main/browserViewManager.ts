@@ -30,6 +30,19 @@ const MAX_RATIO = 0.75
 
 // ── 布局计算 ───────────────────────────────────────────────────────
 
+function notifyBrowserState(): void {
+  const wins = BrowserWindow.getAllWindows()
+  const mainWin = wins[0]
+  if (mainWin?.webContents && state.view) {
+    const bounds = mainWin.getContentBounds()
+    const viewW = state.visible ? Math.round(bounds.width * state.splitRatio) : 0
+    mainWin.webContents.send('browser-view:state-changed', {
+      visible: state.visible,
+      width: viewW
+    })
+  }
+}
+
 function setBounds(win: BrowserWindow): void {
   if (!state.view || !state.mainWin) return
   const bounds = win.getContentBounds()
@@ -63,16 +76,16 @@ function setBounds(win: BrowserWindow): void {
 function setSplitRatio(win: BrowserWindow, ratio: number): void {
   state.splitRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, ratio))
   setBounds(win)
-  // 通知导航栏更新宽度
   if (state.navView?.webContents) {
     state.navView.webContents.send('browser-nav:resize', { ratio: state.splitRatio })
   }
+  notifyBrowserState()
 }
 
 // ── 导航栏 HTML ────────────────────────────────────────────────────
 
 const NAVBAR_HTML = `<!DOCTYPE html>
-<html><head><style>
+<html><head><meta charset="utf-8"><style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   background: #1a1a1a;
@@ -83,6 +96,7 @@ body {
   height: 100%;
   font-family: system-ui, sans-serif;
   user-select: none;
+  border-left: 1px solid #333;
 }
 button {
   background: none;
@@ -135,64 +149,31 @@ button:disabled { opacity: 0.3; cursor: default; }
   <button id="close-btn" title="关闭浏览器">×</button>
 <script>
   const $ = id => document.getElementById(id)
-  // 拖拽分割线 — 直接通过 ipcRenderer 发送比例
-  let dragging = false
-  let startX = 0
-  let startRatio = 0
-  const { ipcRenderer: navIpc } = require('electron')
-
+  const { ipcRenderer } = require('electron')
+  let dragging = false, startX = 0, startRatio = 0
   $('drag-handle').addEventListener('mousedown', e => {
-    dragging = true
-    startX = e.clientX
-    startRatio = window.__currentRatio || 0.5
-    $('drag-handle').classList.add('active')
-    document.body.style.cursor = 'col-resize'
-    e.preventDefault()
+    dragging = true; startX = e.clientX; startRatio = window.__currentRatio || 0.5
+    $('drag-handle').classList.add('active'); document.body.style.cursor = 'col-resize'; e.preventDefault()
   })
   document.addEventListener('mousemove', e => {
     if (!dragging) return
-    const dx = e.clientX - startX
-    const newRatio = startRatio - dx / window.innerWidth
-    navIpc.send('browser-nav:set-ratio', newRatio)
+    ipcRenderer.send('browser-nav:set-ratio', startRatio - (e.clientX - startX) / window.innerWidth)
   })
   document.addEventListener('mouseup', () => {
-    if (dragging) {
-      dragging = false
-      $('drag-handle').classList.remove('active')
-      document.body.style.cursor = ''
-    }
+    if (dragging) { dragging = false; $('drag-handle').classList.remove('active'); document.body.style.cursor = '' }
   })
-
-  $('back-btn').addEventListener('click', () => { const { ipcRenderer } = require('electron'); ipcRenderer.send('browser-nav:action', 'back') })
-  $('fwd-btn').addEventListener('click', () => { const { ipcRenderer } = require('electron'); ipcRenderer.send('browser-nav:action', 'forward') })
-  $('reload-btn').addEventListener('click', () => { const { ipcRenderer } = require('electron'); ipcRenderer.send('browser-nav:action', 'reload') })
-  $('devtools-btn').addEventListener('click', () => { const { ipcRenderer } = require('electron'); ipcRenderer.send('browser-nav:action', 'devtools') })
-  $('close-btn').addEventListener('click', () => { const { ipcRenderer } = require('electron'); ipcRenderer.send('browser-nav:action', 'close') })
+  $('back-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'back'))
+  $('fwd-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'forward'))
+  $('reload-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'reload'))
+  $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
+  $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
   $('url-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const url = e.target.value.trim()
-      if (url) { const { ipcRenderer } = require('electron'); ipcRenderer.send('browser-nav:navigate', url) }
-    }
+    if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) ipcRenderer.send('browser-nav:navigate', v) }
   })
-
-  // 监听主进程发来的消息
-  const { ipcRenderer } = require('electron')
-  ipcRenderer.on('browser-nav:url', (_, data) => {
-    $('url-input').value = data.url
-  })
-  ipcRenderer.on('browser-nav:nav-state', (_, data) => {
-    $('back-btn').disabled = !data.canGoBack
-    $('fwd-btn').disabled = !data.canGoForward
-  })
-  ipcRenderer.on('browser-nav:devtools', (_, data) => {
-    $('devtools-btn').classList.toggle('active', data.enabled)
-  })
-  ipcRenderer.on('browser-nav:resize', (_, data) => {
-    // width change handled by main process setBounds
-  })
-  ipcRenderer.on('browser-nav:ratio', (_, data) => {
-    window.__currentRatio = data.ratio
-  })
+  ipcRenderer.on('browser-nav:url', (_, d) => { $('url-input').value = d.url })
+  ipcRenderer.on('browser-nav:nav-state', (_, d) => { $('back-btn').disabled = !d.canGoBack; $('fwd-btn').disabled = !d.canGoForward })
+  ipcRenderer.on('browser-nav:devtools', (_, d) => { $('devtools-btn').classList.toggle('active', d.enabled) })
+  ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
 </script></body></html>`
 
 function createNavView(): WebContentsView {
@@ -274,8 +255,8 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     state.navView = createNavView()
     state.mainWin = win
 
-    // 窗口 resize 时重新定位
-    state.resizeHandler = () => setBounds(win)
+    // 窗口 resize 时重新定位 + 通知渲染进程
+    state.resizeHandler = () => { setBounds(win); notifyBrowserState() }
     win.on('resize', state.resizeHandler)
     win.on('maximize', state.resizeHandler)
     win.on('unmaximize', state.resizeHandler)
@@ -286,6 +267,7 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
 
   state.mainWin = win
   setBounds(win)
+  // 先添加浏览器内容，再添加导航栏（确保导航栏在最上层）
   win.contentView.addChildView(state.view)
   if (state.navView) win.contentView.addChildView(state.navView)
 
@@ -296,6 +278,7 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
   }
 
   state.visible = true
+  notifyBrowserState()
 }
 
 /** 更新导航栏 URL 显示 */
@@ -316,14 +299,17 @@ function updateNavBackForward(): void {
 
 /** 隐藏浏览器面板 */
 export function hideBrowserView(_win?: BrowserWindow): void {
-  if (state.view && state.mainWin) {
-    state.mainWin.contentView.removeChildView(state.view)
-    if (state.devToolsVisible) {
-      state.view.webContents.closeDevTools()
-      state.devToolsVisible = false
-    }
-    state.visible = false
+  if (!state.view || !state.mainWin) return
+  state.mainWin.contentView.removeChildView(state.view)
+  if (state.navView) {
+    state.mainWin.contentView.removeChildView(state.navView)
   }
+  if (state.devToolsVisible) {
+    state.view.webContents.closeDevTools()
+    state.devToolsVisible = false
+  }
+  state.visible = false
+  notifyBrowserState()
 }
 
 /** 切换浏览器面板 */

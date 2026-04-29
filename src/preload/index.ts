@@ -184,6 +184,11 @@ const electronAPI = {
       ipcRenderer.on('browser-nav:set-ratio', handler)
       return () => ipcRenderer.removeListener('browser-nav:set-ratio', handler)
     },
+    onBrowserViewStateChanged: (callback: (state: { visible: boolean; width: number }) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, state: { visible: boolean; width: number }): void => callback(state)
+      ipcRenderer.on('browser-view:state-changed', handler)
+      return () => ipcRenderer.removeListener('browser-view:state-changed', handler)
+    },
   },
 
   // Git Worktree
