@@ -7,7 +7,7 @@ import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
-import { DARK_THEME } from '../../hooks/useTheme'
+import { DARK_THEME, LIGHT_THEME, useResolvedTheme } from '../../hooks/useTheme'
 
 interface Props {
   sessionId: string
@@ -124,6 +124,7 @@ export function commitUserPrompt(sessionId: string): void {
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const lastPtyGeomRef = useRef<{ cols: number; rows: number } | null>(null)
+  const resolvedTheme = useResolvedTheme()
 
   const fit = useCallback(() => {
     const entry = terminals.get(sessionId)
@@ -289,11 +290,19 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     return () => clearTimeout(t)
   }, [active, scheduleFit])
 
+  // [2026-04-29] Update xterm theme when resolved theme changes
+  useEffect(() => {
+    const entry = terminals.get(sessionId)
+    if (entry) {
+      entry.term.options.theme = resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME
+    }
+  }, [sessionId, resolvedTheme])
+
   return (
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden"
-      style={{ background: DARK_THEME.background }}
+      style={{ background: resolvedTheme === 'dark' ? DARK_THEME.background : LIGHT_THEME.background }}
     />
   )
 }

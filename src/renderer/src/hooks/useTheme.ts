@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { useThemeStore } from '../store/themeStore'
 
-/** ANSI 终端配色：暗色模式（固定，不跟随主题） */
+/** ANSI 终端配色：暗色模式 */
 export const DARK_THEME = {
   background: '#141414',
   foreground: '#e8e8e8',
@@ -27,7 +27,7 @@ export const DARK_THEME = {
 }
 
 /** ANSI 终端配色：明亮模式 */
-const LIGHT_THEME = {
+export const LIGHT_THEME = {
   background: '#ffffff',
   foreground: '#1a1a1a',
   cursor: '#d97706',
@@ -52,6 +52,27 @@ const LIGHT_THEME = {
 }
 
 /**
+ * Resolve the effective theme mode considering 'auto' preference.
+ * Returns 'dark' or 'light' — never 'auto'.
+ * Also hydrates the theme store on first mount.
+ */
+export function useResolvedTheme(): 'dark' | 'light' {
+  const theme = useThemeStore((s) => s.theme)
+  const hydrate = useThemeStore((s) => s.hydrate)
+
+  useEffect(() => {
+    void hydrate()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return useMemo(() => {
+    if (theme === 'dark') return 'dark'
+    if (theme === 'light') return 'light'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }, [theme])
+}
+
+/**
  * 应用主题模式到 document.documentElement。
  * - 'dark' → data-theme="dark"
  * - 'light' → data-theme="light"
@@ -63,7 +84,6 @@ export function useTheme(): void {
   const themeRef = useRef(theme)
   themeRef.current = theme
 
-  // Load persisted theme from electron-store on first mount
   useEffect(() => {
     void hydrate()
   // eslint-disable-next-line react-hooks/exhaustive-deps
