@@ -28,10 +28,10 @@ export const DARK_THEME = {
 
 /** ANSI 终端配色：明亮模式 */
 export const LIGHT_THEME = {
-  background: '#ffffff',
+  background: '#f5f5f5',
   foreground: '#1a1a1a',
   cursor: '#d97706',
-  cursorAccent: '#ffffff',
+  cursorAccent: '#f5f5f5',
   selectionBackground: '#d9770630',
   black: '#374151',
   brightBlack: '#6b7280',
@@ -47,8 +47,8 @@ export const LIGHT_THEME = {
   brightMagenta: '#c084fc',
   cyan: '#0891b2',
   brightCyan: '#22d3ee',
-  white: '#9ca3af',
-  brightWhite: '#e5e7eb'
+  white: '#6b7280',
+  brightWhite: '#9ca3af'
 }
 
 /**
