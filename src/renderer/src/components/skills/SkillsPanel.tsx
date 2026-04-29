@@ -82,12 +82,10 @@ function ContentModal({
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {!skill.isFolder && (
-              <button onClick={onEdit}
-                className="text-[10px] px-2 py-1 rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors">
-                {t.common.edit}
-              </button>
-            )}
+            <button onClick={onEdit}
+              className="text-[10px] px-2 py-1 rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors">
+              {t.common.edit}
+            </button>
             <button onClick={onClose}
               className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors">
               <svg width="9" height="9" viewBox="0 0 9 9">
@@ -118,7 +116,7 @@ function EditorModal({
   skill?: SkillEntry
   initialContent: string
   initialName?: string
-  onSave: (name: string, content: string) => void
+  onSave: (name: string, content: string, isFolder: boolean) => void
   onClose: () => void
 }): React.ReactElement {
   const [name, setName] = useState(initialName ?? '')
@@ -138,7 +136,7 @@ function EditorModal({
     const n = name.trim()
     if (!n) { setError('名称不能为空'); return }
     if (!/^[\w-]+$/.test(n)) { setError('只允许字母、数字、- 和 _'); return }
-    onSave(n, content)
+    onSave(n, content, skill?.isFolder ?? false)
   }
 
   const inputCls = 'w-full bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text outline-none focus:border-amber-500/60 font-mono placeholder-claude-border'
@@ -236,6 +234,11 @@ function SkillRow({
                 {t.skills.folderBadge}
               </span>
             )}
+            {skill.source === 'extra' && (
+              <span className="text-[9px] px-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                extra
+              </span>
+            )}
           </div>
           {skill.title && skill.title !== skill.name && (
             <p className="text-[11px] text-claude-text leading-snug mt-0.5">{skill.title}</p>
@@ -250,14 +253,12 @@ function SkillRow({
         {/* Action buttons */}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           onClick={(e) => e.stopPropagation()}>
-          {!skill.isFolder && (
-            <button onClick={onEdit} title={t.common.edit}
-              className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors">
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          )}
+          <button onClick={onEdit} title={t.common.edit}
+            className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+            </svg>
+          </button>
           <button
             title={confirmDelete ? t.common.confirmDelete : t.common.delete}
             onClick={() => {
@@ -320,18 +321,18 @@ export function SkillsPanel(): React.ReactElement {
   useEffect(() => { void reload() }, [reload])
 
   const openView = useCallback(async (skill: SkillEntry) => {
-    const content = await window.electronAPI.skills.get(skill.name)
+    const content = await window.electronAPI.skills.get(skill.name, skill.source)
     setViewing({ skill, content })
   }, [])
 
   const openEdit = useCallback(async (skill: SkillEntry) => {
-    const content = await window.electronAPI.skills.get(skill.name)
+    const content = await window.electronAPI.skills.get(skill.name, skill.source)
     setViewing(null)
     setEditing({ skill, content })
   }, [])
 
-  const handleSave = useCallback(async (name: string, content: string) => {
-    await window.electronAPI.skills.save(name, content)
+  const handleSave = useCallback(async (name: string, content: string, isFolder: boolean) => {
+    await window.electronAPI.skills.save(name, content, isFolder)
     setEditing(null)
     await reload()
   }, [reload])
@@ -428,7 +429,12 @@ export function SkillsPanel(): React.ReactElement {
 
       {/* Footer */}
       <div className="shrink-0 px-3 py-1.5 border-t border-claude-border text-[9px] text-claude-muted text-center">
-        {skills.length > 0 ? t.skills.footerSkillCount.replace('{count}', String(skills.length)) : ''}~/.claude/commands/
+        {skills.length > 0 ? t.skills.footerSkillCount.replace('{count}', String(skills.length)) : ''}
+        {skills.some(s => s.source === 'extra') ? (
+          <span>~/.claude/commands/ + extra dir</span>
+        ) : (
+          <span>~/.claude/commands/</span>
+        )}
       </div>
 
       {/* View modal */}

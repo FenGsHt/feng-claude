@@ -117,6 +117,8 @@ export interface SkillEntry {
   isFolder: boolean
   filePath: string
   updatedAt: number
+  /** Source directory: 'global' ( ~/.claude/commands) or 'extra' (sharedSkillAddDir) */
+  source?: string
 }
 
 export type McpServerType = 'stdio' | 'sse' | 'streamable-http'

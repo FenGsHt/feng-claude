@@ -253,9 +253,9 @@ export function registerIpcHandlers(
 
   // ── Skills ────────────────────────────────────────────────────
   ipcMain.handle(IPC.SKILLS_LIST, async () => listSkills())
-  ipcMain.handle(IPC.SKILLS_GET, async (_e, { name }: { name: string }) => getSkillContent(name))
-  ipcMain.handle(IPC.SKILLS_SAVE, async (_e, { name, content }: { name: string; content: string }) => {
-    saveSkill(name, content)
+  ipcMain.handle(IPC.SKILLS_GET, async (_e, { name, source }: { name: string; source?: string }) => getSkillContent(name, source))
+  ipcMain.handle(IPC.SKILLS_SAVE, async (_e, { name, content, isFolder }: { name: string; content: string; isFolder?: boolean }) => {
+    saveSkill(name, content, isFolder ?? false)
     return { success: true }
   })
   ipcMain.handle(IPC.SKILLS_DELETE, async (_e, { name, isFolder }: { name: string; isFolder: boolean }) => {

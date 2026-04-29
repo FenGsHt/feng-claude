@@ -89,6 +89,13 @@ export function injectMockElectronAPI(): void {
         get: async () => null,
         set: async () => {}
       },
+      skills: {
+        list: async () => [],
+        get: async () => '',
+        save: async () => ({ success: true }),
+        delete: async () => ({ success: true }),
+        openDir: async () => {}
+      },
       pet: {
         ask: async () => ({ text: '（浏览器预览模式，无法调用 API）' })
       },

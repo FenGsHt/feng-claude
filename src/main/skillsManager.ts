@@ -6,6 +6,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { shell } from 'electron'
 import type { SkillEntry } from '../renderer/src/types/ipc'
+import { SettingsStore } from './settingsStore'
 
 export type { SkillEntry }
 
@@ -49,14 +50,16 @@ function extractMeta(content: string): { title: string; description: string } {
   }
 }
 
-export function listSkills(): SkillEntry[] {
-  const dir = globalCommandsDir()
+/**
+ * Scan a directory for skills. Returns { skills, dir, dirLabel }.
+ * dirLabel is used to identify the source in the UI.
+ */
+function scanDir(dir: string, dirLabel: string): { skills: SkillEntry[]; dirLabel: string } {
   const skills: SkillEntry[] = []
-  if (!existsSync(dir)) return skills
+  if (!existsSync(dir)) return { skills, dirLabel }
 
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isFile() && entry.name.endsWith('.md')) {
-      // Simple file skill
       const name = entry.name.slice(0, -3)
       const filePath = join(dir, entry.name)
       const content = readFileSync(filePath, 'utf-8')
@@ -68,10 +71,10 @@ export function listSkills(): SkillEntry[] {
         description,
         isFolder: false,
         filePath,
-        updatedAt: stat.mtimeMs
+        updatedAt: stat.mtimeMs,
+        source: dirLabel
       })
     } else if (entry.isDirectory()) {
-      // Folder-based skill — look for SKILL.md or README.md
       const candidates = ['SKILL.md', 'README.md']
       let mdPath: string | null = null
       for (const c of candidates) {
@@ -88,31 +91,108 @@ export function listSkills(): SkillEntry[] {
         description,
         isFolder: true,
         filePath: join(dir, entry.name),
-        updatedAt: stat.mtimeMs
+        updatedAt: stat.mtimeMs,
+        source: dirLabel
       })
     }
   }
 
-  return skills.sort((a, b) => a.name.localeCompare(b.name))
+  return { skills, dirLabel }
 }
 
-export function getSkillContent(name: string): string {
-  const dir = globalCommandsDir()
-  // File skill
-  const filePath = join(dir, `${name}.md`)
-  if (existsSync(filePath)) return readFileSync(filePath, 'utf-8')
-  // Folder skill
-  for (const candidate of ['SKILL.md', 'README.md']) {
-    const p = join(dir, name, candidate)
-    if (existsSync(p)) return readFileSync(p, 'utf-8')
+export function listSkills(): SkillEntry[] {
+  const settings = new SettingsStore()
+  const all: SkillEntry[] = []
+  const seen = new Set<string>()
+
+  // Global commands dir
+  const globalDir = globalCommandsDir()
+  const { skills: globalSkills } = scanDir(globalDir, 'global')
+  for (const s of globalSkills) {
+    all.push(s)
+    seen.add(s.name)
   }
+
+  // Extra skill directory
+  const extraDir = settings.get().sharedSkillAddDir
+  if (extraDir) {
+    // The extra dir itself is passed to claude --add-dir, but skills inside it
+    // are in a .claude/commands/ subdirectory (or just .md files at the root)
+    const possibleDirs = [
+      join(extraDir, '.claude', 'commands'),
+      join(extraDir, '.claude', 'skills'),
+      extraDir
+    ]
+    for (const dir of possibleDirs) {
+      if (seen.has('extra')) break // already scanned this path
+      const { skills } = scanDir(dir, 'extra')
+      for (const s of skills) {
+        // Avoid duplicates (same name from overlapping dirs)
+        if (!seen.has(s.name)) {
+          all.push(s)
+          seen.add(s.name)
+        }
+      }
+      // Mark as scanned so we don't re-scan a parent dir
+      seen.add('extra')
+    }
+  }
+
+  return all.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function getSkillContent(name: string, source?: string): string {
+  const globalDir = globalCommandsDir()
+  const settings = new SettingsStore()
+  const extraDir = settings.get().sharedSkillAddDir
+
+  // Resolve target directories based on source
+  const dirs: string[] = []
+  if (source === 'extra' && extraDir) {
+    dirs.push(join(extraDir, '.claude', 'commands'))
+    dirs.push(join(extraDir, '.claude', 'skills'))
+    dirs.push(extraDir)
+  } else {
+    // Default: check global first, then extra
+    dirs.push(globalDir)
+    if (extraDir) {
+      dirs.push(join(extraDir, '.claude', 'commands'))
+      dirs.push(join(extraDir, '.claude', 'skills'))
+      dirs.push(extraDir)
+    }
+  }
+
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue
+    // Folder skill takes precedence over flat file with same name
+    const folderPath = join(dir, name)
+    if (existsSync(folderPath)) {
+      for (const candidate of ['SKILL.md', 'README.md']) {
+        const p = join(folderPath, candidate)
+        if (existsSync(p)) return readFileSync(p, 'utf-8')
+      }
+    }
+    // Flat file
+    const filePath = join(dir, `${name}.md`)
+    if (existsSync(filePath)) return readFileSync(filePath, 'utf-8')
+  }
+
   return ''
 }
 
-export function saveSkill(name: string, content: string): void {
+/**
+ * Save a skill. If isFolder, writes to name/SKILL.md; otherwise name.md.
+ */
+export function saveSkill(name: string, content: string, isFolder: boolean): void {
   const dir = globalCommandsDir()
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, `${name}.md`), content, 'utf-8')
+  if (isFolder) {
+    const folderPath = join(dir, name)
+    mkdirSync(folderPath, { recursive: true })
+    writeFileSync(join(folderPath, 'SKILL.md'), content, 'utf-8')
+  } else {
+    writeFileSync(join(dir, `${name}.md`), content, 'utf-8')
+  }
 }
 
 export function deleteSkill(name: string, isFolder: boolean): void {
