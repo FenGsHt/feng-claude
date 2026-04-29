@@ -5,6 +5,24 @@
 
 ---
 
+## v0.6.3 (2026-04-29)
+
+### 修复 | Bug Fixes
+
+#### CLAUDE_CONFIG_DIR 修复 | CLAUDE_CONFIG_DIR Fix
+- 将 `CLAUDE_CONFIG_DIR` 改为用户全局 `~/.claude` 目录
+- `CLAUDE_CONFIG_DIR` changed to user's global `~/.claude` directory
+- 修复技能（`~/.claude/commands/`）、MCP 配置（`.claude.json`）、OAuth 凭据不可见的问题
+- Fixed skills, MCP config, and OAuth credentials not being read by Claude Code
+- GUI 和 Claude CLI 共享同一配置目录，彻底解决双向不同步
+- GUI and Claude CLI now share the same config directory, eliminating sync issues
+
+#### 旧隔离目录迁移 | Legacy Isolated Directory Migration
+- 首次启动自动将 `data/claude-session` 中的会话/插件/文件历史数据合并到 `~/.claude`
+- First launch automatically merges session/plugin/file-history data from `data/claude-session` to `~/.claude`
+
+---
+
 ## v0.6.2 (2026-04-29)
 
 ### 新功能 | New Features

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.3] - 2026-04-29
+
+### 修复 | Bug Fixes
+- **CLAUDE_CONFIG_DIR 指向全局 ~/.claude**：修复技能、MCP 配置、OAuth 凭据不可见的问题
+- **旧隔离目录迁移**：首次启动自动将 `data/claude-session` 中的会话/插件数据合并到 `~/.claude`
+
+---
+
 ## [0.6.2] - 2026-04-29
 
 ### 新功能 | New Features
