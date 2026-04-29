@@ -122,7 +122,22 @@ export class ClaudeSessionWatcher {
     console.log(`[TokenWatcher] scanExisting done — ${sw.fileByteOffsets.size} files, latestFile=${sw.latestFile}`)
 
     // Poll every 1 s — reliable on Windows where FSEvents can be flaky.
-    sw.timer = setInterval(() => this.poll(sw), 1000)
+    // Log once on first poll to help debug path issues
+    let loggedPath = false
+    sw.timer = setInterval(() => {
+      if (!loggedPath) {
+        console.log(`[TokenWatcher] polling: projectDir=${sw.projectDir} exists=${existsSync(sw.projectDir)}`)
+        if (existsSync(sw.projectDir)) {
+          try {
+            const allFiles = readdirSync(sw.projectDir, { withFileTypes: true })
+              .filter(e => e.isFile()).map(e => e.name)
+            console.log(`[TokenWatcher] files in dir:`, allFiles)
+          } catch {}
+        }
+        loggedPath = true
+      }
+      this.poll(sw)
+    }, 1000)
 
     this.sessions.set(sessionId, sw)
     this.watchedProjectDirs.set(projectDir, sw)
@@ -178,11 +193,21 @@ export class ClaudeSessionWatcher {
   private poll(sw: SessionWatch): void {
     if (this.win.isDestroyed()) return
     try {
-      if (!existsSync(sw.projectDir)) return
+      if (!existsSync(sw.projectDir)) {
+        // Only log once per watcher lifetime, not every second
+        if (!sw.runningNotified) {
+          console.log(`[TokenWatcher] projectDir does not exist yet: ${sw.projectDir}`)
+        }
+        return
+      }
 
       const entries = readdirSync(sw.projectDir, { withFileTypes: true })
         .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
         .map((e) => join(sw.projectDir, e.name))
+
+      if (entries.length === 0) {
+        console.log(`[TokenWatcher] no JSONL files found in: ${sw.projectDir}`)
+      }
 
       for (const filePath of entries) {
         const isNewFile = !sw.fileByteOffsets.has(filePath)
