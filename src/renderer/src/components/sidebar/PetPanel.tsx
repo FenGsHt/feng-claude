@@ -363,14 +363,14 @@ export function PetPanel(): React.ReactElement {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--claude-border)', opacity: 0.3 }}>
+      <div className="flex shrink-0 border-b" style={{ borderBottomColor: 'var(--claude-border-subtle)' }}>
         {(['chat', 'growth', 'logs'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
-            className={`flex-1 text-[10.5px] py-1 transition-colors ${
+            className={`flex-1 text-[11px] py-1.5 transition-colors ${
               subTab === tab
-                ? 'text-amber-400 border-b-2 border-amber-500 -mb-px'
+                ? 'text-amber-400 border-b-2 border-amber-500 -mb-px font-medium'
                 : 'text-claude-muted hover:text-claude-text'
             }`}
           >

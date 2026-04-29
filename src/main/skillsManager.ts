@@ -115,29 +115,32 @@ export function listSkills(): SkillEntry[] {
 
   // Extra skill directory
   const extraDir = settings.get().sharedSkillAddDir
+  console.log('[Skills] sharedSkillAddDir from settings:', JSON.stringify(extraDir))
   if (extraDir) {
     // The extra dir itself is passed to claude --add-dir, but skills inside it
-    // are in a .claude/commands/ subdirectory (or just .md files at the root)
+    // may be at root, or in .claude/commands/ or .claude/skills/ subdirs
     const possibleDirs = [
       join(extraDir, '.claude', 'commands'),
       join(extraDir, '.claude', 'skills'),
       extraDir
     ]
+    console.log('[Skills] scanning possibleDirs:', possibleDirs)
     for (const dir of possibleDirs) {
-      if (seen.has('extra')) break // already scanned this path
+      const exists = existsSync(dir)
+      console.log('[Skills] scanning dir:', dir, 'exists:', exists)
+      if (!exists) continue
       const { skills } = scanDir(dir, 'extra')
+      console.log('[Skills] found', skills.length, 'skills in', dir)
       for (const s of skills) {
-        // Avoid duplicates (same name from overlapping dirs)
         if (!seen.has(s.name)) {
           all.push(s)
           seen.add(s.name)
         }
       }
-      // Mark as scanned so we don't re-scan a parent dir
-      seen.add('extra')
     }
   }
 
+  console.log('[Skills] total skills:', all.length, all.map(s => `${s.name}(${s.source})`))
   return all.sort((a, b) => a.name.localeCompare(b.name))
 }
 
