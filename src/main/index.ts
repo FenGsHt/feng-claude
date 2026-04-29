@@ -128,6 +128,12 @@ function createWindow(): BrowserWindow {
       event.preventDefault()
       toggleBrowserView(win)
     }
+    // [2026-05-01] 在主进程拦截 Ctrl+Shift+C，绕过 Electron 菜单加速器
+    if (input.control && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {
+      event.preventDefault()
+      // 通知渲染进程执行复制，渲染进程用 term.getSelection() 获取 xterm 内部选区
+      win.webContents.send('terminal:copy-selection')
+    }
   })
 
   mainWindow = win

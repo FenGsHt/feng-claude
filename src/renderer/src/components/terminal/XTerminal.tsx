@@ -236,42 +236,40 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     term.textarea.addEventListener('keydown', onKeyDownClipboardPaste, true)
 
     /**
-     * [2026-04-27] Ctrl+Shift+C 复制终端选中文本（终端标准快捷键，不干扰 Ctrl+C 的 SIGINT）。
-     * 通过 Electron IPC 写剪贴板，比 navigator.clipboard 更可靠。
+     * [2026-05-01] Ctrl+Shift+C 复制终端选中文本。
      */
-    const copySelection = (text: string): void => {
-      if (!text) return
-      try { window.electronAPI.writeClipboardText(text) } catch {
-        navigator.clipboard.writeText(text).catch(() => {})
+    const doCopy = (): void => {
+      const selection = term.getSelection()
+      if (!selection) return
+      try { window.electronAPI.writeClipboardText(selection) } catch {
+        navigator.clipboard.writeText(selection).catch(() => {})
       }
     }
 
+    // 渲染进程自身的键盘事件（备用）
     const onKeyDownClipboardCopy = (ev: KeyboardEvent): void => {
       if (!(ev.ctrlKey || ev.metaKey)) return
       if (!ev.shiftKey) return
       if (ev.altKey) return
       if (ev.code !== 'KeyC') return
-      const selection = term.getSelection()
-      if (!selection) return
-      copySelection(selection)
+      doCopy()
       ev.preventDefault()
       ev.stopPropagation()
       ev.stopImmediatePropagation()
     }
-    // Capture phase on textarea — earliest interception
     term.textarea.addEventListener('keydown', onKeyDownClipboardCopy, true)
 
-    // Also listen on window so Ctrl+Shift+C works without terminal focus
     const onWindowClipboardCopy = (ev: KeyboardEvent): void => {
       if (!(ev.ctrlKey || ev.metaKey)) return
       if (!ev.shiftKey) return
       if (ev.code !== 'KeyC') return
-      const selection = term.getSelection()
-      if (!selection) return
-      copySelection(selection)
+      doCopy()
       ev.preventDefault()
     }
     window.addEventListener('keydown', onWindowClipboardCopy)
+
+    // 主进程拦截 Ctrl+Shift+C 后发来的复制指令
+    const cleanupTerminalCopy = window.electronAPI.onTerminalCopy?.(doCopy)
 
     // [2026-04-23] 原先立即 fit() + 80ms debounce；打包后 ResizeObserver 连发易与 xterm 内部 idle 队列打架，改为 220ms + rAF 合并
     // fit()
@@ -297,6 +295,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       term.textarea.removeEventListener('keydown', onKeyDownClipboardPaste, true)
       term.textarea.removeEventListener('keydown', onKeyDownClipboardCopy, true)
       window.removeEventListener('keydown', onWindowClipboardCopy)
+      cleanupTerminalCopy?.()
       ro.disconnect()
       if (fitTimer) clearTimeout(fitTimer)
     }
@@ -320,10 +319,10 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   }, [sessionId, resolvedTheme])
 
   const onContextMenu = (e: React.MouseEvent): void => {
-    const selection = term.getSelection()
-    if (selection) {
-      try { window.electronAPI.writeClipboardText(selection) } catch {
-        navigator.clipboard.writeText(selection).catch(() => {})
+    const text = window.getSelection()?.toString() ?? terminals.get(sessionId)?.term.getSelection() ?? ''
+    if (text) {
+      try { window.electronAPI.writeClipboardText(text) } catch {
+        navigator.clipboard.writeText(text).catch(() => {})
       }
     }
   }

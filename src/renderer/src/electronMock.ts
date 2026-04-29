@@ -120,7 +120,8 @@ export function injectMockElectronAPI(): void {
       onUpdateProgress: listener,
       checkForUpdates: async () => ({ success: true }),
       downloadUpdate: async () => ({ success: true }),
-      installUpdate: async () => ({ success: true })
+      installUpdate: async () => ({ success: true }),
+      onTerminalCopy: (_cb: () => void) => () => {}
     }
   }
 }

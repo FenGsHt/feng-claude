@@ -244,6 +244,13 @@ const electronAPI = {
     ipcRenderer.on(IPC.TEST_STATUS, handler)
     return () => ipcRenderer.removeListener(IPC.TEST_STATUS, handler)
   },
+
+  // [2026-05-01] 主进程拦截 Ctrl+Shift+C 后通知渲染进程执行复制
+  onTerminalCopy: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('terminal:copy-selection', handler)
+    return () => ipcRenderer.removeListener('terminal:copy-selection', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
