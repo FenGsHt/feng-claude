@@ -104,7 +104,10 @@ export function injectMockElectronAPI(): void {
       },
       browserView: {
         toggle: async () => ({ visible: false }),
-        navigate: async () => ({ success: false, url: '' })
+        navigate: async () => ({ success: false, url: '' }),
+        onBrowserNavAction: listener,
+        onBrowserNavNavigate: listener,
+        onBrowserNavSetRatio: listener
       },
       git: {
         isRepo: async () => ({ isRepo: true }),

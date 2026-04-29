@@ -79,6 +79,26 @@ const TOOLS = [
     name: 'browser_hide',
     description: 'Hide the embedded browser',
     input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_devtools',
+    description: 'Toggle DevTools (console, network, elements) for the embedded browser',
+    input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_back',
+    description: 'Go back one page in browser history',
+    input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_forward',
+    description: 'Go forward one page in browser history',
+    input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_reload',
+    description: 'Reload the current page',
+    input_schema: { type: 'object', properties: {}, required: [] }
   }
 ]
 
@@ -154,6 +174,22 @@ async function handleTool(name, args) {
       case 'browser_hide': {
         await callHttp('/hide')
         return [{ type: 'text', text: 'Browser hidden' }]
+      }
+      case 'browser_devtools': {
+        const r = await callHttp('/devtools')
+        return [{ type: 'text', text: r.visible ? 'DevTools opened' : 'DevTools closed' }]
+      }
+      case 'browser_back': {
+        await callHttp('/back')
+        return [{ type: 'text', text: 'Went back' }]
+      }
+      case 'browser_forward': {
+        await callHttp('/forward')
+        return [{ type: 'text', text: 'Went forward' }]
+      }
+      case 'browser_reload': {
+        await callHttp('/reload')
+        return [{ type: 'text', text: 'Reloaded page' }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]

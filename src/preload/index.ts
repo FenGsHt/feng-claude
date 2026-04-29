@@ -164,7 +164,22 @@ const electronAPI = {
     toggle: (): Promise<{ visible: boolean }> =>
       ipcRenderer.invoke('browser-view:toggle'),
     navigate: (url: string): Promise<{ success: boolean; url: string }> =>
-      ipcRenderer.invoke('browser-view:navigate', url)
+      ipcRenderer.invoke('browser-view:navigate', url),
+    onBrowserNavAction: (callback: (action: string) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, action: string): void => callback(action)
+      ipcRenderer.on('browser-nav:action', handler)
+      return () => ipcRenderer.removeListener('browser-nav:action', handler)
+    },
+    onBrowserNavNavigate: (callback: (url: string) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, url: string): void => callback(url)
+      ipcRenderer.on('browser-nav:navigate', handler)
+      return () => ipcRenderer.removeListener('browser-nav:navigate', handler)
+    },
+    onBrowserNavSetRatio: (callback: (ratio: number) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, ratio: number): void => callback(ratio)
+      ipcRenderer.on('browser-nav:set-ratio', handler)
+      return () => ipcRenderer.removeListener('browser-nav:set-ratio', handler)
+    },
   },
 
   // Git Worktree
