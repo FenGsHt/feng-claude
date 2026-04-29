@@ -5,16 +5,33 @@ import { URL } from 'url'
 interface BrowserViewState {
   view: BrowserView | null
   visible: boolean
+  resizeHandler: (() => void) | null
 }
 
 const state: BrowserViewState = {
   view: null,
-  visible: false
+  visible: false,
+  resizeHandler: null
 }
 
 const DEFAULT_PORT = 3100
+const VIEW_W = 420
+const VIEW_H = 320
+const VIEW_X_PAD = 8
+const VIEW_Y = 38
 
-/** 创建或显示 BrowserView — 右上角浮动面板 400x300 */
+function setBounds(win: BrowserWindow): void {
+  if (!state.view) return
+  const { width } = win.getContentBounds()
+  state.view.setBounds({
+    x: width - VIEW_W - VIEW_X_PAD,
+    y: VIEW_Y,
+    width: VIEW_W,
+    height: VIEW_H
+  })
+}
+
+/** 创建或显示 BrowserView — 右上角浮动面板 */
 export function showBrowserView(win: BrowserWindow, url?: string): void {
   if (!state.view) {
     const view = new BrowserView({
@@ -24,19 +41,19 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
       }
     })
     state.view = view
-    win.addBrowserView(view)
 
     // 拦截新窗口请求，阻止弹出
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+    // 窗口 resize 时保持浮动位置
+    state.resizeHandler = () => setBounds(win)
+    win.on('resize', state.resizeHandler)
+    win.on('maximize', state.resizeHandler)
+    win.on('unmaximize', state.resizeHandler)
   }
 
-  // 浮动在右上角
-  const { width } = win.getContentBounds()
-  const viewW = 420
-  const viewH = 320
-  const x = width - viewW - 8
-  const y = 38
-  state.view.setBounds({ x, y, width: viewW, height: viewH })
+  win.addBrowserView(state.view)
+  setBounds(win)
 
   if (url) {
     state.view.webContents.loadURL(url).catch(() => {})
@@ -44,7 +61,6 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     state.view.webContents.loadURL('https://www.bing.com').catch(() => {})
   }
 
-  win.addBrowserView(state.view)
   state.visible = true
 }
 
