@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
-import { claudeSessionConfigDir, addUserDisabledPlugin, removeUserDisabledPlugin } from './claudeSessionConfigDir'
+import { claudeSessionConfigDir, addUserDisabledPlugin, removeUserDisabledPlugin, HUD_PLUGIN_ENABLE_KEY } from './claudeSessionConfigDir'
 import type { PluginEntry } from '../renderer/src/types/ipc'
 
 export interface RefreshResult {
@@ -247,11 +247,9 @@ export function setPluginEnabled(id: string, enable: boolean): void {
   const ep = { ...((settings.enabledPlugins ?? {}) as Record<string, boolean>) }
   if (enable) {
     ep[id] = true
-    // [2026-05-01] 用户重新启用时，从 Feng Claude 本地禁用列表移除
     removeUserDisabledPlugin(id)
   } else {
     delete ep[id]
-    // [2026-05-01] 用户手动禁用时，记录到 Feng Claude 本地存储，防止被自动恢复
     addUserDisabledPlugin(id)
   }
   settings.enabledPlugins = ep
