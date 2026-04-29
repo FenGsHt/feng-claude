@@ -30,11 +30,9 @@ export const useThemeStore = create<ThemeStore>()((set, get) => ({
 
   setTheme: (theme) => {
     set({ theme })
-    // Persist to electron-store alongside other settings
-    window.electronAPI.settings.get().then((s) => {
-      if (s) {
-        return window.electronAPI.settings.set({ ...s, theme })
-      }
-    }).catch(() => {})
+    // Persist immediately to electron-store (don't rely on SettingsPanel save button)
+    window.electronAPI.settings.get()
+      .then((s) => window.electronAPI.settings.set({ ...(s ?? {}), theme } as import('../types/settings').ClaudeSettings))
+      .catch((e: unknown) => console.warn('[theme] save failed:', e))
   },
 }))

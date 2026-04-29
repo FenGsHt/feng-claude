@@ -117,7 +117,8 @@ export function SettingsPanel(): React.ReactElement {
   }
 
   const handleSave = async () => {
-    await window.electronAPI.settings.set(form)
+    // Always include current theme so saving other settings doesn't overwrite it
+    await window.electronAPI.settings.set({ ...form, theme })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
