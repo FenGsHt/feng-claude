@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { app } from 'electron'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 import type { McpEntry, McpServerConfig, McpServerType } from '../renderer/src/types/ipc'
 
@@ -178,4 +179,50 @@ export function updateMcpServer(name: string, cfg: McpServerConfig): void {
   }
   data.mcpServers = servers
   writeClaudeJson(data)
+}
+
+// ── 自动注册浏览器工具 MCP ──────────────────────────────────────────
+
+let autoRegistered = false
+
+export function ensureBrowserToolsMcpRegistered(): void {
+  if (autoRegistered) return
+  autoRegistered = true
+
+  const data = readClaudeJson()
+  const servers = data.mcpServers ?? {}
+
+  // 已存在则不覆盖（用户可能已修改或禁用了）
+  if ('browser-tools' in servers) return
+
+  // 确定脚本路径：开发态用项目根目录，打包态用 userData 下的副本
+  let scriptPath: string
+  if (app.isPackaged) {
+    // 打包后脚本需从 asar 解压到 userData
+    const dest = join(app.getPath('userData'), 'browser-mcp-server.js')
+    if (!existsSync(dest)) {
+      const src = join(app.getAppPath(), 'scripts', 'browser-mcp-server.js')
+      try {
+        const { readFileSync: rfs, writeFileSync: wfs } = require('fs')
+        wfs(dest, rfs(src), 'utf-8')
+      } catch (e) {
+        console.warn('[MCP] Failed to unpack browser-mcp-server.js:', e)
+        return
+      }
+    }
+    scriptPath = dest
+  } else {
+    // 开发态：从项目根目录定位
+    const appPath = app.getAppPath()
+    scriptPath = join(appPath, 'scripts', 'browser-mcp-server.js')
+  }
+
+  servers['browser-tools'] = {
+    type: 'stdio',
+    command: 'node',
+    args: [scriptPath]
+  }
+  data.mcpServers = servers
+  writeClaudeJson(data)
+  console.log('[MCP] auto-registered browser-tools MCP server')
 }

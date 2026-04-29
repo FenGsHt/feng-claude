@@ -14,7 +14,7 @@ const state: BrowserViewState = {
 
 const DEFAULT_PORT = 3100
 
-/** 创建或显示 BrowserView */
+/** 创建或显示 BrowserView — 右上角浮动面板 400x300 */
 export function showBrowserView(win: BrowserWindow, url?: string): void {
   if (!state.view) {
     const view = new BrowserView({
@@ -24,15 +24,19 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
       }
     })
     state.view = view
-    win.setBrowserView(view)
+    win.addBrowserView(view)
 
     // 拦截新窗口请求，阻止弹出
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   }
 
-  const { width, height } = win.getContentBounds()
-  const titleBarH = 32
-  state.view.setBounds({ x: 0, y: titleBarH, width, height: height - titleBarH })
+  // 浮动在右上角
+  const { width } = win.getContentBounds()
+  const viewW = 420
+  const viewH = 320
+  const x = width - viewW - 8
+  const y = 38
+  state.view.setBounds({ x, y, width: viewW, height: viewH })
 
   if (url) {
     state.view.webContents.loadURL(url).catch(() => {})
@@ -40,7 +44,7 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     state.view.webContents.loadURL('https://www.bing.com').catch(() => {})
   }
 
-  win.setBrowserView(state.view)
+  win.addBrowserView(state.view)
   state.visible = true
 }
 

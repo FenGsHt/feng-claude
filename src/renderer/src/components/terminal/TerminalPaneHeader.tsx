@@ -62,6 +62,18 @@ function MergeIcon(): React.ReactElement {
   )
 }
 
+function BrowserIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <rect x="0.75" y="0.75" width="9.5" height="9.5" rx="1.25" stroke="currentColor" strokeWidth="1.1"/>
+      <line x1="0.75" y1="3" x2="10.25" y2="3" stroke="currentColor" strokeWidth="0.8"/>
+      <circle cx="2.5" cy="2" r="0.5" fill="currentColor"/>
+      <circle cx="4" cy="2" r="0.5" fill="currentColor"/>
+      <circle cx="5.5" cy="2" r="0.5" fill="currentColor"/>
+    </svg>
+  )
+}
+
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
@@ -249,6 +261,9 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
               <WorktreeIcon />
             </HeaderBtn>
           )}
+          <HeaderBtn title="Open embedded browser for debugging" onClick={() => void window.electronAPI.browserView?.toggle()}>
+            <BrowserIcon />
+          </HeaderBtn>
           <HeaderBtn title="Close pane" onClick={() => closeSession(sessionId)} danger>
             <svg width="8" height="8" viewBox="0 0 8 8">
               <line x1="1" y1="1" x2="7" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
