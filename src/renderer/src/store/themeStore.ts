@@ -1,19 +1,40 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import type { ThemeMode } from '../types/settings'
 
-export type ThemeMode = 'dark' | 'light' | 'auto'
+export type { ThemeMode }
 
 interface ThemeStore {
   theme: ThemeMode
+  _hydrated: boolean
   setTheme: (theme: ThemeMode) => void
+  hydrate: () => Promise<void>
 }
 
-export const useThemeStore = create<ThemeStore>()(
-  persist(
-    (set) => ({
-      theme: 'auto',
-      setTheme: (theme) => set({ theme }),
-    }),
-    { name: 'theme-store' }
-  )
-)
+export const useThemeStore = create<ThemeStore>()((set, get) => ({
+  theme: 'auto',
+  _hydrated: false,
+
+  hydrate: async () => {
+    try {
+      const settings = await window.electronAPI.settings.get()
+      const saved = settings?.theme as ThemeMode | undefined
+      if (saved === 'dark' || saved === 'light' || saved === 'auto') {
+        set({ theme: saved, _hydrated: true })
+      } else {
+        set({ _hydrated: true })
+      }
+    } catch {
+      set({ _hydrated: true })
+    }
+  },
+
+  setTheme: (theme) => {
+    set({ theme })
+    // Persist to electron-store alongside other settings
+    window.electronAPI.settings.get().then((s) => {
+      if (s) {
+        return window.electronAPI.settings.set({ ...s, theme })
+      }
+    }).catch(() => {})
+  },
+}))

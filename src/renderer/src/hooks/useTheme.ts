@@ -59,10 +59,18 @@ const LIGHT_THEME = {
  */
 export function useTheme(): void {
   const theme = useThemeStore((s) => s.theme)
+  const hydrate = useThemeStore((s) => s.hydrate)
   const themeRef = useRef(theme)
   themeRef.current = theme
 
+  // Load persisted theme from electron-store on first mount
   useEffect(() => {
+    void hydrate()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    console.log('[theme] useTheme effect running, theme:', theme)
     const root = document.documentElement
 
     const applyTheme = (resolved: 'dark' | 'light') => {
