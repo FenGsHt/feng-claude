@@ -86,7 +86,14 @@ function extractDescription(readmePath: string): string {
   }
 }
 
-function isPluginInstalled(pluginName: string): boolean {
+function isPluginInstalled(pluginName: string, enabled?: Record<string, boolean>): boolean {
+  // [2026-04-29] If the plugin is enabled in session settings, it is installed
+  if (enabled) {
+    for (const id of Object.keys(enabled)) {
+      const name = id.includes('@') ? id.slice(0, id.lastIndexOf('@')) : id
+      if (name === pluginName) return true
+    }
+  }
   const cacheDir = join(claudeSessionConfigDir(), 'plugins', 'cache')
   if (!existsSync(cacheDir)) return false
   try {
@@ -176,7 +183,7 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
             description: plugin.description || '',
             installCount: counts.get(id) ?? 0,
             isEnabled: enabled[id] === true,
-            isInstalled: isPluginInstalled(plugin.name)
+            isInstalled: isPluginInstalled(plugin.name, enabled)
           })
         }
         // marketplace.json exists with plugins - skip plugins/ directory to avoid duplicates
@@ -198,7 +205,7 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
             description,
             installCount: counts.get(id) ?? 0,
             isEnabled: enabled[id] === true,
-            isInstalled: isPluginInstalled(plugin.name)
+            isInstalled: isPluginInstalled(plugin.name, enabled)
           })
         }
       }
@@ -219,7 +226,7 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
       description: '',
       installCount: 0,
       isEnabled: true,
-      isInstalled: isPluginInstalled(name)
+      isInstalled: isPluginInstalled(name, enabled)
     })
   }
 
