@@ -16,6 +16,7 @@ const SIDEBAR_STORAGE_KEY = 'sidebar-width'
 
 export function AppShell(): React.ReactElement {
   const [showTools, setShowTools] = useState(false)
+  const [browserPanel, setBrowserPanel] = useState({ visible: false, width: 0 })
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY)
     return saved ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parseInt(saved, 10))) : SIDEBAR_DEFAULT
@@ -63,6 +64,13 @@ export function AppShell(): React.ReactElement {
     })
   }, [])
 
+  // Listen for browser panel state changes (embedded browser shares space with terminal)
+  useEffect(() => {
+    return window.electronAPI.browserView?.onBrowserViewStateChanged?.((state) => {
+      setBrowserPanel(state)
+    })
+  }, [])
+
   return (
     <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans antialiased">
       <TitleBar onToggleTools={() => setShowTools((v) => !v)} showTools={showTools} />
@@ -74,7 +82,10 @@ export function AppShell(): React.ReactElement {
           className="w-1 shrink-0 cursor-col-resize hover:bg-amber-500/40 active:bg-amber-500/60 transition-colors"
           style={{ marginLeft: -1 }}
         />
-        <main className="flex flex-col flex-1 overflow-hidden min-w-0">
+        <main
+          className="flex flex-col flex-1 overflow-hidden min-w-0"
+          style={browserPanel.visible ? { marginRight: browserPanel.width } : undefined}
+        >
           <TabBar />
           <TerminalPanel />
         </main>
