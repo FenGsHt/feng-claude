@@ -23,6 +23,7 @@ import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 import { existsSync, copyFileSync, mkdirSync } from 'fs'
 import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
+import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView } from './browserViewManager'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
 function migrateLegacyTokenDataOnce(): void {
@@ -116,6 +117,18 @@ function createWindow(): BrowserWindow {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // ── Embedded browser for debugging ──────────────────────────────
+  startBrowserServer(win)
+  registerBrowserViewIpc()
+
+  // Ctrl+Shift+D — toggle embedded browser
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.shift && input.key.toLowerCase() === 'd') {
+      event.preventDefault()
+      toggleBrowserView(win)
+    }
+  })
 
   mainWindow = win
   return win
