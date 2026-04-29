@@ -159,6 +159,14 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.CONTENT_BANK_GENERATE, payload)
   },
 
+  // Embedded browser for debugging
+  browserView: {
+    toggle: (): Promise<{ visible: boolean }> =>
+      ipcRenderer.invoke('browser-view:toggle'),
+    navigate: (url: string): Promise<{ success: boolean; url: string }> =>
+      ipcRenderer.invoke('browser-view:navigate', url)
+  },
+
   // Git Worktree
   git: {
     isRepo: (path: string): Promise<{ isRepo: boolean }> =>

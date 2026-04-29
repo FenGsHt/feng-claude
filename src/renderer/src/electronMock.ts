@@ -102,6 +102,10 @@ export function injectMockElectronAPI(): void {
       contentBank: {
         generate: async () => ({ items: [] })
       },
+      browserView: {
+        toggle: async () => ({ visible: false }),
+        navigate: async () => ({ success: false, url: '' })
+      },
       git: {
         isRepo: async () => ({ isRepo: true }),
         branchList: async () => ({ branches: [{ name: 'main', isCurrent: true, isRemote: false }], currentBranch: 'main' }),
