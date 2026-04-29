@@ -22,6 +22,7 @@ import {
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 import { existsSync, copyFileSync, mkdirSync } from 'fs'
 import { getConfigDir } from './configDir'
+import { listMcpServers as listMcpServersForMigration } from './mcpManager'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
 function migrateLegacyTokenDataOnce(): void {
@@ -102,6 +103,9 @@ function createWindow(): BrowserWindow {
 
   // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
   mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
+
+  // [2026-04-29] MCP 迁移：从旧的 settings.json 迁移 mcpServers 到 .claude.json
+  listMcpServersForMigration()
 
   // Setup auto updater
   setupAutoUpdater(win)

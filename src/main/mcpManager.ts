@@ -29,6 +29,46 @@ type ClaudeJson = {
 }
 
 const CLAUDE_JSON_FILE = '.claude.json'
+const SETTINGS_JSON_FILE = 'settings.json'
+
+/** [2026-04-29] 从旧的 settings.json 迁移 MCP 配置到 .claude.json */
+let migrated = false
+function migrateMcpFromSettingsJson(): void {
+  if (migrated) return
+  migrated = true
+  try {
+    const settingsPath = join(claudeSessionConfigDir(), SETTINGS_JSON_FILE)
+    const claudeJsonPath = join(claudeSessionConfigDir(), CLAUDE_JSON_FILE)
+    // 只在 .claude.json 不存在或没有 mcpServers 时才迁移
+    const claudeData = readClaudeJson()
+    if (claudeData.mcpServers && Object.keys(claudeData.mcpServers).length > 0) return
+    if (!existsSync(settingsPath)) return
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+    const oldMcpServers = settings.mcpServers as Record<string, ClaudeJsonMcpServerConfig> | undefined
+    if (!oldMcpServers || Object.keys(oldMcpServers).length === 0) return
+    const oldDisabled = (settings.disabledMcpServers as string[]) ?? []
+    // 转换格式：transport: "streamable-http" → type: "http"
+    const newMcpServers: Record<string, ClaudeJsonMcpServerConfig> = {}
+    for (const [name, cfg] of Object.entries(oldMcpServers)) {
+      const guiType = (cfg.transport ?? cfg.type ?? 'stdio') as string
+      newMcpServers[name] = {
+        type: guiType === 'streamable-http' ? 'http' : guiType,
+        command: cfg.command,
+        args: cfg.args,
+        url: cfg.url,
+        env: cfg.env
+      }
+    }
+    const newData: ClaudeJson = {
+      mcpServers: newMcpServers,
+      disabledMcpServers: oldDisabled
+    }
+    writeClaudeJson(newData)
+    console.log(`[MCP] migrated ${Object.keys(newMcpServers).length} MCP servers from settings.json to .claude.json`)
+  } catch (e) {
+    console.warn('[MCP] migration from settings.json failed:', e)
+  }
+}
 
 function readClaudeJson(): ClaudeJson {
   try {
@@ -75,6 +115,7 @@ function toMcpEntry(name: string, cfg: ClaudeJsonMcpServerConfig, disabledSet: S
 // ── public API ───────────────────────────────────────────────────────────────
 
 export function listMcpServers(): McpEntry[] {
+  migrateMcpFromSettingsJson()
   const data = readClaudeJson()
   // user scope MCP（顶层 mcpServers）
   const servers = data.mcpServers ?? {}
