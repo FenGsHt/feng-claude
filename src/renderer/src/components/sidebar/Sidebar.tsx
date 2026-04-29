@@ -27,6 +27,12 @@ export function navigateToSettingsTab(): void {
   }
 }
 
+export function navigateToPetTab(): void {
+  if (setActiveTabExternal) {
+    setActiveTabExternal('pet')
+  }
+}
+
 interface TabConfig {
   id: Tab
   label: string

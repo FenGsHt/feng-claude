@@ -302,6 +302,7 @@ export function registerIpcHandlers(
     const rawBase = petApi?.baseUrl?.trim() || activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
     const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
     const petModel = petApi?.model?.trim() || activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
+    const forceFormat = petApi?.format // 强制指定请求头格式
 
     if (!apiKey) {
       return { error: 'No API key configured' }
@@ -361,10 +362,15 @@ export function registerIpcHandlers(
       const endsWithMessages     = baseUrl.endsWith('/v1/messages')
       const endsWithCompletions  = baseUrl.endsWith('/chat/completions') || baseUrl.endsWith('/v1/chat/completions')
       const isAnthropicDomain    = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
-      const isAnthropic          = endsWithMessages || (!endsWithCompletions && isAnthropicDomain)
+      // 优先使用强制格式，其次自动推断
+      let isAnthropic: boolean
+      if (forceFormat === 'anthropic') isAnthropic = true
+      else if (forceFormat === 'anthropic-bearer') isAnthropic = true // 仍用 Anthropic 请求体
+      else if (forceFormat === 'openai') isAnthropic = false
+      else isAnthropic = endsWithMessages || (!endsWithCompletions && isAnthropicDomain)
 
       if (isAnthropic) {
-        // Anthropic 原生格式
+        // Anthropic 请求体格式（含原生 API 和使用 Anthropic 格式但 Bearer 认证的代理）
         endpoint = endsWithMessages ? baseUrl : `${baseUrl}/v1/messages`
         body = JSON.stringify({
           model: petModel,
@@ -375,8 +381,13 @@ export function registerIpcHandlers(
         headers = {
           'Content-Type': 'application/json',
           'Content-Length': String(Buffer.byteLength(body)),
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
+        }
+        // 认证方式：anthropic-bearer 用 Bearer，原生 Anthropic 用 x-api-key
+        if (forceFormat === 'anthropic-bearer') {
+          headers['Authorization'] = `Bearer ${apiKey}`
+        } else {
+          headers['x-api-key'] = apiKey
+          headers['anthropic-version'] = '2023-06-01'
         }
       } else {
         // OpenAI 兼容格式（deepseek、openai、本地等）
@@ -425,6 +436,9 @@ export function registerIpcHandlers(
         req.end()
       })
 
+      // [2026-05-01] 记录 HTTP 状态码便于排查非 2xx 响应
+      // 注意：原生 http.request 不直接暴露 status，通过上面的日志在 catch 中兜底
+
       // 解析响应：兼容 Anthropic 和 OpenAI 两种格式
       if (!text.trim()) {
         console.error('[pet:ask] empty response body, endpoint:', endpoint)
@@ -447,8 +461,11 @@ export function registerIpcHandlers(
 
 
       if (json.error) {
-        console.error('[pet:ask] API error:', json.error)
-        return { error: json.error.message ?? 'API error' }
+        const errMsg = typeof json.error === 'object'
+          ? (json.error.message ?? json.error.code ?? JSON.stringify(json.error))
+          : String(json.error)
+        console.error('[pet:ask] API error:', json.error, 'raw response:', text.slice(0, 500))
+        return { error: errMsg }
       }
 
       const replyText =
@@ -519,16 +536,47 @@ export function registerIpcHandlers(
 
     const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
 
-    try {
-      const body = JSON.stringify({
-        model,
-        max_tokens: 500,
-        messages: [{ role: 'user', content: prompts[category] ?? prompts.chitchat }],
-      })
+    // 自动判断 API 格式
+    const endsWithMessages = baseUrl.endsWith('/v1/messages')
+    const endsWithCompletions = baseUrl.endsWith('/chat/completions') || baseUrl.endsWith('/v1/chat/completions')
+    const isAnthropicDomain = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
+    const useAnthropic = endsWithMessages || (!endsWithCompletions && isAnthropicDomain)
 
-      const url = new URL(`${baseUrl}/v1/messages`)
+    try {
+      let endpoint: string
+      let body: string
+
+      if (useAnthropic) {
+        endpoint = endsWithMessages ? baseUrl : `${baseUrl}/v1/messages`
+        body = JSON.stringify({
+          model,
+          max_tokens: 500,
+          messages: [{ role: 'user', content: prompts[category] ?? prompts.chitchat }],
+        })
+      } else {
+        endpoint = endsWithCompletions ? baseUrl : `${baseUrl}/v1/chat/completions`
+        body = JSON.stringify({
+          model,
+          max_tokens: 500,
+          stream: false,
+          messages: [{ role: 'user', content: prompts[category] ?? prompts.chitchat }],
+        })
+      }
+
+      const url = new URL(endpoint)
       const isHttps = url.protocol === 'https:'
       const { request } = isHttps ? await import('https') : await import('http')
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Content-Length': String(Buffer.byteLength(body)),
+      }
+      if (useAnthropic) {
+        headers['x-api-key'] = apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else {
+        headers['Authorization'] = `Bearer ${apiKey}`
+      }
 
       const text = await new Promise<string>((resolve, reject) => {
         const req = request(
@@ -557,10 +605,10 @@ export function registerIpcHandlers(
         req.end()
       })
 
-      const json = JSON.parse(text) as { content?: Array<{ text?: string }>; error?: { message?: string } }
+      const json = JSON.parse(text) as { content?: Array<{ text?: string }>; choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }
       if (json.error) return { items: [], error: json.error.message ?? 'API error' }
 
-      const rawText = json.content?.[0]?.text ?? ''
+      const rawText = json.content?.[0]?.text ?? json.choices?.[0]?.message?.content ?? ''
       // 尝试解析 JSON 数组
       try {
         const items = JSON.parse(rawText) as string[]

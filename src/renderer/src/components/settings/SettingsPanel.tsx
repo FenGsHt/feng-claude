@@ -472,8 +472,8 @@ export function SettingsPanel(): React.ReactElement {
           />
           <p className="text-[9px] text-claude-muted mt-0.5">
             {lang === 'zh'
-              ? '填 Base URL 即可（如 https://api.deepseek.com），路径自动补全；也可填完整 endpoint'
-              : 'Base URL (e.g. https://api.deepseek.com), path is auto-appended; full endpoint also accepted'}
+              ? '填 Base URL 即可（如 https://api.deepseek.com），系统将自动补全为普通聊天对话接口路径'
+              : 'Base URL (e.g. https://api.deepseek.com), auto-appended to standard chat completion endpoint'}
           </p>
         </Field>
 
@@ -490,6 +490,36 @@ export function SettingsPanel(): React.ReactElement {
             className="field-input"
           />
         </Field>
+
+        {/* 请求头格式（仅自定义配置时显示） */}
+        {form.petApi && (
+        <Field label={lang === 'zh' ? '请求头格式' : 'Request Format'}>
+          <div className="flex gap-1">
+            {[
+              { value: '', label: lang === 'zh' ? '自动' : 'Auto', tip: lang === 'zh' ? '根据 URL 自动推断' : 'Auto-detect from URL' },
+              { value: 'anthropic', label: 'Anthropic', tip: 'x-api-key + /v1/messages' },
+              { value: 'anthropic-bearer', label: lang === 'zh' ? 'Anthropic + Bearer' : 'Anthropic + Bearer', tip: lang === 'zh' ? 'Bearer 认证 + Anthropic 格式（Claude Code 代理兼容）' : 'Bearer auth + Anthropic body format' },
+              { value: 'openai', label: 'OpenAI', tip: 'Authorization: Bearer + /v1/chat/completions' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                title={opt.tip}
+                onClick={() => setForm(prev => ({
+                  ...prev,
+                  petApi: prev.petApi ? { ...prev.petApi, format: (opt.value || undefined) as 'anthropic' | 'openai' | 'anthropic-bearer' | undefined } : prev.petApi,
+                }))}
+                className={`flex-1 text-[10px] px-1.5 py-1 rounded border transition-colors ${
+                  form.petApi.format === (opt.value || undefined)
+                    ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                    : 'border-claude-border text-claude-muted hover:text-claude-text hover:bg-claude-surface'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+        )}
 
         {/* 使用主配置开关 */}
         <div className="flex items-center justify-between py-1">

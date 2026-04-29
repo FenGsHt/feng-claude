@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react'
 import { Terminal } from 'xterm'
-import type { ITheme } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import 'xterm/css/xterm.css'
@@ -8,7 +7,7 @@ import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
-import { onTerminalThemeChange } from '../../hooks/useTheme'
+import { getTerminalTheme } from '../../hooks/useTheme'
 
 interface Props {
   sessionId: string
@@ -45,34 +44,13 @@ const pendingFitRafBySession = new Map<string, number>()
 function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: FitAddon } {
   if (terminals.has(sessionId)) return terminals.get(sessionId)!
 
+  const initialTheme = getTerminalTheme()
   const term = new Terminal({
     fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
     fontSize: 13,
     lineHeight: 1.45,
     letterSpacing: 0.3,
-    theme: {
-      background: '#141414',
-      foreground: '#e8e8e8',
-      cursor: '#f59e0b',
-      cursorAccent: '#141414',
-      selectionBackground: '#f59e0b30',
-      black: '#141414',
-      brightBlack: '#525252',
-      red: '#f87171',
-      brightRed: '#fca5a5',
-      green: '#4ade80',
-      brightGreen: '#86efac',
-      yellow: '#fbbf24',
-      brightYellow: '#fcd34d',
-      blue: '#60a5fa',
-      brightBlue: '#93c5fd',
-      magenta: '#c084fc',
-      brightMagenta: '#d8b4fe',
-      cyan: '#22d3ee',
-      brightCyan: '#67e8f9',
-      white: '#d4d4d4',
-      brightWhite: '#ffffff'
-    },
+    theme: initialTheme,
     // [2026-04-23] 原 5000；resize/fit 时 xterm 重算缓冲更重，打包后易触发 task queue deadline 警告，略降 scrollback
     scrollback: 2000,
     allowProposedApi: true,
@@ -189,11 +167,6 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
 
     const { term } = getOrCreateTerminal(sessionId)
 
-    // [2026-05-01] 注册终端主题回调，主题切换时自动更新
-    const unsubTheme = onTerminalThemeChange((t: ITheme) => {
-      term.options.theme = t
-    })
-
     if (!term.element) {
       term.open(container)
     } else {
@@ -294,7 +267,6 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     ro.observe(container)
 
     return () => {
-      unsubTheme()
       const raf = pendingFitRafBySession.get(sessionId)
       if (raf !== undefined) {
         cancelAnimationFrame(raf)

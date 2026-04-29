@@ -51,21 +51,10 @@ const LIGHT_THEME = {
   brightWhite: '#e5e7eb'
 }
 
-/** 终端主题回调注册表 */
-const terminalThemeCallbacks = new Set<(theme: typeof DARK_THEME) => void>()
-
-/** [2026-05-01] 注册终端主题回调（供 XTerminal 调用） */
-export function onTerminalThemeChange(callback: (theme: typeof DARK_THEME) => void): () => void {
-  terminalThemeCallbacks.add(callback)
-  return () => terminalThemeCallbacks.delete(callback)
-}
-
-/** 广播终端主题变更 */
-function broadcastTerminalTheme(resolved: 'dark' | 'light'): void {
-  const theme = resolved === 'dark' ? DARK_THEME : LIGHT_THEME
-  for (const cb of terminalThemeCallbacks) {
-    cb(theme)
-  }
+/** [2026-05-01] 根据当前主题返回终端配色（供初始创建使用） */
+export function getTerminalTheme(): typeof DARK_THEME {
+  const theme = document.documentElement.dataset.theme ?? 'dark'
+  return theme === 'dark' ? DARK_THEME : LIGHT_THEME
 }
 
 /**
@@ -84,7 +73,6 @@ export function useTheme(): void {
 
     const applyTheme = (resolved: 'dark' | 'light') => {
       root.setAttribute('data-theme', resolved)
-      broadcastTerminalTheme(resolved)
     }
 
     if (theme === 'dark') {

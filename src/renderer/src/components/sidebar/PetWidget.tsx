@@ -15,6 +15,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
 import { useContentBankStore } from '../../store/contentBankStore'
+import { navigateToPetTab } from './Sidebar'
 
 // ── ASCII 帧库 ────────────────────────────────────────────────────
 type Activity =
@@ -386,110 +387,7 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
   )
 }
 
-// ── 设置面板 ─────────────────────────────────────────────────────
-
-const PET_TYPES: Array<{ id: PetType; label: string }> = [
-  { id: 'cat', label: '🐱' },
-  { id: 'robot', label: '🤖' },
-  { id: 'dragon', label: '🐉' },
-  { id: 'ghost', label: '👻' },
-]
-
 const BUBBLE_DISPLAY_MS = 30_000  // 回复气泡显示时长（30秒）
-
-function SettingsPanel({ onClose, onShowGrowth }: { onClose: () => void; onShowGrowth: () => void }): React.ReactElement {
-  const { config, setConfig, clearHistory, history, growth } = usePetStore()
-  const [name, setName] = useState(config.name)
-  const [persona, setPersona] = useState(config.personality)
-  const [delay, setDelay] = useState(String(config.autoDelaySec))
-
-  const tier = getAffectionTier(growth.affection)
-  const tierLabels: Record<string, string> = {
-    cold: '冷淡', normal: '普通', friendly: '友好', close: '亲密', soulmate: '灵魂伴侣',
-  }
-
-  return (
-    <div className="border-t border-slate-700/60 px-2.5 py-2 space-y-2 bg-slate-800/50">
-      <div className="flex gap-1.5 items-center">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="flex-1 text-[9.5px] px-1.5 py-0.5 rounded border border-slate-600/50 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50"
-          placeholder="名字"
-        />
-        <div className="flex gap-0.5">
-          {PET_TYPES.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setConfig({ type: p.id })}
-              className={`text-[11px] w-5 h-5 rounded transition-colors ${
-                config.type === p.id ? 'bg-amber-600/40 ring-1 ring-amber-500/60' : 'hover:bg-slate-700'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 成长信息 */}
-      <div className="flex gap-2 items-center text-[9px] text-slate-400">
-        <span className="text-amber-400 font-semibold">Lv.{growth.level}</span>
-        <span>XP {growth.xp}/{growth.xpToNext}</span>
-        {growth.skillPoints > 0 && (
-          <span className="text-amber-300">⚡ 技能点 ×{growth.skillPoints}</span>
-        )}
-        <span>好感 {tierLabels[tier]}</span>
-      </div>
-
-      <div className="flex items-center gap-1.5">
-        <span className="text-[9px] text-slate-500 shrink-0">触发延迟（秒）</span>
-        <input
-          value={delay}
-          onChange={(e) => setDelay(e.target.value)}
-          className="w-10 text-[9.5px] px-1 py-0.5 rounded border border-slate-600/50 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50 font-mono text-center"
-          placeholder="6"
-        />
-        <span className="text-[9px] text-slate-500">0=关闭自动</span>
-      </div>
-
-      <textarea
-        value={persona}
-        onChange={(e) => setPersona(e.target.value)}
-        rows={3}
-        className="w-full text-[9px] px-1.5 py-1 rounded border border-slate-600/50 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50 resize-none font-mono leading-relaxed"
-        placeholder="人格 / System Prompt"
-      />
-
-      <div className="flex gap-1">
-        <button
-          onClick={onShowGrowth}
-          className="text-[9px] px-2 py-0.5 rounded border border-amber-600/40 text-amber-300 hover:bg-amber-600/20 transition-colors"
-          title="打开成长面板"
-        >
-          成长详情
-        </button>
-        <button
-          onClick={() => {
-            const d = parseInt(delay, 10)
-            setConfig({ name, personality: persona, autoDelaySec: isNaN(d) ? 6 : Math.max(0, d) })
-            onClose()
-          }}
-          className="flex-1 text-[9px] py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 border border-amber-600/40 text-amber-300"
-        >
-          保存
-        </button>
-        <button
-          onClick={clearHistory}
-          className="text-[9px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200"
-        >
-          清空记录({history.length})
-        </button>
-        <button onClick={onClose} className="text-[9px] px-1.5 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200">✕</button>
-      </div>
-    </div>
-  )
-}
 
 // ── Main ─────────────────────────────────────────────────────────
 const COOLDOWN_MS = 45_000       // 两次自动触发最小间隔
@@ -519,7 +417,6 @@ export function PetWidget(): React.ReactElement {
   const [activity, setActivity] = useState<Activity>('look')
   const [isLoading, setIsLoading] = useState(false)
   const [showBubble, setShowBubble] = useState(false)
-  const [expanded, setExpanded] = useState(false)
   // 走动位置（0-100 百分比）
   const [petX, setPetX] = useState(50)
   const [walkDirection, setWalkDirection] = useState<'left' | 'right'>('right')
@@ -943,8 +840,8 @@ export function PetWidget(): React.ReactElement {
 
         {/* 设置按钮（齿轮图标）*/}
         <button
-          className="ml-auto p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded shrink-0"
-          onClick={() => setExpanded((v) => !v)}
+          className="ml-auto p-1 text-claude-muted hover:text-claude-text hover:bg-claude-surface rounded shrink-0"
+          onClick={() => navigateToPetTab()}
           title="设置"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -953,9 +850,6 @@ export function PetWidget(): React.ReactElement {
           </svg>
         </button>
       </div>
-
-      {/* 设置面板 */}
-      {expanded && <SettingsPanel onClose={() => setExpanded(false)} onShowGrowth={() => { setExpanded(false); window.electronAPI.showNotification?.('成长详情', '请在侧边栏宠物标签页查看详细成长数据') }} />}
     </div>
   )
 }

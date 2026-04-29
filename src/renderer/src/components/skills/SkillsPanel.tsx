@@ -379,6 +379,18 @@ export function SkillsPanel(): React.ReactElement {
               stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
           </svg>
         </button>
+        <button
+          onClick={() => void reload()}
+          title="刷新"
+          className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1.5 6a4.5 4.5 0 0 1 7.8-2.8M10.5 6a4.5 4.5 0 0 1-7.8 2.8"
+              stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <path d="M9.3 1.5v1.8H7.5M2.7 10.5V8.7h1.8"
+              stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
       </div>
 
       {/* List */}

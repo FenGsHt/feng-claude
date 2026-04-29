@@ -70,6 +70,8 @@ export interface ClaudeSettings {
     baseUrl: string
     /** 宠物使用的模型 */
     model: string
+    /** 请求头格式：'anthropic' | 'openai' | 'anthropic-bearer' */
+    format?: 'anthropic' | 'openai' | 'anthropic-bearer'
   }
 }
 
