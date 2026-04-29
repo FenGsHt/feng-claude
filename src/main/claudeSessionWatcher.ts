@@ -411,13 +411,27 @@ interface ParsedLine {
 function parseLineWithId(line: string): ParsedLine | null {
   try {
     const entry = JSON.parse(line) as ClaudeJSONLEntry
-    if (entry.type !== 'assistant') return null
+    if (entry.type !== 'assistant') {
+      // [DEBUG] Log non-assistant entry types to understand JSONL structure
+      // console.log('[TokenWatcher] skip non-assistant type:', entry.type)
+      return null
+    }
     const msg = entry.message
-    if (!msg) return null
+    if (!msg) {
+      // [DEBUG] assistant entry has no message field
+      console.log('[TokenWatcher] assistant entry has no message:', line.slice(0, 200))
+      return null
+    }
     const messageId = msg.id
     if (!messageId) return null
     const u = msg.usage
-    if (!u) return null
+    if (!u) {
+      console.log('[TokenWatcher] assistant message has no usage, keys:', Object.keys(msg), 'line:', line.slice(0, 300))
+      // [DEBUG] dump the first entry to understand JSONL structure
+      return null
+    }
+    // [DEBUG] Log one usage entry to confirm format
+    // console.log('[TokenWatcher] usage entry:', JSON.stringify({input: u.input_tokens, output: u.output_tokens}))
     const input = Number(u.input_tokens) || 0
     const output = Number(u.output_tokens) || 0
     const cacheCreate = Number(u.cache_creation_input_tokens) || 0
