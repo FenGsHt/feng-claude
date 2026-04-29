@@ -123,11 +123,11 @@ export const useContentBankStore = create<ContentBankStore>()(
 
         // 尝试调用 API 生成新内容
         try {
-          // 为每个分类生成 3-5 条新内容
+          // 为每个分类生成 8 条新内容
           for (const category of ['joke', 'tip', 'news'] as ContentCategory[]) {
             const result = await window.electronAPI.contentBank?.generate({
               category,
-              count: 3,
+              count: 8,
             })
             if (result?.items) {
               get().addItems(category, result.items, 'api')
@@ -138,7 +138,7 @@ export const useContentBankStore = create<ContentBankStore>()(
           console.warn('[contentBank] daily update failed:', e)
           // 失败时用预设补充
           for (const [category, presets] of Object.entries(ALL_PRESETS)) {
-            const unusedPresets = presets.slice(0, 3)
+            const unusedPresets = presets.slice(0, 8)
             get().addItems(category as ContentCategory, unusedPresets, 'preset')
           }
         }
