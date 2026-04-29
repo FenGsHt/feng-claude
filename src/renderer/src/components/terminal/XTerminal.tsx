@@ -247,11 +247,33 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       if (ev.code !== 'KeyC' && ev.key !== 'c' && ev.key !== 'C') return
       const selection = term.getSelection()
       if (!selection || selection.length === 0) return
-      navigator.clipboard.writeText(selection).catch(() => {})
+      // Focus textarea first — events only fire when terminal has focus
+      term.focus()
+      // Try navigator.clipboard first, fall back to execCommand
+      navigator.clipboard.writeText(selection)
+        .catch(() => {
+          try { document.execCommand('copy') } catch {}
+        })
       ev.preventDefault()
       ev.stopImmediatePropagation()
     }
     term.textarea.addEventListener('keydown', onKeyDownClipboardCopy, true)
+
+    // Also listen on the whole window so Ctrl+Shift+C works even when terminal doesn't have focus
+    const onWindowClipboardCopy = (ev: KeyboardEvent): void => {
+      if (!(ev.ctrlKey || ev.metaKey)) return
+      if (!ev.shiftKey) return
+      if (ev.code !== 'KeyC' && ev.key !== 'c') return
+      const selection = term.getSelection()
+      if (!selection) return
+      term.focus()
+      navigator.clipboard.writeText(selection)
+        .catch(() => {
+          try { document.execCommand('copy') } catch {}
+        })
+      ev.preventDefault()
+    }
+    window.addEventListener('keydown', onWindowClipboardCopy)
 
     // [2026-04-23] 原先立即 fit() + 80ms debounce；打包后 ResizeObserver 连发易与 xterm 内部 idle 队列打架，改为 220ms + rAF 合并
     // fit()
@@ -276,6 +298,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       term.textarea.removeEventListener('paste', onPasteFiles, true)
       term.textarea.removeEventListener('keydown', onKeyDownClipboardPaste, true)
       term.textarea.removeEventListener('keydown', onKeyDownClipboardCopy, true)
+      window.removeEventListener('keydown', onWindowClipboardCopy)
       ro.disconnect()
       if (fitTimer) clearTimeout(fitTimer)
     }
@@ -298,11 +321,22 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     }
   }, [sessionId, resolvedTheme])
 
+  const onContextMenu = (e: React.MouseEvent): void => {
+    const selection = term.getSelection()
+    if (selection) {
+      navigator.clipboard.writeText(selection)
+        .catch(() => {
+          try { document.execCommand('copy') } catch {}
+        })
+    }
+  }
+
   return (
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden"
       style={{ background: resolvedTheme === 'dark' ? DARK_THEME.background : LIGHT_THEME.background }}
+      onContextMenu={onContextMenu}
     />
   )
 }
