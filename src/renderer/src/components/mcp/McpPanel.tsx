@@ -32,6 +32,10 @@ function formToConfig(f: FormState): McpServerConfig {
     const args = f.args.trim() ? f.args.trim().split(/\s+/) : undefined
     return { type: 'stdio', command: f.command.trim(), args, env: parseEnv(f.envRaw) }
   }
+  if (f.type === 'streamable-http') {
+    // Claude Code spec: streamable-http uses "transport" field, not "type"
+    return { transport: 'streamable-http', url: f.url.trim(), env: parseEnv(f.envRaw) }
+  }
   return { type: 'sse', url: f.url.trim(), env: parseEnv(f.envRaw) }
 }
 
@@ -68,7 +72,7 @@ function McpForm({
     if (!name) { setError('名称不能为空'); return }
     if (!/^[\w.-]+$/.test(name)) { setError('名称只允许字母、数字、- 和 _'); return }
     if (form.type === 'stdio' && !form.command.trim()) { setError('Command 不能为空'); return }
-    if (form.type === 'sse' && !form.url.trim()) { setError('URL 不能为空'); return }
+    if ((form.type === 'sse' || form.type === 'streamable-http') && !form.url.trim()) { setError('URL 不能为空'); return }
     onSave(name, formToConfig(form))
   }
 
@@ -90,12 +94,12 @@ function McpForm({
       )}
 
       {/* Type */}
-      <div className="flex gap-3">
-        {(['stdio', 'sse'] as const).map((t) => (
-          <label key={t} className="flex items-center gap-1 cursor-pointer">
-            <input type="radio" checked={form.type === t} onChange={() => set({ type: t })}
+      <div className="flex gap-3 flex-wrap">
+        {(['stdio', 'sse', 'streamable-http'] as const).map((tp) => (
+          <label key={tp} className="flex items-center gap-1 cursor-pointer">
+            <input type="radio" checked={form.type === tp} onChange={() => set({ type: tp })}
               className="accent-amber-500" />
-            <span className="text-[11px] text-claude-text uppercase font-mono">{t}</span>
+            <span className="text-[11px] text-claude-text uppercase font-mono">{tp}</span>
           </label>
         ))}
       </div>
@@ -116,9 +120,18 @@ function McpForm({
         </>
       ) : (
         <div>
-          <label className="text-[10px] text-claude-muted mb-0.5 block">URL</label>
-          <input className={inputCls} placeholder="http://localhost:3000/sse" value={form.url}
-            onChange={(e) => { set({ url: e.target.value }); setError('') }} />
+          <label className="text-[10px] text-claude-muted mb-0.5 block">
+            URL
+            {form.type === 'streamable-http' && (
+              <span className="ml-1 text-claude-muted/60">(streamable-http)</span>
+            )}
+          </label>
+          <input
+            className={inputCls}
+            placeholder={form.type === 'streamable-http' ? 'http://127.0.0.1:12306/mcp' : 'http://localhost:3000/sse'}
+            value={form.url}
+            onChange={(e) => { set({ url: e.target.value }); setError('') }}
+          />
         </div>
       )}
 
@@ -165,7 +178,7 @@ function McpRow({
   const preview =
     entry.type === 'stdio'
       ? [entry.command, ...(entry.args ?? [])].filter(Boolean).join(' ')
-      : (entry.url ?? '')
+      : (entry.url ?? '')   // sse / streamable-http both show URL
 
   return (
     <div className="border-b border-claude-border/50">
@@ -183,7 +196,9 @@ function McpRow({
               <span className={`text-[9px] px-1 rounded font-mono border ${
                 entry.type === 'stdio'
                   ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                  : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                  : entry.type === 'streamable-http'
+                    ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                    : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
               }`}>
                 {entry.type.toUpperCase()}
               </span>
@@ -228,7 +243,7 @@ function McpRow({
               ) : null}
             </>
           )}
-          {entry.type === 'sse' && (
+          {(entry.type === 'sse' || entry.type === 'streamable-http') && (
             <div className="text-claude-muted">url: <span className="text-claude-text">{entry.url}</span></div>
           )}
           {entry.env && Object.keys(entry.env).length > 0 && (

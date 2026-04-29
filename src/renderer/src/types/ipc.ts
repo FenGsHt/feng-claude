@@ -116,10 +116,12 @@ export interface SkillEntry {
   updatedAt: number
 }
 
-export type McpServerType = 'stdio' | 'sse'
+export type McpServerType = 'stdio' | 'sse' | 'streamable-http'
 
 export interface McpServerConfig {
+  /** stdio / sse use "type"; streamable-http uses "transport" per Claude Code spec */
   type?: McpServerType
+  transport?: McpServerType
   command?: string
   args?: string[]
   url?: string

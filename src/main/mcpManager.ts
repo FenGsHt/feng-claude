@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
-import type { McpEntry, McpServerConfig } from '../renderer/src/types/ipc'
+import type { McpEntry, McpServerConfig, McpServerType } from '../renderer/src/types/ipc'
 
 export type { McpEntry, McpServerConfig }
 
@@ -33,7 +33,8 @@ export function listMcpServers(): McpEntry[] {
   )
   return Object.entries(servers).map(([name, cfg]) => ({
     name,
-    type: cfg.type ?? 'stdio',
+    // Claude Code uses "transport" for streamable-http, "type" for stdio/sse
+    type: (cfg.transport ?? cfg.type ?? 'stdio') as McpEntry['type'],
     command: cfg.command,
     args: cfg.args,
     url: cfg.url,
