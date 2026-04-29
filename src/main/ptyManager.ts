@@ -1,6 +1,6 @@
 import * as pty from 'node-pty'
 import { createHash } from 'crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
@@ -93,12 +93,42 @@ function quoteAddDirPath(arg: string, isWindows: boolean): string {
 /**
  * `--add-dir` 解析顺序：
  * 1. 设置里手动填写的 sharedSkillAddDir（优先）
+ *    - 容错：若目录含 `skills` 但不含 `.claude/skills`，自动创建 junction
  * 2. 仅打包版：resources 目录下存在 `.claude` / `.claude/skills`（可与 app.asar 同层放技能）
  * 3. 仅打包版：可执行文件所在目录下存在 `.claude`（便携 exe 旁随包分发）
  */
 function resolveClaudeAddDir(settings: ClaudeSettings): string {
   const manual = (settings.sharedSkillAddDir ?? DEFAULT_SETTINGS.sharedSkillAddDir).trim()
-  if (manual) return manual
+  if (manual) {
+    // [2026-04-29] 容错：用户直接在根目录放了 skills 文件夹，而非 .claude/skills
+    const claudeSkills = join(manual, '.claude', 'skills')
+    const claudeDir = join(manual, '.claude')
+    const skillsDir = join(manual, 'skills')
+    const commandsDir = join(manual, 'commands')
+
+    // 标准结构：已有 .claude/skills 或 .claude
+    if (existsSync(claudeSkills) || existsSync(claudeDir)) {
+      return manual
+    }
+
+    // 容错结构：根目录下有 skills 或 commands 文件夹
+    const fallbackDir = existsSync(skillsDir) ? skillsDir : (existsSync(commandsDir) ? commandsDir : null)
+    if (fallbackDir) {
+      // 自动创建 .claude/skills 作为 junction 指向用户的 skills/commands 目录
+      try {
+        mkdirSync(claudeDir, { recursive: true })
+        // Windows 用 junction（不需要管理员权限），其他平台用 symlink
+        const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+        symlinkSync(fallbackDir, claudeSkills, linkType)
+        return manual
+      } catch {
+        // junction 创建失败，仍返回原目录（CLI 可能无法识别技能）
+        return manual
+      }
+    }
+
+    return manual
+  }
 
   if (!app.isPackaged) return ''
 
