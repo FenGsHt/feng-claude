@@ -11,6 +11,7 @@
   --claude-surface: #1c1c1c;
   --claude-surface2: #202020;
   --claude-border: #2a2a2a;
+  --claude-border-subtle: rgba(42, 42, 42, 0.35);
   --claude-text: #e8e8e8;
   --claude-muted: #717171;
   --claude-accent: #f59e0b;
@@ -28,6 +29,7 @@
   --claude-surface: #f5f5f5;
   --claude-surface2: #eeeeee;
   --claude-border: #e0e0e0;
+  --claude-border-subtle: rgba(180, 180, 180, 0.35);
   --claude-text: #1a1a1a;
   --claude-muted: #737373;
   --claude-accent: #d97706;

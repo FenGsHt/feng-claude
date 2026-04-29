@@ -343,7 +343,7 @@ function PluginRow({
 }): React.ReactElement {
   const { t } = useI18n()
   return (
-    <div className="px-3 py-2.5 border-b border-claude-border/20 hover:bg-claude-bg/40 group">
+    <div className="px-3 py-2.5 border-b hover:bg-claude-bg/40 group" style={{ borderBottomColor: 'var(--claude-border-subtle)' }}>
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
