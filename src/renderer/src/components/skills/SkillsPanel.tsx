@@ -223,7 +223,7 @@ function SkillRow({
 
   return (
     <div
-      className="px-3 py-2.5 border-b border-claude-border/50 hover:bg-claude-bg/30 group cursor-pointer"
+      className="px-3 py-2.5 border-b border-claude-border/20 hover:bg-claude-bg/30 group cursor-pointer"
       onClick={onView}
     >
       <div className="flex items-start gap-2">

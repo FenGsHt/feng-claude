@@ -181,7 +181,7 @@ function McpRow({
       : (entry.url ?? '')   // sse / streamable-http both show URL
 
   return (
-    <div className="border-b border-claude-border/50">
+    <div className="border-b border-claude-border/20">
       <div className="px-3 py-2 hover:bg-claude-bg/30 group">
         <div className="flex items-center gap-2">
           {/* Expand arrow */}
