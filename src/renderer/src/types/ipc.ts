@@ -54,6 +54,8 @@ export const IPC = {
 
   /** 主进程同步读剪贴板文本，供终端 Ctrl+V 注入（避免渲染进程剪贴板 API 失效） */
   CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync',
+  /** 主进程写剪贴板，供终端 Ctrl+Shift+C 复制 */
+  CLIPBOARD_WRITE_TEXT: 'clipboard:writeText',
 
   PLUGIN_LIST: 'plugin:list',
   PLUGIN_SET_ENABLED: 'plugin:setEnabled',

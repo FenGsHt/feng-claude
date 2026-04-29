@@ -64,6 +64,9 @@ export function registerIpcHandlers(
   ipcMain.on(IPC.CLIPBOARD_READ_TEXT_SYNC, (event) => {
     event.returnValue = clipboard.readText()
   })
+  ipcMain.on(IPC.CLIPBOARD_WRITE_TEXT, (_e, text: string) => {
+    clipboard.writeText(text)
+  })
 
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())

@@ -237,40 +237,38 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
 
     /**
      * [2026-04-27] Ctrl+Shift+C 复制终端选中文本（终端标准快捷键，不干扰 Ctrl+C 的 SIGINT）。
+     * 通过 Electron IPC 写剪贴板，比 navigator.clipboard 更可靠。
      */
+    const copySelection = (text: string): void => {
+      if (!text) return
+      try { window.electronAPI.writeClipboardText(text) } catch {
+        navigator.clipboard.writeText(text).catch(() => {})
+      }
+    }
+
     const onKeyDownClipboardCopy = (ev: KeyboardEvent): void => {
-      if (ev.type !== 'keydown') return
       if (!(ev.ctrlKey || ev.metaKey)) return
       if (!ev.shiftKey) return
       if (ev.altKey) return
-      if (ev.isComposing) return
-      if (ev.code !== 'KeyC' && ev.key !== 'c' && ev.key !== 'C') return
+      if (ev.code !== 'KeyC') return
       const selection = term.getSelection()
-      if (!selection || selection.length === 0) return
-      // Focus textarea first — events only fire when terminal has focus
-      term.focus()
-      // Try navigator.clipboard first, fall back to execCommand
-      navigator.clipboard.writeText(selection)
-        .catch(() => {
-          try { document.execCommand('copy') } catch {}
-        })
+      if (!selection) return
+      copySelection(selection)
       ev.preventDefault()
+      ev.stopPropagation()
       ev.stopImmediatePropagation()
     }
+    // Capture phase on textarea — earliest interception
     term.textarea.addEventListener('keydown', onKeyDownClipboardCopy, true)
 
-    // Also listen on the whole window so Ctrl+Shift+C works even when terminal doesn't have focus
+    // Also listen on window so Ctrl+Shift+C works without terminal focus
     const onWindowClipboardCopy = (ev: KeyboardEvent): void => {
       if (!(ev.ctrlKey || ev.metaKey)) return
       if (!ev.shiftKey) return
-      if (ev.code !== 'KeyC' && ev.key !== 'c') return
+      if (ev.code !== 'KeyC') return
       const selection = term.getSelection()
       if (!selection) return
-      term.focus()
-      navigator.clipboard.writeText(selection)
-        .catch(() => {
-          try { document.execCommand('copy') } catch {}
-        })
+      copySelection(selection)
       ev.preventDefault()
     }
     window.addEventListener('keydown', onWindowClipboardCopy)
@@ -324,10 +322,9 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   const onContextMenu = (e: React.MouseEvent): void => {
     const selection = term.getSelection()
     if (selection) {
-      navigator.clipboard.writeText(selection)
-        .catch(() => {
-          try { document.execCommand('copy') } catch {}
-        })
+      try { window.electronAPI.writeClipboardText(selection) } catch {
+        navigator.clipboard.writeText(selection).catch(() => {})
+      }
     }
   }
 

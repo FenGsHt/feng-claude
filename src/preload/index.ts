@@ -13,6 +13,10 @@ const electronAPI = {
     return typeof v === 'string' ? v : ''
   },
 
+  writeClipboardText: (text: string): void => {
+    ipcRenderer.send(IPC.CLIPBOARD_WRITE_TEXT, text)
+  },
+
   // Session
   createSession: (workdir: string, resume?: boolean, profileId?: string): Promise<SessionCreateResult> =>
     ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId }),
