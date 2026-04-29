@@ -52,6 +52,8 @@ export interface ClaudeSettings {
   permissionPreset: ClaudePermissionPreset
   /** [2026-04-29] UI 主题，存入 electron-store 以便跨重启持久化 */
   theme?: ThemeMode
+  /** 开启后侧边栏显示「日志」tab，可查看应用日志并打开 DevTools */
+  devMode?: boolean
   /**
    * 填项目根路径（内含 `.claude/skills`）。非空时启动 Claude 附加 `--add-dir`，
    * 任意 cwd 会话也会合并该目录下的 skills（见 Claude Code 文档）。

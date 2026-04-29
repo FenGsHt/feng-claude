@@ -12,7 +12,8 @@ export const en: Translations = {
     mcp: 'MCP',
     guide: 'Guide',
     settings: 'Settings',
-    test: 'Test'
+    test: 'Test',
+    devlog: 'Logs'
   },
   common: {
     save: 'Save',
@@ -27,6 +28,7 @@ export const en: Translations = {
     close: 'Close',
     create: 'Create',
     refresh: 'Refresh',
+    clear: 'Clear',
     enable: 'Enable',
     disable: 'Disable',
     enabled: 'Enabled',

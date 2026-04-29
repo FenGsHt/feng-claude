@@ -91,7 +91,8 @@ export class ClaudeSessionWatcher {
     const projectDirName = workdirToProjectDirName(workdir)
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
 
-    console.log(`[TokenWatcher] watchSession ${sessionId} → ${projectDir}`)
+    console.log('[Token] watchSession start — sessionId:', sessionId, 'workdir:', workdir, '→ projectDir:', projectDir)
+    console.log('[Token] claudeConfigDir:', this.claudeConfigDir)
 
     // [2026-04-27] BUG FIX: If this projectDir is already being watched by another session,
     // reuse the existing watcher to avoid duplicate token counting. Multiple sessions in

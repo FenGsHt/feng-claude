@@ -232,6 +232,9 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
         cacheCreate: Number.isFinite(delta.cacheCreate) ? delta.cacheCreate : 0,
         cacheRead: Number.isFinite(delta.cacheRead) ? delta.cacheRead : 0,
       }
+      const sum = safe.input + safe.output + safe.cacheCreate + safe.cacheRead
+      console.log('[Token] ingest — delta:', safe, 'sum:', sum, 'profileId:', profileId, '_hydrated:', s._hydrated)
+
       const now = todayStr()
       const isSameDay = s.todayDate === now
       const today = isSameDay ? add(s.today, safe) : { ...safe }
@@ -258,11 +261,13 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
         const trimmedDailyPerProfile = Object.fromEntries(dateKeys.map((k) => [k, dailyHistoryPerProfile[k]]))
         const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, dailyHistoryPerProfile: trimmedDailyPerProfile, perProfile }
         if (s._hydrated) scheduleSave({ ...s, ...next })
+        console.log('[Token] ingest next — today:', next.today, 'total:', next.total, 'perProfile:', next.perProfile)
         return next
       }
 
       const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, perProfile }
       if (s._hydrated) scheduleSave({ ...s, ...next })
+      console.log('[Token] ingest next (no profile) — today:', next.today, 'total:', next.total)
       return next
     }),
 

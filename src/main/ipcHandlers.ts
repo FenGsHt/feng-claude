@@ -284,6 +284,11 @@ export function registerIpcHandlers(
     return app.getVersion()
   })
 
+  // ── Developer Mode ──────────────────────────────────────────
+  ipcMain.on(IPC.APP_OPEN_DEVTOOLS, (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.webContents.openDevTools({ mode: 'detach' })
+  })
+
   // ── Pet Agent ─────────────────────────────────────────────────
   ipcMain.handle(IPC.PET_ASK, async (_e, payload) => {
     const { message, history, petConfig, triggerType, growth } = payload as {

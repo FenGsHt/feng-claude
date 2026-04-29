@@ -12,11 +12,12 @@ import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
 import { PetPanel } from './PetPanel'
 import { TestPanel } from './TestPanel'
+import { DevLogPanel } from './DevLogPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog'
 
 // Global state for external tab control
 let setActiveTabExternal: ((tab: Tab) => void) | null = null
@@ -30,6 +31,12 @@ export function navigateToSettingsTab(): void {
 export function navigateToPetTab(): void {
   if (setActiveTabExternal) {
     setActiveTabExternal('pet')
+  }
+}
+
+export function navigateToDevLogTab(): void {
+  if (setActiveTabExternal) {
+    setActiveTabExternal('devlog')
   }
 }
 
@@ -156,11 +163,35 @@ function IconTest(): React.ReactElement {
   )
 }
 
+function IconDevLog(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <rect x="2" y="2" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M5 5.5l2 2M7 5.5l-2 2M9.5 9.5h-4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
   const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
   const { t, lang } = useI18n()
+  const [devMode, setDevMode] = useState(false)
+
+  // Fetch devMode setting
+  useEffect(() => {
+    window.electronAPI.settings.get().then((s) => {
+      setDevMode(!!s?.devMode)
+    })
+    // Listen for settings changes
+    const unsub = window.electronAPI.onSettingsChanged(() => {
+      window.electronAPI.settings.get().then((s) => {
+        setDevMode(!!s?.devMode)
+      })
+    })
+    return unsub
+  }, [])
 
   // Register external tab control callback
   useEffect(() => {
@@ -178,6 +209,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
     { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
     { id: 'test', label: t.sidebar.test, icon: <IconTest /> },
+    ...(devMode ? [{ id: 'devlog' as Tab, label: t.sidebar.devlog, icon: <IconDevLog /> }] : []),
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -255,6 +287,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <PetPanel />
           ) : activeTab === 'test' ? (
             <TestPanel />
+          ) : activeTab === 'devlog' ? (
+            <DevLogPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (

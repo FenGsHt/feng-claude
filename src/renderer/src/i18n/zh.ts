@@ -11,7 +11,8 @@ export const zh = {
     mcp: 'MCP',
     guide: '指南',
     settings: '设置',
-    test: '测试'
+    test: '测试',
+    devlog: '日志'
   },
   // Common actions
   common: {
@@ -27,6 +28,7 @@ export const zh = {
     close: '关闭',
     create: '创建',
     refresh: '刷新',
+    clear: '清空',
     enable: '启用',
     disable: '禁用',
     enabled: '已启用',

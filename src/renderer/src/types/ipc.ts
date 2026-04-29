@@ -31,6 +31,9 @@ export const IPC = {
   APP_CLOSE: 'app:close',
   APP_GET_VERSION: 'app:getVersion',
 
+  /** [2026-04-29] 打开 Chrome DevTools（开发者模式用） */
+  APP_OPEN_DEVTOOLS: 'app:openDevTools',
+
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   /** 主进程广播 settings 变更，渲染层重新拉取 */

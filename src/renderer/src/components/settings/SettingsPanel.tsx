@@ -181,7 +181,28 @@ export function SettingsPanel(): React.ReactElement {
         </div>
       </div>
 
-      {/* [2026-04-28] Profile selector */}
+      {/* Developer Mode toggle */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+            {lang === 'zh' ? '开发者模式' : 'Developer Mode'}
+          </span>
+          <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors"
+            style={{ backgroundColor: form.devMode ? '#f59e0b' : undefined }}>
+            <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+              style={{ transform: form.devMode ? 'translateX(16px)' : 'translateX(0)' }} />
+          </div>
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={!!form.devMode}
+            onChange={(e) => handleChange('devMode' as never, e.target.checked as never)}
+          />
+        </label>
+        <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+          {lang === 'zh' ? '开启后侧边栏显示日志面板，可捕获 console 日志并打开 DevTools' : 'Shows a log panel in sidebar to capture console logs and open DevTools'}
+        </p>
+      </div>
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider mb-1">
           {lang === 'zh' ? 'API 配置' : 'API Configuration'}

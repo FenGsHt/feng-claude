@@ -51,7 +51,8 @@ export function usePty(): void {
 
     // ── JSONL token usage (sole accurate source) ──────────────
     const unsubTokens = window.electronAPI.onTokenUsageUpdate((payload) => {
-      const { sessionId, input, output, cacheCreate, cacheRead } = payload
+      const { sessionId, input, output, cacheCreate, cacheRead, reset } = payload
+      console.log('[Token] received from main — sessionId:', sessionId, 'in:', input, 'out:', output, 'cc:', cacheCreate, 'cr:', cacheRead, 'reset:', reset)
 
       // [2026-04-27] output tokens 增加 = 用户已提交问题，Claude 开始回答
       // 此时将缓冲的用户输入提交为实时问题（供宠物使用）
@@ -68,14 +69,19 @@ export function usePty(): void {
       // [2026-04-28] Get profileId for this session to track per-profile usage
       const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
       const profileId = session?.profileId
+      console.log('[Token] session profileId:', profileId)
 
       // Persist into global all-time / today counters with profileId
+      const before = useGlobalTokenStore.getState()
+      console.log('[Token] global before — today:', before.today, 'total:', before.total)
       useGlobalTokenStore.getState().ingest({
         input,
         output,
         cacheCreate: cacheCreate ?? 0,
         cacheRead: cacheRead ?? 0
       }, profileId)
+      const after = useGlobalTokenStore.getState()
+      console.log('[Token] global after  — today:', after.today, 'total:', after.total)
     })
 
     // ── Tool call updates ─────────────────────────────────────

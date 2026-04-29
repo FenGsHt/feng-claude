@@ -185,6 +185,8 @@ const electronAPI = {
   appClose: (): void => ipcRenderer.send(IPC.APP_CLOSE),
   getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_GET_VERSION),
 
+  openDevTools: (): void => ipcRenderer.send(IPC.APP_OPEN_DEVTOOLS),
+
   // Notifications
   showNotification: (title: string, body: string): void =>
     ipcRenderer.send(IPC.NOTIFICATION_SHOW, { title, body }),
