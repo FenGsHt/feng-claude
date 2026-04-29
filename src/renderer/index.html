@@ -8,12 +8,14 @@
       (function() {
         try {
           var raw = localStorage.getItem('theme-store');
+          console.log('[anti-fouc] localStorage theme-store:', raw);
           if (raw) {
             var state = JSON.parse(raw).state;
+            console.log('[anti-fouc] parsed state:', state);
             if (state && state.theme === 'light') {
               document.documentElement.setAttribute('data-theme', 'light');
             } else if (state && state.theme === 'dark') {
-              document.documentElement.removeAttribute('data-theme');
+              document.documentElement.setAttribute('data-theme', 'dark');
             } else {
               var mq = window.matchMedia('(prefers-color-scheme: dark)');
               document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
@@ -22,7 +24,7 @@
             var mq = window.matchMedia('(prefers-color-scheme: dark)');
             document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
           }
-        } catch(e) {}
+        } catch(e) { console.error('[anti-fouc] error:', e); }
       })();
     </script>
   </head>

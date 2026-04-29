@@ -363,7 +363,7 @@ export function PetPanel(): React.ReactElement {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex shrink-0 border-b border-claude-border/30">
+      <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--claude-border)', opacity: 0.3 }}>
         {(['chat', 'growth', 'logs'] as const).map((tab) => (
           <button
             key={tab}
