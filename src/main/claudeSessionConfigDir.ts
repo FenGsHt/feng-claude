@@ -4,74 +4,54 @@ import {
   writeFileSync,
   existsSync,
   readdirSync,
-  renameSync,
   cpSync,
-  rmSync
+  renameSync
 } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import { execSync } from 'child_process'
 import { app } from 'electron'
-import { getConfigDir } from './configDir'
 
 /**
- * 与 PTY 中 `CLAUDE_CONFIG_DIR` 一致：隔离的 Claude Code 配置与会话数据根目录。
- * [2026-04-30] 原先固定 userData/claude-session；打包版 electron-store 在 exe 旁 data/，Claude 目录若仍在 Roaming 会导致写入的 settings.json 与 PTY 使用的路径不一致，skipDangerousModePermissionPrompt 不生效。
+ * Claude Code 配置目录：用户全局 ~/.claude。
+ * [2026-04-29] 原先使用隔离目录导致 Claude 读不到全局技能/MCP/OAuth；
+ * 改为指向 ~/.claude，应用设置仍通过 electron-store 独立管理。
  */
 export function claudeSessionConfigDir(): string {
-  return join(getConfigDir(), 'claude-session')
+  return join(homedir(), '.claude')
 }
 
-/** 旧版路径（仅用于一次性迁移） */
-function legacyClaudeSessionDir(): string {
-  return join(app.getPath('userData'), 'claude-session')
-}
-
-/**
- * 将旧版 `AppData/.../claude-session` 迁到与应用 settings 相同的 `getConfigDir()/claude-session`（打包版即 exe 旁 data/claude-session）。
- */
+/** 一次性迁移：旧隔离目录（data/claude-session 或 userData/claude-session）→ ~/.claude */
 export function migrateLegacyClaudeSessionDirOnce(): void {
-  const from = legacyClaudeSessionDir()
-  const to = claudeSessionConfigDir()
-  if (from === to) return
-  if (!existsSync(from)) return
-  if (existsSync(to)) {
-    // 新旧目录并存时：仅尝试把旧 settings.json 里的 skip 合并进新路径（整目录不搬）
+  const to = join(homedir(), '.claude')
+
+  // 源 1：旧版 userData/claude-session（AppData/Roaming）
+  const fromRoaming = join(app.getPath('userData'), 'claude-session')
+  // 源 2：打包版隔离目录（LocalAppData/feng-claude/claude-session）
+  const fromLocal = join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'feng-claude', 'claude-session')
+
+  for (const from of [fromLocal, fromRoaming]) {
+    if (from === to || !existsSync(from)) continue
     try {
-      const spOld = join(from, 'settings.json')
-      const spNew = join(to, 'settings.json')
-      if (existsSync(spOld) && existsSync(spNew)) {
-        const o = JSON.parse(readFileSync(spOld, 'utf-8')) as Record<string, unknown>
-        if (o.skipDangerousModePermissionPrompt === true) {
-          const n = JSON.parse(readFileSync(spNew, 'utf-8')) as Record<string, unknown>
-          if (n.skipDangerousModePermissionPrompt !== true) {
-            n.skipDangerousModePermissionPrompt = true
-            writeFileSync(spNew, `${JSON.stringify(n, null, 2)}\n`)
-            console.log('[claude-gui] 已从旧路径合并 skipDangerousModePermissionPrompt →', spNew)
-          }
+      // 逐个子目录/文件合并复制（不覆盖已存在的）
+      for (const entry of readdirSync(from, { withFileTypes: true })) {
+        const srcPath = join(from, entry.name)
+        const dstPath = join(to, entry.name)
+        if (existsSync(dstPath)) continue  // 目标已存在，跳过
+        if (entry.isDirectory()) {
+          cpSync(srcPath, dstPath, { recursive: true })
+        } else {
+          mkdirSync(to, { recursive: true })
+          cpSync(srcPath, dstPath)
         }
       }
-    } catch {
-      /* ignore */
-    }
-    console.log('[claude-gui] claude-session 新路径已存在，跳过整目录迁移:', to)
-    return
-  }
-  try {
-    mkdirSync(getConfigDir(), { recursive: true })
-    renameSync(from, to)
-    console.log('[claude-gui] 已迁移 claude-session:', from, '→', to)
-  } catch (e) {
-    console.warn('[claude-gui] rename 迁移失败，尝试复制:', e)
-    try {
-      mkdirSync(getConfigDir(), { recursive: true })
-      cpSync(from, to, { recursive: true })
-      rmSync(from, { recursive: true, force: true })
-      console.log('[claude-gui] 已复制迁移 claude-session:', from, '→', to)
-    } catch (e2) {
-      console.warn('[claude-gui] claude-session 迁移失败（可手动合并目录）:', e2)
+      console.log('[claude-gui] 已迁移旧隔离目录:', from, '→', to)
+    } catch (e) {
+      console.warn('[claude-gui] 迁移旧隔离目录失败:', from, e)
     }
   }
 }
+
 
 /** marketplace.json 的 name；与 `enabledPlugins` 中 `@` 右侧一致 */
 const HUD_MARKETPLACE_KEY = 'claude-hud'

@@ -77,3 +77,11 @@ Add listener in `XTerminal.tsx` useEffect, intercept in capture phase:
 term.textarea.addEventListener('keydown', handler, true)
 ```
 Remember to cleanup in return function.
+
+## Version Release Process
+
+When `package.json` version changes:
+
+1. Update `CHANGELOG.md` — add new section with `[version] - date` and list all changes since last version
+2. Update `RELEASES.md` — add release notes block for the new version (this file is the source for GitHub releases)
+3. Copy the new version block from `RELEASES.md` into the GitHub Release body

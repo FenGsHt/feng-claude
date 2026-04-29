@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2] - 2026-04-29
+
+### 新功能 | New Features
+- **开发者模式**：设置面板新增开关，开启后侧边栏显示日志面板，支持一键打开 DevTools
+- **终端主题跟随**：终端背景色和 xterm 主题跟随应用暗色/亮色主题
+- **技能系统增强**：额外技能目录支持根目录 skills/commands 文件夹自动 junction；修复扫描逻辑；文件夹技能可编辑保存
+- **MCP 配置改进**：写入 .claude.json（CLI 正确读取位置）；自动从 settings.json 迁移旧配置；支持 streamable-http 传输
+
+### 改进 | Improvements
+- 插件「已安装」标签正确显示
+- 宠物面板子标签栏不透明度提升
+- 统计面板新增按 profile 分布饼图
+- 14 天图表横向可滚动，日期标签完整显示
+- 工作区删除分支错误处理优化
+
+### 修复 | Bug Fixes
+- 修复保存设置时覆盖主题的问题
+- 修复主题持久化（重启后不再重置）
+- 修复 token 用量统计 total/today 数据损坏
+- 修复 history.lastUserPrompt ANSI 转义残留
+- 修复自动更新器 CDN 传播 404 噪声
+- 修复 anti-FOUC 脚本暗色模式
+
+---
+
+## [0.6.1] - 2026-04-27
+
+### 新功能 | New Features
+- **宠物对话功能**：可配置触发概率和 API，自动触发技术点评
+- **多 API 配置**：支持多个 API profile，一键切换
+- **自动重启**：更新后自动重启
+
+### 改进 | Improvements
+- userData 目录重定向到安装目录（便携版）
+
+---
+
 ## [0.5.2] - 2026-04-28
 
 ### 新功能 | New Features

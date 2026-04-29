@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
+import { homedir } from 'os'
 
 // 抑制 EPIPE 错误（dev 模式下父进程断开管道时 console.log 会触发）
 process.stdout?.on('error', (err: NodeJS.ErrnoException) => { if (err.code === 'EPIPE') return })
@@ -16,8 +17,7 @@ import { registerIpcHandlers } from './ipcHandlers'
 import {
   ensureClaudeHudPluginDefaults,
   mergeSkipDangerousPromptFromApp,
-  migrateLegacyClaudeSessionDirOnce,
-  claudeSessionConfigDir
+  migrateLegacyClaudeSessionDirOnce
 } from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 import { existsSync, copyFileSync, mkdirSync } from 'fs'
@@ -92,7 +92,7 @@ function createWindow(): BrowserWindow {
 
   const settingsStore = new SettingsStore()
   const workspaceStore = new WorkspaceStore()
-  const claudeConfigDir = claudeSessionConfigDir()
+  const claudeConfigDir = join(homedir(), '.claude')
   const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir)
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()

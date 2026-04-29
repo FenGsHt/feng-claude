@@ -2,12 +2,12 @@ import * as pty from 'node-pty'
 import { createHash } from 'crypto'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync } from 'fs'
 import { dirname, join } from 'path'
+import { homedir } from 'os'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
-import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 import { getConfigDir } from './configDir'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
@@ -65,8 +65,9 @@ function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> 
   return {
     ...e,
     ...claudeEnv, // our settings (API key, base URL, model, etc.)
-    /* 隔离配置目录，避免与全局 ~/.claude OAuth 冲突；与 claudeSessionConfigDir() 一致 */
-    CLAUDE_CONFIG_DIR: claudeSessionConfigDir(),
+    /* [2026-04-29] 使用用户全局 ~/.claude 目录，让 Claude Code 能读取全局技能、MCP、OAuth 等配置。
+     * 应用自身设置仍通过 electron-store 保存在独立目录，互不干扰。 */
+    CLAUDE_CONFIG_DIR: join(homedir(), '.claude'),
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     FORCE_COLOR: '3',
