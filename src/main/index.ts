@@ -24,6 +24,7 @@ import { existsSync, copyFileSync, mkdirSync } from 'fs'
 import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
 import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView } from './browserViewManager'
+import { ensureBrowserToolsMcpRegistered } from './mcpManager'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
 function migrateLegacyTokenDataOnce(): void {
@@ -107,6 +108,9 @@ function createWindow(): BrowserWindow {
 
   // [2026-04-29] MCP 迁移：从旧的 settings.json 迁移 mcpServers 到 .claude.json
   listMcpServersForMigration()
+
+  // [2026-04-30] 自动注册浏览器工具 MCP（默认开启，用户可手动删除）
+  ensureBrowserToolsMcpRegistered()
 
   // Setup auto updater
   setupAutoUpdater(win)
