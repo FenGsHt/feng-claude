@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react'
 import { Terminal } from 'xterm'
+import type { ITheme } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import 'xterm/css/xterm.css'
@@ -7,6 +8,7 @@ import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
+import { onTerminalThemeChange } from '../../hooks/useTheme'
 
 interface Props {
   sessionId: string
@@ -187,6 +189,11 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
 
     const { term } = getOrCreateTerminal(sessionId)
 
+    // [2026-05-01] 注册终端主题回调，主题切换时自动更新
+    const unsubTheme = onTerminalThemeChange((t: ITheme) => {
+      term.options.theme = t
+    })
+
     if (!term.element) {
       term.open(container)
     } else {
@@ -287,6 +294,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     ro.observe(container)
 
     return () => {
+      unsubTheme()
       const raf = pendingFitRafBySession.get(sessionId)
       if (raf !== undefined) {
         cancelAnimationFrame(raf)
@@ -314,7 +322,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden"
-      style={{ background: '#141414' }}
+      style={{ background: 'var(--claude-bg)' }}
     />
   )
 }

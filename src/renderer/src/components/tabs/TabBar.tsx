@@ -60,7 +60,7 @@ function ProfileDropdown({
 
   return (
     <div
-      className="profile-dropdown-menu bg-[#1a1a1a] border border-[#2a2a2a] rounded-md shadow-xl min-w-[120px] py-1"
+      className="profile-dropdown-menu bg-claude-surface2 border border-claude-border rounded-md shadow-xl min-w-[120px] py-1"
       style={{
         position: 'fixed',
         top: anchorRect.top + 28,
@@ -76,7 +76,7 @@ function ProfileDropdown({
           className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
             currentProfileId === p.id
               ? 'text-amber-400 bg-amber-500/10'
-              : 'text-[#e5e5e5] hover:bg-[#2a2a2a]'
+              : 'text-claude-text hover:bg-claude-border'
           } ${idx === 0 ? 'rounded-t-md' : ''} ${idx === profiles.length - 1 ? 'rounded-b-md' : ''}`}
         >
           <div className="flex flex-col leading-tight">

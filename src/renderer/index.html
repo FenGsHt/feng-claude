@@ -4,6 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claude GUI</title>
+    <script>
+      (function() {
+        try {
+          var raw = localStorage.getItem('theme-store');
+          if (raw) {
+            var state = JSON.parse(raw).state;
+            if (state && state.theme === 'light') {
+              document.documentElement.setAttribute('data-theme', 'light');
+            } else if (state && state.theme === 'dark') {
+              document.documentElement.removeAttribute('data-theme');
+            } else {
+              var mq = window.matchMedia('(prefers-color-scheme: dark)');
+              document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+            }
+          } else {
+            var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

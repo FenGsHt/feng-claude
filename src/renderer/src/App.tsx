@@ -5,11 +5,13 @@ import { OnboardingOverlay, isOnboardingComplete } from './components/onboarding
 import { navigateToSettingsTab } from './components/sidebar/Sidebar'
 import { usePty } from './hooks/usePty'
 import { useWorkspacePersistence } from './hooks/useWorkspacePersistence'
+import { useTheme } from './hooks/useTheme'
 import { useSessionStore } from './store/sessionStore'
 import { parsePersistedWorkspace } from './lib/workspaceSerialize'
 import { loadPersistedWorkspace } from './lib/workspaceIpc'
 
 export default function App(): React.ReactElement {
+  useTheme()
   usePty()
 
   const [bootstrapped, setBootstrapped] = useState(false)
@@ -77,7 +79,7 @@ export default function App(): React.ReactElement {
   }
 
   if (!bootstrapped) {
-    return <div className="h-full w-full bg-[#1a1a1a]" />
+    return <div className="h-full w-full bg-claude-surface2" />
   }
 
   return (

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import type { ClaudeSettings, ApiProfile } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
+import { useThemeStore, type ThemeMode } from '../../store/themeStore'
 import type { UpdateStatusPayload } from '../../types/ipc'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -10,6 +11,8 @@ export function SettingsPanel(): React.ReactElement {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const { t, lang } = useI18n()
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
 
   // Update status
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
@@ -146,6 +149,32 @@ export function SettingsPanel(): React.ReactElement {
               }`}
             >
               {lang === 'zh' ? t.settings.languageZh : t.settings.languageEn}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Theme selector */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          {lang === 'zh' ? '主题模式' : 'Theme'}
+        </span>
+        <div className="flex rounded overflow-hidden border border-claude-border text-[10px] mt-1">
+          {([
+            ['dark', lang === 'zh' ? '暗色' : 'Dark'],
+            ['light', lang === 'zh' ? '亮色' : 'Light'],
+            ['auto', lang === 'zh' ? '自动' : 'Auto'],
+          ] as [ThemeMode, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTheme(key)}
+              className={`flex-1 px-2 py-0.5 transition-colors ${
+                theme === key
+                  ? 'bg-amber-500 text-black font-medium'
+                  : 'text-claude-muted hover:text-claude-text'
+              }`}
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -558,20 +587,20 @@ export function SettingsPanel(): React.ReactElement {
       <style>{`
         .field-input {
           width: 100%;
-          background: #0d0d0d;
-          border: 1px solid #2a2a2a;
+          background: var(--field-bg);
+          border: 1px solid var(--field-border);
           border-radius: 4px;
           padding: 4px 6px;
           font-size: 11px;
-          color: #e5e5e5;
+          color: var(--claude-text);
           outline: none;
           font-family: 'Cascadia Code', monospace;
         }
         .field-input:focus {
-          border-color: #f59e0b;
+          border-color: var(--claude-accent);
         }
         .field-input::placeholder {
-          color: #555;
+          color: var(--field-placeholder);
         }
       `}</style>
     </div>
@@ -606,7 +635,7 @@ function ProfileEditor({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-[#1a1a1a] border border-claude-border rounded-lg w-[360px] max-h-[80vh] overflow-y-auto">
+      <div className="bg-claude-surface2 border border-claude-border rounded-lg w-[360px] max-h-[80vh] overflow-y-auto">
         {/* Header */}
         <div className="px-3 py-2 border-b border-claude-border flex items-center justify-between">
           <span className="text-xs font-semibold text-claude-text">

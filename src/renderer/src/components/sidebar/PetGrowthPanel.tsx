@@ -30,7 +30,7 @@ export function PetGrowthPanel(): React.ReactElement {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden text-[10px] text-slate-300 relative">
+    <div className="flex flex-col h-full overflow-hidden text-[10px] text-claude-muted relative">
       {/* Toast */}
       {toast && (
         <div className="absolute top-2 left-3 right-3 z-10 bg-amber-600/90 text-white text-[10px] px-2 py-1 rounded-lg text-center animate-pulse">
@@ -39,57 +39,57 @@ export function PetGrowthPanel(): React.ReactElement {
       )}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {/* 等级信息 */}
-        <div className="bg-slate-800/60 rounded-lg p-2.5 border border-slate-700/50">
+        <div className="bg-claude-surface2 rounded-lg p-2.5 border border-claude-border">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-amber-400 font-bold text-[11px]">
+            <span className="text-claude-accent font-bold text-[11px]">
               Lv.{growth.level}
             </span>
-            <span className="text-slate-400 text-[9.5px]">
+            <span className="text-claude-muted text-[9.5px]">
               XP {growth.xp} / {growth.xpToNext}
             </span>
           </div>
           {/* XP 进度条 */}
-          <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-claude-border rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+              className="h-full rounded-full bg-claude-accent transition-all duration-300"
               style={{ width: `${(growth.xp / growth.xpToNext) * 100}%` }}
             />
           </div>
           {growth.skillPoints > 0 && (
-            <div className="mt-1.5 text-[9.5px] text-amber-300">
+            <div className="mt-1.5 text-[9.5px] text-claude-accent">
               ⚡ 可用技能点 ×{growth.skillPoints}
             </div>
           )}
         </div>
 
         {/* 好感度 */}
-        <div className="bg-slate-800/60 rounded-lg p-2.5 border border-slate-700/50">
+        <div className="bg-claude-surface2 rounded-lg p-2.5 border border-claude-border">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">好感度</span>
+            <span className="text-claude-muted">好感度</span>
             <button
               onClick={() => setShowAffection(v => !v)}
-              className="text-[9px] text-slate-500 hover:text-slate-300"
+              className="text-[9px] text-claude-muted/60 hover:text-claude-text"
             >
               {showAffection ? '隐藏' : '显示'}
             </button>
           </div>
           {showAffection && (
             <div className="mt-1.5 space-y-1">
-              <div className="text-amber-400 font-semibold">{TIER_LABELS[tier]}</div>
-              <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div className="text-claude-accent font-semibold">{TIER_LABELS[tier]}</div>
+              <div className="w-full h-1.5 bg-claude-border rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full bg-pink-400 transition-all duration-300"
                   style={{ width: `${growth.affection}%` }}
                 />
               </div>
-              <div className="text-[9px] text-slate-500">{growth.affection} / 100</div>
+              <div className="text-[9px] text-claude-muted/60">{growth.affection} / 100</div>
             </div>
           )}
         </div>
 
         {/* 技能树 */}
-        <div className="bg-slate-800/60 rounded-lg p-2.5 border border-slate-700/50">
-          <div className="text-slate-400 font-semibold mb-2">技能树</div>
+        <div className="bg-claude-surface2 rounded-lg p-2.5 border border-claude-border">
+          <div className="text-claude-muted font-semibold mb-2">技能树</div>
           <div className="space-y-1.5">
             {SKILL_DEFINITIONS.map(skill => {
               const current = growth.skills.find(s => s.id === skill.id)
@@ -102,18 +102,18 @@ export function PetGrowthPanel(): React.ReactElement {
                   key={skill.id}
                   className={`flex items-center justify-between px-2 py-1.5 rounded border transition-colors ${
                     !isUnlocked
-                      ? 'border-slate-700/30 opacity-40'
-                      : 'border-slate-700/50'
+                      ? 'border-claude-border/30 opacity-40'
+                      : 'border-claude-border/50'
                   }`}
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="text-[12px]">{skill.icon}</span>
                     <div>
-                      <div className={`font-semibold ${!isUnlocked ? 'text-slate-500' : 'text-slate-200'}`}>
+                      <div className={`font-semibold ${!isUnlocked ? 'text-claude-muted/50' : 'text-claude-text'}`}>
                         {skill.name}
                       </div>
                       {!isUnlocked && (
-                        <div className="text-[9px] text-slate-500">
+                        <div className="text-[9px] text-claude-muted/50">
                           需要 Lv.{skill.unlockLevel}
                         </div>
                       )}
@@ -126,7 +126,7 @@ export function PetGrowthPanel(): React.ReactElement {
                         <span
                           key={i}
                           className={`inline-block w-1.5 h-1.5 rounded-full ${
-                            i <= skillLevel ? 'bg-amber-400' : 'bg-slate-600'
+                            i <= skillLevel ? 'bg-claude-accent' : 'bg-claude-border'
                           }`}
                         />
                       ))}
@@ -135,7 +135,7 @@ export function PetGrowthPanel(): React.ReactElement {
                     {canUpgrade && (
                       <button
                         onClick={() => handleUpgradeSkill(skill.id)}
-                        className="text-[9px] px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 border border-amber-600/40 text-amber-300 transition-colors"
+                        className="text-[9px] px-1.5 py-0.5 rounded bg-claude-accent/30 hover:bg-claude-accent/50 border border-claude-accent/40 text-claude-accent transition-colors"
                       >
                         ↑
                       </button>

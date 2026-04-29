@@ -9,13 +9,13 @@ module.exports = {
       },
       colors: {
         claude: {
-          bg: '#141414',       // main background
-          surface: '#1c1c1c',  // sidebar / titlebar / tabbar
-          surface2: '#202020', // elevated panels
-          border: '#2a2a2a',   // dividers
-          text: '#e8e8e8',     // primary text
-          muted: '#717171',    // secondary / placeholder
-          accent: '#f59e0b'    // amber-500
+          bg: 'var(--claude-bg)',
+          surface: 'var(--claude-surface)',
+          surface2: 'var(--claude-surface2)',
+          border: 'var(--claude-border)',
+          text: 'var(--claude-text)',
+          muted: 'var(--claude-muted)',
+          accent: 'var(--claude-accent)'
         }
       },
       boxShadow: {

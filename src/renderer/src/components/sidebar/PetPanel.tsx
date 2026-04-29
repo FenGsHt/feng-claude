@@ -103,11 +103,11 @@ function AsciiPet({ petType, mood }: { petType: PetType; mood: string }): React.
       style={{
         color:
           mood === 'thinking'
-            ? '#94a3b8'
+            ? 'var(--claude-muted)'
             : mood === 'excited'
-              ? '#fbbf24'
-              : '#e2e8f0',
-        textShadow: mood === 'excited' ? '0 0 6px #fbbf24aa' : undefined,
+              ? 'var(--claude-accent)'
+              : 'var(--claude-text)',
+        textShadow: mood === 'excited' ? '0 0 6px color-mix(in srgb, var(--claude-accent) 67%, transparent)' : undefined,
         minHeight: `${frames[0]!.length * 1.35 * 11}px`,
       }}
     >
@@ -156,17 +156,17 @@ function SpeechBubble({
         style={{
           borderLeft: '6px solid transparent',
           borderRight: '6px solid transparent',
-          borderBottom: '7px solid #334155',
+          borderBottom: '7px solid var(--claude-surface2)',
         }}
       />
-      <div className="rounded-lg bg-slate-700/80 border border-slate-600/60 px-2.5 py-2 text-[10.5px] text-slate-200 leading-snug min-h-[40px]">
+      <div className="rounded-lg bg-claude-surface2/80 border border-claude-border/60 px-2.5 py-2 text-[10.5px] text-claude-text leading-snug min-h-[40px]">
         {isTyping ? (
-          <span className="flex items-center gap-1 text-slate-400">
+          <span className="flex items-center gap-1 text-claude-muted">
             <span className="inline-flex gap-0.5">
               {[0, 1, 2].map((i) => (
                 <span
                   key={i}
-                  className="inline-block w-1 h-1 rounded-full bg-slate-400 animate-bounce"
+                  className="inline-block w-1 h-1 rounded-full bg-claude-muted animate-bounce"
                   style={{ animationDelay: `${i * 0.15}s` }}
                 />
               ))}
@@ -177,7 +177,7 @@ function SpeechBubble({
           <>
             {displayed}
             {displayed.length < text.length && (
-              <span className="inline-block w-[2px] h-[10px] bg-amber-400 animate-pulse ml-0.5 align-middle" />
+              <span className="inline-block w-[2px] h-[10px] bg-claude-accent animate-pulse ml-0.5 align-middle" />
             )}
           </>
         )}
@@ -224,7 +224,7 @@ function PetLogSubPanel(): React.ReactElement {
       <div className="flex items-center justify-between px-2 py-1 border-b border-claude-border shrink-0">
         <span className="text-[11px] text-claude-muted">{logs.length} 条记录</span>
         <div className="flex gap-1">
-          <button onClick={loadLogs} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 hover:bg-slate-700">刷新</button>
+          <button onClick={loadLogs} className="text-[10px] px-1.5 py-0.5 rounded bg-claude-border/50 text-claude-muted hover:bg-claude-border">刷新</button>
           <button onClick={handleClear} className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">清空</button>
         </div>
       </div>
@@ -236,14 +236,14 @@ function PetLogSubPanel(): React.ReactElement {
             <div key={log.id} className="px-2 py-2 hover:bg-claude-border/30 border-b border-claude-border/30 last:border-b-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] text-claude-muted font-mono">{fmt(log.timestamp)}</span>
-                <span className="text-[10px] px-1 py-0.5 rounded bg-slate-700/50 text-slate-300">{log.petName}</span>
-                <span className="text-[10px] px-1 py-0.5 rounded bg-amber-600/20 text-amber-400">{triggerLabel[log.triggerType] ?? log.triggerType}</span>
+                <span className="text-[10px] px-1 py-0.5 rounded bg-claude-border/50 text-claude-text">{log.petName}</span>
+                <span className="text-[10px] px-1 py-0.5 rounded bg-claude-accent/20 text-claude-accent">{triggerLabel[log.triggerType] ?? log.triggerType}</span>
               </div>
               <div className="text-[11px] text-claude-text mb-1 leading-snug">
                 <span className="text-claude-muted">问: </span>
                 {log.userMessage.length > 100 ? log.userMessage.slice(0, 100) + '...' : log.userMessage}
               </div>
-              <div className="text-[11px] text-slate-300 leading-snug">
+              <div className="text-[11px] text-claude-text leading-snug">
                 <span className="text-claude-muted">答: </span>
                 {log.assistantMessage.length > 150 ? log.assistantMessage.slice(0, 150) + '...' : log.assistantMessage}
               </div>
@@ -387,7 +387,7 @@ export function PetPanel(): React.ReactElement {
         {/* Pet display */}
         <div className="flex flex-col items-center pt-2 pb-1">
           <AsciiPet petType={config.type} mood={mood} />
-          <div className="mt-1 text-[10px] font-semibold text-amber-400 tracking-wide">
+          <div className="mt-1 text-[10px] font-semibold text-claude-accent tracking-wide">
             {config.name}
           </div>
         </div>
@@ -400,14 +400,14 @@ export function PetPanel(): React.ReactElement {
           <button
             onClick={handleAutoAsk}
             disabled={mood === 'thinking'}
-            className="flex-1 text-[10px] py-1 rounded bg-amber-600/20 hover:bg-amber-600/40 border border-amber-600/40 text-amber-300 disabled:opacity-40 transition-colors"
+            className="flex-1 text-[10px] py-1 rounded bg-claude-accent/20 hover:bg-claude-accent/40 border border-claude-accent/40 text-claude-accent disabled:opacity-40 transition-colors"
             title="读取当前上下文，给出建议"
           >
             📡 读心术
           </button>
           <button
             onClick={clearHistory}
-            className="text-[10px] px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-700 border border-slate-600/40 text-slate-400 transition-colors"
+            className="text-[10px] px-2 py-1 rounded bg-claude-surface2/50 hover:bg-claude-surface2 border border-claude-border/40 text-claude-muted transition-colors"
             title="清除对话历史"
           >
             🗑
@@ -423,12 +423,12 @@ export function PetPanel(): React.ReactElement {
             onKeyDown={handleKeyDown}
             placeholder={`问问 ${config.name}...`}
             disabled={mood === 'thinking'}
-            className="flex-1 text-[10px] px-2 py-1.5 rounded border border-slate-600/60 bg-slate-800/60 text-slate-200 placeholder-slate-500 outline-none focus:border-amber-500/60 disabled:opacity-40 font-mono"
+            className="flex-1 text-[10px] px-2 py-1.5 rounded border border-claude-border/60 bg-claude-surface2/60 text-claude-text placeholder-claude-muted/50 outline-none focus:border-claude-accent/60 disabled:opacity-40 font-mono"
           />
           <button
             onClick={handleSend}
             disabled={mood === 'thinking' || !input.trim()}
-            className="text-[10px] px-2.5 py-1.5 rounded bg-amber-600/30 hover:bg-amber-600/50 border border-amber-600/50 text-amber-300 disabled:opacity-40 transition-colors"
+            className="text-[10px] px-2.5 py-1.5 rounded bg-claude-accent/30 hover:bg-claude-accent/50 border border-claude-accent/50 text-claude-accent disabled:opacity-40 transition-colors"
           >
             ➤
           </button>
@@ -442,11 +442,11 @@ export function PetPanel(): React.ReactElement {
                 key={i}
                 className={`text-[9.5px] px-2 py-1 rounded leading-snug ${
                   h.role === 'user'
-                    ? 'bg-slate-700/40 text-slate-400 text-right'
-                    : 'bg-slate-800/60 text-slate-300'
+                    ? 'bg-claude-surface2/40 text-claude-muted text-right'
+                    : 'bg-claude-surface2/60 text-claude-text'
                 }`}
               >
-                <span className="text-[9px] text-slate-500 mr-1">
+                <span className="text-[9px] text-claude-muted/50 mr-1">
                   {h.role === 'user' ? '你' : config.name}:
                 </span>
                 {h.content.length > 80 ? h.content.slice(0, 80) + '…' : h.content}
@@ -463,7 +463,7 @@ export function PetPanel(): React.ReactElement {
             setDraftPersonality(config.personality)
             setDraftProbability(String(config.triggerProbability))
           }}
-          className="mt-2 text-[9.5px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition-colors"
+          className="mt-2 text-[9.5px] text-claude-muted/50 hover:text-claude-text flex items-center gap-1 transition-colors"
         >
           <span>{showSettings ? '▲' : '▼'}</span>
           <span>自定义宠物</span>
@@ -471,20 +471,20 @@ export function PetPanel(): React.ReactElement {
 
         {/* Settings panel */}
         {showSettings && (
-          <div className="space-y-2 bg-slate-800/50 rounded-lg p-2.5 border border-slate-700/50">
+          <div className="space-y-2 bg-claude-surface2/50 rounded-lg p-2.5 border border-claude-border/50">
             {/* Name */}
             <div>
-              <label className="text-[9px] text-slate-400 block mb-0.5">名字</label>
+              <label className="text-[9px] text-claude-muted block mb-0.5">名字</label>
               <input
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
-                className="w-full text-[10px] px-2 py-1 rounded border border-slate-600/60 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50"
+                className="w-full text-[10px] px-2 py-1 rounded border border-claude-border/60 bg-claude-bg/60 text-claude-text outline-none focus:border-claude-accent/50"
               />
             </div>
 
             {/* Pet type */}
             <div>
-              <label className="text-[9px] text-slate-400 block mb-1">形态</label>
+              <label className="text-[9px] text-claude-muted block mb-1">形态</label>
               <div className="grid grid-cols-2 gap-1">
                 {(Object.keys(PET_TYPE_LABELS) as PetType[]).map((t) => (
                   <button
@@ -492,8 +492,8 @@ export function PetPanel(): React.ReactElement {
                     onClick={() => setConfig({ type: t })}
                     className={`text-[9.5px] py-1 rounded border transition-colors ${
                       config.type === t
-                        ? 'bg-amber-600/30 border-amber-500/60 text-amber-300'
-                        : 'border-slate-600/50 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                        ? 'bg-claude-accent/30 border-claude-accent/60 text-claude-accent'
+                        : 'border-claude-border/50 text-claude-muted hover:text-claude-text hover:border-claude-border'
                     }`}
                   >
                     {PET_TYPE_LABELS[t]}
@@ -504,37 +504,37 @@ export function PetPanel(): React.ReactElement {
 
             {/* Trigger probability */}
             <div>
-              <label className="text-[9px] text-slate-400 block mb-0.5">触发概率 (%)</label>
+              <label className="text-[9px] text-claude-muted block mb-0.5">触发概率 (%)</label>
               <input
                 value={draftProbability}
                 onChange={(e) => setDraftProbability(e.target.value)}
-                className="w-full text-[10px] px-2 py-1 rounded border border-slate-600/60 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50 font-mono"
+                className="w-full text-[10px] px-2 py-1 rounded border border-claude-border/60 bg-claude-bg/60 text-claude-text outline-none focus:border-claude-accent/50 font-mono"
                 placeholder="40"
               />
-              <div className="text-[8px] text-slate-500 mt-0.5">0-100，100 = 百分百触发</div>
+              <div className="text-[8px] text-claude-muted/50 mt-0.5">0-100，100 = 百分百触发</div>
             </div>
 
             {/* Personality */}
             <div>
-              <label className="text-[9px] text-slate-400 block mb-0.5">人格 / System Prompt</label>
+              <label className="text-[9px] text-claude-muted block mb-0.5">人格 / System Prompt</label>
               <textarea
                 value={draftPersonality}
                 onChange={(e) => setDraftPersonality(e.target.value)}
                 rows={4}
-                className="w-full text-[9.5px] px-2 py-1 rounded border border-slate-600/60 bg-slate-900/60 text-slate-200 outline-none focus:border-amber-500/50 resize-none font-mono leading-relaxed"
+                className="w-full text-[9.5px] px-2 py-1 rounded border border-claude-border/60 bg-claude-bg/60 text-claude-text outline-none focus:border-claude-accent/50 resize-none font-mono leading-relaxed"
               />
             </div>
 
             <div className="flex gap-1.5 pt-1">
               <button
                 onClick={saveSettings}
-                className="flex-1 text-[9.5px] py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 border border-amber-600/50 text-amber-300 transition-colors"
+                className="flex-1 text-[9.5px] py-1 rounded bg-claude-accent/30 hover:bg-claude-accent/50 border border-claude-accent/50 text-claude-accent transition-colors"
               >
                 保存
               </button>
               <button
                 onClick={() => setShowSettings(false)}
-                className="text-[9.5px] px-3 py-1 rounded border border-slate-600/50 text-slate-400 hover:text-slate-200 transition-colors"
+                className="text-[9.5px] px-3 py-1 rounded border border-claude-border/50 text-claude-muted hover:text-claude-text transition-colors"
               >
                 取消
               </button>
