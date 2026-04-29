@@ -79,6 +79,8 @@ export interface ClaudeSettings {
     /** 请求头格式：'anthropic' | 'openai' | 'anthropic-bearer' */
     format?: 'anthropic' | 'openai' | 'anthropic-bearer'
   }
+  /** [2026-05-01] 用户手动禁用的插件 ID 列表（存储在 Feng Claude 本地，不受 Claude Code 覆盖） */
+  disabledPluginIds?: string[]
 }
 
 /** 默认 API 配置 */

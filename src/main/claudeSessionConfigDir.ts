@@ -11,6 +11,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
 import { app } from 'electron'
+import { getConfigDir } from './configDir'
 
 /**
  * Claude Code 配置目录：用户全局 ~/.claude。
@@ -56,6 +57,45 @@ export function migrateLegacyClaudeSessionDirOnce(): void {
 /** marketplace.json 的 name；与 `enabledPlugins` 中 `@` 右侧一致 */
 const HUD_MARKETPLACE_KEY = 'claude-hud'
 const HUD_PLUGIN_ENABLE_KEY = 'claude-hud@claude-hud'
+
+/** [2026-05-01] 用户手动禁用的插件 ID 列表，存在 Feng Claude 本地目录，不受 Claude Code 覆盖 */
+const DISABLED_PLUGINS_FILE = join(getConfigDir(), 'disabled-plugins.json')
+
+function readDisabledPlugins(): string[] {
+  try {
+    if (!existsSync(DISABLED_PLUGINS_FILE)) return []
+    const raw = JSON.parse(readFileSync(DISABLED_PLUGINS_FILE, 'utf-8')) as string[]
+    return Array.isArray(raw) ? raw : []
+  } catch {
+    return []
+  }
+}
+
+function writeDisabledPlugins(ids: string[]): void {
+  try {
+    mkdirSync(getConfigDir(), { recursive: true })
+    writeFileSync(DISABLED_PLUGINS_FILE, `${JSON.stringify(ids, null, 2)}\n`, 'utf-8')
+  } catch { /* ignore */ }
+}
+
+/** 将插件 ID 加入用户禁用列表 */
+export function addUserDisabledPlugin(id: string): void {
+  const ids = readDisabledPlugins()
+  if (ids.includes(id)) return
+  ids.push(id)
+  writeDisabledPlugins(ids)
+}
+
+/** 从用户禁用列表移除插件 ID */
+export function removeUserDisabledPlugin(id: string): void {
+  const ids = readDisabledPlugins().filter(x => x !== id)
+  writeDisabledPlugins(ids)
+}
+
+/** 检查插件是否被用户手动禁用 */
+export function isUserDisabledPlugin(id: string): boolean {
+  return readDisabledPlugins().includes(id)
+}
 
 const HUD_MARKETPLACE_SOURCE = {
   source: {
@@ -218,7 +258,11 @@ export function ensureClaudeHudPluginDefaults(): void {
   }
 
   const ep = (base.enabledPlugins ?? {}) as Record<string, boolean>
-  if (!Object.prototype.hasOwnProperty.call(ep, HUD_PLUGIN_ENABLE_KEY)) {
+  // [2026-05-01] 用户手动禁用过的插件不再自动启用（优先检查 Feng Claude 本地存储，
+  // 其次检查 enabledPlugins 字段是否存在——用户操作后该字段必然存在）
+  const hudDisabled = isUserDisabledPlugin(HUD_PLUGIN_ENABLE_KEY) ||
+    Object.prototype.hasOwnProperty.call(base, 'enabledPlugins')
+  if (!hudDisabled) {
     base.enabledPlugins = { ...ep, [HUD_PLUGIN_ENABLE_KEY]: true }
     changed = true
   }

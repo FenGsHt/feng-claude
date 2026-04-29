@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
-import { claudeSessionConfigDir } from './claudeSessionConfigDir'
+import { claudeSessionConfigDir, addUserDisabledPlugin, removeUserDisabledPlugin } from './claudeSessionConfigDir'
 import type { PluginEntry } from '../renderer/src/types/ipc'
 
 export interface RefreshResult {
@@ -230,8 +230,11 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
     })
   }
 
-  // New plugins float to top, then sort by install count
+  // [2026-05-01] 已安装 > 新插件 > 安装量排序
   return plugins.sort((a, b) => {
+    const aInstalled = a.isInstalled ? 1 : 0
+    const bInstalled = b.isInstalled ? 1 : 0
+    if (bInstalled !== aInstalled) return bInstalled - aInstalled
     const aNew = newPluginNames?.has(a.name) ? 1 : 0
     const bNew = newPluginNames?.has(b.name) ? 1 : 0
     if (bNew !== aNew) return bNew - aNew
@@ -244,8 +247,12 @@ export function setPluginEnabled(id: string, enable: boolean): void {
   const ep = { ...((settings.enabledPlugins ?? {}) as Record<string, boolean>) }
   if (enable) {
     ep[id] = true
+    // [2026-05-01] 用户重新启用时，从 Feng Claude 本地禁用列表移除
+    removeUserDisabledPlugin(id)
   } else {
     delete ep[id]
+    // [2026-05-01] 用户手动禁用时，记录到 Feng Claude 本地存储，防止被自动恢复
+    addUserDisabledPlugin(id)
   }
   settings.enabledPlugins = ep
   writeSessionSettings(settings)
