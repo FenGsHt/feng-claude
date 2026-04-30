@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import type { McpEntry, McpServerConfig, McpServerType } from '../../types/ipc'
-import type { ClaudeSettings } from '../../types/settings'
 import { useI18n } from '../../i18n'
 
 // ── Add / Edit form ──────────────────────────────────────────────────────────
@@ -64,30 +63,31 @@ function McpForm({
 }): React.ReactElement {
   const [form, setForm] = useState<FormState>(initial ?? EMPTY_FORM)
   const [error, setError] = useState('')
-  const [visualAgentConfig, setVisualAgentConfig] = useState<ClaudeSettings['visualAgentApi'] | null>(null)
-  const [saved, setSaved] = useState(false)
   const { t } = useI18n()
   const { lang } = useI18n()
 
   const set = (patch: Partial<FormState>): void => setForm((f) => ({ ...f, ...patch }))
 
-  // Load visual agent config when editing 'visual-agent'
-  useEffect(() => {
-    if (editingName === 'visual-agent') {
-      void window.electronAPI.settings.get().then((s) => {
-        setVisualAgentConfig(s.visualAgentApi ?? { authToken: '', baseUrl: '', model: '', format: 'anthropic' })
-      })
+  // Helper: get visual-agent env var from current form envRaw
+  const getVaEnv = (key: string): string => {
+    const lines = form.envRaw.split('\n').map(l => l.trim()).filter(Boolean)
+    for (const line of lines) {
+      const eq = line.indexOf('=')
+      if (eq > 0 && line.slice(0, eq).trim() === key) return line.slice(eq + 1)
     }
-  }, [editingName])
-
-  const updateVisualAgentConfig = (patch: Partial<ClaudeSettings['visualAgentApi']>): void => {
-    if (!visualAgentConfig) return
-    const newConfig = { ...visualAgentConfig, ...patch }
-    setVisualAgentConfig(newConfig)
-    void window.electronAPI.settings.set({ visualAgentApi: newConfig }).then(() => {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    })
+    return ''
+  }
+  const setVaEnv = (key: string, value: string): void => {
+    const lines = form.envRaw.split('\n').map(l => l.trim()).filter(Boolean)
+    const idx = lines.findIndex(l => l.indexOf('=') > 0 && l.slice(0, l.indexOf('=')).trim() === key)
+    if (value) {
+      const entry = `${key}=${value}`
+      if (idx >= 0) lines[idx] = entry
+      else lines.push(entry)
+    } else if (idx >= 0) {
+      lines.splice(idx, 1)
+    }
+    set({ envRaw: lines.join('\n') })
   }
 
   function submit(): void {
@@ -159,72 +159,69 @@ function McpForm({
       )}
 
       {/* Env vars */}
-      <div>
-        <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.envVars}</label>
-        <textarea className={`${inputCls} resize-none h-14`} placeholder="GITHUB_TOKEN=ghp_xxx"
-          value={form.envRaw} onChange={(e) => set({ envRaw: e.target.value })} />
-      </div>
-
-      {/* Visual Agent API Config - only when editing 'visual-agent' */}
-      {editingName === 'visual-agent' && visualAgentConfig && (
-        <div className="border-t border-amber-500/30 pt-2 mt-2">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[10px] font-semibold text-amber-400">🎨 {lang === 'zh' ? '视觉代理 API 配置' : 'Visual Agent API Config'}</span>
-            {saved && <span className="text-[9px] text-green-400">✓</span>}
-          </div>
-          <p className="text-[9px] text-claude-muted mb-1.5">
-            {lang === 'zh' ? '用于识图功能的 API 配置（独立于主配置）' : 'API config for image analysis (separate from main config)'}
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            <div>
-              <label className="text-[9px] text-claude-muted block mb-0.5">API Token</label>
-              <input
-                type="password"
-                className={inputCls}
-                placeholder="sk-ant-..."
-                value={visualAgentConfig.authToken ?? ''}
-                onChange={(e) => updateVisualAgentConfig({ authToken: e.target.value })}
-              />
+      {editingName === 'visual-agent' ? (
+        <>
+          <div className="border-t border-amber-500/30 pt-2 mt-2">
+            <p className="text-[9px] text-claude-muted mb-1.5">
+              {lang === 'zh' ? '配置 API 信息，通过环境变量传递给 visual-agent MCP' : 'Configure API info, passed to visual-agent MCP via environment variables'}
+            </p>
+            <div className="space-y-1.5">
+              <div>
+                <label className="text-[9px] text-claude-muted block mb-0.5">VISUAL_AGENT_AUTH_TOKEN</label>
+                <input
+                  type="password"
+                  className={inputCls}
+                  placeholder="sk-ant-..."
+                  value={getVaEnv('VISUAL_AGENT_AUTH_TOKEN')}
+                  onChange={(e) => setVaEnv('VISUAL_AGENT_AUTH_TOKEN', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[9px] text-claude-muted block mb-0.5">VISUAL_AGENT_BASE_URL</label>
+                <input
+                  className={inputCls}
+                  placeholder="https://api.anthropic.com"
+                  value={getVaEnv('VISUAL_AGENT_BASE_URL')}
+                  onChange={(e) => setVaEnv('VISUAL_AGENT_BASE_URL', e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="text-[9px] text-claude-muted block mb-0.5">{lang === 'zh' ? '模型' : 'Model'}</label>
+                  <input
+                    className={inputCls}
+                    placeholder="claude-sonnet-4-6"
+                    value={getVaEnv('VISUAL_AGENT_MODEL')}
+                    onChange={(e) => setVaEnv('VISUAL_AGENT_MODEL', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-claude-muted block mb-0.5">{lang === 'zh' ? '格式' : 'Format'}</label>
+                  <select
+                    className={inputCls}
+                    value={getVaEnv('VISUAL_AGENT_FORMAT') || 'anthropic'}
+                    onChange={(e) => setVaEnv('VISUAL_AGENT_FORMAT', e.target.value)}
+                  >
+                    <option value="anthropic">Anthropic</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="text-[9px] text-claude-muted block mb-0.5">Base URL</label>
-              <input
-                className={inputCls}
-                placeholder="https://api.anthropic.com"
-                value={visualAgentConfig.baseUrl ?? ''}
-                onChange={(e) => updateVisualAgentConfig({ baseUrl: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5 mt-1.5">
-            <div>
-              <label className="text-[9px] text-claude-muted block mb-0.5">{lang === 'zh' ? '模型' : 'Model'}</label>
-              <input
-                className={inputCls}
-                placeholder="claude-sonnet-4-6"
-                value={visualAgentConfig.model ?? ''}
-                onChange={(e) => updateVisualAgentConfig({ model: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-[9px] text-claude-muted block mb-0.5">{lang === 'zh' ? '格式' : 'Format'}</label>
-              <select
-                className={inputCls}
-                value={visualAgentConfig.format ?? 'anthropic'}
-                onChange={(e) => updateVisualAgentConfig({ format: e.target.value as 'anthropic' | 'openai' })}
-              >
-                <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI</option>
-              </select>
+            <div className="mt-1.5">
+              <span className={`text-[9px] ${getVaEnv('VISUAL_AGENT_AUTH_TOKEN') ? 'text-green-400' : 'text-red-400'}`}>
+                {getVaEnv('VISUAL_AGENT_AUTH_TOKEN')
+                  ? (lang === 'zh' ? '已配置 ✓' : 'Configured ✓')
+                  : (lang === 'zh' ? '未配置 — 请设置 API Token' : 'Not configured — please set API Token')}
+              </span>
             </div>
           </div>
-          <div className="mt-1.5">
-            <span className={`text-[9px] ${visualAgentConfig.authToken ? 'text-green-400' : 'text-red-400'}`}>
-              {visualAgentConfig.authToken
-                ? (lang === 'zh' ? '已配置 ✓' : 'Configured ✓')
-                : (lang === 'zh' ? '未配置 — MCP 无法工作' : 'Not configured — MCP won\'t work')}
-            </span>
-          </div>
+        </>
+      ) : (
+        <div>
+          <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.envVars}</label>
+          <textarea className={`${inputCls} resize-none h-14`} placeholder="GITHUB_TOKEN=ghp_xxx"
+            value={form.envRaw} onChange={(e) => set({ envRaw: e.target.value })} />
         </div>
       )}
 

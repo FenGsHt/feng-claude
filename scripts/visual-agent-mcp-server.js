@@ -1,15 +1,18 @@
 /**
  * MCP Stdio Server - Visual Agent for Claude Code
  *
- * Provides image analysis capabilities via Anthropic API.
- * Configuration fetched from Feng Claude's HTTP API on localhost:3100
+ * Provides image analysis capabilities via Anthropic-compatible API.
+ * Configuration via environment variables:
+ *   VISUAL_AGENT_AUTH_TOKEN - API key
+ *   VISUAL_AGENT_BASE_URL   - API endpoint (default: https://api.anthropic.com)
+ *   VISUAL_AGENT_MODEL      - Model name (default: claude-sonnet-4-6)
+ *   VISUAL_AGENT_FORMAT     - 'anthropic' or 'openai' (default: anthropic)
  */
 
 const http = require('http')
+const https = require('https')
 const fs = require('fs')
 const path = require('path')
-
-const BASE = 'http://localhost:3100'
 
 const TOOLS = [
   {
@@ -23,39 +26,19 @@ const TOOLS = [
       },
       required: ['imagePath']
     }
-  },
-  {
-    name: 'capture_and_analyze',
-    description: '截取当前嵌入浏览器的页面并分析内容',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', description: '分析指令（可选）' }
-      },
-      required: []
-    }
   }
 ]
 
-async function fetchConfig() {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      { hostname: 'localhost', port: 3100, path: '/visual-agent-config', method: 'GET' },
-      (res) => {
-        let data = ''
-        res.on('data', (chunk) => { data += chunk })
-        res.on('end', () => {
-          try { resolve(JSON.parse(data)) } catch { reject(new Error('Invalid config response')) }
-        })
-      }
-    )
-    req.on('error', (e) => reject(e))
-    req.setTimeout(5000, () => { req.destroy(); reject(new Error('Config fetch timeout')) })
-    req.end()
-  })
+function getConfig() {
+  return {
+    authToken: process.env.VISUAL_AGENT_AUTH_TOKEN || '',
+    baseUrl: process.env.VISUAL_AGENT_BASE_URL || 'https://api.anthropic.com',
+    model: process.env.VISUAL_AGENT_MODEL || 'claude-sonnet-4-6',
+    format: process.env.VISUAL_AGENT_FORMAT || 'anthropic'
+  }
 }
 
-async function callAnthropicApi(config, imageBase64, mediaType, prompt) {
+async function callApi(config, imageBase64, mediaType, prompt) {
   const url = new URL('/v1/messages', config.baseUrl)
   const headers = {
     'Content-Type': 'application/json',
@@ -81,18 +64,14 @@ async function callAnthropicApi(config, imageBase64, mediaType, prompt) {
     ]
   }
 
+  const postData = JSON.stringify(body)
+  const client = url.protocol === 'https:' ? https : http
+
   return new Promise((resolve, reject) => {
-    const postData = JSON.stringify(body)
-    const options = {
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname,
+    const req = client.request(url.href, {
       method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(postData) }
-    }
-
-    const client = url.protocol === 'https:' ? require('https') : require('http')
-    const req = client.request(options, (res) => {
+    }, (res) => {
       let data = ''
       res.on('data', (chunk) => { data += chunk })
       res.on('end', () => {
@@ -122,54 +101,23 @@ function detectMediaType(filePath) {
 }
 
 async function handleTool(name, args) {
-  try {
-    const config = await fetchConfig()
-    if (!config.authToken) {
-      return [{ type: 'text', text: '视觉代理未配置。请在 Feng Claude 设置面板中配置 API Key。' }]
-    }
-
-    switch (name) {
-      case 'analyze_image': {
-        const imagePath = args.imagePath
-        if (!fs.existsSync(imagePath)) {
-          return [{ type: 'text', text: `图片文件不存在: ${imagePath}` }]
-        }
-        const mediaType = detectMediaType(imagePath)
-        const imageBase64 = fs.readFileSync(imagePath).toString('base64')
-        const result = await callAnthropicApi(config, imageBase64, mediaType, args.prompt)
-        return [{ type: 'text', text: result }]
-      }
-      case 'capture_and_analyze': {
-        // 先获取浏览器截图
-        const screenshotResult = await new Promise((resolve, reject) => {
-          const req = http.request(
-            { hostname: 'localhost', port: 3100, path: '/screenshot', method: 'GET' },
-            (res) => {
-              let data = ''
-              res.on('data', (chunk) => { data += chunk })
-              res.on('end', () => {
-                try { resolve(JSON.parse(data)) } catch { reject(new Error('Screenshot failed')) }
-              })
-            }
-          )
-          req.on('error', (e) => reject(e))
-          req.setTimeout(10000, () => { req.destroy(); reject(new Error('Screenshot timeout')) })
-          req.end()
-        })
-
-        if (!screenshotResult.data) {
-          return [{ type: 'text', text: `截图失败: ${screenshotResult.error || '未知错误'}` }]
-        }
-
-        const result = await callAnthropicApi(config, screenshotResult.data, 'image/png', args.prompt)
-        return [{ type: 'text', text: result }]
-      }
-      default:
-        return [{ type: 'text', text: `Unknown tool: ${name}` }]
-    }
-  } catch (e) {
-    return [{ type: 'text', text: `Error: ${e.message}` }]
+  const config = getConfig()
+  if (!config.authToken) {
+    return [{ type: 'text', text: '视觉代理未配置。请设置环境变量 VISUAL_AGENT_AUTH_TOKEN 或在 MCP 配置中添加此环境变量。' }]
   }
+
+  if (name !== 'analyze_image') {
+    return [{ type: 'text', text: `Unknown tool: ${name}` }]
+  }
+
+  const imagePath = args.imagePath
+  if (!fs.existsSync(imagePath)) {
+    return [{ type: 'text', text: `图片文件不存在: ${imagePath}` }]
+  }
+  const mediaType = detectMediaType(imagePath)
+  const imageBase64 = fs.readFileSync(imagePath).toString('base64')
+  const result = await callApi(config, imageBase64, mediaType, args.prompt)
+  return [{ type: 'text', text: result }]
 }
 
 async function handleMessage(msg) {

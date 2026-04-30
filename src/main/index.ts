@@ -132,7 +132,7 @@ function createWindow(): BrowserWindow {
   }
 
   // ── Embedded browser for debugging ──────────────────────────────
-  startBrowserServer(win, settingsStore)
+  startBrowserServer(win)
   registerBrowserViewIpc()
 
   // Ctrl+Shift+D — toggle embedded browser
