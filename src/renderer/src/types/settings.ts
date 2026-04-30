@@ -33,6 +33,8 @@ export interface FallbackConfig {
   opusModel?: string
   /** 备用子代理模型 */
   subagentModel?: string
+  /** [2026-04-30] 请求格式：'anthropic' 使用 x-api-key，'openai' 使用 Authorization: Bearer */
+  format?: 'anthropic' | 'openai'
 }
 
 /**
@@ -71,6 +73,8 @@ export interface ApiProfile {
   }
   /** [2026-04-30] 多级备用配置（容灾）— 按顺序依次尝试 */
   fallbacks?: FallbackConfig[]
+  /** [2026-04-30] 请求格式：'anthropic' 使用 x-api-key，'openai' 使用 Authorization: Bearer */
+  format?: 'anthropic' | 'openai'
   /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackBaseUrl?: string
   /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */

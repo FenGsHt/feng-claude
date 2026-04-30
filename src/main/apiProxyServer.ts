@@ -41,6 +41,7 @@ function applyModelOverride(body: Buffer, model?: string): Buffer {
 function forwardRequest(
   targetBaseUrl: string,
   authToken: string,
+  format: 'anthropic' | 'openai' | undefined, // [2026-04-30] OpenAI 兼容格式
   req: IncomingMessage,
   res: ServerResponse,
   body: Buffer,
@@ -70,7 +71,12 @@ function forwardRequest(
     else if (Array.isArray(value)) headers[key] = value[0]
   }
   headers['host'] = targetUrl.host
-  headers['x-api-key'] = authToken
+  // [2026-04-30] OpenAI 兼容格式使用 Authorization: Bearer
+  if (format === 'openai') {
+    headers['authorization'] = `Bearer ${authToken}`
+  } else {
+    headers['x-api-key'] = authToken
+  }
 
   const proxyReq = requestFn(
     {
@@ -106,6 +112,7 @@ function forwardRequest(
           forwardRequest(
             nextFallback.baseUrl,
             nextFallback.authToken,
+            nextFallback.format,
             req,
             res,
             applyModelOverride(body, nextFallback.model),
@@ -233,6 +240,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
       forwardRequest(
         cooldownFallback.baseUrl,
         cooldownFallback.authToken,
+        cooldownFallback.format,
         req,
         res,
         applyModelOverride(body, cooldownFallback.model),
@@ -241,7 +249,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
       )
     } else {
       console.log('[API Proxy] Forwarding to primary:', profile.baseUrl)
-      forwardRequest(profile.baseUrl, profile.authToken, req, res, body, -1, profile.baseUrl)
+      forwardRequest(profile.baseUrl, profile.authToken, profile.format, req, res, body, -1, profile.baseUrl)
     }
   })
   req.on('error', (err) => {
@@ -271,7 +279,12 @@ function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
 
   let wsIndex = -1 // -1 = primary, 0+ = fallback index
   const wsUrl = profile.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
-  headers['x-api-key'] = profile.authToken
+  // [2026-04-30] OpenAI 兼容格式使用 Authorization: Bearer
+  if (profile.format === 'openai') {
+    headers['authorization'] = `Bearer ${profile.authToken}`
+  } else {
+    headers['x-api-key'] = profile.authToken
+  }
   console.log('[API Proxy] WebSocket forwarding to primary:', wsUrl)
 
   let wsTarget = new WebSocket(wsUrl, { headers })
@@ -281,7 +294,14 @@ function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
     if (wsIndex >= fallbacks.length) return false
     const fallback = fallbacks[wsIndex]
     console.log(`[API Proxy] WebSocket trying #${wsIndex + 1}: ${fallback.name}`)
-    headers['x-api-key'] = fallback.authToken
+    // [2026-04-30] OpenAI 兼容格式
+    if (fallback.format === 'openai') {
+      headers['authorization'] = `Bearer ${fallback.authToken}`
+      delete headers['x-api-key']
+    } else {
+      headers['x-api-key'] = fallback.authToken
+      delete headers['authorization']
+    }
     const fallbackWsUrl = fallback.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
     wsTarget = new WebSocket(fallbackWsUrl, { headers })
     return true

@@ -357,10 +357,20 @@ export function SettingsPanel(): React.ReactElement {
                     {!fallback.baseUrl && (
                       <span className="text-[9px] text-red-400">({lang === 'zh' ? '未配置' : 'Not configured'})</span>
                     )}
+                    {/* OpenAI 兼容勾选框 */}
+                    <label className="flex items-center gap-1 ml-auto">
+                      <input
+                        type="checkbox"
+                        checked={fallback.format === 'openai'}
+                        onChange={(e) => handleUpdateFallback(fallback.id, { format: e.target.checked ? 'openai' : 'anthropic' })}
+                        className="w-3 h-3 accent-blue-500"
+                      />
+                      <span className="text-[9px] text-claude-muted">OpenAI</span>
+                    </label>
                     {/* 删除按钮 */}
                     <button
                       onClick={() => handleRemoveFallback(fallback.id)}
-                      className="ml-auto text-[9px] text-claude-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="text-[9px] text-claude-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       ✕
                     </button>
@@ -375,14 +385,14 @@ export function SettingsPanel(): React.ReactElement {
                           value={fallback.name}
                           onChange={(e) => handleUpdateFallback(fallback.id, { name: e.target.value })}
                           placeholder={lang === 'zh' ? '名称' : 'Name'}
-                          className="field-input w-24 text-[10px]"
+                          className="field-input !text-[10px] !py-2"
                         />
                         <input
                           type="text"
                           value={fallback.baseUrl}
                           onChange={(e) => handleUpdateFallback(fallback.id, { baseUrl: e.target.value })}
                           placeholder={lang === 'zh' ? 'Base URL' : 'Base URL'}
-                          className="field-input flex-1 text-[10px]"
+                          className="field-input flex-1 !text-[10px] !py-2"
                         />
                       </div>
                       <div className="flex gap-2">
@@ -391,14 +401,14 @@ export function SettingsPanel(): React.ReactElement {
                           value={fallback.authToken}
                           onChange={(e) => handleUpdateFallback(fallback.id, { authToken: e.target.value })}
                           placeholder={lang === 'zh' ? 'Auth Token' : 'Auth Token'}
-                          className="field-input flex-1 text-[10px]"
+                          className="field-input flex-1 !text-[10px] !py-2"
                         />
                         <input
                           type="text"
                           value={fallback.model ?? ''}
                           onChange={(e) => handleUpdateFallback(fallback.id, { model: e.target.value })}
                           placeholder={lang === 'zh' ? '默认模型' : 'Model'}
-                          className="field-input w-24 text-[10px]"
+                          className="field-input !text-[10px] !py-2"
                         />
                       </div>
                     </div>
@@ -421,13 +431,26 @@ export function SettingsPanel(): React.ReactElement {
       {/* [2026-04-28] Active profile fields */}
       {activeProfile && (
         <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+          {/* OpenAI 兼容勾选框 */}
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="checkbox"
+              checked={activeProfile.format === 'openai'}
+              onChange={(e) => handleProfileChange('format', e.target.checked ? 'openai' : undefined)}
+              className="w-3.5 h-3.5 accent-blue-500"
+            />
+            <span className="text-[10px] text-claude-text">
+              {lang === 'zh' ? 'OpenAI 兼容格式 (Authorization: Bearer)' : 'OpenAI compatible format (Authorization: Bearer)'}
+            </span>
+          </div>
+
           {/* Auth Token */}
-          <Field label="Auth Token" hint="ANTHROPIC_AUTH_TOKEN">
+          <Field label="Auth Token" hint={activeProfile.format === 'openai' ? 'Authorization: Bearer' : 'x-api-key'}>
             <input
               type="password"
               value={activeProfile.authToken}
               onChange={(e) => handleProfileChange('authToken', e.target.value)}
-              placeholder="sk-sp-..."
+              placeholder={activeProfile.format === 'openai' ? 'sk-...' : 'sk-sp-...'}
               className="field-input"
             />
           </Field>
