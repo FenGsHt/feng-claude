@@ -65,6 +65,7 @@ function forwardRequest(
     },
     (proxyRes) => {
       const statusCode = proxyRes.statusCode ?? 200
+      console.log(`[API Proxy] Response status ${statusCode} (fallback=${fallbackAttempt})`)
       if (statusCode >= 400 && !fallbackAttempt) {
         console.log(`[API Proxy] Primary response status ${statusCode}, trying fallback`)
         proxyRes.resume()
