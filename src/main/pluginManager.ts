@@ -162,6 +162,7 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
   const settings = readSessionSettings()
   const enabled = (settings.enabledPlugins ?? {}) as Record<string, boolean>
   const plugins: PluginEntry[] = []
+  const seenIds = new Set<string>()  // [2026-05-01] 全程去重
 
   console.log('[PluginManager] marketplacesDir:', marketplacesDir, 'exists:', existsSync(marketplacesDir))
   if (!existsSync(marketplacesDir)) return plugins
@@ -176,6 +177,8 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
       if (marketplaceJson?.plugins && marketplaceJson.plugins.length > 0) {
         for (const plugin of marketplaceJson.plugins) {
           const id = `${plugin.name}@${mkt.name}`
+          if (seenIds.has(id)) continue
+          seenIds.add(id)
           plugins.push({
             id,
             name: plugin.name,
@@ -196,6 +199,8 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
         for (const plugin of readdirSync(pluginsDir, { withFileTypes: true })) {
           if (!plugin.isDirectory()) continue
           const id = `${plugin.name}@${mkt.name}`
+          if (seenIds.has(id)) continue
+          seenIds.add(id)
           const description = extractDescription(join(pluginsDir, plugin.name, 'README.md'))
 
           plugins.push({
@@ -213,9 +218,9 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
   } catch { /* ignore */ }
 
   // Add enabled plugins that aren't in any marketplace (e.g. claude-hud from extra marketplace)
-  const listedIds = new Set(plugins.map((p) => p.id))
   for (const [id, isEn] of Object.entries(enabled)) {
-    if (!isEn || listedIds.has(id)) continue
+    if (!isEn || seenIds.has(id)) continue
+    seenIds.add(id)
     const atIdx = id.lastIndexOf('@')
     const name = atIdx > 0 ? id.slice(0, atIdx) : id
     const marketplace = atIdx > 0 ? id.slice(atIdx + 1) : 'custom'
