@@ -3,15 +3,17 @@ import { request as httpRequest } from 'http'
 import { request as httpsRequest } from 'https'
 import { URL } from 'url'
 import { SettingsStore } from './settingsStore'
+import WebSocket from 'ws'
 
 const PROXY_PORT = 9527
 
 type ProxyState = {
   server: ReturnType<typeof createServer> | null
+  wsServer: WebSocket.Server | null
   running: boolean
 }
 
-const state: ProxyState = { server: null, running: false }
+const state: ProxyState = { server: null, wsServer: null, running: false }
 
 function forwardRequest(
   targetUrl: string,
@@ -48,19 +50,37 @@ function forwardRequest(
       timeout: 60000
     },
     (proxyRes) => {
-      res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers)
-      proxyRes.pipe(res)
-
-      if (proxyRes.statusCode && proxyRes.statusCode >= 400 && !fallbackAttempt) {
-        console.log(`[API Proxy] Primary response status ${proxyRes.statusCode}`)
+      const statusCode = proxyRes.statusCode ?? 200
+      if (statusCode >= 400 && !fallbackAttempt) {
+        console.log(`[API Proxy] Primary response status ${statusCode}, trying fallback`)
+        proxyRes.resume()
+        const settings = new SettingsStore().get()
+        const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
+        if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
+          console.log('[API Proxy] Switching to fallback:', profile.fallbackBaseUrl)
+          let fallbackBody = body
+          if (profile.fallbackModel && body.length > 0) {
+            try {
+              const json = JSON.parse(body.toString())
+              if (json.model) json.model = profile.fallbackModel
+              fallbackBody = Buffer.from(JSON.stringify(json))
+            } catch { /* keep original body */ }
+          }
+          forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true)
+        } else {
+          res.writeHead(502, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: `Primary returned ${statusCode}, no fallback configured` }))
+        }
+        return
       }
+      res.writeHead(statusCode, proxyRes.headers)
+      proxyRes.pipe(res)
     }
   )
 
   proxyReq.on('error', (err) => {
     console.error('[API Proxy] Request error:', err.message)
     if (!fallbackAttempt) {
-      // Try fallback
       const settings = new SettingsStore().get()
       const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
       if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
@@ -130,12 +150,95 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   })
 }
 
+function getProfile(): { baseUrl: string; authToken: string; fallbackBaseUrl?: string; fallbackAuthToken?: string } | null {
+  const settings = new SettingsStore().get()
+  const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
+  if (!profile) return null
+  return {
+    baseUrl: profile.baseUrl,
+    authToken: profile.authToken,
+    fallbackBaseUrl: profile.fallbackBaseUrl,
+    fallbackAuthToken: profile.fallbackAuthToken
+  }
+}
+
+function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
+  const profile = getProfile()
+  if (!profile) {
+    wsClient.close(1008, 'No active profile')
+    return
+  }
+
+  // WebSocket URL: convert http/https to ws/wss
+  const wsUrl = profile.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
+  console.log('[API Proxy] WebSocket forwarding to:', wsUrl)
+
+  const headers: Record<string, string> = {}
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (key.toLowerCase() === 'host') continue
+    if (key.toLowerCase() === 'authorization') continue
+    if (key.toLowerCase() === 'x-api-key') continue
+    if (typeof value === 'string') headers[key] = value
+    else if (Array.isArray(value)) headers[key] = value[0]
+  }
+  headers['x-api-key'] = profile.authToken
+
+  let wsTarget = new WebSocket(wsUrl, { headers })
+  let fallbackAttempted = false
+
+  wsTarget.on('open', () => {
+    console.log('[API Proxy] WebSocket connected to primary')
+    // Bidirectional pipe
+    wsClient.on('message', (data) => {
+      wsTarget.send(data)
+    })
+    wsTarget.on('message', (data) => {
+      wsClient.send(data)
+    })
+  })
+
+  wsTarget.on('error', (err) => {
+    console.error('[API Proxy] WebSocket primary error:', err.message)
+    if (!fallbackAttempted && profile.fallbackBaseUrl && profile.fallbackAuthToken) {
+      fallbackAttempted = true
+      console.log('[API Proxy] WebSocket switching to fallback:', profile.fallbackBaseUrl)
+      wsTarget.close()
+      const fallbackWsUrl = profile.fallbackBaseUrl.replace(/^http/, 'ws') + '/v1/realtime'
+      headers['x-api-key'] = profile.fallbackAuthToken
+      wsTarget = new WebSocket(fallbackWsUrl, { headers })
+      wsTarget.on('open', () => {
+        console.log('[API Proxy] WebSocket connected to fallback')
+        wsClient.on('message', (data) => wsTarget.send(data))
+        wsTarget.on('message', (data) => wsClient.send(data))
+      })
+      wsTarget.on('error', (fallbackErr) => {
+        console.error('[API Proxy] WebSocket fallback error:', fallbackErr.message)
+        wsClient.close(1011, 'Both primary and fallback WebSocket failed')
+      })
+    } else {
+      wsClient.close(1011, 'WebSocket connection failed')
+    }
+  })
+
+  wsTarget.on('close', (code, reason) => {
+    wsClient.close(code, reason)
+  })
+
+  wsClient.on('close', () => {
+    wsTarget.close()
+  })
+}
+
 export function startApiProxy(): number {
   if (state.running) return PROXY_PORT
 
   state.server = createServer(handleRequest)
+  state.wsServer = new WebSocket.Server({ server: state.server })
+
+  state.wsServer.on('connection', handleWebSocket)
+
   state.server.listen(PROXY_PORT, '127.0.0.1', () => {
-    console.log(`[API Proxy] Server listening on http://127.0.0.1:${PROXY_PORT}`)
+    console.log(`[API Proxy] Server listening on http://127.0.0.1:${PROXY_PORT} (HTTP + WebSocket)`)
     state.running = true
   })
 
@@ -148,12 +251,16 @@ export function startApiProxy(): number {
 }
 
 export function stopApiProxy(): void {
+  if (state.wsServer) {
+    state.wsServer.close()
+    state.wsServer = null
+  }
   if (state.server) {
     state.server.close()
     state.server = null
-    state.running = false
-    console.log('[API Proxy] Server stopped')
   }
+  state.running = false
+  console.log('[API Proxy] Server stopped')
 }
 
 export function isApiProxyRunning(): boolean {
