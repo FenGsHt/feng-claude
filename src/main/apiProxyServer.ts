@@ -16,15 +16,29 @@ type ProxyState = {
 const state: ProxyState = { server: null, wsServer: null, running: false }
 
 function forwardRequest(
-  targetUrl: string,
+  targetBaseUrl: string,
   authToken: string,
   req: IncomingMessage,
   res: ServerResponse,
   body: Buffer,
-  fallbackAttempt: boolean
+  fallbackAttempt: boolean,
+  originalBaseUrl?: string
 ): void {
-  const url = new URL(targetUrl)
-  const isHttps = url.protocol === 'https:'
+  // [2026-04-30] Fix: preserve original request path when switching to fallback
+  // targetBaseUrl is the API base URL (e.g. https://api.anthropic.com)
+  // We need to append the original request path (e.g. /v1/messages)
+  let requestPath = req.url ?? '/'
+  if (originalBaseUrl && originalBaseUrl !== targetBaseUrl) {
+    // Strip original baseUrl's path prefix from requestPath if present
+    const originalBasePath = new URL(originalBaseUrl).pathname
+    if (requestPath.startsWith(originalBasePath)) {
+      requestPath = requestPath.slice(originalBasePath.length)
+    }
+  }
+  const targetUrl = new URL(targetBaseUrl)
+  const fullPath = targetUrl.pathname + requestPath
+
+  const isHttps = targetUrl.protocol === 'https:'
   const requestFn = isHttps ? httpsRequest : httpRequest
 
   const headers: Record<string, string> = {}
@@ -35,16 +49,14 @@ function forwardRequest(
     if (typeof value === 'string') headers[key] = value
     else if (Array.isArray(value)) headers[key] = value[0]
   }
-  headers['host'] = url.host
+  headers['host'] = targetUrl.host
   headers['x-api-key'] = authToken
-
-  const path = url.pathname + url.search
 
   const proxyReq = requestFn(
     {
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path,
+      hostname: targetUrl.hostname,
+      port: targetUrl.port || (isHttps ? 443 : 80),
+      path: fullPath,
       method: req.method,
       headers,
       timeout: 60000
@@ -66,7 +78,7 @@ function forwardRequest(
               fallbackBody = Buffer.from(JSON.stringify(json))
             } catch { /* keep original body */ }
           }
-          forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true)
+          forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true, originalBaseUrl)
         } else {
           res.writeHead(502, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: `Primary returned ${statusCode}, no fallback configured` }))
@@ -93,7 +105,7 @@ function forwardRequest(
             fallbackBody = Buffer.from(JSON.stringify(json))
           } catch { /* keep original body */ }
         }
-        forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true)
+        forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true, originalBaseUrl)
       } else {
         res.writeHead(502, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'Primary failed, no fallback configured' }))
@@ -111,7 +123,7 @@ function forwardRequest(
       const settings = new SettingsStore().get()
       const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
       if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
-        forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, body, true)
+        forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, body, true, originalBaseUrl)
       } else {
         res.writeHead(504, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'Primary timeout, no fallback configured' }))
@@ -141,7 +153,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     }
 
     console.log('[API Proxy] Forwarding to primary:', profile.baseUrl)
-    forwardRequest(profile.baseUrl, profile.authToken, req, res, body, false)
+    forwardRequest(profile.baseUrl, profile.authToken, req, res, body, false, profile.baseUrl)
   })
   req.on('error', (err) => {
     console.error('[API Proxy] Request read error:', err.message)
