@@ -172,10 +172,16 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           }
         }
 
+        // [2026-05-01] If todayDate is stale (yesterday or older), reset today to ZERO
+        const loadedTodayDate = d.todayDate ?? now
+        const isStaleDay = loadedTodayDate !== now
+        const finalToday = isStaleDay ? { ...ZERO } : recoveredToday
+        const finalTodayDate = now
+
         set({
           total: recoveredTotal,
-          today: recoveredToday,
-          todayDate: d.todayDate ?? now,
+          today: finalToday,
+          todayDate: finalTodayDate,
           budget: d.budget ?? 0,
           dailyHistory: recoveredDailyHistory,
           dailyHistoryPerProfile: sanitizedDailyPerProfile,
@@ -184,6 +190,22 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           hideDetailedTokens: d.hideDetailedTokens ?? false,
           _hydrated: true
         })
+
+        // [2026-05-01] Save corrected state immediately when day is stale
+        if (isStaleDay) {
+          console.log('[tokenStore] todayDate stale, reset today to ZERO')
+          saveImmediately({
+            total: recoveredTotal,
+            today: finalToday,
+            todayDate: finalTodayDate,
+            budget: d.budget ?? 0,
+            dailyHistory: recoveredDailyHistory,
+            dailyHistoryPerProfile: sanitizedDailyPerProfile,
+            perProfile: sanitizedPerProfile,
+            pricing: d.pricing ?? { ...DEFAULT_PRICING },
+            hideDetailedTokens: d.hideDetailedTokens ?? false
+          })
+        }
       } else {
         // [2026-04-27] Migration: localStorage (old) → IPC (new)
         const lsKey = 'global-token-usage'
