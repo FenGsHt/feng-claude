@@ -5,6 +5,7 @@ directories:
   output: dist-build
 files:
   - out/**/*
+  - scripts/browser-mcp-server.js
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.*'

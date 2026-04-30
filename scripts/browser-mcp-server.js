@@ -1,5 +1,5 @@
 /**
- * MCP Stdio Server — Browser Tools for Claude Code
+ * MCP Stdio Server - Browser Tools for Claude Code
  *
  * Usage: add to .claude.json mcpServers:
  *   "browser-tools": { "type": "stdio", "command": "node", "args": ["scripts/browser-mcp-server.js"] }
@@ -11,11 +11,12 @@ const http = require('http')
 
 const BASE = 'http://localhost:3100'
 
+// [2026-04-30] MCP tools/list must use inputSchema; input_schema lets Claude Code load the server but hide its tools.
 const TOOLS = [
   {
     name: 'browser_navigate',
     description: 'Navigate to a URL in the embedded browser',
-    input_schema: {
+    inputSchema: {
       type: 'object',
       properties: { url: { type: 'string', description: 'URL to navigate to' } },
       required: ['url']
@@ -24,12 +25,12 @@ const TOOLS = [
   {
     name: 'browser_screenshot',
     description: 'Capture a screenshot of the current page (PNG base64)',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_click',
     description: 'Click an element by CSS selector',
-    input_schema: {
+    inputSchema: {
       type: 'object',
       properties: { selector: { type: 'string', description: 'CSS selector' } },
       required: ['selector']
@@ -38,7 +39,7 @@ const TOOLS = [
   {
     name: 'browser_type',
     description: 'Type text into an input element',
-    input_schema: {
+    inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector' },
@@ -50,12 +51,12 @@ const TOOLS = [
   {
     name: 'browser_get_url',
     description: 'Get the current page URL',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_get_text',
     description: 'Get page text, optionally filtered by CSS selector',
-    input_schema: {
+    inputSchema: {
       type: 'object',
       properties: { selector: { type: 'string', description: 'CSS selector (optional)' } },
       required: []
@@ -64,7 +65,7 @@ const TOOLS = [
   {
     name: 'browser_eval',
     description: 'Execute JavaScript in the page context',
-    input_schema: {
+    inputSchema: {
       type: 'object',
       properties: { javascript: { type: 'string', description: 'JS code to execute' } },
       required: ['javascript']
@@ -73,37 +74,37 @@ const TOOLS = [
   {
     name: 'browser_show',
     description: 'Show the embedded browser in the app window',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_hide',
     description: 'Hide the embedded browser',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_devtools',
     description: 'Toggle DevTools (console, network, elements) for the embedded browser',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_back',
     description: 'Go back one page in browser history',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_forward',
     description: 'Go forward one page in browser history',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_reload',
     description: 'Reload the current page',
-    input_schema: { type: 'object', properties: {}, required: [] }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'browser_console',
     description: 'Get console logs (log, warn, error, info, debug) from the embedded browser page',
-    input_schema: {
+    inputSchema: {
       type: 'object',
       properties: {
         clear: { type: 'boolean', description: 'Clear the log buffer after reading (default: false)' }

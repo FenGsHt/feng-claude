@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import { app } from 'electron'
 import { claudeSessionConfigDir } from './claudeSessionConfigDir'
 import type { McpEntry, McpServerConfig, McpServerType } from '../renderer/src/types/ipc'
@@ -32,6 +33,12 @@ type ClaudeJson = {
 const CLAUDE_JSON_FILE = '.claude.json'
 const SETTINGS_JSON_FILE = 'settings.json'
 
+function claudeJsonPath(): string {
+  /* [2026-04-30] 原写到 `${CLAUDE_CONFIG_DIR}/.claude.json`（~/.claude/.claude.json）；
+   * Claude Code 的 MCP 列表实际来自用户根目录 ~/.claude.json，因此 dev 中看不到 browser-tools。 */
+  return join(homedir(), CLAUDE_JSON_FILE)
+}
+
 /** [2026-04-29] 从旧的 settings.json 迁移 MCP 配置到 .claude.json */
 let migrated = false
 function migrateMcpFromSettingsJson(): void {
@@ -39,7 +46,6 @@ function migrateMcpFromSettingsJson(): void {
   migrated = true
   try {
     const settingsPath = join(claudeSessionConfigDir(), SETTINGS_JSON_FILE)
-    const claudeJsonPath = join(claudeSessionConfigDir(), CLAUDE_JSON_FILE)
     // 只在 .claude.json 不存在或没有 mcpServers 时才迁移
     const claudeData = readClaudeJson()
     if (claudeData.mcpServers && Object.keys(claudeData.mcpServers).length > 0) return
@@ -73,7 +79,7 @@ function migrateMcpFromSettingsJson(): void {
 
 function readClaudeJson(): ClaudeJson {
   try {
-    const p = join(claudeSessionConfigDir(), CLAUDE_JSON_FILE)
+    const p = claudeJsonPath()
     if (!existsSync(p)) return {}
     const raw = JSON.parse(readFileSync(p, 'utf-8'))
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
@@ -86,9 +92,9 @@ function readClaudeJson(): ClaudeJson {
 }
 
 function writeClaudeJson(data: ClaudeJson): void {
-  const dir = claudeSessionConfigDir()
+  const dir = homedir()
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, CLAUDE_JSON_FILE), `${JSON.stringify(data, null, 2)}\n`, 'utf-8')
+  writeFileSync(claudeJsonPath(), `${JSON.stringify(data, null, 2)}\n`, 'utf-8')
 }
 
 /** 将 GUI 的 McpServerType 转换为 CLI 的 type 字段值 */
@@ -200,22 +206,37 @@ function resolveBrowserToolsScriptPath(): string | null {
     }
     return dest
   }
-  return join(app.getAppPath(), 'scripts', 'browser-mcp-server.js')
+
+  /* [2026-04-30] 原 dev 下只用 app.getAppPath()/scripts；electron-vite 下 getAppPath 可能指向 out，
+   * 导致写入 .claude.json 的 browser-tools 脚本不存在，Claude Code 看不到内置 MCP。 */
+  const candidates = [
+    join(app.getAppPath(), 'scripts', 'browser-mcp-server.js'),
+    join(process.cwd(), 'scripts', 'browser-mcp-server.js'),
+    join(__dirname, '..', '..', 'scripts', 'browser-mcp-server.js')
+  ]
+  const found = candidates.find((p) => existsSync(p))
+  if (!found) {
+    console.warn('[MCP] browser-tools script not found. Tried:', candidates)
+    return null
+  }
+  return found
 }
 
 export function ensureBrowserToolsMcpRegistered(): void {
   if (autoRegistered) return
-  autoRegistered = true
 
   const scriptPath = resolveBrowserToolsScriptPath()
   if (!scriptPath) return
+  autoRegistered = true
 
   const data = readClaudeJson()
   const servers = data.mcpServers ?? {}
   const existing = servers['browser-tools']
+  const disabledBefore = data.disabledMcpServers ?? []
+  const disabledAfter = disabledBefore.filter((name) => name !== 'browser-tools')
 
-  // 路径匹配则跳过
-  if (existing && existing.type === 'stdio' && existing.args?.[0] === scriptPath) return
+  // 路径匹配且未禁用则跳过
+  if (existing && existing.type === 'stdio' && existing.args?.[0] === scriptPath && disabledAfter.length === disabledBefore.length) return
 
   servers['browser-tools'] = {
     type: 'stdio',
@@ -223,6 +244,7 @@ export function ensureBrowserToolsMcpRegistered(): void {
     args: [scriptPath]
   }
   data.mcpServers = servers
+  data.disabledMcpServers = disabledAfter
   writeClaudeJson(data)
-  console.log('[MCP]', existing ? 'updated' : 'registered', 'browser-tools →', scriptPath)
+  console.log('[MCP]', existing ? 'updated' : 'registered', 'browser-tools →', scriptPath, 'config:', claudeJsonPath())
 }

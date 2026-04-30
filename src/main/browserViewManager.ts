@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, WebContentsView, WebPreferences } from 'electron'
+import { BrowserWindow, ipcMain, screen, WebContentsView, WebPreferences } from 'electron'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
 
@@ -59,9 +59,11 @@ function levelToString(level: number): string {
 
 // [2026-04-30] DevTools 分隔线拖拽状态
 let devToolsDragging = false
+let devToolsDragTimer: NodeJS.Timeout | null = null
 
 // [2026-04-30] 浏览器面板拖拽状态（通过主窗口 input-event 全局跟踪）
 let browserDragging = false
+let browserDragTimer: NodeJS.Timeout | null = null
 
 // ── 布局计算 ───────────────────────────────────────────────────────
 
@@ -516,83 +518,137 @@ export function registerBrowserViewIpc(): void {
   })
 
   ipcMain.on('browser-nav:set-ratio', (event, ratio: number) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = getBrowserOwnerWindow(event.sender)
     if (win) setSplitRatio(win, ratio)
   })
 
   // [2026-04-30] 浏览器面板拖拽（通过主窗口 input-event 全局跟踪，解决 WebContentsView 内 mousemove 出界断触问题）
   ipcMain.on('browser-nav:drag-start', (event, _startRatio: number) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = getBrowserOwnerWindow(event.sender)
     if (win && state.mainWin === win && state.visible) {
       browserDragging = true
-      win.on('input-event', handleBrowserDragWindowInput)
+      /* [2026-04-30] 原挂在 BrowserWindow.on('input-event')；该事件属于 webContents，导致拖拽时收不到 mouseMove。 */
+      win.webContents.removeListener('input-event', handleBrowserDragWindowInput)
+      win.webContents.on('input-event', handleBrowserDragWindowInput)
+      startBrowserDragPolling(win)
     }
   })
 
   ipcMain.on('browser-nav:drag-end', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = getBrowserOwnerWindow(event.sender)
     if (win) handleBrowserDragEnd(win)
   })
 
   // [2026-04-30] DevTools 分隔线拖拽开始/结束
   ipcMain.on('browser-nav:devtools-drag-start', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = getBrowserOwnerWindow(event.sender)
     if (win && state.mainWin === win && state.devToolsVisible) {
       devToolsDragging = true
-      win.on('input-event', handleDevToolsDragWindowInput)
+      /* [2026-04-30] 原从 WebContentsView sender 反查 BrowserWindow，常拿不到；并且 input-event 需要挂到 webContents。 */
+      win.webContents.removeListener('input-event', handleDevToolsDragWindowInput)
+      win.webContents.on('input-event', handleDevToolsDragWindowInput)
+      startDevToolsDragPolling(win)
     }
   })
 
   ipcMain.on('browser-nav:devtools-drag-end', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = getBrowserOwnerWindow(event.sender)
     if (win) handleDevToolsDragEnd(win)
   })
+}
+
+function getBrowserOwnerWindow(sender: Electron.WebContents): BrowserWindow | null {
+  /* [2026-04-30] 导航栏/分隔线是 WebContentsView，BrowserWindow.fromWebContents(sender) 可能为 null；
+   * 浏览器面板本身是单例，优先使用 state.mainWin。 */
+  return state.mainWin ?? BrowserWindow.fromWebContents(sender)
 }
 
 // [2026-04-30] 处理 DevTools 分隔线拖拽 BrowserWindow input-event
 function handleDevToolsDragWindowInput(_event: Electron.Event, input: Electron.Input): void {
   if (!devToolsDragging || !state.mainWin) return
   if (input.type === 'mouseMove') {
-    const bounds = state.mainWin.getContentBounds()
-    const panelWidth = Math.round(bounds.width * state.splitRatio)
-    const mouseX = input.x
-    // DevTools 在右侧，mouseX 越大 DevTools 越小
-    const devToolsWidth = bounds.width - mouseX - DEVTOOLS_SEPARATOR_W / 2
-    const newRatio = devToolsWidth / panelWidth
-    state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, newRatio))
-    setBounds(state.mainWin)
+    updateDevToolsDragByContentX(input.x)
   } else if (input.type === 'mouseUp') {
     handleDevToolsDragEnd(state.mainWin)
   }
+}
+
+function updateDevToolsDragByContentX(mouseX: number): void {
+  if (!state.mainWin) return
+  const bounds = state.mainWin.getContentBounds()
+  const panelWidth = Math.round(bounds.width * state.splitRatio)
+  // DevTools 在右侧，mouseX 越大 DevTools 越小
+  const devToolsWidth = bounds.width - mouseX - DEVTOOLS_SEPARATOR_W / 2
+  const newRatio = devToolsWidth / panelWidth
+  state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, newRatio))
+  setBounds(state.mainWin)
+}
+
+function startDevToolsDragPolling(win: BrowserWindow): void {
+  if (devToolsDragTimer) clearInterval(devToolsDragTimer)
+  const startedAt = Date.now()
+  /* [2026-04-30] WebContentsView 内的 mousemove 不一定冒泡到主 webContents；轮询系统鼠标坐标作为拖拽兜底。 */
+  devToolsDragTimer = setInterval(() => {
+    if (!devToolsDragging || !state.mainWin) return
+    const bounds = win.getContentBounds()
+    const point = screen.getCursorScreenPoint()
+    updateDevToolsDragByContentX(point.x - bounds.x)
+    if (Date.now() - startedAt > 10000) handleDevToolsDragEnd(win)
+  }, 16)
 }
 
 // [2026-04-30] 处理 DevTools 分隔线拖拽结束
 function handleDevToolsDragEnd(win: BrowserWindow): void {
   if (!devToolsDragging) return
   devToolsDragging = false
-  win.removeListener('input-event', handleDevToolsDragWindowInput)
+  if (devToolsDragTimer) {
+    clearInterval(devToolsDragTimer)
+    devToolsDragTimer = null
+  }
+  win.webContents.removeListener('input-event', handleDevToolsDragWindowInput)
 }
 
 // [2026-04-30] 处理浏览器面板拖拽 — 主窗口 input-event
 function handleBrowserDragWindowInput(_event: Electron.Event, input: Electron.Input): void {
   if (!browserDragging || !state.mainWin) return
   if (input.type === 'mouseMove') {
-    const bounds = state.mainWin.getContentBounds()
-    const mouseX = input.x
-    // 浏览器面板在窗口右侧，mouseX 越大表示面板越窄
-    const panelWidth = bounds.width - mouseX
-    const newRatio = panelWidth / bounds.width
-    setSplitRatio(state.mainWin, newRatio)
+    updateBrowserDragByContentX(input.x)
   } else if (input.type === 'mouseUp') {
     handleBrowserDragEnd(state.mainWin)
   }
+}
+
+function updateBrowserDragByContentX(mouseX: number): void {
+  if (!state.mainWin) return
+  const bounds = state.mainWin.getContentBounds()
+  // 浏览器面板在窗口右侧，mouseX 越大表示面板越窄
+  const panelWidth = bounds.width - mouseX
+  const newRatio = panelWidth / bounds.width
+  setSplitRatio(state.mainWin, newRatio)
+}
+
+function startBrowserDragPolling(win: BrowserWindow): void {
+  if (browserDragTimer) clearInterval(browserDragTimer)
+  const startedAt = Date.now()
+  /* [2026-04-30] WebContentsView 导航栏发起拖拽后，鼠标移出 navView 时不保证继续有 DOM mousemove；轮询系统鼠标坐标保持拖拽连续。 */
+  browserDragTimer = setInterval(() => {
+    if (!browserDragging || !state.mainWin) return
+    const bounds = win.getContentBounds()
+    const point = screen.getCursorScreenPoint()
+    updateBrowserDragByContentX(point.x - bounds.x)
+    if (Date.now() - startedAt > 10000) handleBrowserDragEnd(win)
+  }, 16)
 }
 
 // [2026-04-30] 处理浏览器面板拖拽结束
 function handleBrowserDragEnd(win: BrowserWindow): void {
   if (!browserDragging) return
   browserDragging = false
-  win.removeListener('input-event', handleBrowserDragWindowInput)
+  if (browserDragTimer) {
+    clearInterval(browserDragTimer)
+    browserDragTimer = null
+  }
+  win.webContents.removeListener('input-event', handleBrowserDragWindowInput)
 }
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
