@@ -8,11 +8,11 @@ export type { TokenUsageUpdatePayload }
 
 /**
  * Claude Code project directory naming:
- *   Replace every `:`, `\`, `/` in the workdir path with `-`
- *   e.g. "E:\git3\claude-gui" → "E--git3-claude-gui"
+ *   Replace every `:`, `\`, `/`, `_` in the workdir path with `-`
+ *   e.g. "D:\git2\python_file\python_file\feng-test" → "D--git2-python-file-python-file-feng-test"
  */
 function workdirToProjectDirName(workdir: string): string {
-  return workdir.replace(/[:\\/]/g, '-')
+  return workdir.replace(/[:\\/_]/g, '-')
 }
 
 interface ClaudeJSONLEntry {
@@ -42,8 +42,6 @@ interface ParsedUsage {
   cacheRead: number
 }
 
-const ZERO_USAGE: ParsedUsage = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
-
 function usageSum(u: ParsedUsage): number {
   return u.input + u.output + u.cacheCreate + u.cacheRead
 }
@@ -57,17 +55,6 @@ interface SessionWatch {
    * time so historical content is never re-counted.
    */
   fileByteOffsets: Map<string, number>
-  /**
-   * Per-message-id last seen usage snapshot.
-   * [2026-04-27] FIX: Claude streams multiple lines per message with different
-   * usage values (thinking stage vs final response). We now take the LAST value
-   * per message.id and emit it when the next message starts.
-   */
-  lastUsageByMessageId: Map<string, ParsedUsage>
-  /** Currently processing message.id (to detect new message start) */
-  currentMessageId: string | null
-  /** Most recently seen JSONL file — used to detect a new claude conversation */
-  latestFile: string | null
   timer: ReturnType<typeof setInterval> | null
   /** Last time we saw token usage — used to detect idle state for notifications */
   lastTokenTime: number | null
@@ -91,12 +78,10 @@ export class ClaudeSessionWatcher {
     const projectDirName = workdirToProjectDirName(workdir)
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
 
-    console.log('[Token] watchSession start — sessionId:', sessionId, 'workdir:', workdir, '→ projectDir:', projectDir)
-    // console.log('[Token] claudeConfigDir:', this.claudeConfigDir)
+    console.log('[Token] watchSession — workdir:', workdir, '→ projectDir:', projectDir)
 
-    // [2026-04-27] BUG FIX: If this projectDir is already being watched by another session,
-    // reuse the existing watcher to avoid duplicate token counting. Multiple sessions in
-    // the same workdir share the same JSONL file; token usage should be counted once.
+    // If this projectDir is already being watched by another session,
+    // reuse the existing watcher to avoid duplicate token counting.
     const existing = this.watchedProjectDirs.get(projectDir)
     if (existing) {
       this.sessions.set(sessionId, existing)
@@ -107,9 +92,6 @@ export class ClaudeSessionWatcher {
       sessionId,
       projectDir,
       fileByteOffsets: new Map(),
-      lastUsageByMessageId: new Map(),
-      currentMessageId: null,
-      latestFile: null,
       timer: null,
       lastTokenTime: null,
       runningNotified: false
@@ -118,12 +100,12 @@ export class ClaudeSessionWatcher {
     // Pre-populate byte offsets for files that already exist so we never
     // re-process historical token entries.
     this.scanExisting(sw)
-    // console.log(`[TokenWatcher] scanExisting done — ${sw.fileByteOffsets.size} files, latestFile=${sw.latestFile}`)
 
     // Poll every 1 s — reliable on Windows where FSEvents can be flaky.
     sw.timer = setInterval(() => {
       this.poll(sw)
     }, 1000)
+    console.log('[Token] timer started for projectDir:', projectDir)
 
     this.sessions.set(sessionId, sw)
     this.watchedProjectDirs.set(projectDir, sw)
@@ -156,17 +138,12 @@ export class ClaudeSessionWatcher {
   private scanExisting(sw: SessionWatch): void {
     try {
       if (!existsSync(sw.projectDir)) return
-      let latestMtime = 0
       for (const entry of readdirSync(sw.projectDir, { withFileTypes: true })) {
         if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
         const filePath = join(sw.projectDir, entry.name)
         try {
           const st = statSync(filePath)
           sw.fileByteOffsets.set(filePath, st.size)
-          if (st.mtimeMs > latestMtime) {
-            latestMtime = st.mtimeMs
-            sw.latestFile = filePath
-          }
         } catch { /* ignore */ }
       }
     } catch { /* project dir may not exist yet */ }
@@ -189,36 +166,16 @@ export class ClaudeSessionWatcher {
 
       for (const filePath of entries) {
         const isNewFile = !sw.fileByteOffsets.has(filePath)
-        const isNewConversation = isNewFile && sw.latestFile !== null
-
         if (isNewFile) {
           sw.fileByteOffsets.set(filePath, 0)
-          sw.latestFile = filePath
         }
-
-        this.processNewBytes(sw, filePath, isNewConversation)
+        this.processNewBytes(sw, filePath)
       }
 
-      // [2026-04-27] Detect idle state: if no token usage for 3+ seconds, send 'idle' status
-      // This enables task completion notifications in the renderer
+      // Detect idle state: if no token usage for 3+ seconds, send 'idle' status
       if (sw.lastTokenTime && sw.runningNotified) {
         const elapsed = Date.now() - sw.lastTokenTime
         if (elapsed > 3000) {
-          if (sw.currentMessageId) {
-            const pendingUsage = sw.lastUsageByMessageId.get(sw.currentMessageId)
-            if (pendingUsage && usageSum(pendingUsage) > 0) {
-              this.emit({
-                sessionId: sw.sessionId,
-                input: pendingUsage.input,
-                output: pendingUsage.output,
-                cacheCreate: pendingUsage.cacheCreate,
-                cacheRead: pendingUsage.cacheRead,
-                reset: false
-              })
-              sw.lastUsageByMessageId.delete(sw.currentMessageId)
-              sw.currentMessageId = null
-            }
-          }
           this.emitStatus(sw.sessionId, 'idle')
           sw.runningNotified = false
         }
@@ -233,7 +190,7 @@ export class ClaudeSessionWatcher {
    * and emit token usage events. Partial trailing lines are skipped and
    * included in the next poll.
    */
-  private processNewBytes(sw: SessionWatch, filePath: string, resetFirst: boolean): void {
+  private processNewBytes(sw: SessionWatch, filePath: string): void {
     let fd: number | null = null
     try {
       if (!existsSync(filePath)) return
@@ -259,7 +216,6 @@ export class ClaudeSessionWatcher {
 
       const lines = completeText.split('\n').filter((l) => l.trim().length > 0)
 
-      let needReset = resetFirst
       for (const line of lines) {
         // Emit tool calls for any tool_use blocks in this line
         for (const tc of parseToolCalls(line)) {
@@ -272,54 +228,23 @@ export class ClaudeSessionWatcher {
           })
         }
 
-        const parsed = parseLineWithId(line)
-        if (!parsed) continue
-        const { messageId, model, usage } = parsed
-
-        // Skip synthetic model entries (Claude Code internal bookkeeping)
-        if (model === '<synthetic>') continue
-
-        // [2026-04-27] BUG FIX: Same message.id may appear multiple times with different
-        // usage values (thinking stage vs final response). Each record is a snapshot,
-        // NOT an increment. We should take the last value per message.id, not delta.
-        //
-        // Strategy: Store current message's usage. When we see a NEW message.id,
-        // emit the PREVIOUS message's final usage (as a "completed" increment).
-        const prevMsgId = sw.currentMessageId
-        if (prevMsgId && prevMsgId !== messageId) {
-          // New message started → emit previous message's final usage
-          const prevUsage = sw.lastUsageByMessageId.get(prevMsgId)
-          if (prevUsage && usageSum(prevUsage) > 0) {
-            if (!sw.runningNotified) {
-              this.emitStatus(sw.sessionId, 'running')
-              sw.runningNotified = true
-            }
-            sw.lastTokenTime = Date.now()
-            this.emit({
-              sessionId: sw.sessionId,
-              input: prevUsage.input,
-              output: prevUsage.output,
-              cacheCreate: prevUsage.cacheCreate,
-              cacheRead: prevUsage.cacheRead,
-              reset: needReset
-            })
-            needReset = false
+        // Parse assistant message and emit usage directly
+        const usage = parseAssistantUsage(line)
+        if (usage && usageSum(usage) > 0) {
+          if (!sw.runningNotified) {
+            this.emitStatus(sw.sessionId, 'running')
+            sw.runningNotified = true
           }
-          // Clear previous message from map (no longer needed)
-          sw.lastUsageByMessageId.delete(prevMsgId)
-        }
-
-        // Update current message tracking
-        sw.currentMessageId = messageId
-        sw.lastUsageByMessageId.set(messageId, usage)
-
-        // Cap map size
-        if (sw.lastUsageByMessageId.size > 100) {
-          // Keep only current message and recent ones
-          const keys = [...sw.lastUsageByMessageId.keys()]
-          for (const k of keys.slice(0, -10)) {
-            if (k !== messageId) sw.lastUsageByMessageId.delete(k)
-          }
+          sw.lastTokenTime = Date.now()
+          console.log('[Token] emit — input:', usage.input, 'output:', usage.output)
+          this.emit({
+            sessionId: sw.sessionId,
+            input: usage.input,
+            output: usage.output,
+            cacheCreate: usage.cacheCreate,
+            cacheRead: usage.cacheRead,
+            reset: false
+          })
         }
       }
     } catch (err) {
@@ -368,40 +293,26 @@ function parseToolCalls(line: string): ToolCallBlock[] {
   }
 }
 
-interface ParsedLine {
-  messageId: string
-  model: string
-  usage: ParsedUsage
-}
-
-function parseLineWithId(line: string): ParsedLine | null {
+/**
+ * Parse assistant message and return usage.
+ * [2026-04-30] Simplified: directly return usage like claude-hud does.
+ */
+function parseAssistantUsage(line: string): ParsedUsage | null {
   try {
     const entry = JSON.parse(line) as ClaudeJSONLEntry
-    if (entry.type !== 'assistant') {
-      // [DEBUG] Log non-assistant entry types to understand JSONL structure
-      // console.log('[TokenWatcher] skip non-assistant type:', entry.type)
-      return null
-    }
+    if (entry.type !== 'assistant') return null
     const msg = entry.message
-    if (!msg) {
-      return null
-    }
-    const messageId = msg.id
-    if (!messageId) return null
+    if (!msg) return null
     const u = msg.usage
-    if (!u) {
-      return null
-    }
-    const input = Number(u.input_tokens) || 0
-    const output = Number(u.output_tokens) || 0
-    const cacheCreate = Number(u.cache_creation_input_tokens) || 0
-    const cacheRead = Number(u.cache_read_input_tokens) || 0
+    if (!u) return null
+
+    const input = Math.trunc(Number(u.input_tokens) || 0)
+    const output = Math.trunc(Number(u.output_tokens) || 0)
+    const cacheCreate = Math.trunc(Number(u.cache_creation_input_tokens) || 0)
+    const cacheRead = Math.trunc(Number(u.cache_read_input_tokens) || 0)
     if (input + output + cacheCreate + cacheRead === 0) return null
-    return {
-      messageId,
-      model: msg.model ?? '',
-      usage: { input, output, cacheCreate, cacheRead }
-    }
+
+    return { input, output, cacheCreate, cacheRead }
   } catch {
     return null
   }
