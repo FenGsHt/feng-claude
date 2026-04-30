@@ -99,6 +99,17 @@ const TOOLS = [
     name: 'browser_reload',
     description: 'Reload the current page',
     input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_console',
+    description: 'Get console logs (log, warn, error, info, debug) from the embedded browser page',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clear: { type: 'boolean', description: 'Clear the log buffer after reading (default: false)' }
+      },
+      required: []
+    }
   }
 ]
 
@@ -190,6 +201,15 @@ async function handleTool(name, args) {
       case 'browser_reload': {
         await callHttp('/reload')
         return [{ type: 'text', text: 'Reloaded page' }]
+      }
+      case 'browser_console': {
+        const path = args.clear ? '/console?clear=true' : '/console'
+        const r = await callHttp(path)
+        if (r.entries?.length > 0) {
+          const lines = r.entries.map(e => `[${e.timestamp}] ${e.level}: ${e.text}`)
+          return [{ type: 'text', text: lines.join('\n') }]
+        }
+        return [{ type: 'text', text: 'No console logs captured' }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]

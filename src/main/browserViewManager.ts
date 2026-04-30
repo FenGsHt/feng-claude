@@ -37,6 +37,26 @@ const DEVTOOLS_MIN_RATIO = 0.2   // [2026-04-30] DevTools 最小比例
 const DEVTOOLS_MAX_RATIO = 0.6   // [2026-04-30] DevTools 最大比例
 const DEVTOOLS_SEPARATOR_W = 8   // [2026-04-30] DevTools 分隔线宽度
 
+const CONSOLE_BUFFER_MAX = 500
+
+interface ConsoleLogEntry {
+  level: string
+  text: string
+  timestamp: string
+}
+
+const consoleLogs: ConsoleLogEntry[] = []
+
+function levelToString(level: number): string {
+  switch (level) {
+    case 0: return 'verbose'
+    case 1: return 'info'
+    case 2: return 'warning'
+    case 3: return 'error'
+    default: return 'debug'
+  }
+}
+
 // [2026-04-30] DevTools 分隔线拖拽状态
 let devToolsDragging = false
 
@@ -353,6 +373,17 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     view.webContents.on('did-navigate-in-page', (_, navUrl) => {
       updateNavUrl(navUrl)
       updateNavBackForward()
+    })
+
+    view.webContents.on('console-message', (_event: Electron.Event, level: number, message: string, _line: number, _sourceId: string) => {
+      consoleLogs.push({
+        level: levelToString(level),
+        text: message,
+        timestamp: new Date().toISOString()
+      })
+      if (consoleLogs.length > CONSOLE_BUFFER_MAX) {
+        consoleLogs.shift()
+      }
     })
 
     state.navView = createNavView()
@@ -718,6 +749,17 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
         if (path === '/reload' && req.method === 'POST') {
           browserReload()
           res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+          return
+        }
+
+        // GET /console?clear=true
+        if (path === '/console' && req.method === 'GET') {
+          const doClear = url.searchParams.get('clear') === 'true'
+          const entries = [...consoleLogs]
+          if (doClear) {
+            consoleLogs.length = 0
+          }
+          res.writeHead(200); res.end(JSON.stringify({ entries }))
           return
         }
 
