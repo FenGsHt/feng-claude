@@ -7,11 +7,10 @@ interface BrowserPanelState {
   navView: WebContentsView | null
   devToolsView: WebContentsView | null  // [2026-04-30] 独立 DevTools 视图
   devToolsSeparatorView: WebContentsView | null // [2026-04-30] DevTools 分隔线视图（可拖拽）
-  panelSeparatorView: WebContentsView | null // [2026-04-30] 浏览器面板左边缘分隔线（调整面板宽度）
   mainWin: BrowserWindow | null
   visible: boolean
   resizeHandler: (() => void) | null
-  splitRatio: number   // 浏览器占窗口宽度的比例（0.3-0.7）
+  splitRatio: number   // 浏览器占窗口宽度的比例（0.25-0.75）
   devToolsRatio: number // [2026-04-30] DevTools 占浏览器面板宽度比例（0.2-0.6）
   devToolsVisible: boolean
 }
@@ -21,7 +20,6 @@ const state: BrowserPanelState = {
   navView: null,
   devToolsView: null,
   devToolsSeparatorView: null,
-  panelSeparatorView: null,
   mainWin: null,
   visible: false,
   resizeHandler: null,
@@ -38,11 +36,9 @@ const MAX_RATIO = 0.75
 const DEVTOOLS_MIN_RATIO = 0.2   // [2026-04-30] DevTools 最小比例
 const DEVTOOLS_MAX_RATIO = 0.6   // [2026-04-30] DevTools 最大比例
 const DEVTOOLS_SEPARATOR_W = 8   // [2026-04-30] DevTools 分隔线宽度
-const PANEL_SEPARATOR_W = 6      // [2026-04-30] 浏览器面板分隔线宽度
 
-// [2026-04-30] 分隔线拖拽状态
+// [2026-04-30] DevTools 分隔线拖拽状态
 let devToolsDragging = false
-let panelDragging = false
 
 // ── 布局计算 ───────────────────────────────────────────────────────
 
@@ -51,11 +47,10 @@ function notifyBrowserState(): void {
   const mainWin = wins[0]
   if (mainWin?.webContents && state.view) {
     const bounds = mainWin.getContentBounds()
-    // [2026-04-30] 面板宽度包括分隔线
-    const totalPanelW = state.visible ? Math.round(bounds.width * state.splitRatio) : 0
+    const viewW = state.visible ? Math.round(bounds.width * state.splitRatio) : 0
     mainWin.webContents.send('browser-view:state-changed', {
       visible: state.visible,
-      width: totalPanelW
+      width: viewW
     })
   }
 }
@@ -63,25 +58,12 @@ function notifyBrowserState(): void {
 function setBounds(win: BrowserWindow): void {
   if (!state.view || !state.mainWin) return
   const bounds = win.getContentBounds()
-  // [2026-04-30] 面板宽度包括分隔线
-  const totalPanelW = Math.round(bounds.width * state.splitRatio)
-  const panelSeparatorX = bounds.width - totalPanelW
-  const viewW = totalPanelW - PANEL_SEPARATOR_W
-  const viewX = panelSeparatorX + PANEL_SEPARATOR_W
+  const viewW = Math.round(bounds.width * state.splitRatio)
+  const viewX = bounds.width - viewW
 
   // 通知导航栏当前比例
   if (state.navView?.webContents) {
     state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
-  }
-
-  // [2026-04-30] 面板分隔线（左边缘，覆盖整个面板高度）
-  if (state.panelSeparatorView) {
-    state.panelSeparatorView.setBounds({
-      x: panelSeparatorX,
-      y: TITLEBAR_H,
-      width: PANEL_SEPARATOR_W,
-      height: bounds.height - TITLEBAR_H
-    })
   }
 
   const contentY = TITLEBAR_H + NAVBAR_H
@@ -252,39 +234,6 @@ document.body.addEventListener('mouseup', () => {
 })
 </script></body></html>`
 
-// [2026-04-30] 面板分隔线 HTML — 用于调整浏览器面板宽度
-const PANEL_SEPARATOR_HTML = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: #1a1a1a;
-  height: 100%;
-  cursor: col-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-body:hover { background: #f59e0b; }
-.drag-line {
-  width: 2px;
-  height: 40%;
-  background: #444;
-  border-radius: 1px;
-}
-body:hover .drag-line { background: #fff; }
-</style></head><body>
-  <div class="drag-line"></div>
-<script>
-const { ipcRenderer } = require('electron')
-document.body.addEventListener('mousedown', e => {
-  ipcRenderer.send('browser-nav:panel-drag-start')
-  e.preventDefault()
-})
-document.body.addEventListener('mouseup', () => {
-  ipcRenderer.send('browser-nav:panel-drag-end')
-})
-</script></body></html>`
-
 function createNavView(): WebContentsView {
   const prefs: WebPreferences = {
     nodeIntegration: true,
@@ -295,19 +244,6 @@ function createNavView(): WebContentsView {
   nav.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   nav.webContents.loadURL(`data:text/html;base64,${Buffer.from(NAVBAR_HTML, 'utf-8').toString('base64')}`).catch(() => {})
   return nav
-}
-
-// [2026-04-30] 创建面板分隔线视图（调整浏览器面板宽度）
-function createPanelSeparatorView(): WebContentsView {
-  const prefs: WebPreferences = {
-    nodeIntegration: true,
-    contextIsolation: false,
-    backgroundThrottling: false
-  }
-  const sep = new WebContentsView({ webPreferences: prefs })
-  sep.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  sep.webContents.loadURL(`data:text/html;base64,${Buffer.from(PANEL_SEPARATOR_HTML, 'utf-8').toString('base64')}`).catch(() => {})
-  return sep
 }
 
 // [2026-04-30] 创建 DevTools 分隔线视图
@@ -420,8 +356,6 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     })
 
     state.navView = createNavView()
-    // [2026-04-30] 创建面板分隔线
-    state.panelSeparatorView = createPanelSeparatorView()
     state.mainWin = win
 
     // 窗口 resize 时重新定位 + 通知渲染进程
@@ -432,13 +366,11 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
 
     win.contentView.addChildView(view)
     win.contentView.addChildView(state.navView)
-    win.contentView.addChildView(state.panelSeparatorView)
   }
 
   state.mainWin = win
   setBounds(win)
-  // [2026-04-30] 添加顺序：分隔线在最上层接收鼠标事件，然后导航栏，最后浏览器内容
-  win.contentView.addChildView(state.panelSeparatorView)
+  // 先添加浏览器内容，再添加导航栏（确保导航栏在最上层）
   if (state.navView) win.contentView.addChildView(state.navView)
   win.contentView.addChildView(state.view)
 
@@ -474,10 +406,6 @@ export function hideBrowserView(_win?: BrowserWindow): void {
   state.mainWin.contentView.removeChildView(state.view)
   if (state.navView) {
     state.mainWin.contentView.removeChildView(state.navView)
-  }
-  // [2026-04-30] 移除面板分隔线
-  if (state.panelSeparatorView) {
-    state.mainWin.contentView.removeChildView(state.panelSeparatorView)
   }
   // [2026-04-30] 清理 DevTools 相关视图
   if (state.devToolsVisible) {
@@ -561,20 +489,6 @@ export function registerBrowserViewIpc(): void {
     if (win) setSplitRatio(win, ratio)
   })
 
-  // [2026-04-30] 面板分隔线拖拽 — 调整浏览器面板宽度
-  ipcMain.on('browser-nav:panel-drag-start', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && state.mainWin === win && state.visible) {
-      panelDragging = true
-      win.on('input-event', handlePanelDragWindowInput)
-    }
-  })
-
-  ipcMain.on('browser-nav:panel-drag-end', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win) handlePanelDragEnd(win)
-  })
-
   // [2026-04-30] DevTools 分隔线拖拽开始/结束
   ipcMain.on('browser-nav:devtools-drag-start', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -588,30 +502,6 @@ export function registerBrowserViewIpc(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) handleDevToolsDragEnd(win)
   })
-}
-
-// [2026-04-30] 处理面板分隔线拖拽 BrowserWindow input-event
-function handlePanelDragWindowInput(_event: Electron.Event, input: Electron.Input): void {
-  if (!panelDragging || !state.mainWin) return
-  if (input.type === 'mouseMove') {
-    const bounds = state.mainWin.getContentBounds()
-    const mouseX = input.x
-    // 面板宽度 = 窗口宽度 - mouseX（鼠标位置即为分隔线位置）
-    const newPanelWidth = bounds.width - mouseX
-    const newRatio = newPanelWidth / bounds.width
-    state.splitRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, newRatio))
-    setBounds(state.mainWin)
-    notifyBrowserState()
-  } else if (input.type === 'mouseUp') {
-    handlePanelDragEnd(state.mainWin)
-  }
-}
-
-// [2026-04-30] 处理面板分隔线拖拽结束
-function handlePanelDragEnd(win: BrowserWindow): void {
-  if (!panelDragging) return
-  panelDragging = false
-  win.removeListener('input-event', handlePanelDragWindowInput)
 }
 
 // [2026-04-30] 处理 DevTools 分隔线拖拽 BrowserWindow input-event
