@@ -64,8 +64,9 @@ export function AppShell(): React.ReactElement {
       // 向左拖拽增加面板宽度，向右拖拽减少面板宽度
       const delta = browserDragStartX.current - ev.clientX
       const newWidth = Math.max(200, browserDragStartWidth.current + delta)
-      // 通过 IPC 通知主进程更新比例
-      void window.electronAPI.browserView?.setRatio?.(newWidth / window.innerWidth)
+      // [2026-05-01] 比例基于去掉 Tools 面板后的有效宽度
+      const effectiveWidth = window.innerWidth - (showTools ? 256 : 0)
+      void window.electronAPI.browserView?.setRatio?.(newWidth / effectiveWidth)
     }
     const onUp = () => {
       isBrowserResizing.current = false
@@ -137,7 +138,7 @@ export function AppShell(): React.ReactElement {
               position: 'fixed',
               top: 32,
               bottom: 0,
-              right: browserPanel.width,
+              right: browserPanel.width + (showTools ? 256 : 0),
               width: 8,
               zIndex: 50
             }}
