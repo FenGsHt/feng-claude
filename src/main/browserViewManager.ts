@@ -217,7 +217,8 @@ function toggleDevTools(): void {
   if (!state.view) return
   state.devToolsVisible = !state.devToolsVisible
   if (state.devToolsVisible) {
-    state.view.webContents.openDevTools({ mode: 'detach' })
+    // [2026-04-30] 使用 right 模式嵌入 DevTools，用户可拖拽调整大小
+    state.view.webContents.openDevTools({ mode: 'right' })
   } else {
     state.view.webContents.closeDevTools()
   }
