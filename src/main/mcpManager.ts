@@ -59,7 +59,7 @@ function migrateMcpFromSettingsJson(): void {
     for (const [name, cfg] of Object.entries(oldMcpServers)) {
       const guiType = (cfg.transport ?? cfg.type ?? 'stdio') as string
       newMcpServers[name] = {
-        type: guiType === 'streamable-http' ? 'http' : guiType,
+        type: (guiType === 'streamable-http' ? 'http' : guiType) as 'stdio' | 'sse' | 'http',
         command: cfg.command,
         args: cfg.args,
         url: cfg.url,
@@ -193,33 +193,31 @@ export function updateMcpServer(name: string, cfg: McpServerConfig): void {
 let autoRegistered = false
 
 function resolveBrowserToolsScriptPath(): string | null {
-  if (app.isPackaged) {
-    const dest = join(app.getPath('userData'), 'browser-mcp-server.js')
-    if (!existsSync(dest)) {
-      const src = join(app.getAppPath(), 'scripts', 'browser-mcp-server.js')
-      try {
-        writeFileSync(dest, readFileSync(src), 'utf-8')
-      } catch (e) {
-        console.warn('[MCP] Failed to unpack browser-mcp-server.js:', e)
-        return null
-      }
-    }
-    return dest
-  }
+  // [2026-05-01] 无论打包/开发，都复制到 userData 目录；
+  // 这样其他项目运行 Claude Code 时也能找到 browser-tools。
+  const dest = join(app.getPath('userData'), 'browser-mcp-server.js')
 
-  /* [2026-04-30] 原 dev 下只用 app.getAppPath()/scripts；electron-vite 下 getAppPath 可能指向 out，
-   * 导致写入 .claude.json 的 browser-tools 脚本不存在，Claude Code 看不到内置 MCP。 */
-  const candidates = [
-    join(app.getAppPath(), 'scripts', 'browser-mcp-server.js'),
-    join(process.cwd(), 'scripts', 'browser-mcp-server.js'),
-    join(__dirname, '..', '..', 'scripts', 'browser-mcp-server.js')
-  ]
-  const found = candidates.find((p) => existsSync(p))
-  if (!found) {
-    console.warn('[MCP] browser-tools script not found. Tried:', candidates)
-    return null
+  if (!existsSync(dest)) {
+    // 开发模式：从 scripts 目录复制
+    const candidates = [
+      join(app.getAppPath(), 'scripts', 'browser-mcp-server.js'),
+      join(process.cwd(), 'scripts', 'browser-mcp-server.js'),
+      join(__dirname, '..', '..', 'scripts', 'browser-mcp-server.js')
+    ]
+    const src = candidates.find((p) => existsSync(p))
+    if (!src) {
+      console.warn('[MCP] browser-tools script not found. Tried:', candidates)
+      return null
+    }
+    try {
+      writeFileSync(dest, readFileSync(src), 'utf-8')
+      console.log('[MCP] copied browser-mcp-server.js to userData:', dest)
+    } catch (e) {
+      console.warn('[MCP] Failed to copy browser-mcp-server.js:', e)
+      return null
+    }
   }
-  return found
+  return dest
 }
 
 export function ensureBrowserToolsMcpRegistered(): void {

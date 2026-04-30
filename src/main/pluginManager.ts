@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
-import { claudeSessionConfigDir, addUserDisabledPlugin, removeUserDisabledPlugin, HUD_PLUGIN_ENABLE_KEY } from './claudeSessionConfigDir'
+import { claudeSessionConfigDir, addUserDisabledPlugin, removeUserDisabledPlugin } from './claudeSessionConfigDir'
 import type { PluginEntry } from '../renderer/src/types/ipc'
 
 export interface RefreshResult {
