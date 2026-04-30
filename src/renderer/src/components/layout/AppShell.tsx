@@ -122,7 +122,7 @@ export function AppShell(): React.ReactElement {
         />
         <main
           className="flex flex-col flex-1 overflow-hidden min-w-0"
-          style={browserPanel.visible ? { marginRight: browserPanel.width + 6 } : undefined}
+          style={browserPanel.visible ? { marginRight: browserPanel.width + (showTools ? 256 : 0) + 6 } : undefined}
         >
           <TabBar />
           <TerminalPanel />

@@ -75,7 +75,9 @@ function notifyBrowserState(): void {
   const mainWin = wins[0]
   if (mainWin?.webContents && state.view) {
     const bounds = mainWin.getContentBounds()
-    const viewW = state.visible ? Math.round(bounds.width * state.splitRatio) : 0
+    // [2026-05-01] 与 setBounds 一致，使用去掉 Tools 面板后的有效宽度
+    const effectiveWidth = bounds.width - state.toolsPanelWidth
+    const viewW = state.visible ? Math.round(effectiveWidth * state.splitRatio) : 0
     mainWin.webContents.send('browser-view:state-changed', {
       visible: state.visible,
       width: viewW
