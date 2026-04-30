@@ -13,6 +13,7 @@ interface BrowserPanelState {
   splitRatio: number   // 浏览器占窗口宽度的比例（0.25-0.75）
   devToolsRatio: number // [2026-04-30] DevTools 占浏览器面板宽度比例（0.2-0.6）
   devToolsVisible: boolean
+  toolsPanelWidth: number // [2026-05-01] Tools calls 面板宽度，浏览器需要在其左边
 }
 
 const state: BrowserPanelState = {
@@ -26,7 +27,8 @@ const state: BrowserPanelState = {
   /* [2026-04-30] 原默认 0.5，首次打开占半屏偏大；调小成辅助调试面板宽度。 */
   splitRatio: 0.35,
   devToolsRatio: 0.4,
-  devToolsVisible: false
+  devToolsVisible: false,
+  toolsPanelWidth: 0
 }
 
 const DEFAULT_PORT = 3100
@@ -84,8 +86,10 @@ function notifyBrowserState(): void {
 function setBounds(win: BrowserWindow): void {
   if (!state.view || !state.mainWin) return
   const bounds = win.getContentBounds()
-  const viewW = Math.round(bounds.width * state.splitRatio)
-  const viewX = bounds.width - viewW
+  // [2026-05-01] 浏览器面板右边需要给 Tools calls 面板留空间
+  const effectiveWidth = bounds.width - state.toolsPanelWidth
+  const viewW = Math.round(effectiveWidth * state.splitRatio)
+  const viewX = effectiveWidth - viewW
 
   // 通知导航栏当前比例
   if (state.navView?.webContents) {
@@ -537,6 +541,13 @@ export function registerBrowserViewIpc(): void {
   ipcMain.on('browser-nav:set-ratio', (event, ratio: number) => {
     const win = getBrowserOwnerWindow(event.sender)
     if (win) setSplitRatio(win, ratio)
+  })
+
+  // [2026-05-01] Tools calls 面板宽度变化，浏览器需要在其左边布局
+  ipcMain.on('browser-view:set-tools-panel-width', (event, width: number) => {
+    const win = getBrowserOwnerWindow(event.sender)
+    state.toolsPanelWidth = width
+    if (win && state.visible) setBounds(win)
   })
 
   // [2026-04-30] 浏览器面板拖拽（通过主窗口 input-event 全局跟踪，解决 WebContentsView 内 mousemove 出界断触问题）

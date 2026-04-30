@@ -102,6 +102,12 @@ export function AppShell(): React.ReactElement {
     })
   }, [])
 
+  // [2026-05-01] 当 Tools calls 面板显示/隐藏时，通知主进程更新浏览器布局
+  useEffect(() => {
+    const width = showTools ? 256 : 0  // w-64 = 256px
+    window.electronAPI.browserView?.setToolsPanelWidth?.(width)
+  }, [showTools])
+
   return (
     <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans antialiased">
       <TitleBar onToggleTools={() => setShowTools((v) => !v)} showTools={showTools} />
