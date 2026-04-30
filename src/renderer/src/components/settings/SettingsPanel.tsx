@@ -71,17 +71,11 @@ export function SettingsPanel(): React.ReactElement {
     // 更新本地状态
     setForm(prev => ({
       ...prev,
-      // [2026-04-30] 当选择 OpenAI 格式时，自动启用容灾代理
-      enableApiProxy: key === 'format' && value === 'openai' ? true : prev.enableApiProxy,
       profiles: prev.profiles.map(p => p.id === activeProfile.id ? updatedProfile : p)
     }))
     setSaved(false)
     // 立即保存到主进程
     void window.electronAPI.profiles.update(activeProfile.id, { [key]: value })
-    // [2026-04-30] 同时保存代理开关（如果被自动启用）
-    if (key === 'format' && value === 'openai') {
-      void window.electronAPI.settings.set({ ...form, enableApiProxy: true })
-    }
   }
 
   // [2026-04-30] 备用配置操作
@@ -106,11 +100,6 @@ export function SettingsPanel(): React.ReactElement {
       f.id === fallbackId ? { ...f, ...updates } : f
     )
     handleProfileChange('fallbacks', fallbacks)
-    // [2026-04-30] 当备用配置选择 OpenAI 格式时，自动启用容灾代理
-    if (updates.format === 'openai' && !form.enableApiProxy) {
-      setForm(prev => ({ ...prev, enableApiProxy: true }))
-      void window.electronAPI.settings.set({ ...form, enableApiProxy: true })
-    }
   }
 
   const handleRemoveFallback = (fallbackId: string) => {
@@ -316,7 +305,7 @@ export function SettingsPanel(): React.ReactElement {
           <span className="text-[11px] text-claude-text">{lang === 'zh' ? '启用本地 API 容灾代理' : 'Enable local API failover proxy'}</span>
         </label>
         <p className="mt-1 text-[9px] leading-snug text-claude-muted">
-          {lang === 'zh' ? '开启后请求通过本地代理转发，主地址失败时自动切换备用配置。同时支持 OpenAI 格式转换（勾选 OpenAI 选项即可）。' : 'Requests go through local proxy; auto-switches to fallback on primary failure. Also supports OpenAI format conversion.'}
+          {lang === 'zh' ? '开启后请求通过本地代理转发，主地址失败时自动切换备用配置。' : 'Requests go through local proxy; auto-switches to fallback on primary failure.'}
         </p>
       </div>
 
@@ -414,30 +403,16 @@ export function SettingsPanel(): React.ReactElement {
                           className="field-input !text-[10px] !py-1.5"
                         />
                       </div>
-                      {/* Model + OpenAI */}
+                      {/* Model */}
                       <div className="flex gap-2 items-center">
                         <span className="text-[9px] text-claude-muted w-12">{lang === 'zh' ? '模型' : 'Model'}</span>
                         <input
                           type="text"
                           value={fallback.model ?? ''}
                           onChange={(e) => handleUpdateFallback(fallback.id, { model: e.target.value })}
-                          className="field-input !text-[10px] !py-1.5 flex-1"
+                          className="field-input !text-[10px] !py-1.5"
                         />
-                        <label className="flex items-center gap-1 shrink-0" title={lang === 'zh' ? 'OpenAI 格式需通过代理转换' : 'OpenAI format requires proxy conversion'}>
-                          <input
-                            type="checkbox"
-                            checked={fallback.format === 'openai'}
-                            onChange={(e) => handleUpdateFallback(fallback.id, { format: e.target.checked ? 'openai' : 'anthropic' })}
-                            className="w-3 h-3 accent-blue-500"
-                          />
-                          <span className="text-[9px] text-claude-muted">OpenAI</span>
-                        </label>
                       </div>
-                      {fallback.format === 'openai' && (
-                        <p className="text-[8px] text-blue-400/80 pl-5">
-                          {lang === 'zh' ? '使用 sk-xxx 密钥，代理自动转换格式' : 'Use sk-xxx key, proxy converts format'}
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
@@ -458,31 +433,13 @@ export function SettingsPanel(): React.ReactElement {
       {/* [2026-04-28] Active profile fields */}
       {activeProfile && (
         <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
-          {/* OpenAI 兼容勾选框 */}
-          <div className="flex items-center gap-2 mb-2">
-            <input
-              type="checkbox"
-              checked={activeProfile.format === 'openai'}
-              onChange={(e) => handleProfileChange('format', e.target.checked ? 'openai' : undefined)}
-              className="w-3.5 h-3.5 accent-blue-500"
-            />
-            <span className="text-[10px] text-claude-text">
-              {lang === 'zh' ? 'OpenAI 兼容格式 (Authorization: Bearer)' : 'OpenAI compatible format (Authorization: Bearer)'}
-            </span>
-          </div>
-          {activeProfile.format === 'openai' && (
-            <p className="text-[9px] text-amber-500/80 mb-2">
-              {lang === 'zh' ? '启用后将自动开启容灾代理。请使用 OpenAI 格式密钥 (sk-xxx)，请求将通过代理转换为 Claude Code 兼容格式。' : 'Auto-enables failover proxy. Use OpenAI-style key (sk-xxx); requests are converted to Claude Code format via proxy.'}
-            </p>
-          )}
-
           {/* Auth Token */}
-          <Field label="Auth Token" hint={activeProfile.format === 'openai' ? 'sk-xxx (Bearer)' : 'sk-sp-xxx (x-api-key)'}>
+          <Field label="Auth Token" hint="x-api-key">
             <input
               type="password"
               value={activeProfile.authToken}
               onChange={(e) => handleProfileChange('authToken', e.target.value)}
-              placeholder={activeProfile.format === 'openai' ? 'sk-...' : 'sk-ant-...'}
+              placeholder="sk-ant-..."
               className="field-input"
             />
           </Field>

@@ -4,7 +4,6 @@ import { request as httpsRequest } from 'https'
 import { URL } from 'url'
 import { SettingsStore, type FallbackConfig } from './settingsStore'
 import WebSocket from 'ws'
-import { Transform } from 'stream'
 
 const PROXY_PORT = 9527
 
@@ -12,6 +11,9 @@ const PROXY_PORT = 9527
 const FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
 let primaryFailedAt: number | null = null
 let cooldownFallbackIndex: number | null = null
+// [2026-04-30] 主配置确认失败标记（连续失败后跳过主配置尝试）
+let primaryConfirmedFailed = false
+let primaryFailureCount = 0
 
 type ProxyState = {
   server: ReturnType<typeof createServer> | null
@@ -25,246 +27,21 @@ function getEnabledFallbacks(profile: { fallbacks?: FallbackConfig[] }): Fallbac
   return (profile.fallbacks ?? []).filter(f => f.enabled && f.baseUrl)
 }
 
-// [2026-04-30] OpenAI 格式转换：请求体
-function convertAnthropicToOpenai(body: Buffer, modelOverride?: string): Buffer {
+function applyModelOverride(body: Buffer, model?: string): Buffer {
+  if (!model || body.length === 0) return body
   try {
     const json = JSON.parse(body.toString())
-
-    // OpenAI 格式的请求体
-    const openaiBody: Record<string, unknown> = {
-      model: modelOverride ?? json.model ?? 'gpt-4o',
-      stream: json.stream ?? false
+    if (json.model) {
+      json.model = model
+      return Buffer.from(JSON.stringify(json))
     }
-
-    // max_tokens → max_completion_tokens
-    if (json.max_tokens) {
-      openaiBody.max_completion_tokens = json.max_tokens
-    }
-
-    // 处理 messages
-    const messages: Array<{ role: string; content: string | Array<unknown> }> = []
-
-    // system 消息转为第一条 message
-    if (json.system) {
-      messages.push({ role: 'system', content: json.system })
-    }
-
-    // 复制原有 messages
-    if (Array.isArray(json.messages)) {
-      for (const msg of json.messages) {
-        // Anthropic 的 content 可能是字符串或数组，OpenAI 也支持两种
-        messages.push({
-          role: msg.role,
-          content: msg.content
-        })
-      }
-    }
-
-    openaiBody.messages = messages
-
-    // 复制其他兼容字段
-    if (json.temperature) openaiBody.temperature = json.temperature
-    if (json.top_p) openaiBody.top_p = json.top_p
-    if (json.stop_sequences) openaiBody.stop = json.stop_sequences
-
-    // tools 转换（简化版，OpenAI tools 格式略有不同）
-    if (Array.isArray(json.tools) && json.tools.length > 0) {
-      openaiBody.tools = json.tools.map((tool: { name: string; description?: string; input_schema?: unknown }) => ({
-        type: 'function',
-        function: {
-          name: tool.name,
-          description: tool.description ?? '',
-          parameters: tool.input_schema ?? {}
-        }
-      }))
-    }
-
-    return Buffer.from(JSON.stringify(openaiBody))
-  } catch {
-    return body
-  }
-}
-
-// [2026-04-30] OpenAI 格式转换：流式响应 SSE
-function createOpenaiToAnthropicStream(): Transform {
-  let messageId = `msg_${Date.now()}`
-  let contentIndex = 0
-  let accumulatedContent = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  let sentMessageStart = false
-
-  return new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      const lines = chunk.toString().split('\n')
-      const outputLines: string[] = []
-
-      for (const line of lines) {
-        if (!line.trim() || line === 'data: [DONE]') {
-          if (line === 'data: [DONE]' && sentMessageStart) {
-            // 发送 message_stop
-            outputLines.push('event: message_stop')
-            outputLines.push('data: {}')
-            outputLines.push('')
-          }
-          continue
-        }
-
-        // 解析 OpenAI SSE
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6)
-          try {
-            const json = JSON.parse(data)
-
-            // 发送 message_start（首次）
-            if (!sentMessageStart) {
-              sentMessageStart = true
-              outputLines.push('event: message_start')
-              outputLines.push(`data: ${JSON.stringify({
-                type: 'message_start',
-                message: {
-                  id: messageId,
-                  type: 'message',
-                  role: 'assistant',
-                  content: [],
-                  model: json.model ?? 'gpt-4o',
-                  stop_reason: null,
-                  usage: { input_tokens: 0, output_tokens: 0 }
-                }
-              })}`)
-              outputLines.push('')
-
-              // 发送 content_block_start
-              outputLines.push('event: content_block_start')
-              outputLines.push(`data: ${JSON.stringify({
-                type: 'content_block_start',
-                index: 0,
-                content_block: { type: 'text', text: '' }
-              })}`)
-              outputLines.push('')
-            }
-
-            // 处理 choices
-            if (json.choices && Array.isArray(json.choices)) {
-              for (const choice of json.choices) {
-                if (choice.delta?.content) {
-                  accumulatedContent += choice.delta.content
-
-                  // 发送 content_block_delta
-                  outputLines.push('event: content_block_delta')
-                  outputLines.push(`data: ${JSON.stringify({
-                    type: 'content_block_delta',
-                    index: 0,
-                    delta: { type: 'text_delta', text: choice.delta.content }
-                  })}`)
-                  outputLines.push('')
-
-                  outputTokens++
-                }
-
-                // 处理 tool_calls
-                if (choice.delta?.tool_calls) {
-                  for (const tc of choice.delta.tool_calls) {
-                    outputLines.push('event: content_block_delta')
-                    outputLines.push(`data: ${JSON.stringify({
-                      type: 'content_block_delta',
-                      index: tc.index ?? 0,
-                      delta: {
-                        type: 'input_json_delta',
-                        partial_json: tc.function?.arguments ?? ''
-                      }
-                    })}`)
-                    outputLines.push('')
-                  }
-                }
-
-                // 处理 finish_reason
-                if (choice.finish_reason) {
-                  // 发送 content_block_stop
-                  outputLines.push('event: content_block_stop')
-                  outputLines.push(`data: ${JSON.stringify({
-                    type: 'content_block_stop',
-                    index: 0
-                  })}`)
-                  outputLines.push('')
-
-                  // 发送 message_delta
-                  outputLines.push('event: message_delta')
-                  outputLines.push(`data: ${JSON.stringify({
-                    type: 'message_delta',
-                    delta: { stop_reason: choice.finish_reason === 'stop' ? 'end_turn' : choice.finish_reason },
-                    usage: { output_tokens: outputTokens }
-                  })}`)
-                  outputLines.push('')
-                }
-              }
-            }
-
-            // 处理 usage
-            if (json.usage) {
-              inputTokens = json.usage.prompt_tokens ?? 0
-              outputTokens = json.usage.completion_tokens ?? outputTokens
-            }
-
-          } catch {
-            // 解析失败，跳过
-          }
-        }
-      }
-
-      if (outputLines.length > 0) {
-        callback(null, outputLines.join('\n') + '\n')
-      } else {
-        callback(null)
-      }
-    }
-  })
-}
-
-// [2026-04-30] OpenAI 格式转换：非流式响应
-function convertOpenaiResponseToAnthropic(body: string): string {
-  try {
-    const json = JSON.parse(body)
-
-    // Anthropic 格式响应
-    const anthropicRes: Record<string, unknown> = {
-      id: `msg_${Date.now()}`,
-      type: 'message',
-      role: 'assistant',
-      model: json.model ?? 'gpt-4o',
-      content: [],
-      stop_reason: null,
-      usage: {
-        input_tokens: json.usage?.prompt_tokens ?? 0,
-        output_tokens: json.usage?.completion_tokens ?? 0
-      }
-    }
-
-    // 转换 choices 为 content
-    if (json.choices && Array.isArray(json.choices)) {
-      for (const choice of json.choices) {
-        if (choice.message?.content) {
-          anthropicRes.content.push({
-            type: 'text',
-            text: choice.message.content
-          })
-        }
-        if (choice.finish_reason) {
-          anthropicRes.stop_reason = choice.finish_reason === 'stop' ? 'end_turn' : choice.finish_reason
-        }
-      }
-    }
-
-    return JSON.stringify(anthropicRes)
-  } catch {
-    return body
-  }
+  } catch { /* keep original body */ }
+  return body
 }
 
 function forwardRequest(
   targetBaseUrl: string,
   authToken: string,
-  format: 'anthropic' | 'openai' | undefined,
   req: IncomingMessage,
   res: ServerResponse,
   body: Buffer,
@@ -274,50 +51,32 @@ function forwardRequest(
 ): void {
   let requestPath = req.url ?? '/'
 
+  // 处理路径：如果原 URL 有路径前缀，需要移除
   if (originalBaseUrl !== targetBaseUrl) {
     const originalBasePath = new URL(originalBaseUrl).pathname
-    if (requestPath.startsWith(originalBasePath)) {
+    if (originalBasePath !== '/' && requestPath.startsWith(originalBasePath)) {
       requestPath = requestPath.slice(originalBasePath.length)
     }
   }
 
   const targetUrl = new URL(targetBaseUrl)
-
-  // [2026-04-30] OpenAI 路径转换
-  if (format === 'openai') {
-    requestPath = requestPath.replace('/v1/messages', '/v1/chat/completions')
-  }
-
-  // [2026-04-30] 修复双斜杠：如果 pathname 是 "/" 则忽略它
   const basePath = targetUrl.pathname === '/' ? '' : targetUrl.pathname
   const fullPath = basePath + requestPath
   const isHttps = targetUrl.protocol === 'https:'
   const requestFn = isHttps ? httpsRequest : httpRequest
 
-  // [2026-04-30] OpenAI 请求体转换
-  let transformedBody = body
-  if (format === 'openai') {
-    transformedBody = convertAnthropicToOpenai(body, modelOverride)
-  } else if (modelOverride) {
-    transformedBody = applyModelOverride(body, modelOverride)
-  }
+  // 应用模型覆盖
+  const transformedBody = modelOverride ? applyModelOverride(body, modelOverride) : body
 
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     if (key.toLowerCase() === 'host') continue
-    if (key.toLowerCase() === 'authorization') continue
-    if (key.toLowerCase() === 'x-api-key') continue
     if (typeof value === 'string') headers[key] = value
     else if (Array.isArray(value)) headers[key] = value[0]
   }
   headers['host'] = targetUrl.host
   headers['content-length'] = String(transformedBody.length)
-
-  if (format === 'openai') {
-    headers['authorization'] = `Bearer ${authToken}`
-  } else {
-    headers['x-api-key'] = authToken
-  }
+  headers['x-api-key'] = authToken
 
   const proxyReq = requestFn(
     {
@@ -332,12 +91,21 @@ function forwardRequest(
       const statusCode = proxyRes.statusCode ?? 200
 
       if (statusCode >= 400) {
-        // 读取错误响应体用于调试
         const errorChunks: Buffer[] = []
         proxyRes.on('data', (chunk) => errorChunks.push(chunk))
         proxyRes.on('end', () => {
           const errorBody = Buffer.concat(errorChunks).toString()
           console.log(`[API Proxy] Error response (${statusCode}): ${errorBody.slice(0, 500)}`)
+
+          // 主配置失败计数
+          if (fallbackIndex === -1) {
+            primaryFailureCount++
+            console.log(`[API Proxy] Primary failure count: ${primaryFailureCount}`)
+            if (primaryFailureCount >= 2) {
+              primaryConfirmedFailed = true
+              console.log('[API Proxy] Primary confirmed failed, will skip until restart')
+            }
+          }
 
           const settings = new SettingsStore().get()
           const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
@@ -358,7 +126,6 @@ function forwardRequest(
             forwardRequest(
               nextFallback.baseUrl,
               nextFallback.authToken,
-              nextFallback.format,
               req,
               res,
               body,
@@ -379,45 +146,30 @@ function forwardRequest(
         return
       }
 
+      // 成功响应：重置主配置失败状态
       if (fallbackIndex === -1) {
         primaryFailedAt = null
         cooldownFallbackIndex = null
+        primaryConfirmedFailed = false
+        primaryFailureCount = 0
       }
 
-      // [2026-04-30] OpenAI 响应转换
-      if (format === 'openai') {
-        // 复制响应头，但修改 content-type
-        const responseHeaders: Record<string, string> = {}
-        for (const [key, value] of Object.entries(proxyRes.headers)) {
-          if (typeof value === 'string') responseHeaders[key] = value
-          else if (Array.isArray(value)) responseHeaders[key] = value[0]
-        }
-        responseHeaders['content-type'] = 'text/event-stream'
-
-        res.writeHead(statusCode, responseHeaders)
-
-        // 检查是否是流式响应
-        const isStream = body.toString().includes('"stream":true')
-        if (isStream) {
-          proxyRes.pipe(createOpenaiToAnthropicStream()).pipe(res)
-        } else {
-          // 非流式：收集完整响应后转换
-          const chunks: Buffer[] = []
-          proxyRes.on('data', (chunk) => chunks.push(chunk))
-          proxyRes.on('end', () => {
-            const converted = convertOpenaiResponseToAnthropic(Buffer.concat(chunks).toString())
-            res.end(converted)
-          })
-        }
-      } else {
-        res.writeHead(statusCode, proxyRes.headers)
-        proxyRes.pipe(res)
-      }
+      res.writeHead(statusCode, proxyRes.headers)
+      proxyRes.pipe(res)
     }
   )
 
   proxyReq.on('error', (err) => {
     console.error(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} error:`, err.message)
+
+    if (fallbackIndex === -1) {
+      primaryFailureCount++
+      if (primaryFailureCount >= 2) {
+        primaryConfirmedFailed = true
+        console.log('[API Proxy] Primary confirmed failed')
+      }
+    }
+
     const settings = new SettingsStore().get()
     const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
     if (!profile) {
@@ -437,7 +189,6 @@ function forwardRequest(
       forwardRequest(
         nextFallback.baseUrl,
         nextFallback.authToken,
-        nextFallback.format,
         req,
         res,
         body,
@@ -454,6 +205,14 @@ function forwardRequest(
   proxyReq.on('timeout', () => {
     proxyReq.destroy()
     console.log(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} timeout`)
+
+    if (fallbackIndex === -1) {
+      primaryFailureCount++
+      if (primaryFailureCount >= 2) {
+        primaryConfirmedFailed = true
+      }
+    }
+
     const settings = new SettingsStore().get()
     const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
     if (!profile) {
@@ -467,13 +226,12 @@ function forwardRequest(
 
     if (nextFallbackIndex < fallbacks.length) {
       const nextFallback = fallbacks[nextFallbackIndex]
-      console.log(`[API Proxy] Trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
+      console.log(`[API Proxy] Timeout, trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
       primaryFailedAt = Date.now()
       cooldownFallbackIndex = nextFallbackIndex
       forwardRequest(
         nextFallback.baseUrl,
         nextFallback.authToken,
-        nextFallback.format,
         req,
         res,
         body,
@@ -489,18 +247,6 @@ function forwardRequest(
 
   proxyReq.write(transformedBody)
   proxyReq.end()
-}
-
-function applyModelOverride(body: Buffer, model?: string): Buffer {
-  if (!model || body.length === 0) return body
-  try {
-    const json = JSON.parse(body.toString())
-    if (json.model) {
-      json.model = model
-      return Buffer.from(JSON.stringify(json))
-    }
-  } catch { /* keep original body */ }
-  return body
 }
 
 function handleRequest(req: IncomingMessage, res: ServerResponse): void {
@@ -519,14 +265,17 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 
     const fallbacks = getEnabledFallbacks(profile)
 
+    // 检查主配置是否确认失败
     const inCooldown = primaryFailedAt && (Date.now() - primaryFailedAt < FALLBACK_COOLDOWN_MS)
-    if (inCooldown && cooldownFallbackIndex !== null && cooldownFallbackIndex < fallbacks.length) {
+    const shouldSkipPrimary = primaryConfirmedFailed || inCooldown
+
+    if (shouldSkipPrimary && cooldownFallbackIndex !== null && cooldownFallbackIndex < fallbacks.length) {
       const cooldownFallback = fallbacks[cooldownFallbackIndex]
-      console.log(`[API Proxy] In cooldown, using #${cooldownFallbackIndex + 1}: ${cooldownFallback.name}`)
+      const reason = primaryConfirmedFailed ? 'confirmed failed' : 'in cooldown'
+      console.log(`[API Proxy] Primary ${reason}, using #${cooldownFallbackIndex + 1}: ${cooldownFallback.name}`)
       forwardRequest(
         cooldownFallback.baseUrl,
         cooldownFallback.authToken,
-        cooldownFallback.format,
         req,
         res,
         body,
@@ -535,8 +284,8 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
         cooldownFallback.model
       )
     } else {
-      console.log('[API Proxy] Forwarding to primary:', profile.baseUrl, profile.format === 'openai' ? '(OpenAI format)' : '')
-      forwardRequest(profile.baseUrl, profile.authToken, profile.format, req, res, body, -1, profile.baseUrl)
+      console.log('[API Proxy] Forwarding to primary:', profile.baseUrl)
+      forwardRequest(profile.baseUrl, profile.authToken, req, res, body, -1, profile.baseUrl)
     }
   })
   req.on('error', (err) => {
@@ -558,19 +307,13 @@ function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     if (key.toLowerCase() === 'host') continue
-    if (key.toLowerCase() === 'authorization') continue
-    if (key.toLowerCase() === 'x-api-key') continue
     if (typeof value === 'string') headers[key] = value
     else if (Array.isArray(value)) headers[key] = value[0]
   }
+  headers['x-api-key'] = profile.authToken
 
   let wsIndex = -1
   const wsUrl = profile.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
-  if (profile.format === 'openai') {
-    headers['authorization'] = `Bearer ${profile.authToken}`
-  } else {
-    headers['x-api-key'] = profile.authToken
-  }
   console.log('[API Proxy] WebSocket forwarding to primary:', wsUrl)
 
   let wsTarget = new WebSocket(wsUrl, { headers })
@@ -580,13 +323,7 @@ function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
     if (wsIndex >= fallbacks.length) return false
     const fallback = fallbacks[wsIndex]
     console.log(`[API Proxy] WebSocket trying #${wsIndex + 1}: ${fallback.name}`)
-    if (fallback.format === 'openai') {
-      headers['authorization'] = `Bearer ${fallback.authToken}`
-      delete headers['x-api-key']
-    } else {
-      headers['x-api-key'] = fallback.authToken
-      delete headers['authorization']
-    }
+    headers['x-api-key'] = fallback.authToken
     const fallbackWsUrl = fallback.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
     wsTarget = new WebSocket(fallbackWsUrl, { headers })
     return true
@@ -635,7 +372,7 @@ export function startApiProxy(): number {
   state.wsServer.on('connection', handleWebSocket)
 
   state.server.listen(PROXY_PORT, '127.0.0.1', () => {
-    console.log(`[API Proxy] Server listening on http://127.0.0.1:${PROXY_PORT} (HTTP + WebSocket + OpenAI compatible)`)
+    console.log(`[API Proxy] Server listening on http://127.0.0.1:${PROXY_PORT} (HTTP + WebSocket)`)
     state.running = true
   })
 
@@ -659,6 +396,8 @@ export function stopApiProxy(): void {
   state.running = false
   primaryFailedAt = null
   cooldownFallbackIndex = null
+  primaryConfirmedFailed = false
+  primaryFailureCount = 0
   console.log('[API Proxy] Server stopped')
 }
 
