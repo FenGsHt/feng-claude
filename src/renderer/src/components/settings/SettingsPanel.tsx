@@ -85,8 +85,10 @@ export function SettingsPanel(): React.ReactElement {
       id: uuidv4(),
       name: lang === 'zh' ? `备用 ${((activeProfile.fallbacks?.length ?? 0) + 1)}` : `Fallback ${(activeProfile.fallbacks?.length ?? 0) + 1}`,
       enabled: true,
-      baseUrl: '',
-      authToken: ''
+      // [2026-04-30] 默认复用主配置的地址和密钥
+      baseUrl: activeProfile.baseUrl,
+      authToken: activeProfile.authToken,
+      model: activeProfile.model
     }
     const fallbacks = [...(activeProfile.fallbacks ?? []), newFallback]
     handleProfileChange('fallbacks', fallbacks)
