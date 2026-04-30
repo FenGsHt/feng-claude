@@ -38,6 +38,8 @@ function forwardRequest(
   const targetUrl = new URL(targetBaseUrl)
   const fullPath = targetUrl.pathname + requestPath
 
+  console.log(`[API Proxy] forwardRequest: baseUrl=${targetBaseUrl} path=${requestPath} fullPath=${fullPath} fallback=${fallbackAttempt}`)
+
   const isHttps = targetUrl.protocol === 'https:'
   const requestFn = isHttps ? httpsRequest : httpRequest
 
