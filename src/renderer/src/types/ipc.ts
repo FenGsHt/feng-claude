@@ -303,6 +303,7 @@ export interface GitWorktreeCreateResult {
 }
 
 export interface GitWorktreeRemovePayload {
+  repoPath: string
   worktreePath: string
   force?: boolean
 }

@@ -767,10 +767,15 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IPC.GIT_WORKTREE_REMOVE, async (_e, payload) => {
-    const { worktreePath, force } = payload as { worktreePath: string; force?: boolean }
+    const { repoPath, worktreePath, force } = payload as { repoPath: string; worktreePath: string; force?: boolean }
     try {
       const { execSync } = await import('child_process')
-      execSync(`git worktree remove "${worktreePath}"${force ? ' --force' : ''}`, { encoding: 'utf-8' })
+      const { existsSync } = await import('fs')
+      if (existsSync(worktreePath)) {
+        execSync(`git worktree remove "${worktreePath}"${force ? ' --force' : ''}`, { cwd: repoPath, encoding: 'utf-8' })
+      } else {
+        execSync('git worktree prune', { cwd: repoPath, encoding: 'utf-8' })
+      }
       return { success: true, error: undefined }
     } catch (e) {
       return { success: false, error: String(e) }

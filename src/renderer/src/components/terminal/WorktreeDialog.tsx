@@ -131,6 +131,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     try {
       // 1. 删除 worktree
       const result = await window.electronAPI.git.worktreeRemove({
+        repoPath,
         worktreePath,
         force: true,
       })
