@@ -310,8 +310,10 @@ function parseAssistantUsage(line: string): ParsedUsage | null {
     const output = Math.trunc(Number(u.output_tokens) || 0)
     const cacheCreate = Math.trunc(Number(u.cache_creation_input_tokens) || 0)
     const cacheRead = Math.trunc(Number(u.cache_read_input_tokens) || 0)
-    if (input + output + cacheCreate + cacheRead === 0) return null
+    const total = input + output + cacheCreate + cacheRead
+    if (total === 0) return null
 
+    console.log('[Token] parseAssistantUsage — in:', input, 'out:', output, 'cacheCreate:', cacheCreate, 'cacheRead:', cacheRead, 'total:', total)
     return { input, output, cacheCreate, cacheRead }
   } catch {
     return null
