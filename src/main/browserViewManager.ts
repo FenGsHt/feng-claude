@@ -75,12 +75,15 @@ function notifyBrowserState(): void {
   const mainWin = wins[0]
   if (mainWin?.webContents && state.view) {
     const bounds = mainWin.getContentBounds()
-    // [2026-05-01] 与 setBounds 一致，使用去掉 Tools 面板后的有效宽度
     const effectiveWidth = bounds.width - state.toolsPanelWidth
     const viewW = state.visible ? Math.round(effectiveWidth * state.splitRatio) : 0
+    const viewX = effectiveWidth - viewW
+    // [2026-05-01] 发送绝对位置，渲染进程直接使用，避免比例换算误差
     mainWin.webContents.send('browser-view:state-changed', {
       visible: state.visible,
-      width: viewW
+      width: viewW,
+      viewX: viewX,
+      toolsPanelWidth: state.toolsPanelWidth
     })
   }
 }
