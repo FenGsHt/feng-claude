@@ -5,20 +5,26 @@ import { URL } from 'url'
 interface BrowserPanelState {
   view: WebContentsView | null
   navView: WebContentsView | null
+  devToolsView: WebContentsView | null  // [2026-04-30] 独立 DevTools 视图
+  separatorView: WebContentsView | null // [2026-04-30] 分隔线视图（可拖拽）
   mainWin: BrowserWindow | null
   visible: boolean
   resizeHandler: (() => void) | null
   splitRatio: number   // 浏览器占窗口宽度的比例（0.3-0.7）
+  devToolsRatio: number // [2026-04-30] DevTools 占浏览器面板宽度比例（0.2-0.6）
   devToolsVisible: boolean
 }
 
 const state: BrowserPanelState = {
   view: null,
   navView: null,
+  devToolsView: null,
+  separatorView: null,
   mainWin: null,
   visible: false,
   resizeHandler: null,
   splitRatio: 0.5,
+  devToolsRatio: 0.4,
   devToolsVisible: false
 }
 
@@ -27,6 +33,9 @@ const TITLEBAR_H = 32
 const NAVBAR_H = 34
 const MIN_RATIO = 0.25
 const MAX_RATIO = 0.75
+const DEVTOOLS_MIN_RATIO = 0.2   // [2026-04-30] DevTools 最小比例
+const DEVTOOLS_MAX_RATIO = 0.6   // [2026-04-30] DevTools 最大比例
+const SEPARATOR_W = 6            // [2026-04-30] 分隔线宽度
 
 // ── 布局计算 ───────────────────────────────────────────────────────
 
@@ -54,13 +63,25 @@ function setBounds(win: BrowserWindow): void {
     state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
   }
 
-  // 浏览器内容区域
-  state.view.setBounds({
-    x: viewX,
-    y: TITLEBAR_H + NAVBAR_H,
-    width: viewW,
-    height: bounds.height - TITLEBAR_H - NAVBAR_H
-  })
+  const contentY = TITLEBAR_H + NAVBAR_H
+  const contentH = bounds.height - contentY
+
+  // [2026-04-30] 计算浏览器内容、分隔线、DevTools 的布局
+  if (state.devToolsVisible && state.devToolsView && state.separatorView) {
+    const devToolsW = Math.round(viewW * state.devToolsRatio)
+    const separatorX = viewX + viewW - devToolsW - SEPARATOR_W
+    const contentW = viewW - devToolsW - SEPARATOR_W
+
+    // 网页内容（左侧）
+    state.view.setBounds({ x: viewX, y: contentY, width: contentW, height: contentH })
+    // 分隔线
+    state.separatorView.setBounds({ x: separatorX, y: contentY, width: SEPARATOR_W, height: contentH })
+    // DevTools（右侧）
+    state.devToolsView.setBounds({ x: separatorX + SEPARATOR_W, y: contentY, width: devToolsW, height: contentH })
+  } else {
+    // 无 DevTools 时，浏览器内容占满
+    state.view.setBounds({ x: viewX, y: contentY, width: viewW, height: contentH })
+  }
 
   // 导航栏
   if (state.navView) {
@@ -176,6 +197,46 @@ button:disabled { opacity: 0.3; cursor: default; }
   ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
 </script></body></html>`
 
+// [2026-04-30] 分隔线 HTML — 用于拖拽调整 DevTools 宽度
+const SEPARATOR_HTML = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #2a2a2a;
+  height: 100%;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+body:hover { background: #f59e0b; }
+body.active { background: #f59e0b; }
+.handle {
+  width: 2px;
+  height: 40px;
+  background: #666;
+  border-radius: 1px;
+}
+body:hover .handle, body.active .handle { background: #fff; }
+</style></head><body>
+  <div class="handle"></div>
+<script>
+const { ipcRenderer } = require('electron')
+let dragging = false, startX = 0, startRatio = 0
+document.body.addEventListener('mousedown', e => {
+  dragging = true; startX = e.clientX; startRatio = window.__devToolsRatio || 0.4
+  document.body.classList.add('active'); e.preventDefault()
+})
+document.addEventListener('mousemove', e => {
+  if (!dragging) return
+  ipcRenderer.send('browser-nav:set-devtools-ratio', startRatio + (e.clientX - startX) / window.__panelWidth)
+})
+document.addEventListener('mouseup', () => {
+  if (dragging) { dragging = false; document.body.classList.remove('active') }
+})
+ipcRenderer.on('browser-nav:devtools-ratio', (_, d) => { window.__devToolsRatio = d.ratio; window.__panelWidth = d.panelWidth })
+</script></body></html>`
+
 function createNavView(): WebContentsView {
   const prefs: WebPreferences = {
     nodeIntegration: true,
@@ -188,6 +249,19 @@ function createNavView(): WebContentsView {
   nav.webContents.loadURL(`data:text/html;base64,${Buffer.from(NAVBAR_HTML, 'utf-8').toString('base64')}`).catch(() => {})
 
   return nav
+}
+
+// [2026-04-30] 创建分隔线视图
+function createSeparatorView(): WebContentsView {
+  const prefs: WebPreferences = {
+    nodeIntegration: true,
+    contextIsolation: false,
+    backgroundThrottling: false
+  }
+  const sep = new WebContentsView({ webPreferences: prefs })
+  sep.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  sep.webContents.loadURL(`data:text/html;base64,${Buffer.from(SEPARATOR_HTML, 'utf-8').toString('base64')}`).catch(() => {})
+  return sep
 }
 
 // ── 导航控制 ───────────────────────────────────────────────────────
@@ -213,14 +287,71 @@ function browserNavigate(url: string): void {
   state.view.webContents.loadURL(target).catch(() => {})
 }
 
+// [2026-04-30] 设置 DevTools 比例（通过分隔线拖拽）
+function setDevToolsRatio(win: BrowserWindow, ratio: number): void {
+  state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, ratio))
+  setBounds(win)
+  // 通知分隔线当前比例
+  if (state.separatorView?.webContents) {
+    const bounds = win.getContentBounds()
+    const panelWidth = Math.round(bounds.width * state.splitRatio)
+    state.separatorView.webContents.send('browser-nav:devtools-ratio', {
+      ratio: state.devToolsRatio,
+      panelWidth
+    })
+  }
+}
+
+// [2026-04-30] 切换 DevTools — 使用独立的 WebContentsView
 function toggleDevTools(): void {
-  if (!state.view) return
+  if (!state.view || !state.mainWin) return
   state.devToolsVisible = !state.devToolsVisible
+  const win = state.mainWin
+
   if (state.devToolsVisible) {
-    // [2026-04-30] 使用 right 模式嵌入 DevTools，用户可拖拽调整大小
-    state.view.webContents.openDevTools({ mode: 'right' })
+    // 创建 DevTools 视图
+    if (!state.devToolsView) {
+      const prefs: WebPreferences = {
+        nodeIntegration: false,
+        contextIsolation: true,
+      }
+      state.devToolsView = new WebContentsView({ webPreferences: prefs })
+      // 将此视图设置为 DevTools 的目标
+      state.view.webContents.setDevToolsWebContents(state.devToolsView.webContents)
+      state.devToolsView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    }
+    // 创建分隔线
+    if (!state.separatorView) {
+      state.separatorView = createSeparatorView()
+    }
+    // 添加到窗口
+    win.contentView.addChildView(state.separatorView)
+    win.contentView.addChildView(state.devToolsView)
+    // 打开 DevTools（内容会显示在 devToolsView 中）
+    state.view.webContents.openDevTools()
+    // 更新布局
+    setBounds(win)
+    // 通知分隔线初始比例
+    const bounds = win.getContentBounds()
+    const panelWidth = Math.round(bounds.width * state.splitRatio)
+    if (state.separatorView?.webContents) {
+      state.separatorView.webContents.send('browser-nav:devtools-ratio', {
+        ratio: state.devToolsRatio,
+        panelWidth
+      })
+    }
   } else {
+    // 关闭 DevTools
     state.view.webContents.closeDevTools()
+    // 移除视图
+    if (state.devToolsView) {
+      win.contentView.removeChildView(state.devToolsView)
+    }
+    if (state.separatorView) {
+      win.contentView.removeChildView(state.separatorView)
+    }
+    // 更新布局（浏览器内容恢复全宽）
+    setBounds(win)
   }
   // 通知导航栏按钮状态
   if (state.navView?.webContents) {
@@ -305,8 +436,15 @@ export function hideBrowserView(_win?: BrowserWindow): void {
   if (state.navView) {
     state.mainWin.contentView.removeChildView(state.navView)
   }
+  // [2026-04-30] 清理 DevTools 相关视图
   if (state.devToolsVisible) {
     state.view.webContents.closeDevTools()
+    if (state.devToolsView) {
+      state.mainWin.contentView.removeChildView(state.devToolsView)
+    }
+    if (state.separatorView) {
+      state.mainWin.contentView.removeChildView(state.separatorView)
+    }
     state.devToolsVisible = false
   }
   state.visible = false
@@ -378,6 +516,12 @@ export function registerBrowserViewIpc(): void {
   ipcMain.on('browser-nav:set-ratio', (event, ratio: number) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) setSplitRatio(win, ratio)
+  })
+
+  // [2026-04-30] 分隔线拖拽调整 DevTools 比例
+  ipcMain.on('browser-nav:set-devtools-ratio', (event, ratio: number) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && state.mainWin === win) setDevToolsRatio(win, ratio)
   })
 }
 
