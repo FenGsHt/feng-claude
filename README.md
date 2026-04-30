@@ -8,6 +8,13 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.6.4 主要更新
+
+- 增强内置调试浏览器，Claude Code 现在可以通过 MCP 更稳定地打开、控制和截图浏览器。
+- 修复 `browser-tools` 工具链，解决工具不显示、截图为空、浏览器无法自动拉起等问题。
+- 优化浏览器交互体验，默认窗口更小，并修复拖拽调整大小。
+- 完善发布打包，确保浏览器 MCP 能随应用一起正常发布。
+
 ### 核心亮点
 
 #### 🔄 多 API 配置一键切换
