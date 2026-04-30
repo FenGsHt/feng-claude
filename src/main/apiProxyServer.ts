@@ -7,6 +7,10 @@ import WebSocket from 'ws'
 
 const PROXY_PORT = 9527
 
+// [2026-04-30] Fallback cooldown: after primary fails, use fallback for 5 minutes
+const FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
+let primaryFailedAt: number | null = null
+
 type ProxyState = {
   server: ReturnType<typeof createServer> | null
   wsServer: WebSocket.Server | null
@@ -65,6 +69,7 @@ function forwardRequest(
       const statusCode = proxyRes.statusCode ?? 200
       if (statusCode >= 400 && !fallbackAttempt) {
         console.log(`[API Proxy] Primary response status ${statusCode}, trying fallback`)
+        primaryFailedAt = Date.now() // [2026-04-30] Start cooldown
         proxyRes.resume()
         const settings = new SettingsStore().get()
         const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
@@ -85,6 +90,10 @@ function forwardRequest(
         }
         return
       }
+      // [2026-04-30] Primary/fallback success — clear cooldown if this was primary
+      if (!fallbackAttempt && statusCode < 400) {
+        primaryFailedAt = null
+      }
       res.writeHead(statusCode, proxyRes.headers)
       proxyRes.pipe(res)
     }
@@ -93,6 +102,7 @@ function forwardRequest(
   proxyReq.on('error', (err) => {
     console.error('[API Proxy] Request error:', err.message)
     if (!fallbackAttempt) {
+      primaryFailedAt = Date.now() // [2026-04-30] Start cooldown
       const settings = new SettingsStore().get()
       const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
       if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
@@ -119,6 +129,7 @@ function forwardRequest(
   proxyReq.on('timeout', () => {
     proxyReq.destroy()
     if (!fallbackAttempt) {
+      primaryFailedAt = Date.now() // [2026-04-30] Start cooldown
       console.log('[API Proxy] Primary timeout, trying fallback')
       const settings = new SettingsStore().get()
       const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
@@ -152,8 +163,23 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
       return
     }
 
-    console.log('[API Proxy] Forwarding to primary:', profile.baseUrl)
-    forwardRequest(profile.baseUrl, profile.authToken, req, res, body, false, profile.baseUrl)
+    // [2026-04-30] Check cooldown: if primary failed recently, use fallback directly
+    const inCooldown = primaryFailedAt && (Date.now() - primaryFailedAt < FALLBACK_COOLDOWN_MS)
+    if (inCooldown && profile.fallbackBaseUrl && profile.fallbackAuthToken) {
+      console.log('[API Proxy] In cooldown, using fallback:', profile.fallbackBaseUrl)
+      let fallbackBody = body
+      if (profile.fallbackModel && body.length > 0) {
+        try {
+          const json = JSON.parse(body.toString())
+          if (json.model) json.model = profile.fallbackModel
+          fallbackBody = Buffer.from(JSON.stringify(json))
+        } catch { /* keep original body */ }
+      }
+      forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true, profile.baseUrl)
+    } else {
+      console.log('[API Proxy] Forwarding to primary:', profile.baseUrl)
+      forwardRequest(profile.baseUrl, profile.authToken, req, res, body, false, profile.baseUrl)
+    }
   })
   req.on('error', (err) => {
     console.error('[API Proxy] Request read error:', err.message)
