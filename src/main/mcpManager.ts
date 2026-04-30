@@ -246,3 +246,60 @@ export function ensureBrowserToolsMcpRegistered(): void {
   writeClaudeJson(data)
   console.log('[MCP]', existing ? 'updated' : 'registered', 'browser-tools →', scriptPath, 'config:', claudeJsonPath())
 }
+
+// ── 自动注册 Visual Agent MCP ────────────────────────────────────────
+// [2026-05-01] 视觉代理 MCP，提供识图能力
+
+let visualAgentRegistered = false
+
+function resolveVisualAgentScriptPath(): string | null {
+  const dest = join(app.getPath('userData'), 'visual-agent-mcp-server.js')
+
+  if (!existsSync(dest)) {
+    const candidates = [
+      join(app.getAppPath(), 'scripts', 'visual-agent-mcp-server.js'),
+      join(process.cwd(), 'scripts', 'visual-agent-mcp-server.js'),
+      join(__dirname, '..', '..', 'scripts', 'visual-agent-mcp-server.js')
+    ]
+    const src = candidates.find((p) => existsSync(p))
+    if (!src) {
+      console.warn('[MCP] visual-agent script not found. Tried:', candidates)
+      return null
+    }
+    try {
+      writeFileSync(dest, readFileSync(src), 'utf-8')
+      console.log('[MCP] copied visual-agent-mcp-server.js to userData:', dest)
+    } catch (e) {
+      console.warn('[MCP] Failed to copy visual-agent-mcp-server.js:', e)
+      return null
+    }
+  }
+  return dest
+}
+
+export function ensureVisualAgentMcpRegistered(): void {
+  if (visualAgentRegistered) return
+
+  const scriptPath = resolveVisualAgentScriptPath()
+  if (!scriptPath) return
+  visualAgentRegistered = true
+
+  const data = readClaudeJson()
+  const servers = data.mcpServers ?? {}
+  const existing = servers['visual-agent']
+  const disabledBefore = data.disabledMcpServers ?? []
+  const disabledAfter = disabledBefore.filter((name) => name !== 'visual-agent')
+
+  // 路径匹配且未禁用则跳过
+  if (existing && existing.type === 'stdio' && existing.args?.[0] === scriptPath && disabledAfter.length === disabledBefore.length) return
+
+  servers['visual-agent'] = {
+    type: 'stdio',
+    command: 'node',
+    args: [scriptPath]
+  }
+  data.mcpServers = servers
+  data.disabledMcpServers = disabledAfter
+  writeClaudeJson(data)
+  console.log('[MCP]', existing ? 'updated' : 'registered', 'visual-agent →', scriptPath, 'config:', claudeJsonPath())
+}

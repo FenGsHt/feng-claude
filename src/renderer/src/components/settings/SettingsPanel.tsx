@@ -748,6 +748,116 @@ export function SettingsPanel(): React.ReactElement {
         </div>
       </div>
 
+      {/* [2026-05-01] 视觉代理 API 配置 */}
+      <div className="px-3 pt-2 border-t border-claude-border">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-claude-text">
+            {lang === 'zh' ? '视觉代理配置' : 'Visual Agent Config'}
+          </span>
+        </div>
+        <p className="text-[10px] text-claude-muted mb-2">
+          {lang === 'zh' ? '视觉代理 MCP 需要独立的 API 配置来分析图片' : 'Visual Agent MCP requires separate API config for image analysis'}
+        </p>
+
+        {/* API Token */}
+        <Field label={lang === 'zh' ? 'API Token' : 'API Token'}>
+          <input
+            type="password"
+            className="input"
+            value={form.visualAgentApi?.authToken ?? ''}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                visualAgentApi: { ...prev.visualAgentApi, authToken: e.target.value, baseUrl: prev.visualAgentApi?.baseUrl ?? 'https://api.anthropic.com', model: prev.visualAgentApi?.model ?? 'claude-sonnet-4-6' }
+              }))
+            }
+            placeholder="sk-ant-..."
+          />
+        </Field>
+
+        {/* Base URL */}
+        <Field label={lang === 'zh' ? 'Base URL' : 'Base URL'}>
+          <input
+            type="text"
+            className="input"
+            value={form.visualAgentApi?.baseUrl ?? ''}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                visualAgentApi: { ...prev.visualAgentApi, baseUrl: e.target.value, authToken: prev.visualAgentApi?.authToken ?? '', model: prev.visualAgentApi?.model ?? 'claude-sonnet-4-6' }
+              }))
+            }
+            placeholder="https://api.anthropic.com"
+          />
+        </Field>
+
+        {/* Model */}
+        <Field label={lang === 'zh' ? '模型' : 'Model'}>
+          <select
+            className="input"
+            value={form.visualAgentApi?.model ?? 'claude-sonnet-4-6'}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                visualAgentApi: { ...prev.visualAgentApi, model: e.target.value, authToken: prev.visualAgentApi?.authToken ?? '', baseUrl: prev.visualAgentApi?.baseUrl ?? '' }
+              }))
+            }
+          >
+            <option value="claude-opus-4-7">claude-opus-4-7 (最强)</option>
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (推荐)</option>
+            <option value="claude-haiku-4-5">claude-haiku-4-5 (最快)</option>
+          </select>
+        </Field>
+
+        {/* Format */}
+        <Field label={lang === 'zh' ? '请求格式' : 'Format'}>
+          <select
+            className="input"
+            value={form.visualAgentApi?.format ?? 'anthropic'}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                visualAgentApi: { ...prev.visualAgentApi, format: e.target.value as 'anthropic' | 'openai', authToken: prev.visualAgentApi?.authToken ?? '', baseUrl: prev.visualAgentApi?.baseUrl ?? '', model: prev.visualAgentApi?.model ?? '' }
+              }))
+            }
+          >
+            <option value="anthropic">Anthropic (x-api-key)</option>
+            <option value="openai">OpenAI (Bearer)</option>
+          </select>
+        </Field>
+
+        {/* 启用/禁用开关 */}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-[10px] text-claude-muted">
+            {form.visualAgentApi?.authToken
+              ? (lang === 'zh' ? '已配置' : 'Configured')
+              : (lang === 'zh' ? '未配置（MCP 已注册但无法工作）' : 'Not configured (MCP registered but won\'t work)')}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (form.visualAgentApi) {
+                setForm((prev) => ({ ...prev, visualAgentApi: undefined }))
+              } else {
+                setForm((prev) => ({
+                  ...prev,
+                  visualAgentApi: { authToken: '', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-6' }
+                }))
+              }
+            }}
+            className={`relative w-8 h-4 rounded-full transition-colors ${
+              form.visualAgentApi?.authToken ? 'bg-amber-500' : 'bg-claude-border'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                form.visualAgentApi?.authToken ? 'left-4.5' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* Save button */}
       <div className="px-3 pb-4">
         <button

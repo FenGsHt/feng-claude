@@ -24,7 +24,7 @@ import { existsSync, copyFileSync, mkdirSync } from 'fs'
 import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
 import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView } from './browserViewManager'
-import { ensureBrowserToolsMcpRegistered } from './mcpManager'
+import { ensureBrowserToolsMcpRegistered, ensureVisualAgentMcpRegistered } from './mcpManager'
 import { startApiProxy, stopApiProxy } from './apiProxyServer'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
@@ -113,6 +113,9 @@ function createWindow(): BrowserWindow {
   // [2026-04-30] 自动注册浏览器工具 MCP（默认开启，用户可手动删除）
   ensureBrowserToolsMcpRegistered()
 
+  // [2026-05-01] 自动注册视觉代理 MCP（需要配置 API 才能工作）
+  ensureVisualAgentMcpRegistered()
+
   // [2026-04-30] API 容灾代理：开启时启动本地转发服务
   if (settingsStore.get().enableApiProxy) {
     startApiProxy()
@@ -129,7 +132,7 @@ function createWindow(): BrowserWindow {
   }
 
   // ── Embedded browser for debugging ──────────────────────────────
-  startBrowserServer(win)
+  startBrowserServer(win, settingsStore)
   registerBrowserViewIpc()
 
   // Ctrl+Shift+D — toggle embedded browser

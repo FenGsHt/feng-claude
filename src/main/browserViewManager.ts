@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, screen, WebContentsView, WebPreferences } from 'electron'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
+import type { SettingsStore } from './settingsStore'
 
 interface BrowserPanelState {
   view: WebContentsView | null
@@ -683,7 +684,10 @@ function handleBrowserDragEnd(win: BrowserWindow): void {
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
 
-export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }> {
+let settingsStoreRef: SettingsStore | null = null
+
+export function startBrowserServer(win: BrowserWindow, settingsStore?: SettingsStore): Promise<{ port: number }> {
+  settingsStoreRef = settingsStore ?? null
   /* [2026-04-30] HTTP /show 可能早于用户手动打开浏览器；原来未保存 win，state.mainWin=null 时仍返回 visible:true 但不显示。 */
   state.mainWin = win
   return new Promise((resolve) => {
@@ -697,6 +701,13 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
 
         if (path === '/health') {
           res.writeHead(200); res.end(JSON.stringify({ status: 'ok' }))
+          return
+        }
+
+        // [2026-05-01] Visual agent config endpoint
+        if (path === '/visual-agent-config') {
+          const config = settingsStoreRef?.get()?.visualAgentApi ?? {}
+          res.writeHead(200); res.end(JSON.stringify(config))
           return
         }
 

@@ -129,6 +129,13 @@ export interface ClaudeSettings {
   disabledPluginIds?: string[]
   /** [2026-04-30] 开启本地 API 容灾代理 */
   enableApiProxy?: boolean
+  /** [2026-05-01] 视觉代理 API 配置（独立于主配置，用于识图 MCP） */
+  visualAgentApi?: {
+    authToken: string
+    baseUrl: string
+    model: string
+    format?: 'anthropic' | 'openai'
+  }
 }
 
 /** 默认 API 配置 */
