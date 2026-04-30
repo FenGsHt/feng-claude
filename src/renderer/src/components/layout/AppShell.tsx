@@ -19,7 +19,7 @@ const BROWSER_MAX_RATIO = 0.75  // [2026-04-30] 浏览器面板最大比例
 
 export function AppShell(): React.ReactElement {
   const [showTools, setShowTools] = useState(false)
-  const [browserPanel, setBrowserPanel] = useState({ visible: false, width: 0, viewX: 0, toolsPanelWidth: 0 })
+  const [browserPanel, setBrowserPanel] = useState({ visible: false, width: 0 })
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY)
     return saved ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parseInt(saved, 10))) : SIDEBAR_DEFAULT
@@ -122,13 +122,14 @@ export function AppShell(): React.ReactElement {
         />
         <main
           className="flex flex-col flex-1 overflow-hidden min-w-0"
-          style={browserPanel.visible ? { marginRight: browserPanel.width + browserPanel.toolsPanelWidth } : undefined}
+          style={browserPanel.visible ? { marginRight: browserPanel.width + (showTools ? 256 : 0) + 6 } : undefined}
         >
           <TabBar />
           <TerminalPanel />
         </main>
-        {/* [2026-04-30] Browser panel resize handle
-            [2026-05-01] WebContentsView 覆盖所有 DOM；拖拽条必须放在 BrowserView 左边界外侧 */}
+        {/* [2026-04-30] Browser panel resize handle — 左边缘分隔条
+            [2026-04-30] 原先作为 flex 子项放在 main 后面；main 的 marginRight 会把它推到浏览器区域右侧，
+            且原生 WebContentsView 会覆盖普通 DOM。改为 fixed，贴在浏览器左边界外侧，确保能收到鼠标事件。 */}
         {browserPanel.visible && (
           <div
             onMouseDown={startBrowserResize}
@@ -137,8 +138,8 @@ export function AppShell(): React.ReactElement {
               position: 'fixed',
               top: 32,
               bottom: 0,
-              right: browserPanel.width + browserPanel.toolsPanelWidth + 6,
-              width: 6,
+              right: browserPanel.width + (showTools ? 256 : 0),
+              width: 8,
               zIndex: 50
             }}
           />

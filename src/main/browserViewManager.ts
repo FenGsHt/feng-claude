@@ -75,15 +75,12 @@ function notifyBrowserState(): void {
   const mainWin = wins[0]
   if (mainWin?.webContents && state.view) {
     const bounds = mainWin.getContentBounds()
+    // [2026-05-01] 与 setBounds 一致，使用去掉 Tools 面板后的有效宽度
     const effectiveWidth = bounds.width - state.toolsPanelWidth
     const viewW = state.visible ? Math.round(effectiveWidth * state.splitRatio) : 0
-    const viewX = effectiveWidth - viewW
-    // [2026-05-01] 发送绝对位置，渲染进程直接使用，避免比例换算误差
     mainWin.webContents.send('browser-view:state-changed', {
       visible: state.visible,
-      width: viewW,
-      viewX: viewX,
-      toolsPanelWidth: state.toolsPanelWidth
+      width: viewW
     })
   }
 }
@@ -380,8 +377,6 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     }
     const view = new WebContentsView({ webPreferences: prefs })
     state.view = view
-    // [2026-05-01] 设置背景色与窗口一致，避免黑边
-    view.setBackgroundColor('#1a1a2e')
 
     // 拦截新窗口请求
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
