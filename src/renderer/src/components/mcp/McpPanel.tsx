@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import type { McpEntry, McpServerConfig, McpServerType } from '../../types/ipc'
+import type { ClaudeSettings } from '../../types/settings'
 import { useI18n } from '../../i18n'
 
 // ── Add / Edit form ──────────────────────────────────────────────────────────
@@ -63,9 +64,31 @@ function McpForm({
 }): React.ReactElement {
   const [form, setForm] = useState<FormState>(initial ?? EMPTY_FORM)
   const [error, setError] = useState('')
+  const [visualAgentConfig, setVisualAgentConfig] = useState<ClaudeSettings['visualAgentApi'] | null>(null)
+  const [saved, setSaved] = useState(false)
   const { t } = useI18n()
+  const { lang } = useI18n()
 
   const set = (patch: Partial<FormState>): void => setForm((f) => ({ ...f, ...patch }))
+
+  // Load visual agent config when editing 'visual-agent'
+  useEffect(() => {
+    if (editingName === 'visual-agent') {
+      void window.electronAPI.settings.get().then((s) => {
+        setVisualAgentConfig(s.visualAgentApi ?? { authToken: '', baseUrl: '', model: '', format: 'anthropic' })
+      })
+    }
+  }, [editingName])
+
+  const updateVisualAgentConfig = (patch: Partial<ClaudeSettings['visualAgentApi']>): void => {
+    if (!visualAgentConfig) return
+    const newConfig = { ...visualAgentConfig, ...patch }
+    setVisualAgentConfig(newConfig)
+    void window.electronAPI.settings.set({ visualAgentApi: newConfig }).then(() => {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    })
+  }
 
   function submit(): void {
     const name = form.name.trim()
@@ -141,6 +164,69 @@ function McpForm({
         <textarea className={`${inputCls} resize-none h-14`} placeholder="GITHUB_TOKEN=ghp_xxx"
           value={form.envRaw} onChange={(e) => set({ envRaw: e.target.value })} />
       </div>
+
+      {/* Visual Agent API Config - only when editing 'visual-agent' */}
+      {editingName === 'visual-agent' && visualAgentConfig && (
+        <div className="border-t border-amber-500/30 pt-2 mt-2">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-semibold text-amber-400">🎨 {lang === 'zh' ? '视觉代理 API 配置' : 'Visual Agent API Config'}</span>
+            {saved && <span className="text-[9px] text-green-400">✓</span>}
+          </div>
+          <p className="text-[9px] text-claude-muted mb-1.5">
+            {lang === 'zh' ? '用于识图功能的 API 配置（独立于主配置）' : 'API config for image analysis (separate from main config)'}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div>
+              <label className="text-[9px] text-claude-muted block mb-0.5">API Token</label>
+              <input
+                type="password"
+                className={inputCls}
+                placeholder="sk-ant-..."
+                value={visualAgentConfig.authToken ?? ''}
+                onChange={(e) => updateVisualAgentConfig({ authToken: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-claude-muted block mb-0.5">Base URL</label>
+              <input
+                className={inputCls}
+                placeholder="https://api.anthropic.com"
+                value={visualAgentConfig.baseUrl ?? ''}
+                onChange={(e) => updateVisualAgentConfig({ baseUrl: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+            <div>
+              <label className="text-[9px] text-claude-muted block mb-0.5">{lang === 'zh' ? '模型' : 'Model'}</label>
+              <input
+                className={inputCls}
+                placeholder="claude-sonnet-4-6"
+                value={visualAgentConfig.model ?? ''}
+                onChange={(e) => updateVisualAgentConfig({ model: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-claude-muted block mb-0.5">{lang === 'zh' ? '格式' : 'Format'}</label>
+              <select
+                className={inputCls}
+                value={visualAgentConfig.format ?? 'anthropic'}
+                onChange={(e) => updateVisualAgentConfig({ format: e.target.value as 'anthropic' | 'openai' })}
+              >
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-1.5">
+            <span className={`text-[9px] ${visualAgentConfig.authToken ? 'text-green-400' : 'text-red-400'}`}>
+              {visualAgentConfig.authToken
+                ? (lang === 'zh' ? '已配置 ✓' : 'Configured ✓')
+                : (lang === 'zh' ? '未配置 — MCP 无法工作' : 'Not configured — MCP won\'t work')}
+            </span>
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-[10px] text-red-400">{error}</p>}
 
@@ -376,3 +462,5 @@ export function McpPanel(): React.ReactElement {
     </div>
   )
 }
+
+      
