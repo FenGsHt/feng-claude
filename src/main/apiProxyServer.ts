@@ -38,8 +38,6 @@ function forwardRequest(
   const targetUrl = new URL(targetBaseUrl)
   const fullPath = targetUrl.pathname + requestPath
 
-  console.log(`[API Proxy] forwardRequest: baseUrl=${targetBaseUrl} path=${requestPath} fullPath=${fullPath} fallback=${fallbackAttempt}`)
-
   const isHttps = targetUrl.protocol === 'https:'
   const requestFn = isHttps ? httpsRequest : httpRequest
 
@@ -65,7 +63,6 @@ function forwardRequest(
     },
     (proxyRes) => {
       const statusCode = proxyRes.statusCode ?? 200
-      console.log(`[API Proxy] Response status ${statusCode} (fallback=${fallbackAttempt})`)
       if (statusCode >= 400 && !fallbackAttempt) {
         console.log(`[API Proxy] Primary response status ${statusCode}, trying fallback`)
         proxyRes.resume()
