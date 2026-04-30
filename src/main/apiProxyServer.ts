@@ -273,6 +273,8 @@ function forwardRequest(
   modelOverride?: string
 ): void {
   let requestPath = req.url ?? '/'
+  console.log(`[API Proxy] DEBUG: original requestPath=${requestPath}`)
+
   if (originalBaseUrl !== targetBaseUrl) {
     const originalBasePath = new URL(originalBaseUrl).pathname
     if (requestPath.startsWith(originalBasePath)) {
@@ -286,16 +288,21 @@ function forwardRequest(
   if (format === 'openai') {
     // /v1/messages → /v1/chat/completions
     requestPath = requestPath.replace('/v1/messages', '/v1/chat/completions')
+    console.log(`[API Proxy] DEBUG: OpenAI path converted to=${requestPath}`)
   }
 
   const fullPath = targetUrl.pathname + requestPath
   const isHttps = targetUrl.protocol === 'https:'
   const requestFn = isHttps ? httpsRequest : httpRequest
 
+  console.log(`[API Proxy] DEBUG: targetBaseUrl=${targetBaseUrl}, targetUrl.pathname=${targetUrl.pathname}, fullPath=${fullPath}`)
+
   // [2026-04-30] OpenAI 请求体转换
   let transformedBody = body
   if (format === 'openai') {
     transformedBody = convertAnthropicToOpenai(body, modelOverride)
+    console.log(`[API Proxy] DEBUG: Original body=${body.toString().slice(0, 200)}`)
+    console.log(`[API Proxy] DEBUG: Transformed body=${transformedBody.toString().slice(0, 200)}`)
   } else if (modelOverride) {
     transformedBody = applyModelOverride(body, modelOverride)
   }
@@ -313,9 +320,13 @@ function forwardRequest(
 
   if (format === 'openai') {
     headers['authorization'] = `Bearer ${authToken}`
+    console.log(`[API Proxy] DEBUG: Using Authorization: Bearer header`)
   } else {
     headers['x-api-key'] = authToken
+    console.log(`[API Proxy] DEBUG: Using x-api-key header`)
   }
+
+  console.log(`[API Proxy] DEBUG: Final URL=${targetUrl.protocol}//${targetUrl.host}${fullPath}`)
 
   const proxyReq = requestFn(
     {
@@ -328,46 +339,53 @@ function forwardRequest(
     },
     (proxyRes) => {
       const statusCode = proxyRes.statusCode ?? 200
+      console.log(`[API Proxy] DEBUG: Response statusCode=${statusCode}`)
+
       if (statusCode >= 400) {
-        const settings = new SettingsStore().get()
-        const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
-        if (!profile) {
-          res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: 'No active profile' }))
-          return
-        }
+        // 读取错误响应体用于调试
+        const errorChunks: Buffer[] = []
+        proxyRes.on('data', (chunk) => errorChunks.push(chunk))
+        proxyRes.on('end', () => {
+          const errorBody = Buffer.concat(errorChunks).toString()
+          console.log(`[API Proxy] DEBUG: Error response body=${errorBody.slice(0, 500)}`)
 
-        const fallbacks = getEnabledFallbacks(profile)
-        const nextFallbackIndex = fallbackIndex + 1
+          const settings = new SettingsStore().get()
+          const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
+          if (!profile) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'No active profile' }))
+            return
+          }
 
-        if (nextFallbackIndex < fallbacks.length) {
-          const nextFallback = fallbacks[nextFallbackIndex]
-          console.log(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} failed (${statusCode}), trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
-          proxyRes.resume()
-          primaryFailedAt = Date.now()
-          cooldownFallbackIndex = nextFallbackIndex
-          forwardRequest(
-            nextFallback.baseUrl,
-            nextFallback.authToken,
-            nextFallback.format,
-            req,
-            res,
-            body,
-            nextFallbackIndex,
-            originalBaseUrl,
-            nextFallback.model
-          )
-        } else if (fallbackIndex === -1) {
-          console.log(`[API Proxy] Primary failed (${statusCode}), no enabled fallbacks`)
-          proxyRes.resume()
-          res.writeHead(502, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: `Primary returned ${statusCode}, no enabled fallbacks` }))
-        } else {
-          console.log(`[API Proxy] All ${fallbacks.length} fallbacks exhausted, last status: ${statusCode}`)
-          proxyRes.resume()
-          res.writeHead(502, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: `All fallbacks failed, last status: ${statusCode}` }))
-        }
+          const fallbacks = getEnabledFallbacks(profile)
+          const nextFallbackIndex = fallbackIndex + 1
+
+          if (nextFallbackIndex < fallbacks.length) {
+            const nextFallback = fallbacks[nextFallbackIndex]
+            console.log(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} failed (${statusCode}), trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
+            primaryFailedAt = Date.now()
+            cooldownFallbackIndex = nextFallbackIndex
+            forwardRequest(
+              nextFallback.baseUrl,
+              nextFallback.authToken,
+              nextFallback.format,
+              req,
+              res,
+              body,
+              nextFallbackIndex,
+              originalBaseUrl,
+              nextFallback.model
+            )
+          } else if (fallbackIndex === -1) {
+            console.log(`[API Proxy] Primary failed (${statusCode}), no enabled fallbacks`)
+            res.writeHead(502, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: `Primary returned ${statusCode}, no enabled fallbacks` }))
+          } else {
+            console.log(`[API Proxy] All ${fallbacks.length} fallbacks exhausted, last status: ${statusCode}`)
+            res.writeHead(502, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: `All fallbacks failed, last status: ${statusCode}` }))
+          }
+        })
         return
       }
 
@@ -375,6 +393,8 @@ function forwardRequest(
         primaryFailedAt = null
         cooldownFallbackIndex = null
       }
+
+      console.log(`[API Proxy] DEBUG: Success! format=${format}`)
 
       // [2026-04-30] OpenAI 响应转换
       if (format === 'openai') {
