@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, WebContentsView, WebPreferences } from 'electron'
+import { BrowserWindow, ipcMain, WebContentsView, WebPreferences, InputEvent } from 'electron'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
 
@@ -35,7 +35,10 @@ const MIN_RATIO = 0.25
 const MAX_RATIO = 0.75
 const DEVTOOLS_MIN_RATIO = 0.2   // [2026-04-30] DevTools 最小比例
 const DEVTOOLS_MAX_RATIO = 0.6   // [2026-04-30] DevTools 最大比例
-const SEPARATOR_W = 6            // [2026-04-30] 分隔线宽度
+const SEPARATOR_W = 8            // [2026-04-30] 分隔线宽度
+
+// [2026-04-30] DevTools 分隔线拖拽状态
+let devToolsDragging = false
 
 // ── 布局计算 ───────────────────────────────────────────────────────
 
@@ -198,11 +201,12 @@ button:disabled { opacity: 0.3; cursor: default; }
 </script></body></html>`
 
 // [2026-04-30] 分隔线 HTML — 用于拖拽调整 DevTools 宽度
+// 注意：拖拽过程中鼠标会离开分隔线，所以 mousemove/mouseup 由主进程监听主窗口
 const SEPARATOR_HTML = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  background: #2a2a2a;
+  background: #333;
   height: 100%;
   cursor: col-resize;
   display: flex;
@@ -210,31 +214,24 @@ body {
   justify-content: center;
 }
 body:hover { background: #f59e0b; }
-body.active { background: #f59e0b; }
-.handle {
+.drag-indicator {
   width: 2px;
-  height: 40px;
-  background: #666;
+  height: 50%;
+  background: #555;
   border-radius: 1px;
 }
-body:hover .handle, body.active .handle { background: #fff; }
+body:hover .drag-indicator { background: #fff; }
 </style></head><body>
-  <div class="handle"></div>
+  <div class="drag-indicator"></div>
 <script>
 const { ipcRenderer } = require('electron')
-let dragging = false, startX = 0, startRatio = 0
 document.body.addEventListener('mousedown', e => {
-  dragging = true; startX = e.clientX; startRatio = window.__devToolsRatio || 0.4
-  document.body.classList.add('active'); e.preventDefault()
+  ipcRenderer.send('browser-nav:devtools-drag-start')
+  e.preventDefault()
 })
-document.addEventListener('mousemove', e => {
-  if (!dragging) return
-  ipcRenderer.send('browser-nav:set-devtools-ratio', startRatio + (e.clientX - startX) / window.__panelWidth)
+document.body.addEventListener('mouseup', () => {
+  ipcRenderer.send('browser-nav:devtools-drag-end')
 })
-document.addEventListener('mouseup', () => {
-  if (dragging) { dragging = false; document.body.classList.remove('active') }
-})
-ipcRenderer.on('browser-nav:devtools-ratio', (_, d) => { window.__devToolsRatio = d.ratio; window.__panelWidth = d.panelWidth })
 </script></body></html>`
 
 function createNavView(): WebContentsView {
@@ -287,21 +284,6 @@ function browserNavigate(url: string): void {
   state.view.webContents.loadURL(target).catch(() => {})
 }
 
-// [2026-04-30] 设置 DevTools 比例（通过分隔线拖拽）
-function setDevToolsRatio(win: BrowserWindow, ratio: number): void {
-  state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, ratio))
-  setBounds(win)
-  // 通知分隔线当前比例
-  if (state.separatorView?.webContents) {
-    const bounds = win.getContentBounds()
-    const panelWidth = Math.round(bounds.width * state.splitRatio)
-    state.separatorView.webContents.send('browser-nav:devtools-ratio', {
-      ratio: state.devToolsRatio,
-      panelWidth
-    })
-  }
-}
-
 // [2026-04-30] 切换 DevTools — 使用独立的 WebContentsView
 function toggleDevTools(): void {
   if (!state.view || !state.mainWin) return
@@ -324,9 +306,9 @@ function toggleDevTools(): void {
     if (!state.separatorView) {
       state.separatorView = createSeparatorView()
     }
-    // 添加到窗口
-    win.contentView.addChildView(state.separatorView)
+    // [2026-04-30] 先添加 DevTools，再添加分隔线（分隔线需要在最上层接收鼠标事件）
     win.contentView.addChildView(state.devToolsView)
+    win.contentView.addChildView(state.separatorView)
     // 打开 DevTools（内容会显示在 devToolsView 中）
     state.view.webContents.openDevTools()
     // 更新布局
@@ -518,11 +500,46 @@ export function registerBrowserViewIpc(): void {
     if (win) setSplitRatio(win, ratio)
   })
 
-  // [2026-04-30] 分隔线拖拽调整 DevTools 比例
-  ipcMain.on('browser-nav:set-devtools-ratio', (event, ratio: number) => {
+  // [2026-04-30] 分隔线拖拽开始/结束 — mousemove 由主进程监听主窗口的 input-event
+  ipcMain.on('browser-nav:devtools-drag-start', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && state.mainWin === win) setDevToolsRatio(win, ratio)
+    if (win && state.mainWin === win && state.devToolsVisible) {
+      devToolsDragging = true
+      // [2026-04-30] 使用 win.on('input-event') 监听鼠标移动
+      win.on('input-event', handleDevToolsDragInput)
+      // 监听 mouseup 结束拖拽
+      win.webContents.once('input-event', (ev: Electron.Event, input: InputEvent) => {
+        if (input.type === 'mouseUp') handleDevToolsDragEnd(win)
+      })
+    }
   })
+
+  ipcMain.on('browser-nav:devtools-drag-end', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) handleDevToolsDragEnd(win)
+  })
+}
+
+// [2026-04-30] 处理 DevTools 分隔线拖拽 input-event（mouseMove）
+function handleDevToolsDragInput(_event: Electron.Event, input: InputEvent): void {
+  if (!devToolsDragging || !state.mainWin || input.type !== 'mouseMove') return
+  const bounds = state.mainWin.getContentBounds()
+  const panelWidth = Math.round(bounds.width * state.splitRatio)
+  const mouseX = input.x // 相对于窗口的鼠标位置
+  // DevTools 在右侧，分隔线位置 = 面板右边界 - DevTools宽度 - 分隔线宽度/2
+  // 计算 DevTools 应占的比例：mouseX 越大 DevTools 越小
+  const rightEdge = bounds.width
+  const devToolsWidth = rightEdge - mouseX - SEPARATOR_W / 2
+  const newRatio = devToolsWidth / panelWidth
+  state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, newRatio))
+  setBounds(state.mainWin)
+}
+
+// [2026-04-30] 处理 DevTools 分隔线拖拽结束
+function handleDevToolsDragEnd(win: BrowserWindow): void {
+  if (!devToolsDragging) return
+  devToolsDragging = false
+  win.removeListener('input-event', handleDevToolsDragInput)
 }
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
