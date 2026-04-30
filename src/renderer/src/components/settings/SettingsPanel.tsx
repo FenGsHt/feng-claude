@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import type { ClaudeSettings, ApiProfile } from '../../types/settings'
+import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
 import { useThemeStore, type ThemeMode } from '../../store/themeStore'
@@ -22,6 +22,9 @@ export function SettingsPanel(): React.ReactElement {
   const [editingProfile, setEditingProfile] = useState<ApiProfile | null>(null)
   const [showProfileEditor, setShowProfileEditor] = useState(false)
   const [isNewProfile, setIsNewProfile] = useState(false)
+
+  // [2026-04-30] 备用配置折叠状态
+  const [fallbacksExpanded, setFallbacksExpanded] = useState(true)
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return
@@ -73,6 +76,42 @@ export function SettingsPanel(): React.ReactElement {
     setSaved(false)
     // 立即保存到主进程
     void window.electronAPI.profiles.update(activeProfile.id, { [key]: value })
+  }
+
+  // [2026-04-30] 备用配置操作
+  const handleAddFallback = () => {
+    if (!activeProfile) return
+    const newFallback: FallbackConfig = {
+      id: uuidv4(),
+      name: lang === 'zh' ? `备用 ${((activeProfile.fallbacks?.length ?? 0) + 1)}` : `Fallback ${(activeProfile.fallbacks?.length ?? 0) + 1}`,
+      enabled: true,
+      baseUrl: '',
+      authToken: ''
+    }
+    const fallbacks = [...(activeProfile.fallbacks ?? []), newFallback]
+    handleProfileChange('fallbacks', fallbacks)
+  }
+
+  const handleUpdateFallback = (fallbackId: string, updates: Partial<FallbackConfig>) => {
+    if (!activeProfile) return
+    const fallbacks = (activeProfile.fallbacks ?? []).map(f =>
+      f.id === fallbackId ? { ...f, ...updates } : f
+    )
+    handleProfileChange('fallbacks', fallbacks)
+  }
+
+  const handleRemoveFallback = (fallbackId: string) => {
+    if (!activeProfile) return
+    const fallbacks = (activeProfile.fallbacks ?? []).filter(f => f.id !== fallbackId)
+    handleProfileChange('fallbacks', fallbacks)
+  }
+
+  const handleToggleFallback = (fallbackId: string) => {
+    if (!activeProfile) return
+    const fallbacks = (activeProfile.fallbacks ?? []).map(f =>
+      f.id === fallbackId ? { ...f, enabled: !f.enabled } : f
+    )
+    handleProfileChange('fallbacks', fallbacks)
   }
 
   // [2026-04-28] 添加新 profile
@@ -268,39 +307,114 @@ export function SettingsPanel(): React.ReactElement {
         </p>
       </div>
 
-      {/* [2026-04-30] 备用配置（仅当启用代理时显示） */}
+      {/* [2026-04-30] 多级备用配置（仅当启用代理时显示） */}
       {form.enableApiProxy && activeProfile && (
-        <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
-          <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider mb-1">
-            {lang === 'zh' ? '备用配置（容灾）' : 'Fallback Configuration (Failover)'}
+        <div className="px-3 pb-4 border-t border-claude-border pt-2">
+          {/* 折叠标题 */}
+          <div
+            className="flex items-center gap-2 cursor-pointer select-none"
+            onClick={() => setFallbacksExpanded(!fallbacksExpanded)}
+          >
+            <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">
+              {lang === 'zh' ? '多级备用配置（容灾）' : 'Multi-level Fallbacks (Failover)'}
+            </span>
+            <span className="text-[10px] text-claude-muted">
+              ({(activeProfile.fallbacks ?? []).filter(f => f.enabled).length}/{(activeProfile.fallbacks ?? []).length})
+            </span>
+            <svg
+              className={`w-3 h-3 text-claude-muted transition-transform ${fallbacksExpanded ? 'rotate-180' : ''}`}
+              viewBox="0 0 16 16"
+              fill="currentColor"
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
           </div>
-          <Field label={lang === 'zh' ? '备用 Base URL' : 'Fallback Base URL'} hint="主地址失败时切换">
-            <input
-              type="text"
-              value={activeProfile.fallbackBaseUrl ?? ''}
-              onChange={(e) => handleProfileChange('fallbackBaseUrl', e.target.value)}
-              placeholder={activeProfile.baseUrl}
-              className="field-input"
-            />
-          </Field>
-          <Field label={lang === 'zh' ? '备用 Auth Token' : 'Fallback Auth Token'} hint="备用 API 密钥">
-            <input
-              type="password"
-              value={activeProfile.fallbackAuthToken ?? ''}
-              onChange={(e) => handleProfileChange('fallbackAuthToken', e.target.value)}
-              placeholder={lang === 'zh' ? '同主配置则留空' : 'Leave empty if same as primary'}
-              className="field-input"
-            />
-          </Field>
-          <Field label={lang === 'zh' ? '备用默认模型' : 'Fallback Default Model'} hint="备用模型名">
-            <input
-              type="text"
-              value={activeProfile.fallbackModel ?? ''}
-              onChange={(e) => handleProfileChange('fallbackModel', e.target.value)}
-              placeholder={activeProfile.model}
-              className="field-input"
-            />
-          </Field>
+
+          {fallbacksExpanded && (
+            <div className="mt-2 space-y-2">
+              {(activeProfile.fallbacks ?? []).length === 0 && (
+                <p className="text-[9px] text-claude-muted">
+                  {lang === 'zh' ? '未配置备用地址，主地址失败时无法自动切换' : 'No fallbacks configured; cannot auto-switch when primary fails'}
+                </p>
+              )}
+
+              {(activeProfile.fallbacks ?? []).map((fallback, idx) => (
+                <div
+                  key={fallback.id}
+                  className="p-2 rounded bg-claude-bg/50 border border-claude-border group relative"
+                >
+                  {/* 启用勾选框 + 名称 */}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <input
+                      type="checkbox"
+                      checked={fallback.enabled}
+                      onChange={() => handleToggleFallback(fallback.id)}
+                      className="w-3.5 h-3.5 accent-amber-500"
+                    />
+                    <span className="text-[10px] font-medium text-claude-text">
+                      #{idx + 1} {fallback.name}
+                    </span>
+                    {!fallback.baseUrl && (
+                      <span className="text-[9px] text-red-400">({lang === 'zh' ? '未配置' : 'Not configured'})</span>
+                    )}
+                    {/* 删除按钮 */}
+                    <button
+                      onClick={() => handleRemoveFallback(fallback.id)}
+                      className="ml-auto text-[9px] text-claude-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* 详细配置（仅启用时显示） */}
+                  {fallback.enabled && (
+                    <div className="space-y-1.5 pl-5">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={fallback.name}
+                          onChange={(e) => handleUpdateFallback(fallback.id, { name: e.target.value })}
+                          placeholder={lang === 'zh' ? '名称' : 'Name'}
+                          className="field-input w-24 text-[10px]"
+                        />
+                        <input
+                          type="text"
+                          value={fallback.baseUrl}
+                          onChange={(e) => handleUpdateFallback(fallback.id, { baseUrl: e.target.value })}
+                          placeholder={lang === 'zh' ? 'Base URL' : 'Base URL'}
+                          className="field-input flex-1 text-[10px]"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={fallback.authToken}
+                          onChange={(e) => handleUpdateFallback(fallback.id, { authToken: e.target.value })}
+                          placeholder={lang === 'zh' ? 'Auth Token' : 'Auth Token'}
+                          className="field-input flex-1 text-[10px]"
+                        />
+                        <input
+                          type="text"
+                          value={fallback.model ?? ''}
+                          onChange={(e) => handleUpdateFallback(fallback.id, { model: e.target.value })}
+                          placeholder={lang === 'zh' ? '默认模型' : 'Model'}
+                          className="field-input w-24 text-[10px]"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* 添加按钮 */}
+              <button
+                onClick={handleAddFallback}
+                className="w-full py-1.5 text-[10px] text-amber-500 hover:bg-amber-500/10 rounded border border-claude-border hover:border-amber-500/50 transition-colors"
+              >
+                + {lang === 'zh' ? '添加备用配置' : 'Add Fallback'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

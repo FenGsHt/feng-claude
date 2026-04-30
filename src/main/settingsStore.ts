@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import Store from 'electron-store'
-import type { ClaudeSettings, ApiProfile } from '../renderer/src/types/settings'
+import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../renderer/src/types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, migrateOldSettings } from '../renderer/src/types/settings'
 import { getConfigDir } from './configDir'
 import { v4 as uuidv4 } from 'uuid'
 
-export type { ClaudeSettings, ApiProfile }
+export type { ClaudeSettings, ApiProfile, FallbackConfig }
 export { DEFAULT_SETTINGS, createDefaultProfile }
 
 interface StoreSchema {

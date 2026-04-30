@@ -2,14 +2,15 @@ import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { request as httpRequest } from 'http'
 import { request as httpsRequest } from 'https'
 import { URL } from 'url'
-import { SettingsStore } from './settingsStore'
+import { SettingsStore, type FallbackConfig } from './settingsStore'
 import WebSocket from 'ws'
 
 const PROXY_PORT = 9527
 
-// [2026-04-30] Fallback cooldown: after primary fails, use fallback for 5 minutes
+// [2026-04-30] Fallback cooldown: after primary fails, use first enabled fallback for 5 minutes
 const FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
 let primaryFailedAt: number | null = null
+let cooldownFallbackIndex: number | null = null // which fallback is being used during cooldown
 
 type ProxyState = {
   server: ReturnType<typeof createServer> | null
@@ -19,21 +20,36 @@ type ProxyState = {
 
 const state: ProxyState = { server: null, wsServer: null, running: false }
 
+// [2026-04-30] Get enabled fallbacks from profile
+function getEnabledFallbacks(profile: { fallbacks?: FallbackConfig[] }): FallbackConfig[] {
+  return (profile.fallbacks ?? []).filter(f => f.enabled && f.baseUrl)
+}
+
+// [2026-04-30] Apply fallback model override to request body
+function applyModelOverride(body: Buffer, model?: string): Buffer {
+  if (!model || body.length === 0) return body
+  try {
+    const json = JSON.parse(body.toString())
+    if (json.model) {
+      json.model = model
+      return Buffer.from(JSON.stringify(json))
+    }
+  } catch { /* keep original body */ }
+  return body
+}
+
 function forwardRequest(
   targetBaseUrl: string,
   authToken: string,
   req: IncomingMessage,
   res: ServerResponse,
   body: Buffer,
-  fallbackAttempt: boolean,
-  originalBaseUrl?: string
+  fallbackIndex: number, // -1 = primary, 0+ = fallback index
+  originalBaseUrl: string
 ): void {
-  // [2026-04-30] Fix: preserve original request path when switching to fallback
-  // targetBaseUrl is the API base URL (e.g. https://api.anthropic.com)
-  // We need to append the original request path (e.g. /v1/messages)
+  // Preserve original request path when switching to fallback
   let requestPath = req.url ?? '/'
-  if (originalBaseUrl && originalBaseUrl !== targetBaseUrl) {
-    // Strip original baseUrl's path prefix from requestPath if present
+  if (originalBaseUrl !== targetBaseUrl) {
     const originalBasePath = new URL(originalBaseUrl).pathname
     if (requestPath.startsWith(originalBasePath)) {
       requestPath = requestPath.slice(originalBasePath.length)
@@ -67,32 +83,55 @@ function forwardRequest(
     },
     (proxyRes) => {
       const statusCode = proxyRes.statusCode ?? 200
-      if (statusCode >= 400 && !fallbackAttempt) {
-        console.log(`[API Proxy] Primary response status ${statusCode}, trying fallback`)
-        primaryFailedAt = Date.now() // [2026-04-30] Start cooldown
-        proxyRes.resume()
+      if (statusCode >= 400) {
+        // Try next fallback
         const settings = new SettingsStore().get()
         const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
-        if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
-          console.log('[API Proxy] Switching to fallback:', profile.fallbackBaseUrl)
-          let fallbackBody = body
-          if (profile.fallbackModel && body.length > 0) {
-            try {
-              const json = JSON.parse(body.toString())
-              if (json.model) json.model = profile.fallbackModel
-              fallbackBody = Buffer.from(JSON.stringify(json))
-            } catch { /* keep original body */ }
-          }
-          forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true, originalBaseUrl)
-        } else {
+        if (!profile) {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'No active profile' }))
+          return
+        }
+
+        const fallbacks = getEnabledFallbacks(profile)
+        const nextFallbackIndex = fallbackIndex + 1
+
+        if (nextFallbackIndex < fallbacks.length) {
+          // Try next fallback
+          const nextFallback = fallbacks[nextFallbackIndex]
+          console.log(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} failed (${statusCode}), trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
+          proxyRes.resume()
+          primaryFailedAt = Date.now()
+          cooldownFallbackIndex = nextFallbackIndex
+          forwardRequest(
+            nextFallback.baseUrl,
+            nextFallback.authToken,
+            req,
+            res,
+            applyModelOverride(body, nextFallback.model),
+            nextFallbackIndex,
+            originalBaseUrl
+          )
+        } else if (fallbackIndex === -1) {
+          // Primary failed, no fallbacks
+          console.log(`[API Proxy] Primary failed (${statusCode}), no enabled fallbacks`)
+          proxyRes.resume()
           res.writeHead(502, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: `Primary returned ${statusCode}, no fallback configured` }))
+          res.end(JSON.stringify({ error: `Primary returned ${statusCode}, no enabled fallbacks` }))
+        } else {
+          // All fallbacks exhausted
+          console.log(`[API Proxy] All ${fallbacks.length} fallbacks exhausted, last status: ${statusCode}`)
+          proxyRes.resume()
+          res.writeHead(502, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: `All fallbacks failed, last status: ${statusCode}` }))
         }
         return
       }
-      // [2026-04-30] Primary/fallback success — clear cooldown if this was primary
-      if (!fallbackAttempt && statusCode < 400) {
+
+      // Success — clear cooldown if this was primary
+      if (fallbackIndex === -1) {
         primaryFailedAt = null
+        cooldownFallbackIndex = null
       }
       res.writeHead(statusCode, proxyRes.headers)
       proxyRes.pipe(res)
@@ -100,26 +139,32 @@ function forwardRequest(
   )
 
   proxyReq.on('error', (err) => {
-    console.error('[API Proxy] Request error:', err.message)
-    if (!fallbackAttempt) {
-      primaryFailedAt = Date.now() // [2026-04-30] Start cooldown
-      const settings = new SettingsStore().get()
-      const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
-      if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
-        console.log('[API Proxy] Switching to fallback:', profile.fallbackBaseUrl)
-        let fallbackBody = body
-        if (profile.fallbackModel && body.length > 0) {
-          try {
-            const json = JSON.parse(body.toString())
-            if (json.model) json.model = profile.fallbackModel
-            fallbackBody = Buffer.from(JSON.stringify(json))
-          } catch { /* keep original body */ }
-        }
-        forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true, originalBaseUrl)
-      } else {
-        res.writeHead(502, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'Primary failed, no fallback configured' }))
-      }
+    console.error(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} error:`, err.message)
+    const settings = new SettingsStore().get()
+    const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
+    if (!profile) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'No active profile' }))
+      return
+    }
+
+    const fallbacks = getEnabledFallbacks(profile)
+    const nextFallbackIndex = fallbackIndex + 1
+
+    if (nextFallbackIndex < fallbacks.length) {
+      const nextFallback = fallbacks[nextFallbackIndex]
+      console.log(`[API Proxy] Trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
+      primaryFailedAt = Date.now()
+      cooldownFallbackIndex = nextFallbackIndex
+      forwardRequest(
+        nextFallback.baseUrl,
+        nextFallback.authToken,
+        req,
+        res,
+        applyModelOverride(body, nextFallback.model),
+        nextFallbackIndex,
+        originalBaseUrl
+      )
     } else {
       res.writeHead(502, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: err.message }))
@@ -128,20 +173,35 @@ function forwardRequest(
 
   proxyReq.on('timeout', () => {
     proxyReq.destroy()
-    if (!fallbackAttempt) {
-      primaryFailedAt = Date.now() // [2026-04-30] Start cooldown
-      console.log('[API Proxy] Primary timeout, trying fallback')
-      const settings = new SettingsStore().get()
-      const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
-      if (profile?.fallbackBaseUrl && profile.fallbackAuthToken) {
-        forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, body, true, originalBaseUrl)
-      } else {
-        res.writeHead(504, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'Primary timeout, no fallback configured' }))
-      }
+    console.log(`[API Proxy] Level ${fallbackIndex === -1 ? 'primary' : `#${fallbackIndex + 1}`} timeout`)
+    const settings = new SettingsStore().get()
+    const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
+    if (!profile) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'No active profile' }))
+      return
+    }
+
+    const fallbacks = getEnabledFallbacks(profile)
+    const nextFallbackIndex = fallbackIndex + 1
+
+    if (nextFallbackIndex < fallbacks.length) {
+      const nextFallback = fallbacks[nextFallbackIndex]
+      console.log(`[API Proxy] Trying #${nextFallbackIndex + 1}: ${nextFallback.name}`)
+      primaryFailedAt = Date.now()
+      cooldownFallbackIndex = nextFallbackIndex
+      forwardRequest(
+        nextFallback.baseUrl,
+        nextFallback.authToken,
+        req,
+        res,
+        applyModelOverride(body, nextFallback.model),
+        nextFallbackIndex,
+        originalBaseUrl
+      )
     } else {
       res.writeHead(504, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: 'Fallback timeout' }))
+      res.end(JSON.stringify({ error: 'All levels timeout' }))
     }
   })
 
@@ -163,22 +223,25 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
       return
     }
 
-    // [2026-04-30] Check cooldown: if primary failed recently, use fallback directly
+    const fallbacks = getEnabledFallbacks(profile)
+
+    // Check cooldown: if primary failed recently, use the fallback that succeeded
     const inCooldown = primaryFailedAt && (Date.now() - primaryFailedAt < FALLBACK_COOLDOWN_MS)
-    if (inCooldown && profile.fallbackBaseUrl && profile.fallbackAuthToken) {
-      console.log('[API Proxy] In cooldown, using fallback:', profile.fallbackBaseUrl)
-      let fallbackBody = body
-      if (profile.fallbackModel && body.length > 0) {
-        try {
-          const json = JSON.parse(body.toString())
-          if (json.model) json.model = profile.fallbackModel
-          fallbackBody = Buffer.from(JSON.stringify(json))
-        } catch { /* keep original body */ }
-      }
-      forwardRequest(profile.fallbackBaseUrl, profile.fallbackAuthToken, req, res, fallbackBody, true, profile.baseUrl)
+    if (inCooldown && cooldownFallbackIndex !== null && cooldownFallbackIndex < fallbacks.length) {
+      const cooldownFallback = fallbacks[cooldownFallbackIndex]
+      console.log(`[API Proxy] In cooldown, using #${cooldownFallbackIndex + 1}: ${cooldownFallback.name}`)
+      forwardRequest(
+        cooldownFallback.baseUrl,
+        cooldownFallback.authToken,
+        req,
+        res,
+        applyModelOverride(body, cooldownFallback.model),
+        cooldownFallbackIndex,
+        profile.baseUrl
+      )
     } else {
       console.log('[API Proxy] Forwarding to primary:', profile.baseUrl)
-      forwardRequest(profile.baseUrl, profile.authToken, req, res, body, false, profile.baseUrl)
+      forwardRequest(profile.baseUrl, profile.authToken, req, res, body, -1, profile.baseUrl)
     }
   })
   req.on('error', (err) => {
@@ -188,29 +251,15 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   })
 }
 
-function getProfile(): { baseUrl: string; authToken: string; fallbackBaseUrl?: string; fallbackAuthToken?: string } | null {
+function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
   const settings = new SettingsStore().get()
   const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
-  if (!profile) return null
-  return {
-    baseUrl: profile.baseUrl,
-    authToken: profile.authToken,
-    fallbackBaseUrl: profile.fallbackBaseUrl,
-    fallbackAuthToken: profile.fallbackAuthToken
-  }
-}
-
-function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
-  const profile = getProfile()
   if (!profile) {
     wsClient.close(1008, 'No active profile')
     return
   }
 
-  // WebSocket URL: convert http/https to ws/wss
-  const wsUrl = profile.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
-  console.log('[API Proxy] WebSocket forwarding to:', wsUrl)
-
+  const fallbacks = getEnabledFallbacks(profile)
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     if (key.toLowerCase() === 'host') continue
@@ -219,39 +268,44 @@ function handleWebSocket(wsClient: WebSocket, req: IncomingMessage): void {
     if (typeof value === 'string') headers[key] = value
     else if (Array.isArray(value)) headers[key] = value[0]
   }
+
+  let wsIndex = -1 // -1 = primary, 0+ = fallback index
+  const wsUrl = profile.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
   headers['x-api-key'] = profile.authToken
+  console.log('[API Proxy] WebSocket forwarding to primary:', wsUrl)
 
   let wsTarget = new WebSocket(wsUrl, { headers })
-  let fallbackAttempted = false
+
+  const tryNextFallback = (): boolean => {
+    wsIndex++
+    if (wsIndex >= fallbacks.length) return false
+    const fallback = fallbacks[wsIndex]
+    console.log(`[API Proxy] WebSocket trying #${wsIndex + 1}: ${fallback.name}`)
+    headers['x-api-key'] = fallback.authToken
+    const fallbackWsUrl = fallback.baseUrl.replace(/^http/, 'ws') + '/v1/realtime'
+    wsTarget = new WebSocket(fallbackWsUrl, { headers })
+    return true
+  }
 
   wsTarget.on('open', () => {
-    console.log('[API Proxy] WebSocket connected to primary')
-    // Bidirectional pipe
-    wsClient.on('message', (data) => {
-      wsTarget.send(data)
-    })
-    wsTarget.on('message', (data) => {
-      wsClient.send(data)
-    })
+    console.log(`[API Proxy] WebSocket connected to ${wsIndex === -1 ? 'primary' : `#${wsIndex + 1}`}`)
+    wsClient.on('message', (data) => wsTarget.send(data))
+    wsTarget.on('message', (data) => wsClient.send(data))
   })
 
   wsTarget.on('error', (err) => {
-    console.error('[API Proxy] WebSocket primary error:', err.message)
-    if (!fallbackAttempted && profile.fallbackBaseUrl && profile.fallbackAuthToken) {
-      fallbackAttempted = true
-      console.log('[API Proxy] WebSocket switching to fallback:', profile.fallbackBaseUrl)
-      wsTarget.close()
-      const fallbackWsUrl = profile.fallbackBaseUrl.replace(/^http/, 'ws') + '/v1/realtime'
-      headers['x-api-key'] = profile.fallbackAuthToken
-      wsTarget = new WebSocket(fallbackWsUrl, { headers })
+    console.error(`[API Proxy] WebSocket ${wsIndex === -1 ? 'primary' : `#${wsIndex + 1}`} error:`, err.message)
+    if (tryNextFallback()) {
       wsTarget.on('open', () => {
-        console.log('[API Proxy] WebSocket connected to fallback')
+        console.log(`[API Proxy] WebSocket connected to #${wsIndex + 1}`)
         wsClient.on('message', (data) => wsTarget.send(data))
         wsTarget.on('message', (data) => wsClient.send(data))
       })
       wsTarget.on('error', (fallbackErr) => {
-        console.error('[API Proxy] WebSocket fallback error:', fallbackErr.message)
-        wsClient.close(1011, 'Both primary and fallback WebSocket failed')
+        console.error(`[API Proxy] WebSocket #${wsIndex + 1} error:`, fallbackErr.message)
+        if (!tryNextFallback()) {
+          wsClient.close(1011, 'All WebSocket fallbacks failed')
+        }
       })
     } else {
       wsClient.close(1011, 'WebSocket connection failed')
@@ -298,6 +352,8 @@ export function stopApiProxy(): void {
     state.server = null
   }
   state.running = false
+  primaryFailedAt = null
+  cooldownFallbackIndex = null
   console.log('[API Proxy] Server stopped')
 }
 

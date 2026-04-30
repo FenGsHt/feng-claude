@@ -10,6 +10,32 @@ export type ClaudePermissionPreset = 'acceptEdits' | 'bypassPermissions'
 export type AppLanguage = 'zh' | 'en'
 
 /**
+ * [2026-04-30] 备用 API 配置（容灾）
+ */
+export interface FallbackConfig {
+  /** UUID */
+  id: string
+  /** 显示名称 */
+  name: string
+  /** 是否启用 */
+  enabled: boolean
+  /** 备用 Base URL */
+  baseUrl: string
+  /** 备用 API Token */
+  authToken: string
+  /** 备用默认模型 */
+  model?: string
+  /** 备用 Sonnet 模型 */
+  sonnetModel?: string
+  /** 备用 Haiku 模型 */
+  haikuModel?: string
+  /** 备用 Opus 模型 */
+  opusModel?: string
+  /** 备用子代理模型 */
+  subagentModel?: string
+}
+
+/**
  * [2026-04-28] API 配置 - 支持多配置切换
  * 每个 profile 包含完整的 API 连接参数
  */
@@ -43,19 +69,21 @@ export interface ApiProfile {
     cacheCreatePerM: number
     cacheReadPerM: number
   }
-  /** [2026-04-30] 备用 Base URL（容灾） */
+  /** [2026-04-30] 多级备用配置（容灾）— 按顺序依次尝试 */
+  fallbacks?: FallbackConfig[]
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackBaseUrl?: string
-  /** [2026-04-30] 备用 API Token（容灾） */
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackAuthToken?: string
-  /** [2026-04-30] 备用默认模型（容灾） */
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackModel?: string
-  /** [2026-04-30] 备用 Sonnet 模型（容灾） */
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackSonnetModel?: string
-  /** [2026-04-30] 备用 Haiku 模型（容灾） */
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackHaikuModel?: string
-  /** [2026-04-30] 备用 Opus 模型（容灾） */
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackOpusModel?: string
-  /** [2026-04-30] 备用子代理模型（容灾） */
+  /** [2026-04-30] @deprecated 旧版单备用配置，已迁移到 fallbacks[0] */
   fallbackSubagentModel?: string
 }
 
