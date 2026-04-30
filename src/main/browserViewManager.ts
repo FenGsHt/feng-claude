@@ -380,6 +380,8 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
     }
     const view = new WebContentsView({ webPreferences: prefs })
     state.view = view
+    // [2026-05-01] 设置背景色与窗口一致，避免黑边
+    view.setBackgroundColor('#1a1a2e')
 
     // 拦截新窗口请求
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
