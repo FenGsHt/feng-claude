@@ -273,7 +273,6 @@ function forwardRequest(
   modelOverride?: string
 ): void {
   let requestPath = req.url ?? '/'
-  console.log(`[API Proxy] DEBUG: original requestPath=${requestPath}`)
 
   if (originalBaseUrl !== targetBaseUrl) {
     const originalBasePath = new URL(originalBaseUrl).pathname
@@ -286,23 +285,19 @@ function forwardRequest(
 
   // [2026-04-30] OpenAI 路径转换
   if (format === 'openai') {
-    // /v1/messages → /v1/chat/completions
     requestPath = requestPath.replace('/v1/messages', '/v1/chat/completions')
-    console.log(`[API Proxy] DEBUG: OpenAI path converted to=${requestPath}`)
   }
 
-  const fullPath = targetUrl.pathname + requestPath
+  // [2026-04-30] 修复双斜杠：如果 pathname 是 "/" 则忽略它
+  const basePath = targetUrl.pathname === '/' ? '' : targetUrl.pathname
+  const fullPath = basePath + requestPath
   const isHttps = targetUrl.protocol === 'https:'
   const requestFn = isHttps ? httpsRequest : httpRequest
-
-  console.log(`[API Proxy] DEBUG: targetBaseUrl=${targetBaseUrl}, targetUrl.pathname=${targetUrl.pathname}, fullPath=${fullPath}`)
 
   // [2026-04-30] OpenAI 请求体转换
   let transformedBody = body
   if (format === 'openai') {
     transformedBody = convertAnthropicToOpenai(body, modelOverride)
-    console.log(`[API Proxy] DEBUG: Original body=${body.toString().slice(0, 200)}`)
-    console.log(`[API Proxy] DEBUG: Transformed body=${transformedBody.toString().slice(0, 200)}`)
   } else if (modelOverride) {
     transformedBody = applyModelOverride(body, modelOverride)
   }
@@ -320,13 +315,9 @@ function forwardRequest(
 
   if (format === 'openai') {
     headers['authorization'] = `Bearer ${authToken}`
-    console.log(`[API Proxy] DEBUG: Using Authorization: Bearer header`)
   } else {
     headers['x-api-key'] = authToken
-    console.log(`[API Proxy] DEBUG: Using x-api-key header`)
   }
-
-  console.log(`[API Proxy] DEBUG: Final URL=${targetUrl.protocol}//${targetUrl.host}${fullPath}`)
 
   const proxyReq = requestFn(
     {
@@ -339,7 +330,6 @@ function forwardRequest(
     },
     (proxyRes) => {
       const statusCode = proxyRes.statusCode ?? 200
-      console.log(`[API Proxy] DEBUG: Response statusCode=${statusCode}`)
 
       if (statusCode >= 400) {
         // 读取错误响应体用于调试
@@ -347,7 +337,7 @@ function forwardRequest(
         proxyRes.on('data', (chunk) => errorChunks.push(chunk))
         proxyRes.on('end', () => {
           const errorBody = Buffer.concat(errorChunks).toString()
-          console.log(`[API Proxy] DEBUG: Error response body=${errorBody.slice(0, 500)}`)
+          console.log(`[API Proxy] Error response (${statusCode}): ${errorBody.slice(0, 500)}`)
 
           const settings = new SettingsStore().get()
           const profile = settings.profiles.find(p => p.id === settings.activeProfileId)
@@ -393,8 +383,6 @@ function forwardRequest(
         primaryFailedAt = null
         cooldownFallbackIndex = null
       }
-
-      console.log(`[API Proxy] DEBUG: Success! format=${format}`)
 
       // [2026-04-30] OpenAI 响应转换
       if (format === 'openai') {
