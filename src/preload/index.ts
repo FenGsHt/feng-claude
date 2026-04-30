@@ -169,6 +169,9 @@ const electronAPI = {
       ipcRenderer.invoke('browser-view:toggle'),
     navigate: (url: string): Promise<{ success: boolean; url: string }> =>
       ipcRenderer.invoke('browser-view:navigate', url),
+    // [2026-04-30] 设置浏览器面板宽度比例
+    setRatio: (ratio: number): void =>
+      ipcRenderer.send('browser-nav:set-ratio', ratio),
     onBrowserNavAction: (callback: (action: string) => void): (() => void) => {
       const handler = (_: Electron.IpcRendererEvent, action: string): void => callback(action)
       ipcRenderer.on('browser-nav:action', handler)
