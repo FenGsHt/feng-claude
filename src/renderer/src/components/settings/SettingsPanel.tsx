@@ -252,6 +252,58 @@ export function SettingsPanel(): React.ReactElement {
         </p>
       </div>
 
+      {/* [2026-04-30] API 容灾代理 */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.enableApiProxy ?? false}
+            onChange={(e) => handleChange('enableApiProxy', e.target.checked)}
+            className="w-4 h-4 accent-amber-500"
+          />
+          <span className="text-[11px] text-claude-text">{lang === 'zh' ? '启用本地 API 容灾代理' : 'Enable local API failover proxy'}</span>
+        </label>
+        <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+          {lang === 'zh' ? '开启后请求通过本地代理转发，主地址失败时自动切换备用配置' : 'Requests go through local proxy; auto-switches to fallback on primary failure'}
+        </p>
+      </div>
+
+      {/* [2026-04-30] 备用配置（仅当启用代理时显示） */}
+      {form.enableApiProxy && activeProfile && (
+        <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+          <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider mb-1">
+            {lang === 'zh' ? '备用配置（容灾）' : 'Fallback Configuration (Failover)'}
+          </div>
+          <Field label={lang === 'zh' ? '备用 Base URL' : 'Fallback Base URL'} hint="主地址失败时切换">
+            <input
+              type="text"
+              value={activeProfile.fallbackBaseUrl ?? ''}
+              onChange={(e) => handleProfileChange('fallbackBaseUrl', e.target.value)}
+              placeholder={activeProfile.baseUrl}
+              className="field-input"
+            />
+          </Field>
+          <Field label={lang === 'zh' ? '备用 Auth Token' : 'Fallback Auth Token'} hint="备用 API 密钥">
+            <input
+              type="password"
+              value={activeProfile.fallbackAuthToken ?? ''}
+              onChange={(e) => handleProfileChange('fallbackAuthToken', e.target.value)}
+              placeholder={lang === 'zh' ? '同主配置则留空' : 'Leave empty if same as primary'}
+              className="field-input"
+            />
+          </Field>
+          <Field label={lang === 'zh' ? '备用默认模型' : 'Fallback Default Model'} hint="备用模型名">
+            <input
+              type="text"
+              value={activeProfile.fallbackModel ?? ''}
+              onChange={(e) => handleProfileChange('fallbackModel', e.target.value)}
+              placeholder={activeProfile.model}
+              className="field-input"
+            />
+          </Field>
+        </div>
+      )}
+
       {/* [2026-04-28] Active profile fields */}
       {activeProfile && (
         <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">

@@ -25,6 +25,7 @@ import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
 import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView } from './browserViewManager'
 import { ensureBrowserToolsMcpRegistered } from './mcpManager'
+import { startApiProxy, stopApiProxy } from './apiProxyServer'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
 function migrateLegacyTokenDataOnce(): void {
@@ -112,6 +113,11 @@ function createWindow(): BrowserWindow {
   // [2026-04-30] 自动注册浏览器工具 MCP（默认开启，用户可手动删除）
   ensureBrowserToolsMcpRegistered()
 
+  // [2026-04-30] API 容灾代理：开启时启动本地转发服务
+  if (settingsStore.get().enableApiProxy) {
+    startApiProxy()
+  }
+
   // Setup auto updater
   setupAutoUpdater(win)
 
@@ -193,6 +199,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  stopApiProxy()            // [2026-04-30] 关闭 API 容灾代理
   ptyManager?.flushAll()   // save scrollback
   ptyManager?.closeAll()   // kill PTY child processes so they don't keep the process alive
   // Hard-exit after 1 s as a backstop (e.g. NSIS installer update flow)

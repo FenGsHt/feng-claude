@@ -43,6 +43,20 @@ export interface ApiProfile {
     cacheCreatePerM: number
     cacheReadPerM: number
   }
+  /** [2026-04-30] 备用 Base URL（容灾） */
+  fallbackBaseUrl?: string
+  /** [2026-04-30] 备用 API Token（容灾） */
+  fallbackAuthToken?: string
+  /** [2026-04-30] 备用默认模型（容灾） */
+  fallbackModel?: string
+  /** [2026-04-30] 备用 Sonnet 模型（容灾） */
+  fallbackSonnetModel?: string
+  /** [2026-04-30] 备用 Haiku 模型（容灾） */
+  fallbackHaikuModel?: string
+  /** [2026-04-30] 备用 Opus 模型（容灾） */
+  fallbackOpusModel?: string
+  /** [2026-04-30] 备用子代理模型（容灾） */
+  fallbackSubagentModel?: string
 }
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
@@ -81,6 +95,8 @@ export interface ClaudeSettings {
   }
   /** [2026-05-01] 用户手动禁用的插件 ID 列表（存储在 Feng Claude 本地，不受 Claude Code 覆盖） */
   disabledPluginIds?: string[]
+  /** [2026-04-30] 开启本地 API 容灾代理 */
+  enableApiProxy?: boolean
 }
 
 /** 默认 API 配置 */

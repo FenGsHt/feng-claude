@@ -18,6 +18,7 @@ import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, upd
 import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
 import type { McpServerConfig } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
+import { startApiProxy, stopApiProxy, isApiProxyRunning } from './apiProxyServer'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 import { PetLogStore } from './petLogStore'
 
@@ -76,6 +77,12 @@ export function registerIpcHandlers(
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
     // [2026-04-29] 同步到 CLAUDE_CONFIG_DIR/settings.json，Claude Code 才识别 skipDangerousModePermissionPrompt
     mergeSkipDangerousPromptFromApp(Boolean(merged.skipDangerousModePermissionPrompt))
+    // [2026-04-30] API 容灾代理：开关变更时启动/停止
+    if (merged.enableApiProxy && !isApiProxyRunning()) {
+      startApiProxy()
+    } else if (!merged.enableApiProxy && isApiProxyRunning()) {
+      stopApiProxy()
+    }
     broadcastSettingsChanged()
     return { success: true }
   })

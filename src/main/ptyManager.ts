@@ -9,6 +9,7 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { getConfigDir } from './configDir'
+import { getProxyPort } from './apiProxyServer'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
 
@@ -225,8 +226,9 @@ export class PtyManager {
     resume?: boolean
   ): { pid: number } {
     const s = settings ?? this.settingsStore.get()
-    // [2026-04-28] 使用指定的 profile 获取 API 配置
-    const claudeEnv = this.settingsStore.profileToEnv(profile)
+    // [2026-04-30] 代理开启时使用本地代理 URL
+    const proxyUrl = s.enableApiProxy ? `http://127.0.0.1:${getProxyPort()}` : undefined
+    const claudeEnv = this.settingsStore.profileToEnvWithProxy(profile, proxyUrl)
 
     const isWindows = process.platform === 'win32'
     const shell = isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash')

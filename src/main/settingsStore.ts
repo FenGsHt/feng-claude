@@ -98,6 +98,22 @@ export class SettingsStore {
     }
   }
 
+  /** [2026-04-30] 转换 ApiProfile 为环境变量（考虑代理开关） */
+  profileToEnvWithProxy(profile: ApiProfile, proxyUrl?: string): Record<string, string> {
+    const baseUrl = proxyUrl ?? profile.baseUrl
+    return {
+      ANTHROPIC_AUTH_TOKEN: profile.authToken,
+      ANTHROPIC_API_KEY: profile.authToken,
+      ANTHROPIC_BASE_URL: baseUrl,
+      ANTHROPIC_MODEL: profile.model,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: profile.sonnetModel,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: profile.haikuModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: profile.opusModel,
+      CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
+    }
+  }
+
   /** [2026-04-28] Convert settings to env vars for PTY injection (uses active profile) */
   toEnv(): Record<string, string> {
     return this.profileToEnv(this.getActiveProfile())
