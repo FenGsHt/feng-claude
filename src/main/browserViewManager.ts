@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, WebContentsView, WebPreferences, InputEvent } from 'electron'
+import { BrowserWindow, ipcMain, WebContentsView, WebPreferences } from 'electron'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
 
@@ -500,17 +500,13 @@ export function registerBrowserViewIpc(): void {
     if (win) setSplitRatio(win, ratio)
   })
 
-  // [2026-04-30] 分隔线拖拽开始/结束 — mousemove 由主进程监听主窗口的 input-event
+  // [2026-04-30] 分隔线拖拽开始/结束 — mousemove 由主进程监听 BrowserWindow 的 input-event
   ipcMain.on('browser-nav:devtools-drag-start', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && state.mainWin === win && state.devToolsVisible) {
       devToolsDragging = true
-      // [2026-04-30] 使用 win.on('input-event') 监听鼠标移动
-      win.on('input-event', handleDevToolsDragInput)
-      // 监听 mouseup 结束拖拽
-      win.webContents.once('input-event', (ev: Electron.Event, input: InputEvent) => {
-        if (input.type === 'mouseUp') handleDevToolsDragEnd(win)
-      })
+      // [2026-04-30] 使用 BrowserWindow 的 input-event 监听全局鼠标事件
+      win.on('input-event', handleDevToolsDragWindowInput)
     }
   })
 
@@ -520,26 +516,29 @@ export function registerBrowserViewIpc(): void {
   })
 }
 
-// [2026-04-30] 处理 DevTools 分隔线拖拽 input-event（mouseMove）
-function handleDevToolsDragInput(_event: Electron.Event, input: InputEvent): void {
-  if (!devToolsDragging || !state.mainWin || input.type !== 'mouseMove') return
-  const bounds = state.mainWin.getContentBounds()
-  const panelWidth = Math.round(bounds.width * state.splitRatio)
-  const mouseX = input.x // 相对于窗口的鼠标位置
-  // DevTools 在右侧，分隔线位置 = 面板右边界 - DevTools宽度 - 分隔线宽度/2
-  // 计算 DevTools 应占的比例：mouseX 越大 DevTools 越小
-  const rightEdge = bounds.width
-  const devToolsWidth = rightEdge - mouseX - SEPARATOR_W / 2
-  const newRatio = devToolsWidth / panelWidth
-  state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, newRatio))
-  setBounds(state.mainWin)
+// [2026-04-30] 处理 DevTools 分隔线拖拽 BrowserWindow input-event
+function handleDevToolsDragWindowInput(_event: Electron.Event, input: Electron.Input): void {
+  if (!devToolsDragging || !state.mainWin) return
+  if (input.type === 'mouseMove') {
+    const bounds = state.mainWin.getContentBounds()
+    const panelWidth = Math.round(bounds.width * state.splitRatio)
+    // input.x 是相对于窗口的坐标
+    const mouseX = input.x
+    // DevTools 在右侧，mouseX 越大 DevTools 越小
+    const devToolsWidth = bounds.width - mouseX - SEPARATOR_W / 2
+    const newRatio = devToolsWidth / panelWidth
+    state.devToolsRatio = Math.max(DEVTOOLS_MIN_RATIO, Math.min(DEVTOOLS_MAX_RATIO, newRatio))
+    setBounds(state.mainWin)
+  } else if (input.type === 'mouseUp') {
+    handleDevToolsDragEnd(state.mainWin)
+  }
 }
 
 // [2026-04-30] 处理 DevTools 分隔线拖拽结束
 function handleDevToolsDragEnd(win: BrowserWindow): void {
   if (!devToolsDragging) return
   devToolsDragging = false
-  win.removeListener('input-event', handleDevToolsDragInput)
+  win.removeListener('input-event', handleDevToolsDragWindowInput)
 }
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
