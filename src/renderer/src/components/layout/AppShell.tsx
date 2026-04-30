@@ -120,12 +120,21 @@ export function AppShell(): React.ReactElement {
           <TabBar />
           <TerminalPanel />
         </main>
-        {/* [2026-04-30] Browser panel resize handle — 左边缘分隔条 */}
+        {/* [2026-04-30] Browser panel resize handle — 左边缘分隔条
+            [2026-04-30] 原先作为 flex 子项放在 main 后面；main 的 marginRight 会把它推到浏览器区域右侧，
+            且原生 WebContentsView 会覆盖普通 DOM。改为 fixed，贴在浏览器左边界外侧，确保能收到鼠标事件。 */}
         {browserPanel.visible && (
           <div
             onMouseDown={startBrowserResize}
-            className="w-1.5 shrink-0 cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
-            style={{ marginRight: -1 }}
+            className="cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
+            style={{
+              position: 'fixed',
+              top: 32,
+              bottom: 0,
+              right: browserPanel.width,
+              width: 8,
+              zIndex: 50
+            }}
           />
         )}
         {showTools && (

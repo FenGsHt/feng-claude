@@ -154,9 +154,14 @@ async function handleTool(name, args) {
       case 'browser_screenshot': {
         const r = await callHttp('/screenshot')
         if (r.data) {
-          return [{ type: 'image', data: r.data, mimeType: 'image/png' }]
+          // [2026-04-30] Return text diagnostics with the image so Claude Code shows a useful result even if image rendering is unavailable.
+          const meta = `Screenshot captured: ${r.width || '?'}x${r.height || '?'} PNG, ${r.byteLength || Math.round(r.data.length * 0.75)} bytes${r.url ? `, url: ${r.url}` : ''}`
+          return [
+            { type: 'text', text: meta },
+            { type: 'image', data: r.data, mimeType: 'image/png' }
+          ]
         }
-        return [{ type: 'text', text: `Failed: ${r.error}` }]
+        return [{ type: 'text', text: `Failed: ${r.error || 'No screenshot data returned'}` }]
       }
       case 'browser_click': {
         const r = await callHttp('/click', { selector: args.selector })

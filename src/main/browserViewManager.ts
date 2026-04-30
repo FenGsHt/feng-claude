@@ -23,7 +23,8 @@ const state: BrowserPanelState = {
   mainWin: null,
   visible: false,
   resizeHandler: null,
-  splitRatio: 0.5,
+  /* [2026-04-30] 原默认 0.5，首次打开占半屏偏大；调小成辅助调试面板宽度。 */
+  splitRatio: 0.35,
   devToolsRatio: 0.4,
   devToolsVisible: false
 }
@@ -354,8 +355,15 @@ function toggleDevTools(): void {
 
 // ── 公共 API ───────────────────────────────────────────────────────
 
+function revealMainWindow(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore()
+  if (!win.isVisible()) win.show()
+  win.focus()
+}
+
 /** 创建或显示浏览器面板 */
 export function showBrowserView(win: BrowserWindow, url?: string): void {
+  revealMainWindow(win)
   if (!state.view) {
     const prefs: WebPreferences = {
       nodeIntegration: false,
@@ -474,8 +482,17 @@ export function getBrowserViewWebContents(): Electron.WebContents | null {
   return state.view?.webContents ?? null
 }
 
+function ensureBrowserVisible(): boolean {
+  if (state.visible && state.view?.webContents) return true
+  if (!state.mainWin) return false
+  /* [2026-04-30] 允许 Claude Code 直接调用 browser_navigate/browser_screenshot 拉起内置浏览器，
+   * 不再要求用户或模型先显式调用 browser_show。 */
+  showBrowserView(state.mainWin)
+  return Boolean(state.visible && state.view?.webContents)
+}
+
 export async function navigateTo(url: string): Promise<{ success: boolean; url: string }> {
-  if (!state.view?.webContents) {
+  if (!ensureBrowserVisible() || !state.view?.webContents) {
     return { success: false, url: '' }
   }
   let target = url
@@ -653,7 +670,9 @@ function handleBrowserDragEnd(win: BrowserWindow): void {
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
 
-export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number }> {
+export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }> {
+  /* [2026-04-30] HTTP /show 可能早于用户手动打开浏览器；原来未保存 win，state.mainWin=null 时仍返回 visible:true 但不显示。 */
+  state.mainWin = win
   return new Promise((resolve) => {
     const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
       res.setHeader('Content-Type', 'application/json')
@@ -681,14 +700,41 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
         }
 
         if (path === '/screenshot' && req.method === 'GET') {
+          ensureBrowserVisible()
           const webContents = getBrowserViewWebContents()
           if (!webContents) {
-            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open and no main window is available' }))
             return
           }
-          const dataUrl = await webContents.capturePage()
-          const base64 = dataUrl.toPNG().toString('base64')
-          res.writeHead(200); res.end(JSON.stringify({ format: 'png', data: base64 }))
+          if (!state.visible || !state.view || !state.mainWin) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser view is hidden and could not be shown' }))
+            return
+          }
+          const bounds = state.view.getBounds()
+          if (bounds.width <= 0 || bounds.height <= 0) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser view has empty bounds', bounds, url: webContents.getURL() }))
+            return
+          }
+
+          /* [2026-04-30] 原直接 capturePage 后返回 base64；页面刚显示/未 paint 时可能拿到 empty NativeImage，
+           * Claude 侧表现为 browser_screenshot 返回空。等待一帧并返回尺寸诊断，便于判断是否真截图成功。 */
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          const image = await webContents.capturePage()
+          if (image.isEmpty()) {
+            res.writeHead(500); res.end(JSON.stringify({ error: 'Captured image is empty', bounds, url: webContents.getURL() }))
+            return
+          }
+          const png = image.toPNG()
+          const size = image.getSize()
+          const base64 = png.toString('base64')
+          res.writeHead(200); res.end(JSON.stringify({
+            format: 'png',
+            data: base64,
+            width: size.width,
+            height: size.height,
+            byteLength: png.length,
+            url: webContents.getURL()
+          }))
           return
         }
 
@@ -701,7 +747,7 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
           }
           const webContents = getBrowserViewWebContents()
           if (!webContents) {
-            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open. Call browser_show or browser_navigate first.' }))
             return
           }
           try {
@@ -729,7 +775,7 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
           }
           const webContents = getBrowserViewWebContents()
           if (!webContents) {
-            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open. Call browser_show or browser_navigate first.' }))
             return
           }
           try {
@@ -756,7 +802,7 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
         if (path === '/url' && req.method === 'GET') {
           const webContents = getBrowserViewWebContents()
           if (!webContents) {
-            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open. Call browser_show or browser_navigate first.' }))
             return
           }
           res.writeHead(200); res.end(JSON.stringify({ url: webContents.getURL() }))
@@ -767,7 +813,7 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
           const selector = url.searchParams.get('selector')
           const webContents = getBrowserViewWebContents()
           if (!webContents) {
-            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open. Call browser_show or browser_navigate first.' }))
             return
           }
           try {
@@ -791,7 +837,7 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
           }
           const webContents = getBrowserViewWebContents()
           if (!webContents) {
-            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open. Call browser_show or browser_navigate first.' }))
             return
           }
           try {
@@ -805,8 +851,12 @@ export function startBrowserServer(_win: BrowserWindow): Promise<{ port: number 
         }
 
         if (path === '/show' && req.method === 'POST') {
-          if (state.mainWin) showBrowserView(state.mainWin)
-          res.writeHead(200); res.end(JSON.stringify({ visible: true }))
+          if (!state.mainWin) {
+            res.writeHead(500); res.end(JSON.stringify({ visible: false, error: 'No main window is registered for embedded browser' }))
+            return
+          }
+          showBrowserView(state.mainWin)
+          res.writeHead(200); res.end(JSON.stringify({ visible: state.visible }))
           return
         }
 
