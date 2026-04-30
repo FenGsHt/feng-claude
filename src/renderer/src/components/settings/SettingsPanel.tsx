@@ -357,20 +357,10 @@ export function SettingsPanel(): React.ReactElement {
                     {!fallback.baseUrl && (
                       <span className="text-[9px] text-red-400">({lang === 'zh' ? '未配置' : 'Not configured'})</span>
                     )}
-                    {/* OpenAI 兼容勾选框 */}
-                    <label className="flex items-center gap-1 ml-auto">
-                      <input
-                        type="checkbox"
-                        checked={fallback.format === 'openai'}
-                        onChange={(e) => handleUpdateFallback(fallback.id, { format: e.target.checked ? 'openai' : 'anthropic' })}
-                        className="w-3 h-3 accent-blue-500"
-                      />
-                      <span className="text-[9px] text-claude-muted">OpenAI</span>
-                    </label>
                     {/* 删除按钮 */}
                     <button
                       onClick={() => handleRemoveFallback(fallback.id)}
-                      className="text-[9px] text-claude-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="ml-auto text-[9px] text-claude-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       ✕
                     </button>
@@ -379,37 +369,56 @@ export function SettingsPanel(): React.ReactElement {
                   {/* 详细配置（仅启用时显示） */}
                   {fallback.enabled && (
                     <div className="space-y-1.5 pl-5">
-                      <div className="flex gap-2">
+                      {/* 名称 */}
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[9px] text-claude-muted w-12">{lang === 'zh' ? '名称' : 'Name'}</span>
                         <input
                           type="text"
                           value={fallback.name}
                           onChange={(e) => handleUpdateFallback(fallback.id, { name: e.target.value })}
-                          placeholder={lang === 'zh' ? '名称' : 'Name'}
-                          className="field-input !text-[10px] !py-2"
+                          className="field-input !text-[10px] !py-1.5"
                         />
+                      </div>
+                      {/* Base URL */}
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[9px] text-claude-muted w-12">{lang === 'zh' ? '地址' : 'URL'}</span>
                         <input
                           type="text"
                           value={fallback.baseUrl}
                           onChange={(e) => handleUpdateFallback(fallback.id, { baseUrl: e.target.value })}
-                          placeholder={lang === 'zh' ? 'Base URL' : 'Base URL'}
-                          className="field-input flex-1 !text-[10px] !py-2"
+                          placeholder="https://..."
+                          className="field-input !text-[10px] !py-1.5"
                         />
                       </div>
-                      <div className="flex gap-2">
+                      {/* Auth Token */}
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[9px] text-claude-muted w-12">{lang === 'zh' ? '密钥' : 'Token'}</span>
                         <input
                           type="password"
                           value={fallback.authToken}
                           onChange={(e) => handleUpdateFallback(fallback.id, { authToken: e.target.value })}
-                          placeholder={lang === 'zh' ? 'Auth Token' : 'Auth Token'}
-                          className="field-input flex-1 !text-[10px] !py-2"
+                          placeholder="sk-..."
+                          className="field-input !text-[10px] !py-1.5"
                         />
+                      </div>
+                      {/* Model + OpenAI */}
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[9px] text-claude-muted w-12">{lang === 'zh' ? '模型' : 'Model'}</span>
                         <input
                           type="text"
                           value={fallback.model ?? ''}
                           onChange={(e) => handleUpdateFallback(fallback.id, { model: e.target.value })}
-                          placeholder={lang === 'zh' ? '默认模型' : 'Model'}
-                          className="field-input !text-[10px] !py-2"
+                          className="field-input !text-[10px] !py-1.5 flex-1"
                         />
+                        <label className="flex items-center gap-1 shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={fallback.format === 'openai'}
+                            onChange={(e) => handleUpdateFallback(fallback.id, { format: e.target.checked ? 'openai' : 'anthropic' })}
+                            className="w-3 h-3 accent-blue-500"
+                          />
+                          <span className="text-[9px] text-claude-muted">OpenAI</span>
+                        </label>
                       </div>
                     </div>
                   )}
