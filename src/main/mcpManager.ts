@@ -181,41 +181,41 @@ export function updateMcpServer(name: string, cfg: McpServerConfig): void {
   writeClaudeJson(data)
 }
 
-// ── 自动注册浏览器工具 MCP ──────────────────────────────────────────
+// ── 自动注册/更新浏览器工具 MCP ────────────────────────────────────────
+// 始终指向当前运行 App 的脚本路径，确保切换项目后也能识别
 
 let autoRegistered = false
+
+function resolveBrowserToolsScriptPath(): string | null {
+  if (app.isPackaged) {
+    const dest = join(app.getPath('userData'), 'browser-mcp-server.js')
+    if (!existsSync(dest)) {
+      const src = join(app.getAppPath(), 'scripts', 'browser-mcp-server.js')
+      try {
+        writeFileSync(dest, readFileSync(src), 'utf-8')
+      } catch (e) {
+        console.warn('[MCP] Failed to unpack browser-mcp-server.js:', e)
+        return null
+      }
+    }
+    return dest
+  }
+  return join(app.getAppPath(), 'scripts', 'browser-mcp-server.js')
+}
 
 export function ensureBrowserToolsMcpRegistered(): void {
   if (autoRegistered) return
   autoRegistered = true
 
+  const scriptPath = resolveBrowserToolsScriptPath()
+  if (!scriptPath) return
+
   const data = readClaudeJson()
   const servers = data.mcpServers ?? {}
+  const existing = servers['browser-tools']
 
-  // 已存在则不覆盖（用户可能已修改或禁用了）
-  if ('browser-tools' in servers) return
-
-  // 确定脚本路径：开发态用项目根目录，打包态用 userData 下的副本
-  let scriptPath: string
-  if (app.isPackaged) {
-    // 打包后脚本需从 asar 解压到 userData
-    const dest = join(app.getPath('userData'), 'browser-mcp-server.js')
-    if (!existsSync(dest)) {
-      const src = join(app.getAppPath(), 'scripts', 'browser-mcp-server.js')
-      try {
-        const { readFileSync: rfs, writeFileSync: wfs } = require('fs')
-        wfs(dest, rfs(src), 'utf-8')
-      } catch (e) {
-        console.warn('[MCP] Failed to unpack browser-mcp-server.js:', e)
-        return
-      }
-    }
-    scriptPath = dest
-  } else {
-    // 开发态：从项目根目录定位
-    const appPath = app.getAppPath()
-    scriptPath = join(appPath, 'scripts', 'browser-mcp-server.js')
-  }
+  // 路径匹配则跳过
+  if (existing && existing.type === 'stdio' && existing.args?.[0] === scriptPath) return
 
   servers['browser-tools'] = {
     type: 'stdio',
@@ -224,5 +224,5 @@ export function ensureBrowserToolsMcpRegistered(): void {
   }
   data.mcpServers = servers
   writeClaudeJson(data)
-  console.log('[MCP] auto-registered browser-tools MCP server')
+  console.log('[MCP]', existing ? 'updated' : 'registered', 'browser-tools →', scriptPath)
 }

@@ -60,6 +60,9 @@ function levelToString(level: number): string {
 // [2026-04-30] DevTools 分隔线拖拽状态
 let devToolsDragging = false
 
+// [2026-04-30] 浏览器面板拖拽状态（通过主窗口 input-event 全局跟踪）
+let browserDragging = false
+
 // ── 布局计算 ───────────────────────────────────────────────────────
 
 function notifyBrowserState(): void {
@@ -194,17 +197,14 @@ button:disabled { opacity: 0.3; cursor: default; }
 <script>
   const $ = id => document.getElementById(id)
   const { ipcRenderer } = require('electron')
-  let dragging = false, startX = 0, startRatio = 0
   $('drag-handle').addEventListener('mousedown', e => {
-    dragging = true; startX = e.clientX; startRatio = window.__currentRatio || 0.5
-    $('drag-handle').classList.add('active'); document.body.style.cursor = 'col-resize'; e.preventDefault()
-  })
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return
-    ipcRenderer.send('browser-nav:set-ratio', startRatio - (e.clientX - startX) / window.innerWidth)
+    $('drag-handle').classList.add('active'); document.body.style.cursor = 'col-resize'
+    ipcRenderer.send('browser-nav:drag-start', window.__currentRatio || 0.5)
+    e.preventDefault()
   })
   document.addEventListener('mouseup', () => {
-    if (dragging) { dragging = false; $('drag-handle').classList.remove('active'); document.body.style.cursor = '' }
+    $('drag-handle').classList.remove('active'); document.body.style.cursor = ''
+    ipcRenderer.send('browser-nav:drag-end')
   })
   $('back-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'back'))
   $('fwd-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'forward'))
@@ -520,6 +520,20 @@ export function registerBrowserViewIpc(): void {
     if (win) setSplitRatio(win, ratio)
   })
 
+  // [2026-04-30] 浏览器面板拖拽（通过主窗口 input-event 全局跟踪，解决 WebContentsView 内 mousemove 出界断触问题）
+  ipcMain.on('browser-nav:drag-start', (event, _startRatio: number) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && state.mainWin === win && state.visible) {
+      browserDragging = true
+      win.on('input-event', handleBrowserDragWindowInput)
+    }
+  })
+
+  ipcMain.on('browser-nav:drag-end', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) handleBrowserDragEnd(win)
+  })
+
   // [2026-04-30] DevTools 分隔线拖拽开始/结束
   ipcMain.on('browser-nav:devtools-drag-start', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -557,6 +571,28 @@ function handleDevToolsDragEnd(win: BrowserWindow): void {
   if (!devToolsDragging) return
   devToolsDragging = false
   win.removeListener('input-event', handleDevToolsDragWindowInput)
+}
+
+// [2026-04-30] 处理浏览器面板拖拽 — 主窗口 input-event
+function handleBrowserDragWindowInput(_event: Electron.Event, input: Electron.Input): void {
+  if (!browserDragging || !state.mainWin) return
+  if (input.type === 'mouseMove') {
+    const bounds = state.mainWin.getContentBounds()
+    const mouseX = input.x
+    // 浏览器面板在窗口右侧，mouseX 越大表示面板越窄
+    const panelWidth = bounds.width - mouseX
+    const newRatio = panelWidth / bounds.width
+    setSplitRatio(state.mainWin, newRatio)
+  } else if (input.type === 'mouseUp') {
+    handleBrowserDragEnd(state.mainWin)
+  }
+}
+
+// [2026-04-30] 处理浏览器面板拖拽结束
+function handleBrowserDragEnd(win: BrowserWindow): void {
+  if (!browserDragging) return
+  browserDragging = false
+  win.removeListener('input-event', handleBrowserDragWindowInput)
 }
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
