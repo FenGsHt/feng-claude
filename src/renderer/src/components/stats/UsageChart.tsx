@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
 import type { ClaudeSettings } from '../../types/settings'
+import { useI18n } from '../../i18n'
 
 const CHART_DAYS = 14
 const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#06b6d4', '#f97316', '#8b5cf6']
+
+type TimeRange = 'today' | 'week' | 'total'
 
 function formatK(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -32,6 +35,57 @@ function shortDate(dateStr: string): string {
   return `${Number(m)}/${Number(d)}`
 }
 
+/** Get Monday-based week dates (Mon..Sun) for the current week */
+function currentWeekDates(): string[] {
+  const now = new Date()
+  const day = now.getUTCDay() // 0=Sun,1=Mon,...
+  const mondayOffset = day === 0 ? 6 : day - 1
+  const dates: string[] = []
+  for (let i = 0; i <= mondayOffset; i++) {
+    const d = new Date()
+    d.setUTCDate(d.getUTCDate() - i)
+    dates.push(d.toISOString().slice(0, 10))
+  }
+  return dates
+}
+
+function sumDailyHistory(dailyHistory: Record<string, TokenTotals>, dates: string[]): TokenTotals {
+  let result: TokenTotals = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+  for (const d of dates) {
+    const t = dailyHistory[d]
+    if (t) {
+      result = {
+        input: result.input + t.input,
+        output: result.output + t.output,
+        cacheCreate: result.cacheCreate + t.cacheCreate,
+        cacheRead: result.cacheRead + t.cacheRead
+      }
+    }
+  }
+  return result
+}
+
+function sumPerProfileHistory(
+  dailyHistoryPerProfile: Record<string, Record<string, TokenTotals>>,
+  dates: string[]
+): Record<string, TokenTotals> {
+  const result: Record<string, TokenTotals> = {}
+  for (const d of dates) {
+    const dayProfiles = dailyHistoryPerProfile[d]
+    if (!dayProfiles) continue
+    for (const [pid, t] of Object.entries(dayProfiles)) {
+      const prev = result[pid] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+      result[pid] = {
+        input: prev.input + t.input,
+        output: prev.output + t.output,
+        cacheCreate: prev.cacheCreate + t.cacheCreate,
+        cacheRead: prev.cacheRead + t.cacheRead
+      }
+    }
+  }
+  return result
+}
+
 // ── Pie chart for per-profile distribution ──────────────────────
 
 interface PieSlice {
@@ -57,7 +111,7 @@ function buildPieSlices(settings: ClaudeSettings | null, perProfile: Record<stri
   }).filter(s => s.value > 0)
 }
 
-function PieChart({ slices }: { slices: PieSlice[] }): React.ReactElement | null {
+function PieChart({ slices, title }: { slices: PieSlice[]; title: string }): React.ReactElement | null {
   if (slices.length === 0) return null
 
   const SIZE = 120
@@ -66,7 +120,7 @@ function PieChart({ slices }: { slices: PieSlice[] }): React.ReactElement | null
   const CY = SIZE / 2
   const TOTAL = slices.reduce((s, p) => s + p.value, 0)
 
-  let cumAngle = -Math.PI / 2 // start from top
+  let cumAngle = -Math.PI / 2
 
   const paths = slices.map((slice) => {
     const sliceAngle = (slice.value / TOTAL) * 2 * Math.PI
@@ -89,7 +143,7 @@ function PieChart({ slices }: { slices: PieSlice[] }): React.ReactElement | null
 
   return (
     <div>
-      <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">各配置占比</div>
+      <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">{title}</div>
       <div className="flex items-center gap-4">
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           {paths.map((p, i) => (
@@ -117,9 +171,11 @@ function PieChart({ slices }: { slices: PieSlice[] }): React.ReactElement | null
 
 export function UsageChart(): React.ReactElement {
   const { dailyHistory, total, today, todayDate, perProfile, pricing: globalPricing, dailyHistoryPerProfile } = useGlobalTokenStore()
+  const { t } = useI18n()
 
-  // Get settings for profile names and pricing
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
+  const [timeRange, setTimeRange] = useState<TimeRange>('today')
+
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
     return window.electronAPI.onSettingsChanged(() => {
@@ -130,29 +186,42 @@ export function UsageChart(): React.ReactElement {
   const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
   const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
-  const todayCost = computeCost(today, pricing)
-  const totalCost = computeCost(total, pricing)
+  // Compute week data
+  const weekDates = currentWeekDates()
+  const weekTotal = sumDailyHistory(dailyHistory, weekDates)
+  const weekPerProfile = sumPerProfileHistory(dailyHistoryPerProfile, weekDates)
 
-  // Today breakdown
-  const todayRows: { name: string; val: number; cost: number; color: string }[] = [
-    { name: 'Input', val: today.input, cost: (today.input / 1_000_000) * pricing.inputPerM, color: 'text-blue-400' },
-    { name: 'Output', val: today.output, cost: (today.output / 1_000_000) * pricing.outputPerM, color: 'text-green-400' },
-    { name: 'Cache↑', val: today.cacheCreate, cost: (today.cacheCreate / 1_000_000) * pricing.cacheCreatePerM, color: 'text-purple-400' },
-    { name: 'Cache↓', val: today.cacheRead, cost: (today.cacheRead / 1_000_000) * pricing.cacheReadPerM, color: 'text-amber-400' },
+  // Select data based on time range
+  const rangeData = timeRange === 'today' ? today : timeRange === 'week' ? weekTotal : total
+  const rangeCost = computeCost(rangeData, pricing)
+  const rangePerProfile = timeRange === 'today'
+    ? (() => {
+        // today per-profile from dailyHistoryPerProfile[todayDate]
+        const dayProfiles = dailyHistoryPerProfile[todayDate]
+        return dayProfiles ?? {}
+      })()
+    : timeRange === 'week' ? weekPerProfile : perProfile
+
+  // Breakdown rows
+  const breakdownRows: { name: string; val: number; cost: number; color: string }[] = [
+    { name: 'Input', val: rangeData.input, cost: (rangeData.input / 1_000_000) * pricing.inputPerM, color: 'text-blue-400' },
+    { name: 'Output', val: rangeData.output, cost: (rangeData.output / 1_000_000) * pricing.outputPerM, color: 'text-green-400' },
+    { name: 'Cache↑', val: rangeData.cacheCreate, cost: (rangeData.cacheCreate / 1_000_000) * pricing.cacheCreatePerM, color: 'text-purple-400' },
+    { name: 'Cache↓', val: rangeData.cacheRead, cost: (rangeData.cacheRead / 1_000_000) * pricing.cacheReadPerM, color: 'text-amber-400' },
   ]
 
   // Per-profile pie chart
-  const pieSlices = buildPieSlices(settings, perProfile, total)
+  const pieSlices = buildPieSlices(settings, rangePerProfile, rangeData)
 
   // Per-profile stats
   const profileStats = settings?.profiles.map((profile, i) => {
-    const t = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+    const pt = rangePerProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
     const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
     return {
       id: profile.id,
       name: profile.name,
-      tokens: tokenSum(t),
-      cost: computeCost(t, profilePricing),
+      tokens: tokenSum(pt),
+      cost: computeCost(pt, profilePricing),
       color: COLORS[i % COLORS.length]
     }
   }) ?? []
@@ -160,34 +229,51 @@ export function UsageChart(): React.ReactElement {
   // 14-day bar chart
   const dates = lastNDates(CHART_DAYS)
   const values = dates.map((d) => {
-    const t = dailyHistory[d] ?? null
-    return t ? tokenSum(t) : 0
+    const dh = dailyHistory[d] ?? null
+    return dh ? tokenSum(dh) : 0
   })
   const maxVal = Math.max(...values, 1)
-  const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, t]) => [d, computeCost(t, pricing)]))
+  const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, dh]) => [d, computeCost(dh, pricing)]))
 
   const BAR_H = 80
   const BAR_W = 32
   const BAR_GAP = 8
 
+  const rangeLabel = timeRange === 'today' ? t('stats.today') : timeRange === 'week' ? t('stats.thisWeek') : t('stats.total')
+  const breakdownTitle = timeRange === 'today' ? t('stats.todayDetail') : t('stats.periodDetail').replace('{period}', rangeLabel)
+
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-2">
-        <SummaryCard label="今日" tokens={today} cost={todayCost} />
-        <SummaryCard label="累计" tokens={total} cost={totalCost} />
+      {/* Time range selector */}
+      <div className="flex bg-claude-surface rounded-lg p-0.5 border border-claude-border">
+        {([['today', t('stats.today')], ['week', t('stats.thisWeek')], ['total', t('stats.total')]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTimeRange(key)}
+            className={`flex-1 text-[11px] py-1.5 rounded-md transition-colors ${
+              timeRange === key
+                ? 'bg-amber-400/20 text-amber-400 font-semibold'
+                : 'text-claude-muted hover:text-claude-text'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Today breakdown */}
-      <BreakdownSection label="今日明细" rows={todayRows} />
+      {/* Summary card */}
+      <SummaryCard label={rangeLabel} tokens={rangeData} cost={rangeCost} />
+
+      {/* Breakdown */}
+      <BreakdownSection label={breakdownTitle} rows={breakdownRows} />
 
       {/* Per-profile pie chart */}
-      {pieSlices.length > 0 && <PieChart slices={pieSlices} />}
+      {pieSlices.length > 0 && <PieChart slices={pieSlices} title={t('stats.profileShare')} />}
 
-      {/* Per-profile list (compact) */}
+      {/* Per-profile list */}
       {profileStats.some(s => s.tokens > 0) && (
         <div>
-          <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">各配置用量</div>
+          <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">{t('stats.profileUsage')}</div>
           <div className="flex flex-col gap-1">
             {profileStats.map((stat) => (
               <div key={stat.id} className="flex items-center gap-2 text-[11px]">
@@ -203,7 +289,7 @@ export function UsageChart(): React.ReactElement {
 
       {/* Bar chart */}
       <div>
-        <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">近 {CHART_DAYS} 天</div>
+        <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">{t('stats.recentDays').replace('{n}', String(CHART_DAYS))}</div>
         <div ref={(el) => { if (el) el.scrollLeft = el.scrollWidth }} className="overflow-x-auto pb-1 -mx-3 px-3">
           <div className="flex items-end gap-[8px]" style={{ width: CHART_DAYS * (BAR_W + BAR_GAP), minWidth: '100%', height: BAR_H + 22 }}>
             {dates.map((date, i) => {
@@ -226,7 +312,7 @@ export function UsageChart(): React.ReactElement {
           </div>
         </div>
         <div className="text-[10px] text-claude-muted text-center mt-2">
-          最高: <span className="text-claude-text">{formatK(maxVal)}</span> tokens/天
+          {t('stats.peak')}: <span className="text-claude-text">{formatK(maxVal)}</span> {t('stats.tokensPerDay')}
         </div>
       </div>
     </div>

@@ -115,7 +115,15 @@ export const zh = {
     noData: '暂无数据',
     days: '天',
     today: '今日',
-    total: '累计'
+    total: '累计',
+    thisWeek: '这周',
+    todayDetail: '今日明细',
+    periodDetail: '{period}明细',
+    profileShare: '各配置占比',
+    profileUsage: '各配置用量',
+    recentDays: '近 {n} 天',
+    peak: '最高',
+    tokensPerDay: 'tokens/天'
   },
   // Settings panel
   settings: {

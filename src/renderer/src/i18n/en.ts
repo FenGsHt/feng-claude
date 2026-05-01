@@ -109,7 +109,15 @@ export const en: Translations = {
     noData: 'No data yet',
     days: 'd',
     today: 'Today',
-    total: 'Total'
+    total: 'Total',
+    thisWeek: 'This Week',
+    todayDetail: 'Today Details',
+    periodDetail: '{period} Details',
+    profileShare: 'Profile Share',
+    profileUsage: 'Profile Usage',
+    recentDays: 'Last {n} Days',
+    peak: 'Peak',
+    tokensPerDay: 'tokens/day'
   },
   settings: {
     title: 'Settings',
