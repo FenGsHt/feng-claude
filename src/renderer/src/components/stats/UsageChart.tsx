@@ -239,14 +239,14 @@ export function UsageChart(): React.ReactElement {
   const BAR_W = 32
   const BAR_GAP = 8
 
-  const rangeLabel = timeRange === 'today' ? t('stats.today') : timeRange === 'week' ? t('stats.thisWeek') : t('stats.total')
-  const breakdownTitle = timeRange === 'today' ? t('stats.todayDetail') : t('stats.periodDetail').replace('{period}', rangeLabel)
+  const rangeLabel = timeRange === 'today' ? t.stats.today : timeRange === 'week' ? t.stats.thisWeek : t.stats.total
+  const breakdownTitle = timeRange === 'today' ? t.stats.todayDetail : t.stats.periodDetail.replace('{period}', rangeLabel)
 
   return (
     <div className="flex flex-col gap-4 p-3 overflow-y-auto h-full">
       {/* Time range selector */}
       <div className="flex bg-claude-surface rounded-lg p-0.5 border border-claude-border">
-        {([['today', t('stats.today')], ['week', t('stats.thisWeek')], ['total', t('stats.total')]] as const).map(([key, label]) => (
+        {([['today', t.stats.today], ['week', t.stats.thisWeek], ['total', t.stats.total]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTimeRange(key)}
@@ -268,12 +268,12 @@ export function UsageChart(): React.ReactElement {
       <BreakdownSection label={breakdownTitle} rows={breakdownRows} />
 
       {/* Per-profile pie chart */}
-      {pieSlices.length > 0 && <PieChart slices={pieSlices} title={t('stats.profileShare')} />}
+      {pieSlices.length > 0 && <PieChart slices={pieSlices} title={t.stats.profileShare} />}
 
       {/* Per-profile list */}
       {profileStats.some(s => s.tokens > 0) && (
         <div>
-          <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">{t('stats.profileUsage')}</div>
+          <div className="text-[10px] text-claude-muted mb-1.5 uppercase tracking-wider">{t.stats.profileUsage}</div>
           <div className="flex flex-col gap-1">
             {profileStats.map((stat) => (
               <div key={stat.id} className="flex items-center gap-2 text-[11px]">
@@ -289,7 +289,7 @@ export function UsageChart(): React.ReactElement {
 
       {/* Bar chart */}
       <div>
-        <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">{t('stats.recentDays').replace('{n}', String(CHART_DAYS))}</div>
+        <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">{t.stats.recentDays.replace('{n}', String(CHART_DAYS))}</div>
         <div ref={(el) => { if (el) el.scrollLeft = el.scrollWidth }} className="overflow-x-auto pb-1 -mx-3 px-3">
           <div className="flex items-end gap-[8px]" style={{ width: CHART_DAYS * (BAR_W + BAR_GAP), minWidth: '100%', height: BAR_H + 22 }}>
             {dates.map((date, i) => {
@@ -312,7 +312,7 @@ export function UsageChart(): React.ReactElement {
           </div>
         </div>
         <div className="text-[10px] text-claude-muted text-center mt-2">
-          {t('stats.peak')}: <span className="text-claude-text">{formatK(maxVal)}</span> {t('stats.tokensPerDay')}
+          {t.stats.peak}: <span className="text-claude-text">{formatK(maxVal)}</span> {t.stats.tokensPerDay}
         </div>
       </div>
     </div>
