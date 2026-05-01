@@ -12,20 +12,29 @@ import { useToolCallStore } from '../store/toolCallStore'
  * display text (e.g. "256k tokens") and inflating counts incorrectly.
  * Mount once at the App root.
  */
-/** Track when each session started running, for notification threshold */
-const runningStartTime = new Map<string, number>()
-const NOTIFY_AFTER_MS = 10_000 // 10 seconds - only notify for longer tasks
+
+// [2026-05-01] Debounce notifications: only notify after 30s of no tokens
+// This prevents premature notifications between multi-step tool calls
+const NOTIFY_DEBOUNCE_MS = 30_000
+const lastTokenTime = new Map<string, number>()
 
 function notifyTaskDone(sessionId: string): void {
-  const start = runningStartTime.get(sessionId)
-  const elapsed = start ? Date.now() - start : 0
-  console.log('[notify] task done, sessionId:', sessionId, 'elapsed:', elapsed, 'ms')
-  if (!start || elapsed < NOTIFY_AFTER_MS) {
-    console.log('[notify] skipped - elapsed <', NOTIFY_AFTER_MS)
+  const lastToken = lastTokenTime.get(sessionId)
+  const elapsed = lastToken ? Date.now() - lastToken : 0
+  console.log('[notify] idle, sessionId:', sessionId, 'since last token:', elapsed, 'ms')
+  if (!lastToken || elapsed < NOTIFY_DEBOUNCE_MS) {
+    console.log('[notify] skipped - elapsed <', NOTIFY_DEBOUNCE_MS)
     return
   }
-  console.log('[notify] sending notification')
-  window.electronAPI?.showNotification('Feng Claude', 'Task completed')
+  // Check notification setting
+  window.electronAPI.settings.get().then((s) => {
+    if (s.enableNotifications === false) {
+      console.log('[notify] disabled in settings')
+      return
+    }
+    console.log('[notify] sending notification')
+    window.electronAPI?.showNotification('Feng Claude', 'Task completed')
+  }).catch(() => {})
 }
 
 export function usePty(): void {
@@ -40,11 +49,8 @@ export function usePty(): void {
     // ── PTY status changes ────────────────────────────────────
     const unsubStatus = window.electronAPI.onPtyStatus((payload) => {
       const { sessionId, status } = payload
-      if (status === 'running') {
-        runningStartTime.set(sessionId, Date.now())
-      } else if (status === 'idle') {
+      if (status === 'idle') {
         notifyTaskDone(sessionId)
-        runningStartTime.delete(sessionId)
       }
       updateSessionStatus(sessionId, status as any)
     })
@@ -52,6 +58,7 @@ export function usePty(): void {
     // ── JSONL token usage (sole accurate source) ──────────────
     const unsubTokens = window.electronAPI.onTokenUsageUpdate((payload) => {
       const { sessionId, input, output, cacheCreate, cacheRead, reset } = payload
+      lastTokenTime.set(sessionId, Date.now())
       console.log('[Token] received from main — sessionId:', sessionId, 'in:', input, 'out:', output, 'cc:', cacheCreate, 'cr:', cacheRead, 'reset:', reset)
 
       // [2026-04-27] output tokens 增加 = 用户已提交问题，Claude 开始回答
