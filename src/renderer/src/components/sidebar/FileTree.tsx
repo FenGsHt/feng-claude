@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import type { FileTreeNode } from '../../types/fs'
 import { FILE_DRAG_MIME, type FileDragPayload } from '../../lib/claudeRef'
 import { useI18n } from '../../i18n'
@@ -112,10 +112,18 @@ interface NodeProps {
   node: FileTreeNode
   depth: number
   searchQuery: string
+  loadChildren?: (dirPath: string) => Promise<void>
 }
 
-function FileTreeNodeItem({ node, depth, searchQuery }: NodeProps): React.ReactElement {
+function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps): React.ReactElement {
   const [expanded, setExpanded] = useState(depth < 1)
+
+  // Lazy load children when expanding a directory with no children
+  useEffect(() => {
+    if (expanded && loadChildren && (!node.children || node.children.length === 0)) {
+      void loadChildren(node.path)
+    }
+  }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 搜索过滤：检查当前节点或子节点是否匹配
   const matchesSearch = useMemo(() => {
@@ -131,6 +139,7 @@ function FileTreeNodeItem({ node, depth, searchQuery }: NodeProps): React.ReactE
   if (!matchesSearch) return <></>
 
   if (node.type === 'directory') {
+    const hasChildren = node.children && node.children.length > 0
     return (
       <div>
         <button
@@ -146,10 +155,10 @@ function FileTreeNodeItem({ node, depth, searchQuery }: NodeProps): React.ReactE
           {getFileIcon(node.name, true)}
           <span className="truncate">{node.name}</span>
         </button>
-        {expanded && node.children && (
+        {expanded && hasChildren && (
           <div>
-            {node.children.map((child) => (
-              <FileTreeNodeItem key={child.path} node={child} depth={depth + 1} searchQuery={searchQuery} />
+            {node.children!.map((child) => (
+              <FileTreeNodeItem key={child.path} node={child} depth={depth + 1} searchQuery={searchQuery} loadChildren={loadChildren} />
             ))}
           </div>
         )}
@@ -178,9 +187,10 @@ interface FileTreeProps {
   loading?: boolean
   currentPath?: string
   onChangePath?: () => void
+  loadChildren?: (dirPath: string) => Promise<void>
 }
 
-export function FileTree({ nodes, loading, currentPath, onChangePath }: FileTreeProps): React.ReactElement {
+export function FileTree({ nodes, loading, currentPath, onChangePath, loadChildren }: FileTreeProps): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('')
   const { t } = useI18n()
 
@@ -225,7 +235,7 @@ export function FileTree({ nodes, loading, currentPath, onChangePath }: FileTree
             {t.files.empty}
           </div>
         ) : (
-          nodes.map((node) => <FileTreeNodeItem key={node.path} node={node} depth={0} searchQuery={searchQuery} />)
+          nodes.map((node) => <FileTreeNodeItem key={node.path} node={node} depth={0} searchQuery={searchQuery} loadChildren={loadChildren} />)
         )}
       </div>
     </div>

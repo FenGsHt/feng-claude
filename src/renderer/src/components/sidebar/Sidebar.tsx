@@ -174,7 +174,7 @@ function IconDevLog(): React.ReactElement {
 
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
-  const { tree, loading, currentPath, loadTree, openDirDialog } = useFileTree()
+  const { tree, loading, currentPath, loadTree, loadChildren, openDirDialog } = useFileTree()
   const { sessions, activeSessionId, loadHistory } = useSessionStore()
   const { t, lang } = useI18n()
   const [devMode, setDevMode] = useState(false)
@@ -268,6 +268,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
               loading={loading}
               currentPath={currentPath}
               onChangePath={() => openDirDialog()}
+              loadChildren={loadChildren}
             />
           ) : activeTab === 'history' ? (
             <div className="overflow-y-auto h-full">
