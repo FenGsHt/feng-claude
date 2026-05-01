@@ -15,6 +15,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
 import { useContentBankStore } from '../../store/contentBankStore'
+import { useUserPromptStore } from '../../store/userPromptStore'
 import { navigateToPetTab } from './Sidebar'
 
 // ── ASCII 帧库 ────────────────────────────────────────────────────
@@ -693,17 +694,11 @@ export function PetWidget(): React.ReactElement {
   // ── 构建上下文 ────────────────────────────────────────────────
   const buildContext = useCallback((): string => {
     const workdir = activeSession?.workdir ?? '(未知目录)'
-    const rec = activeSession
-      ? sessionHistory.find(
-          (r) => r.workdir.replace(/\\/g, '/').toLowerCase() ===
-                 activeSession.workdir.replace(/\\/g, '/').toLowerCase()
-        )
-      : null
-    const lastPrompt = rec?.lastUserPrompt ?? ''
+    const lastPrompt = activeSessionId ? (useUserPromptStore.getState().getPrompt(activeSessionId) ?? '') : ''
     const lines = [`工作目录: ${workdir}`]
-    if (lastPrompt) lines.push(`用户最近的问题/操作: ${lastPrompt}`)
+    if (lastPrompt) lines.push(`用户的问题: ${lastPrompt}`)
     return lines.join('\n')
-  }, [activeSession, sessionHistory])
+  }, [activeSession, activeSessionId])
 
   // ── 核心触发：监听 output tokens 增加 ────────────────────────
   // output tokens 增加 = Claude Code 完成了一轮回答 = 用户之前发送了一个问题
@@ -736,7 +731,7 @@ export function PetWidget(): React.ReactElement {
     addAffection(2)
     const ctx = buildContext()
     void triggerPet(
-      `[上下文]\n${ctx}\n\n用户刚刚在 Claude Code 中提交了一个问题并得到了回答（${delta} output tokens）。用你的人格，给出一条激进的技术点评或建议。`
+      `[上下文]\n${ctx}\n\n用户刚完成一轮 Claude Code 对话。用你的人格点评或建议。`
     )
   }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt, growth.affection, addXp, addAffection])
 
