@@ -302,7 +302,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
   },
 
   resetTotal: () => {
-    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr(), perProfile: {}, dailyHistoryPerProfile: {} }
+    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr(), perProfile: {}, dailyHistory: {}, dailyHistoryPerProfile: {} }
     set(next)
     const s = get()
     // [2026-04-27] User-initiated action: save immediately
