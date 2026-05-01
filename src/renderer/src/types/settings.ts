@@ -129,6 +129,8 @@ export interface ClaudeSettings {
   disabledPluginIds?: string[]
   /** [2026-04-30] 开启本地 API 容灾代理 */
   enableApiProxy?: boolean
+  /** [2026-05-01] 任务完成时发送系统通知 */
+  enableNotifications?: boolean
 }
 
 /** 默认 API 配置 */
