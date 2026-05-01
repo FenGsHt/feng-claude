@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import type { McpEntry, McpServerConfig, McpServerType } from '../../types/ipc'
 import { useI18n } from '../../i18n'
 
