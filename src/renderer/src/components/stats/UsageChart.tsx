@@ -65,6 +65,10 @@ function sumDailyHistory(dailyHistory: Record<string, TokenTotals>, dates: strin
   return result
 }
 
+function sumAllDailyHistory(dailyHistory: Record<string, TokenTotals>): TokenTotals {
+  return sumDailyHistory(dailyHistory, Object.keys(dailyHistory))
+}
+
 function sumPerProfileHistory(
   dailyHistoryPerProfile: Record<string, Record<string, TokenTotals>>,
   dates: string[]
@@ -191,16 +195,38 @@ export function UsageChart(): React.ReactElement {
   const weekTotal = sumDailyHistory(dailyHistory, weekDates)
   const weekPerProfile = sumPerProfileHistory(dailyHistoryPerProfile, weekDates)
 
+  // Compute effective total from dailyHistory for consistency
+  const dailyTotal = sumAllDailyHistory(dailyHistory)
+  const effectiveTotal: TokenTotals = {
+    input: Math.max(total.input, dailyTotal.input),
+    output: Math.max(total.output, dailyTotal.output),
+    cacheCreate: Math.max(total.cacheCreate, dailyTotal.cacheCreate),
+    cacheRead: Math.max(total.cacheRead, dailyTotal.cacheRead)
+  }
+  // Effective per-profile: merge stored perProfile with dailyHistoryPerProfile sums
+  const allDates = Object.keys(dailyHistoryPerProfile)
+  const dailyPerProfileTotal = sumPerProfileHistory(dailyHistoryPerProfile, allDates)
+  const effectivePerProfile: Record<string, TokenTotals> = { ...perProfile }
+  for (const [pid, dt] of Object.entries(dailyPerProfileTotal)) {
+    const existing = effectivePerProfile[pid]
+    if (!existing) {
+      effectivePerProfile[pid] = dt
+    } else {
+      effectivePerProfile[pid] = {
+        input: Math.max(existing.input, dt.input),
+        output: Math.max(existing.output, dt.output),
+        cacheCreate: Math.max(existing.cacheCreate, dt.cacheCreate),
+        cacheRead: Math.max(existing.cacheRead, dt.cacheRead)
+      }
+    }
+  }
+
   // Select data based on time range
-  const rangeData = timeRange === 'today' ? today : timeRange === 'week' ? weekTotal : total
+  const rangeData = timeRange === 'today' ? today : timeRange === 'week' ? weekTotal : effectiveTotal
   const rangeCost = computeCost(rangeData, pricing)
   const rangePerProfile = timeRange === 'today'
-    ? (() => {
-        // today per-profile from dailyHistoryPerProfile[todayDate]
-        const dayProfiles = dailyHistoryPerProfile[todayDate]
-        return dayProfiles ?? {}
-      })()
-    : timeRange === 'week' ? weekPerProfile : perProfile
+    ? (dailyHistoryPerProfile[todayDate] ?? {})
+    : timeRange === 'week' ? weekPerProfile : effectivePerProfile
 
   // Breakdown rows
   const breakdownRows: { name: string; val: number; cost: number; color: string }[] = [
