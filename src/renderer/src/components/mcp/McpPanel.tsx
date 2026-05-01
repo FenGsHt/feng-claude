@@ -29,7 +29,8 @@ function parseEnv(raw: string): Record<string, string> | undefined {
 
 function formToConfig(f: FormState): McpServerConfig {
   if (f.type === 'stdio') {
-    const args = f.args.trim() ? f.args.trim().split(/\s+/) : undefined
+    // Split by newline so paths with spaces aren't broken
+    const args = f.args.trim() ? f.args.trim().split('\n').map(a => a.trim()).filter(Boolean) : undefined
     return { type: 'stdio', command: f.command.trim(), args, env: parseEnv(f.envRaw) }
   }
   if (f.type === 'streamable-http') {
@@ -44,7 +45,7 @@ function entryToForm(e: McpEntry): FormState {
     name: e.name,
     type: e.type,
     command: e.command ?? '',
-    args: e.args?.join(' ') ?? '',
+    args: e.args?.join('\n') ?? '',
     url: e.url ?? '',
     envRaw: e.env ? Object.entries(e.env).map(([k, v]) => `${k}=${v}`).join('\n') : ''
   }
@@ -136,8 +137,8 @@ function McpForm({
               onChange={(e) => { set({ command: e.target.value }); setError('') }} />
           </div>
           <div>
-            <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.args}</label>
-            <input className={inputCls} placeholder="-y @modelcontextprotocol/server-filesystem /path"
+            <label className="text-[10px] text-claude-muted mb-0.5 block">{t.mcp.args} <span className="text-claude-muted/60">(每行一个参数)</span></label>
+            <textarea className={`${inputCls} resize-none h-14`} placeholder={"-y\n@modelcontextprotocol/server-filesystem\n/path"}
               value={form.args} onChange={(e) => set({ args: e.target.value })} />
           </div>
         </>
