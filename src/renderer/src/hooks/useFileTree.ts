@@ -39,6 +39,19 @@ export function useFileTree(initialPath?: string) {
     setTree((prev) => insertChildren(prev, dirPath, children ?? []))
   }, [])
 
+  const refresh = useCallback(async () => {
+    if (!currentPath) return
+    loadedPaths.current = new Set()
+    setLoading(true)
+    try {
+      const nodes = await window.electronAPI.readFileTree(currentPath, 1)
+      setTree(nodes ?? [])
+      loadedPaths.current = new Set([currentPath])
+    } finally {
+      setLoading(false)
+    }
+  }, [currentPath])
+
   const openDirDialog = useCallback(async () => {
     const selected = await window.electronAPI.openDirDialog()
     if (selected) {
@@ -48,5 +61,5 @@ export function useFileTree(initialPath?: string) {
     return null
   }, [loadTree])
 
-  return { tree, loading, currentPath, loadTree, loadChildren, openDirDialog }
+  return { tree, loading, currentPath, loadTree, loadChildren, refresh, openDirDialog }
 }

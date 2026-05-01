@@ -187,10 +187,11 @@ interface FileTreeProps {
   loading?: boolean
   currentPath?: string
   onChangePath?: () => void
+  onRefresh?: () => void
   loadChildren?: (dirPath: string) => Promise<void>
 }
 
-export function FileTree({ nodes, loading, currentPath, onChangePath, loadChildren }: FileTreeProps): React.ReactElement {
+export function FileTree({ nodes, loading, currentPath, onChangePath, onRefresh, loadChildren }: FileTreeProps): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('')
   const { t } = useI18n()
 
@@ -203,17 +204,31 @@ export function FileTree({ nodes, loading, currentPath, onChangePath, loadChildr
             <p className="text-[11px] text-claude-muted font-mono truncate flex-1" title={currentPath}>
               {currentPath.split(/[/\\]/).pop() ?? currentPath}
             </p>
-            {onChangePath && (
-              <button
-                onClick={onChangePath}
-                className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
-                title={t.files.changeDir}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M1 6h10M6 1l5 5-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            )}
+            <div className="flex items-center gap-0.5 shrink-0">
+              {onRefresh && (
+                <button
+                  onClick={onRefresh}
+                  className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+                  title={t.common.refresh}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M10.5 6A4.5 4.5 0 1 1 6 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                    <path d="M6 1.5l2 2-2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
+              {onChangePath && (
+                <button
+                  onClick={onChangePath}
+                  className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+                  title={t.files.changeDir}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M1 6h10M6 1l5 5-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
         )}
         {/* Search input */}
