@@ -39,29 +39,42 @@ function getConfig() {
 }
 
 async function callApi(config, imageBase64, mediaType, prompt) {
-  const url = new URL('/v1/messages', config.baseUrl)
-  const headers = {
-    'Content-Type': 'application/json',
-    'anthropic-version': '2023-06-01'
-  }
-  if (config.format === 'openai') {
+  const isOpenAI = config.format === 'openai'
+  const url = new URL(isOpenAI ? '/v1/chat/completions' : '/v1/messages', config.baseUrl)
+  const headers = { 'Content-Type': 'application/json' }
+  if (isOpenAI) {
     headers['Authorization'] = `Bearer ${config.authToken}`
   } else {
     headers['x-api-key'] = config.authToken
+    headers['anthropic-version'] = '2023-06-01'
   }
 
-  const body = {
-    model: config.model,
-    max_tokens: 1024,
-    messages: [
-      {
+  const textPrompt = prompt || '请详细描述这张图片的内容'
+  let body
+  if (isOpenAI) {
+    body = {
+      model: config.model,
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mediaType};base64,${imageBase64}` } },
+          { type: 'text', text: textPrompt }
+        ]
+      }]
+    }
+  } else {
+    body = {
+      model: config.model,
+      max_tokens: 1024,
+      messages: [{
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-          { type: 'text', text: prompt || '请详细描述这张图片的内容' }
+          { type: 'text', text: textPrompt }
         ]
-      }
-    ]
+      }]
+    }
   }
 
   const postData = JSON.stringify(body)
@@ -77,13 +90,14 @@ async function callApi(config, imageBase64, mediaType, prompt) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data)
-          if (parsed.error) reject(new Error(parsed.error.message || 'API error'))
+          if (parsed.error) reject(new Error(parsed.error.message || JSON.stringify(parsed.error)))
+          else if (isOpenAI) resolve(parsed.choices?.[0]?.message?.content || 'No response')
           else resolve(parsed.content?.[0]?.text || 'No response')
-        } catch { reject(new Error('Invalid API response')) }
+        } catch { reject(new Error(`Invalid API response: ${data.slice(0, 200)}`)) }
       })
     })
     req.on('error', (e) => reject(e))
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('API timeout')) })
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('API timeout')) })
     req.write(postData)
     req.end()
   })
