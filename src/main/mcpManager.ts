@@ -196,26 +196,21 @@ function resolveBrowserToolsScriptPath(): string | null {
   // [2026-05-01] 无论打包/开发，都复制到 userData 目录；
   // 这样其他项目运行 Claude Code 时也能找到 browser-tools。
   const dest = join(app.getPath('userData'), 'browser-mcp-server.js')
-
-  if (!existsSync(dest)) {
-    // 开发模式：从 scripts 目录复制
-    const candidates = [
-      join(app.getAppPath(), 'scripts', 'browser-mcp-server.js'),
-      join(process.cwd(), 'scripts', 'browser-mcp-server.js'),
-      join(__dirname, '..', '..', 'scripts', 'browser-mcp-server.js')
-    ]
-    const src = candidates.find((p) => existsSync(p))
-    if (!src) {
-      console.warn('[MCP] browser-tools script not found. Tried:', candidates)
-      return null
-    }
-    try {
-      writeFileSync(dest, readFileSync(src), 'utf-8')
-      console.log('[MCP] copied browser-mcp-server.js to userData:', dest)
-    } catch (e) {
-      console.warn('[MCP] Failed to copy browser-mcp-server.js:', e)
-      return null
-    }
+  const candidates = [
+    join(app.getAppPath(), 'scripts', 'browser-mcp-server.js'),
+    join(process.cwd(), 'scripts', 'browser-mcp-server.js'),
+    join(__dirname, '..', '..', 'scripts', 'browser-mcp-server.js')
+  ]
+  const src = candidates.find((p) => existsSync(p))
+  if (!src) {
+    console.warn('[MCP] browser-tools script not found. Tried:', candidates)
+    return null
+  }
+  try {
+    writeFileSync(dest, readFileSync(src), 'utf-8')
+  } catch (e) {
+    console.warn('[MCP] Failed to copy browser-mcp-server.js:', e)
+    return null
   }
   return dest
 }
@@ -254,25 +249,22 @@ let visualAgentRegistered = false
 
 function resolveVisualAgentScriptPath(): string | null {
   const dest = join(app.getPath('userData'), 'visual-agent-mcp-server.js')
-
-  if (!existsSync(dest)) {
-    const candidates = [
-      join(app.getAppPath(), 'scripts', 'visual-agent-mcp-server.js'),
-      join(process.cwd(), 'scripts', 'visual-agent-mcp-server.js'),
-      join(__dirname, '..', '..', 'scripts', 'visual-agent-mcp-server.js')
-    ]
-    const src = candidates.find((p) => existsSync(p))
-    if (!src) {
-      console.warn('[MCP] visual-agent script not found. Tried:', candidates)
-      return null
-    }
-    try {
-      writeFileSync(dest, readFileSync(src), 'utf-8')
-      console.log('[MCP] copied visual-agent-mcp-server.js to userData:', dest)
-    } catch (e) {
-      console.warn('[MCP] Failed to copy visual-agent-mcp-server.js:', e)
-      return null
-    }
+  const candidates = [
+    join(app.getAppPath(), 'scripts', 'visual-agent-mcp-server.js'),
+    join(process.cwd(), 'scripts', 'visual-agent-mcp-server.js'),
+    join(__dirname, '..', '..', 'scripts', 'visual-agent-mcp-server.js')
+  ]
+  const src = candidates.find((p) => existsSync(p))
+  if (!src) {
+    console.warn('[MCP] visual-agent script not found. Tried:', candidates)
+    return null
+  }
+  try {
+    // Always overwrite to keep script up-to-date
+    writeFileSync(dest, readFileSync(src), 'utf-8')
+  } catch (e) {
+    console.warn('[MCP] Failed to copy visual-agent-mcp-server.js:', e)
+    return null
   }
   return dest
 }
