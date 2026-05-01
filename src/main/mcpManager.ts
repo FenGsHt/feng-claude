@@ -30,36 +30,47 @@ type ClaudeJson = {
   [key: string]: unknown
 }
 
-const MCP_JSON_FILE = '.mcp.json'
 const SETTINGS_JSON_FILE = 'settings.json'
 
 function mcpJsonPath(): string {
-  // [2026-05-01] Claude Code 读取 MCP 配置的实际路径：~/.claude/.mcp.json
-  return join(homedir(), '.claude', MCP_JSON_FILE)
+  // Claude Code CLI 读取用户级 MCP 配置的实际路径：~/.claude/.claude.json
+  return join(homedir(), '.claude', '.claude.json')
 }
 
-/** [2026-04-29] 从旧的 settings.json 迁移 MCP 配置到 .claude.json */
 let migrated = false
 function migrateMcpFromSettingsJson(): void {
   if (migrated) return
   migrated = true
   try {
-    const mcpData = readMcpJson()
-    // 1. 从旧的 ~/.claude.json 迁移 MCP 配置到 ~/.claude/.mcp.json
-    const oldClaudeJsonPath = join(homedir(), '.claude.json')
-    if (existsSync(oldClaudeJsonPath) && (!mcpData.mcpServers || Object.keys(mcpData.mcpServers).length === 0)) {
+    // 1. 从历史错误路径迁移：只补充目标文件中不存在的条目（不覆盖已有配置）
+    const wrongPaths = [
+      join(homedir(), '.claude', '.mcp.json'),  // 最初写错的路径
+      join(homedir(), '.claude.json'),            // 第二次写错的路径
+    ]
+    for (const wrongPath of wrongPaths) {
+      if (!existsSync(wrongPath)) continue
       try {
-        const old = JSON.parse(readFileSync(oldClaudeJsonPath, 'utf-8')) as ClaudeJson
-        if (old.mcpServers && Object.keys(old.mcpServers).length > 0) {
-          writeMcpJson({ mcpServers: old.mcpServers, disabledMcpServers: old.disabledMcpServers })
-          console.log(`[MCP] migrated ${Object.keys(old.mcpServers).length} MCP servers from ~/.claude.json to ~/.claude/.mcp.json`)
-          return
+        const wrong = JSON.parse(readFileSync(wrongPath, 'utf-8')) as ClaudeJson
+        if (!wrong.mcpServers || Object.keys(wrong.mcpServers).length === 0) continue
+        const data = readMcpJson()
+        const current = data.mcpServers ?? {}
+        let mergedCount = 0
+        for (const [name, cfg] of Object.entries(wrong.mcpServers)) {
+          if (!current[name]) { current[name] = cfg; mergedCount++ }
+        }
+        if (mergedCount > 0) {
+          data.mcpServers = current
+          writeMcpJson(data)
+          console.log(`[MCP] recovered ${mergedCount} MCP servers from ${wrongPath} → ~/.claude/.claude.json`)
         }
       } catch { /* ignore */ }
     }
+
+    const mcpData = readMcpJson()
+    if (mcpData.mcpServers && Object.keys(mcpData.mcpServers).length > 0) return
+
     // 2. 从旧的 settings.json 迁移
     const settingsPath = join(claudeSessionConfigDir(), SETTINGS_JSON_FILE)
-    if (mcpData.mcpServers && Object.keys(mcpData.mcpServers).length > 0) return
     if (!existsSync(settingsPath)) return
     const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
     const oldMcpServers = settings.mcpServers as Record<string, ClaudeJsonMcpServerConfig> | undefined
@@ -76,10 +87,13 @@ function migrateMcpFromSettingsJson(): void {
         env: cfg.env
       }
     }
-    writeMcpJson({ mcpServers: newMcpServers, disabledMcpServers: oldDisabled })
-    console.log(`[MCP] migrated ${Object.keys(newMcpServers).length} MCP servers from settings.json to ~/.claude/.mcp.json`)
+    const data = readMcpJson()
+    data.mcpServers = { ...(data.mcpServers ?? {}), ...newMcpServers }
+    if (oldDisabled.length) data.disabledMcpServers = [...new Set([...(data.disabledMcpServers ?? []), ...oldDisabled])]
+    writeMcpJson(data)
+    console.log(`[MCP] migrated ${Object.keys(newMcpServers).length} MCP servers from settings.json → ~/.claude.json`)
   } catch (e) {
-    console.warn('[MCP] migration from settings.json failed:', e)
+    console.warn('[MCP] migration failed:', e)
   }
 }
 
@@ -276,18 +290,11 @@ function resolveVisualAgentScriptPath(): string | null {
 }
 
 export function ensureVisualAgentMcpRegistered(): void {
-  if (visualAgentRegistered) {
-    console.log('[MCP] visual-agent: already registered this session, skip')
-    return
-  }
+  if (visualAgentRegistered) return
+  visualAgentRegistered = true
 
   const scriptPath = resolveVisualAgentScriptPath()
-  if (!scriptPath) {
-    console.warn('[MCP] visual-agent: script path not found, abort')
-    return
-  }
-  visualAgentRegistered = true
-  console.log('[MCP] visual-agent: scriptPath =', scriptPath, 'exists:', existsSync(scriptPath))
+  if (!scriptPath) return
 
   const data = readMcpJson()
   const servers = data.mcpServers ?? {}
@@ -295,14 +302,8 @@ export function ensureVisualAgentMcpRegistered(): void {
   const disabledBefore = data.disabledMcpServers ?? []
   const disabledAfter = disabledBefore.filter((name) => name !== 'visual-agent')
 
-  console.log('[MCP] visual-agent: existing config =', JSON.stringify(existing))
-  console.log('[MCP] visual-agent: disabledMcpServers =', JSON.stringify(disabledBefore))
-
   // 路径匹配且未禁用则跳过
-  if (existing && existing.type === 'stdio' && existing.args?.[0] === scriptPath && disabledAfter.length === disabledBefore.length) {
-    console.log('[MCP] visual-agent: config already up-to-date, skip write')
-    return
-  }
+  if (existing && existing.type === 'stdio' && existing.args?.[0] === scriptPath && disabledAfter.length === disabledBefore.length) return
 
   servers['visual-agent'] = {
     type: 'stdio',
