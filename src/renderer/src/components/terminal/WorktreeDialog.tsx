@@ -144,6 +144,8 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     if (!confirm(`确定要删除吗？\n\n分支: ${branch}\n路径: ${worktreePath}\n\n将同时删除 worktree 目录和分支，此操作不可撤销。`)) {
       return
     }
+    // 原生 confirm 关闭后 Electron 窗口会失焦，先恢复焦点再继续
+    window.focus()
     setDeleteLoading(branch)
     setError('')
     try {
