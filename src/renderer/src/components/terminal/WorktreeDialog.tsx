@@ -12,7 +12,10 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
   const [mainRepoPath, setMainRepoPath] = useState('')
   const [worktrees, setWorktrees] = useState<Array<{ path: string; branch: string; commit: string; isMain: boolean }>>([])
   const [unmergedCounts, setUnmergedCounts] = useState<Record<string, number>>({})
+  const [mode, setMode] = useState<'new' | 'existing'>('new')
   const [newBranchName, setNewBranchName] = useState('')
+  const [availableBranches, setAvailableBranches] = useState<string[]>([])
+  const [selectedBranch, setSelectedBranch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [mergeLoading, setMergeLoading] = useState<string | null>(null)
@@ -32,6 +35,18 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
 
       const branchResult = await window.electronAPI.git.branchList(resolvedMainPath)
       setCurrentBranch(branchResult.currentBranch)
+
+      // 已在 worktree 中使用的分支（不能再次挂载）
+      const inUse = new Set(wtResult.worktrees.map(wt => wt.branch))
+      const available = branchResult.branches
+        .filter((b: { name: string; isCurrent: boolean; isRemote: boolean }) =>
+          !b.isRemote && !b.isCurrent && !inUse.has(b.name)
+        )
+        .map((b: { name: string }) => b.name)
+      setAvailableBranches(available)
+      if (available.length > 0 && !available.includes(selectedBranch)) {
+        setSelectedBranch(available[0])
+      }
 
       // 检查每个 worktree 分支的未合并提交数
       const counts: Record<string, number> = {}
@@ -70,27 +85,36 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setLoading(true)
     setError('')
     try {
-      if (!newBranchName.trim()) {
-        setError('请输入分支名称')
-        setLoading(false)
-        return
+      if (mode === 'new') {
+        if (!newBranchName.trim()) {
+          setError('请输入分支名称')
+          setLoading(false)
+          return
+        }
+        const result = await window.electronAPI.git.worktreeCreate({
+          mainRepoPath: mainRepoPath || repoPath,
+          branchName: newBranchName.trim(),
+          createBranch: true,
+          baseBranch: currentBranch,
+        })
+        if (result.error) { setError(result.error); setLoading(false); return }
+        onCreate(result.worktreePath, result.branch)
+        onClose()
+      } else {
+        if (!selectedBranch) {
+          setError('请选择分支')
+          setLoading(false)
+          return
+        }
+        const result = await window.electronAPI.git.worktreeCreate({
+          mainRepoPath: mainRepoPath || repoPath,
+          branchName: selectedBranch,
+          createBranch: false,
+        })
+        if (result.error) { setError(result.error); setLoading(false); return }
+        onCreate(result.worktreePath, result.branch)
+        onClose()
       }
-
-      const result = await window.electronAPI.git.worktreeCreate({
-        mainRepoPath: mainRepoPath || repoPath,
-        branchName: newBranchName.trim(),
-        createBranch: true,
-        baseBranch: currentBranch,
-      })
-
-      if (result.error) {
-        setError(result.error)
-        setLoading(false)
-        return
-      }
-
-      onCreate(result.worktreePath, result.branch)
-      onClose()
     } catch (e) {
       setError(String(e))
     }
@@ -108,7 +132,6 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
       if (!result.success) {
         setError(`合并 ${branch} 失败: ${result.error}`)
       } else {
-        // 合并成功，刷新数据
         await loadData()
       }
     } catch (e) {
@@ -118,14 +141,12 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
   }
 
   const handleDelete = async (worktreePath: string, branch: string): void => {
-    // 确认删除
     if (!confirm(`确定要删除吗？\n\n分支: ${branch}\n路径: ${worktreePath}\n\n将同时删除 worktree 目录和分支，此操作不可撤销。`)) {
       return
     }
     setDeleteLoading(branch)
     setError('')
     try {
-      // 1. 删除 worktree
       const result = await window.electronAPI.git.worktreeRemove({
         repoPath,
         worktreePath,
@@ -137,14 +158,11 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
         return
       }
 
-      // 2. 删除分支
       const branchResult = await window.electronAPI.git.branchDelete({ repoPath, branch, force: true })
       if (!branchResult.success) {
         setError(`worktree 已删除，但分支 ${branch} 删除失败: ${branchResult.error}`)
-        // 不 return，继续刷新列表
       }
 
-      // 删除成功，刷新数据
       await loadData()
     } catch (e) {
       setError(String(e))
@@ -232,18 +250,59 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
             </div>
           )}
 
-          {/* 新分支名称 */}
-          <div className="space-y-1">
-            <label className="text-[11px] text-claude-muted block">新分支名称：</label>
-            <input
-              type="text"
-              value={newBranchName}
-              onChange={(e) => setNewBranchName(e.target.value)}
-              placeholder="如: feat/new-feature"
-              disabled={loading}
-              className="w-full text-[11px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface text-claude-text outline-none focus:border-amber-500/50 font-mono"
-            />
+          {/* 模式切换 */}
+          <div className="flex rounded border border-claude-border overflow-hidden text-[11px]">
+            <button
+              type="button"
+              onClick={() => setMode('new')}
+              className={`flex-1 py-1 ${mode === 'new' ? 'bg-amber-600/20 text-amber-300' : 'text-claude-muted hover:text-claude-text'}`}
+            >
+              新建分支
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('existing')}
+              disabled={availableBranches.length === 0}
+              className={`flex-1 py-1 border-l border-claude-border disabled:opacity-40 ${mode === 'existing' ? 'bg-amber-600/20 text-amber-300' : 'text-claude-muted hover:text-claude-text'}`}
+              title={availableBranches.length === 0 ? '没有可挂载的本地分支' : undefined}
+            >
+              已有分支
+            </button>
           </div>
+
+          {/* 新建分支输入 */}
+          {mode === 'new' && (
+            <div className="space-y-1">
+              <label className="text-[11px] text-claude-muted block">新分支名称：</label>
+              <input
+                type="text"
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate() }}
+                placeholder="如: feat/new-feature"
+                disabled={loading}
+                autoFocus
+                className="w-full text-[11px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface text-claude-text outline-none focus:border-amber-500/50 font-mono"
+              />
+            </div>
+          )}
+
+          {/* 已有分支选择 */}
+          {mode === 'existing' && (
+            <div className="space-y-1">
+              <label className="text-[11px] text-claude-muted block">选择本地分支：</label>
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                disabled={loading}
+                className="w-full text-[11px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface text-claude-text outline-none focus:border-amber-500/50 font-mono"
+              >
+                {availableBranches.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* 错误提示 */}
           {error && (
