@@ -8,33 +8,30 @@ interface Props {
 }
 
 export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): React.ReactElement | null {
-  const [branches, setBranches] = useState<Array<{ name: string; isCurrent: boolean; isRemote: boolean }>>([])
   const [currentBranch, setCurrentBranch] = useState('')
+  const [mainRepoPath, setMainRepoPath] = useState('')
   const [worktrees, setWorktrees] = useState<Array<{ path: string; branch: string; commit: string; isMain: boolean }>>([])
   const [unmergedCounts, setUnmergedCounts] = useState<Record<string, number>>({})
-  const [selectedBranch, setSelectedBranch] = useState('')
   const [newBranchName, setNewBranchName] = useState('')
-  const [createNewBranch, setCreateNewBranch] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [mergeLoading, setMergeLoading] = useState<string | null>(null) // 正在合并的分支名
-  const [deleteLoading, setDeleteLoading] = useState<string | null>(null) // 正在删除的分支名
+  const [mergeLoading, setMergeLoading] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
 
-  // 加载分支和 worktree 信息
+  // 加载 worktree 信息
   const loadData = useCallback(async () => {
     if (!repoPath) return
     setLoading(true)
     setError('')
     try {
-      const branchResult = await window.electronAPI.git.branchList(repoPath)
-      setBranches(branchResult.branches)
-      setCurrentBranch(branchResult.currentBranch)
-      if (!selectedBranch && branchResult.currentBranch) {
-        setSelectedBranch(branchResult.currentBranch)
-      }
-
       const wtResult = await window.electronAPI.git.worktreeList(repoPath)
       setWorktrees(wtResult.worktrees)
+      // 用主仓库路径（worktrees[0]），避免从 worktree 子目录创建时找不到 ref
+      const resolvedMainPath = wtResult.mainPath || repoPath
+      setMainRepoPath(resolvedMainPath)
+
+      const branchResult = await window.electronAPI.git.branchList(resolvedMainPath)
+      setCurrentBranch(branchResult.currentBranch)
 
       // 检查每个 worktree 分支的未合并提交数
       const counts: Record<string, number> = {}
@@ -50,7 +47,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
       setError(String(e))
     }
     setLoading(false)
-  }, [repoPath, selectedBranch])
+  }, [repoPath])
 
   useEffect(() => {
     if (open) {
@@ -73,18 +70,17 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setLoading(true)
     setError('')
     try {
-      const branchToUse = createNewBranch ? newBranchName : selectedBranch
-      if (!branchToUse) {
-        setError('请选择或输入分支名称')
+      if (!newBranchName.trim()) {
+        setError('请输入分支名称')
         setLoading(false)
         return
       }
 
       const result = await window.electronAPI.git.worktreeCreate({
-        mainRepoPath: repoPath,
-        branchName: branchToUse,
-        createBranch: createNewBranch,
-        baseBranch: createNewBranch ? selectedBranch : undefined,
+        mainRepoPath: mainRepoPath || repoPath,
+        branchName: newBranchName.trim(),
+        createBranch: true,
+        baseBranch: currentBranch,
       })
 
       if (result.error) {
@@ -155,9 +151,6 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     }
     setDeleteLoading(null)
   }
-
-  // 已存在的 worktree 分支
-  const existingWorktreeBranches = worktrees.map(wt => wt.branch)
 
   return (
     <div
@@ -239,47 +232,17 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
             </div>
           )}
 
-          {/* 选择已有分支 */}
+          {/* 新分支名称 */}
           <div className="space-y-1">
-            <label className="text-[11px] text-claude-muted block">选择分支：</label>
-            <select
-              value={selectedBranch}
-              onChange={(e) => {
-                setSelectedBranch(e.target.value)
-                setCreateNewBranch(false)
-              }}
+            <label className="text-[11px] text-claude-muted block">新分支名称：</label>
+            <input
+              type="text"
+              value={newBranchName}
+              onChange={(e) => setNewBranchName(e.target.value)}
+              placeholder="如: feat/new-feature"
               disabled={loading}
-              className="w-full text-[11px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface text-claude-text outline-none focus:border-amber-500/50"
-            >
-              {branches.filter(b => !b.isRemote && !existingWorktreeBranches.includes(b.name)).map((b) => (
-                <option key={b.name} value={b.name}>
-                  {b.name} {b.isCurrent ? '(当前)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 创建新分支 */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={createNewBranch}
-                onChange={(e) => setCreateNewBranch(e.target.checked)}
-                className="w-3 h-3 rounded border-claude-border"
-              />
-              <label className="text-[11px] text-claude-muted">创建新分支</label>
-            </div>
-            {createNewBranch && (
-              <input
-                type="text"
-                value={newBranchName}
-                onChange={(e) => setNewBranchName(e.target.value)}
-                placeholder="新分支名称 (如: feat/new-feature)"
-                disabled={loading}
-                className="w-full text-[11px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface text-claude-text outline-none focus:border-amber-500/50 font-mono"
-              />
-            )}
+              className="w-full text-[11px] px-2 py-1.5 rounded border border-claude-border bg-claude-surface text-claude-text outline-none focus:border-amber-500/50 font-mono"
+            />
           </div>
 
           {/* 错误提示 */}

@@ -770,16 +770,28 @@ export function registerIpcHandlers(
         execSync('git worktree prune', { cwd: mainRepoPath, encoding: 'utf-8' })
       }
 
-      let cmd = `git worktree add`
-      if (createBranch) cmd += ` -b "${branchName}"`
-      cmd += ` "${wtPath}"`
-      if (createBranch) {
-        if (baseBranch) cmd += ` "${baseBranch}"`
-      } else {
-        cmd += ` "${branchName}"`
+      const buildCmd = (withBase: boolean): string => {
+        let cmd = `git worktree add`
+        if (createBranch) cmd += ` -b "${branchName}"`
+        cmd += ` "${wtPath}"`
+        if (createBranch) {
+          if (withBase && baseBranch) cmd += ` "${baseBranch}"`
+        } else {
+          cmd += ` "${branchName}"`
+        }
+        return cmd
       }
 
-      execSync(cmd, { cwd: mainRepoPath, encoding: 'utf-8' })
+      try {
+        execSync(buildCmd(true), { cwd: mainRepoPath, encoding: 'utf-8' })
+      } catch (e) {
+        // baseBranch 无法解析时（如 invalid reference），退回到 HEAD
+        if (baseBranch && String(e).includes('invalid reference')) {
+          execSync(buildCmd(false), { cwd: mainRepoPath, encoding: 'utf-8' })
+        } else {
+          throw e
+        }
+      }
 
       return { worktreePath: wtPath, branch: branchName, error: undefined }
     } catch (e) {
