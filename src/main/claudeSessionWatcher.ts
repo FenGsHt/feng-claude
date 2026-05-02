@@ -138,9 +138,7 @@ export class ClaudeSessionWatcher {
   private scanExisting(sw: SessionWatch): void {
     try {
       if (!existsSync(sw.projectDir)) return
-      for (const entry of readdirSync(sw.projectDir, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
-        const filePath = join(sw.projectDir, entry.name)
+      for (const filePath of this.collectJsonlFiles(sw.projectDir)) {
         try {
           const st = statSync(filePath)
           sw.fileByteOffsets.set(filePath, st.size)
@@ -160,9 +158,7 @@ export class ClaudeSessionWatcher {
         return
       }
 
-      const entries = readdirSync(sw.projectDir, { withFileTypes: true })
-        .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
-        .map((e) => join(sw.projectDir, e.name))
+      const entries = this.collectJsonlFiles(sw.projectDir)
 
       for (const filePath of entries) {
         const isNewFile = !sw.fileByteOffsets.has(filePath)
@@ -183,6 +179,28 @@ export class ClaudeSessionWatcher {
     } catch (err) {
       console.error('[TokenWatcher] poll error:', err)
     }
+  }
+
+  /** Collect all JSONL files from projectDir and subagents/ subdirectory. */
+  private collectJsonlFiles(projectDir: string): string[] {
+    const files: string[] = []
+    try {
+      for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+        if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+          files.push(join(projectDir, entry.name))
+        }
+      }
+      // [2026-05-01] Also scan subagents/ for subagent JSONL files
+      const subagentsDir = join(projectDir, 'subagents')
+      if (existsSync(subagentsDir)) {
+        for (const entry of readdirSync(subagentsDir, { withFileTypes: true })) {
+          if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+            files.push(join(subagentsDir, entry.name))
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    return files
   }
 
   /**
