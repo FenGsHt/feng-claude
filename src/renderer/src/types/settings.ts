@@ -131,6 +131,23 @@ export interface ClaudeSettings {
   enableApiProxy?: boolean
   /** [2026-05-01] 任务完成时发送系统通知 */
   enableNotifications?: boolean
+  /** [2026-05-02] 语音识别配置 */
+  speech?: {
+    /** 是否在工具栏显示麦克风按钮（默认隐藏） */
+    enabled: boolean
+    /** 识别引擎 */
+    engine: 'webSpeech' | 'whisper'
+    /** 识别语言 */
+    language: 'zh-CN' | 'en-US' | 'auto'
+    /** 触发快捷键，格式如 "Alt+V" */
+    shortcut: string
+    /** Whisper API endpoint */
+    whisperEndpoint: string
+    /** Whisper API token */
+    whisperToken: string
+    /** Whisper 模型名 */
+    whisperModel: string
+  }
 }
 
 /** 默认 API 配置 */

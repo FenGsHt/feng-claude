@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react'
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import type { CreateSessionMode } from '../../types/paneLayout'
@@ -6,6 +6,8 @@ import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
 import { SplitWorkdirDialog } from './SplitWorkdirDialog'
 import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
+import { startRecognition, stopRecognition } from '../../services/speechRecognition'
+import type { SpeechConfig } from '../../services/speechRecognition'
 
 interface WorktreeInfo {
   path: string
@@ -74,6 +76,17 @@ function BrowserIcon(): React.ReactElement {
   )
 }
 
+function MicIcon({ active }: { active: boolean }): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <rect x="3.5" y="0.75" width="4" height="5.5" rx="2" stroke="currentColor" strokeWidth="1.1"
+        fill={active ? 'currentColor' : 'none'} />
+      <path d="M1.5 5.5C1.5 7.98 3.24 10 5.5 10C7.76 10 9.5 7.98 9.5 5.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <line x1="5.5" y1="10" x2="5.5" y2="11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
@@ -90,6 +103,12 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
   const [unmergedInfo, setUnmergedInfo] = useState<UnmergedInfo[]>([])
   const [showMergeReminder, setShowMergeReminder] = useState(false)
+
+  // 语音识别状态
+  const [speechRecording, setSpeechRecording] = useState(false)
+  const [speechInterim, setSpeechInterim] = useState('')
+  const [speechSettings, setSpeechSettings] = useState<{ enabled: boolean; shortcut: string; config: SpeechConfig } | null>(null)
+  const speechRecordingRef = useRef(false)
 
   const candidates = useMemo(
     () => getSplitWorkdirCandidates(history, sessions),
@@ -137,6 +156,83 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   useEffect(() => {
     void checkGitStatus()
   }, [checkGitStatus])
+
+  // 读取语音识别设置
+  useEffect(() => {
+    const load = async (): Promise<void> => {
+      const s = await window.electronAPI.settings.get()
+      const sp = s.speech
+      if (!sp?.enabled) { setSpeechSettings(null); return }
+      setSpeechSettings({
+        enabled: true,
+        shortcut: sp.shortcut || 'Alt+V',
+        config: {
+          engine: sp.engine,
+          language: sp.language,
+          whisperEndpoint: sp.whisperEndpoint,
+          whisperToken: sp.whisperToken,
+          whisperModel: sp.whisperModel,
+        }
+      })
+    }
+    void load()
+    const unsub = window.electronAPI.onSettingsChanged(() => void load())
+    return unsub
+  }, [])
+
+  // 快捷键：按下开始录音，松开停止（push-to-talk）
+  useEffect(() => {
+    if (!speechSettings?.enabled || !focused) return
+    const shortcut = speechSettings.shortcut || 'Alt+V'
+    const [mod, key] = shortcut.includes('+') ? shortcut.split('+') : ['', shortcut]
+    const matchKey = (e: KeyboardEvent): boolean => {
+      if (mod === 'Alt' && !e.altKey) return false
+      if (mod === 'Ctrl' && !e.ctrlKey) return false
+      if (mod === 'Shift' && !e.shiftKey) return false
+      return e.key.toLowerCase() === key.toLowerCase()
+    }
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!matchKey(e) || speechRecordingRef.current) return
+      e.preventDefault()
+      toggleSpeech()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [speechSettings, focused])
+
+  const toggleSpeech = useCallback((): void => {
+    if (!speechSettings) return
+    if (speechRecordingRef.current) {
+      stopRecognition(speechSettings.config.engine)
+      speechRecordingRef.current = false
+      setSpeechRecording(false)
+      setSpeechInterim('')
+    } else {
+      speechRecordingRef.current = true
+      setSpeechRecording(true)
+      setSpeechInterim('')
+      startRecognition(speechSettings.config, {
+        onInterim: (t) => setSpeechInterim(t),
+        onResult: (t) => {
+          setSpeechInterim('')
+          if (t && sess?.id) {
+            window.electronAPI.sendInput(sess.id, t)
+          }
+        },
+        onStop: () => {
+          speechRecordingRef.current = false
+          setSpeechRecording(false)
+          setSpeechInterim('')
+        },
+        onError: (msg) => {
+          console.warn('[speech]', msg)
+          speechRecordingRef.current = false
+          setSpeechRecording(false)
+          setSpeechInterim('')
+        },
+      })
+    }
+  }, [speechSettings, sess?.id])
 
   async function beginSplit(mode: CreateSessionMode): Promise<void> {
     if (mode === 'split-worktree') {
@@ -261,6 +357,23 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
               <WorktreeIcon />
             </HeaderBtn>
           )}
+          {/* 麦克风按钮：仅 speech.enabled 时显示 */}
+          {speechSettings?.enabled && (
+            <button
+              onMouseDown={(e) => { e.stopPropagation(); toggleSpeech() }}
+              title={`语音输入 (${speechSettings.shortcut || 'Alt+V'})`}
+              className={`relative flex h-5 w-5 items-center justify-center rounded transition-colors ${
+                speechRecording
+                  ? 'bg-red-500/30 text-red-400'
+                  : 'text-claude-muted hover:bg-claude-border hover:text-claude-text'
+              }`}
+            >
+              <MicIcon active={speechRecording} />
+              {speechRecording && (
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+              )}
+            </button>
+          )}
           <HeaderBtn title="Open embedded browser for debugging" onClick={() => void window.electronAPI.browserView?.toggle()}>
             <BrowserIcon />
           </HeaderBtn>
@@ -272,6 +385,22 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           </HeaderBtn>
         </div>
       </div>
+
+      {/* 语音识别临时文本提示条 */}
+      {speechRecording && (
+        <div className="flex items-center gap-1.5 border-b border-red-900/40 bg-red-950/20 px-2 py-0.5">
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-500" />
+          <span className="truncate font-mono text-[10px] text-red-300">
+            {speechInterim || '正在录音…'}
+          </span>
+          <button
+            onClick={toggleSpeech}
+            className="ml-auto shrink-0 text-[9px] text-red-400 hover:text-red-300"
+          >
+            停止
+          </button>
+        </div>
+      )}
 
       {splitMode != null && splitMode !== 'split-worktree' && (
         <SplitWorkdirDialog

@@ -154,6 +154,11 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // 允许渲染进程请求麦克风权限（语音识别功能）
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media')
+  })
+
   // [2026-04-23] 打包后 file:// 无 CSP 时 Electron 报 warnAboutInsecureCSP；开发态仍用 Vite 自带策略，不在此注入以免破坏 HMR
   if (app.isPackaged) {
     const csp =

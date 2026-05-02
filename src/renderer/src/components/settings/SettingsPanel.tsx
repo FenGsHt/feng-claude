@@ -772,6 +772,94 @@ export function SettingsPanel(): React.ReactElement {
         </div>
       </div>
 
+      {/* 语音识别 */}
+      <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+        <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          {lang === 'zh' ? '语音识别' : 'Speech Recognition'}
+        </div>
+        {/* 显示麦克风按钮开关 */}
+        <label className="flex cursor-pointer items-center justify-between gap-2">
+          <div>
+            <div className="text-xs text-claude-text">{lang === 'zh' ? '显示麦克风按钮' : 'Show mic button'}</div>
+            <div className="text-[10px] text-claude-muted">{lang === 'zh' ? '在终端标题栏显示语音输入按钮（默认隐藏）' : 'Show voice input button in terminal header (hidden by default)'}</div>
+          </div>
+          <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors shrink-0"
+            style={{ backgroundColor: form.speech?.enabled ? '#f59e0b' : undefined }}>
+            <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+              style={{ transform: form.speech?.enabled ? 'translateX(16px)' : 'translateX(0)' }} />
+          </div>
+          <input type="checkbox" className="sr-only"
+            checked={!!form.speech?.enabled}
+            onChange={(e) => setForm(prev => ({ ...prev, speech: { engine: 'webSpeech', language: 'zh-CN', shortcut: 'Alt+V', whisperEndpoint: '', whisperToken: '', whisperModel: 'whisper-1', ...prev.speech, enabled: e.target.checked } }))}
+          />
+        </label>
+
+        {form.speech?.enabled && (<>
+          {/* 快捷键 */}
+          <Field label={lang === 'zh' ? '快捷键' : 'Shortcut'}>
+            <input type="text"
+              value={form.speech?.shortcut ?? 'Alt+V'}
+              onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, shortcut: e.target.value } }))}
+              placeholder="Alt+V"
+              className="field-input font-mono"
+            />
+          </Field>
+
+          {/* 引擎 */}
+          <Field label={lang === 'zh' ? '识别引擎' : 'Engine'}>
+            <select
+              value={form.speech?.engine ?? 'webSpeech'}
+              onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, engine: e.target.value as 'webSpeech' | 'whisper' } }))}
+              className="field-input"
+            >
+              <option value="webSpeech">{lang === 'zh' ? 'Web Speech API（浏览器内置，流式）' : 'Web Speech API (built-in, streaming)'}</option>
+              <option value="whisper">{lang === 'zh' ? 'Whisper API（转写更准，需配置）' : 'Whisper API (more accurate, needs config)'}</option>
+            </select>
+          </Field>
+
+          {/* 语言 */}
+          <Field label={lang === 'zh' ? '语言' : 'Language'}>
+            <select
+              value={form.speech?.language ?? 'zh-CN'}
+              onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, language: e.target.value as 'zh-CN' | 'en-US' | 'auto' } }))}
+              className="field-input"
+            >
+              <option value="zh-CN">中文 (zh-CN)</option>
+              <option value="en-US">English (en-US)</option>
+              <option value="auto">{lang === 'zh' ? '自动检测' : 'Auto detect'}</option>
+            </select>
+          </Field>
+
+          {/* Whisper 专属配置 */}
+          {form.speech?.engine === 'whisper' && (<>
+            <Field label="Whisper Endpoint">
+              <input type="text"
+                value={form.speech?.whisperEndpoint ?? ''}
+                onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, whisperEndpoint: e.target.value } }))}
+                placeholder="https://api.openai.com"
+                className="field-input"
+              />
+            </Field>
+            <Field label="Whisper Token">
+              <input type="password"
+                value={form.speech?.whisperToken ?? ''}
+                onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, whisperToken: e.target.value } }))}
+                placeholder="sk-..."
+                className="field-input"
+              />
+            </Field>
+            <Field label={lang === 'zh' ? '模型' : 'Model'}>
+              <input type="text"
+                value={form.speech?.whisperModel ?? 'whisper-1'}
+                onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, whisperModel: e.target.value } }))}
+                placeholder="whisper-1"
+                className="field-input"
+              />
+            </Field>
+          </>)}
+        </>)}
+      </div>
+
       {/* Save button */}
       <div className="px-3 pb-4">
         <button
