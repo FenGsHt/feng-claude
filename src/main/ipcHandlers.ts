@@ -754,13 +754,27 @@ export function registerIpcHandlers(
     try {
       const { execSync } = await import('child_process')
       const path = await import('path')
+      const fs = await import('fs')
 
       // 默认 worktree 路径：主仓库父目录 + 分支名
       const wtPath = worktreePath ?? path.join(path.dirname(mainRepoPath), branchName.replace(/\//g, '-'))
 
-      let cmd = `git worktree add "${wtPath}"`
+      // 如果目标目录已存在（上次创建失败的残留），先清理
+      if (fs.existsSync(wtPath)) {
+        try {
+          execSync(`git worktree remove --force "${wtPath}"`, { cwd: mainRepoPath, encoding: 'utf-8' })
+        } catch {
+          // 不是有效 worktree，直接删目录
+          fs.rmSync(wtPath, { recursive: true, force: true })
+        }
+        execSync('git worktree prune', { cwd: mainRepoPath, encoding: 'utf-8' })
+      }
+
+      let cmd = `git worktree add`
+      if (createBranch) cmd += ` -b "${branchName}"`
+      cmd += ` "${wtPath}"`
       if (createBranch) {
-        cmd += ` -b "${branchName}"${baseBranch ? ` "${baseBranch}"` : ''}`
+        if (baseBranch) cmd += ` "${baseBranch}"`
       } else {
         cmd += ` "${branchName}"`
       }
