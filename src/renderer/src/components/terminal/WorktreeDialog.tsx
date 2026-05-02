@@ -20,6 +20,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
   const [error, setError] = useState('')
   const [mergeLoading, setMergeLoading] = useState<string | null>(null)
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string } | null>(null)
 
   // 加载 worktree 信息
   const loadData = useCallback(async () => {
@@ -140,12 +141,14 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setMergeLoading(null)
   }
 
-  const handleDelete = async (worktreePath: string, branch: string): void => {
-    if (!confirm(`确定要删除吗？\n\n分支: ${branch}\n路径: ${worktreePath}\n\n将同时删除 worktree 目录和分支，此操作不可撤销。`)) {
-      return
-    }
-    // 原生 confirm 关闭后 Electron 窗口会失焦，先恢复焦点再继续
-    window.focus()
+  const handleDelete = (worktreePath: string, branch: string): void => {
+    setConfirmDelete({ path: worktreePath, branch })
+  }
+
+  const handleConfirmDelete = async (): Promise<void> => {
+    if (!confirmDelete) return
+    const { path: worktreePath, branch } = confirmDelete
+    setConfirmDelete(null)
     setDeleteLoading(branch)
     setError('')
     try {
@@ -202,50 +205,57 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
               <div className="text-[11px] text-claude-muted">已存在的 Worktree：</div>
               <div className="flex flex-col gap-1">
                 {worktrees.filter(wt => !wt.isMain).map(wt => (
-                  <div key={wt.path} className="flex items-center gap-2">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 font-mono flex-1 truncate">
-                      {wt.branch}
-                      {unmergedCounts[wt.branch] > 0 && (
-                        <span className="ml-1 text-amber-400">({unmergedCounts[wt.branch]} 未合并)</span>
-                      )}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCreate(wt.path, wt.branch)
-                        onClose()
-                      }}
-                      className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30"
-                      title={`打开 ${wt.branch} 的 worktree 会话`}
-                    >
-                      打开
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleMerge(wt.branch)
-                      }}
-                      disabled={mergeLoading === wt.branch || unmergedCounts[wt.branch] === 0}
-                      className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
-                        unmergedCounts[wt.branch] > 0
-                          ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
-                          : 'bg-slate-700/30 text-slate-500'
-                      } disabled:opacity-50`}
-                      title={unmergedCounts[wt.branch] > 0 ? `合并 ${wt.branch} 到 ${currentBranch}` : '无未合并提交'}
-                    >
-                      {mergeLoading === wt.branch ? '合并中...' : '合并'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(wt.path, wt.branch)
-                      }}
-                      disabled={deleteLoading === wt.branch}
-                      className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-red-600/20 text-red-400 hover:bg-red-600/30 disabled:opacity-50"
-                      title={`删除 ${wt.branch} 的 worktree`}
-                    >
-                      {deleteLoading === wt.branch ? '删除中...' : '删除'}
-                    </button>
+                  <div key={wt.path} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 font-mono flex-1 truncate">
+                        {wt.branch}
+                        {unmergedCounts[wt.branch] > 0 && (
+                          <span className="ml-1 text-amber-400">({unmergedCounts[wt.branch]} 未合并)</span>
+                        )}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCreate(wt.path, wt.branch); onClose() }}
+                        className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30"
+                      >
+                        打开
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleMerge(wt.branch) }}
+                        disabled={mergeLoading === wt.branch || unmergedCounts[wt.branch] === 0}
+                        className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                          unmergedCounts[wt.branch] > 0
+                            ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                            : 'bg-slate-700/30 text-slate-500'
+                        } disabled:opacity-50`}
+                      >
+                        {mergeLoading === wt.branch ? '合并中...' : '合并'}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(wt.path, wt.branch) }}
+                        disabled={deleteLoading === wt.branch}
+                        className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-red-600/20 text-red-400 hover:bg-red-600/30 disabled:opacity-50"
+                      >
+                        {deleteLoading === wt.branch ? '删除中...' : '删除'}
+                      </button>
+                    </div>
+                    {/* 内联确认行 */}
+                    {confirmDelete?.branch === wt.branch && (
+                      <div className="flex items-center gap-2 rounded border border-red-800/50 bg-red-950/30 px-2 py-1">
+                        <span className="text-[10px] text-red-300 flex-1">确定删除？将同时删除目录和分支。</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void handleConfirmDelete() }}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/40 text-red-300 hover:bg-red-600/60 shrink-0"
+                        >
+                          确认
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(null) }}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 hover:bg-slate-700 shrink-0"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
