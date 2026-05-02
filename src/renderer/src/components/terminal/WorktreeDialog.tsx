@@ -123,7 +123,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
 
   const handleDelete = async (worktreePath: string, branch: string): void => {
     // 确认删除
-    if (!confirm(`确定要删除 worktree "${branch}" 吗？\n\n路径: ${worktreePath}\n\n这将删除该 worktree 目录和分支。`)) {
+    if (!confirm(`确定要删除吗？\n\n分支: ${branch}\n路径: ${worktreePath}\n\n将同时删除 worktree 目录和分支，此操作不可撤销。`)) {
       return
     }
     setDeleteLoading(branch)
