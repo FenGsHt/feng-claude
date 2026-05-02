@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.6] - 2026-05-02
+
+### 修复 | Bug Fixes
+- **MCP 配置路径修正**：修复 user-scope MCP 写入路径错误（应为 `~/.claude/.claude.json`），visual-agent 等 MCP 现在可被 CLI 正确读取
+- **Worktree 创建修复**：`-b` 参数顺序错误导致 `invalid reference` 报错；改用主仓库 mainPath 而非 workdir，并在 baseBranch 无效时自动回退到 HEAD
+- **Worktree 删除确认框**：原生 `confirm()` 弹窗导致窗口失焦，改为内联确认行，彻底解决点击后输入框无法聚焦的问题
+
+### 新功能 | New Features
+- **Worktree 已有分支模式**：分屏 Worktree 对话框新增「已有分支」tab，可将本地未使用分支直接挂载为 worktree，无需新建分支
+
+---
+
 ## [0.6.3] - 2026-04-29
 
 ### 修复 | Bug Fixes

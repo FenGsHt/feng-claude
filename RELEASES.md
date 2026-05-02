@@ -5,6 +5,40 @@
 
 ---
 
+## v0.6.6 (2026-05-02)
+
+### 修复 | Bug Fixes
+
+#### MCP 配置路径修正 | MCP Config Path Fix
+- 修复 user-scope MCP 写入到错误路径（`~/.claude/.mcp.json`），现正确写入 `~/.claude/.claude.json`
+- Fixed user-scope MCP being written to wrong path; now correctly targets `~/.claude/.claude.json`
+- visual-agent、browser-tools 等 MCP 现在可被 Claude Code CLI 正确识别
+- MCP servers (visual-agent, browser-tools, etc.) are now properly recognized by Claude Code CLI
+- 启动时自动从旧路径恢复 MCP 配置（含 env 变量），无需手动重新配置
+- On startup, MCP config (including env vars) is automatically recovered from legacy paths
+
+#### Worktree 创建修复 | Worktree Create Fix
+- 修复 `git worktree add` 参数顺序错误导致 `fatal: invalid reference` 报错
+- Fixed argument order in `git worktree add` causing `fatal: invalid reference` error
+- 改用 `worktreeList` 返回的 `mainPath` 替代 `sess.workdir`，从 worktree 子会话中也能正确创建
+- Now uses `mainPath` from `worktreeList` instead of `sess.workdir`, works correctly from worktree sub-sessions
+- baseBranch 无法解析时自动回退到 HEAD
+- Falls back to HEAD when baseBranch cannot be resolved
+
+#### Worktree 删除确认框 | Worktree Delete Confirmation
+- 将原生 `window.confirm()` 替换为内联确认行，消除弹窗导致的窗口失焦问题
+- Replaced native `window.confirm()` with inline confirmation UI, eliminating window defocus issue
+
+### 新功能 | New Features
+
+#### Worktree 已有分支模式 | Existing Branch Worktree Mode
+- 分屏 Worktree 对话框新增「已有分支」tab
+- Added "Existing Branch" tab to the Split Worktree dialog
+- 可将本地未被其他 worktree 占用的分支直接挂载，无需新建
+- Mount any local branch not already used by another worktree, no need to create a new one
+
+---
+
 ## v0.6.3 (2026-04-29)
 
 ### 修复 | Bug Fixes
