@@ -26,6 +26,24 @@ export function SettingsPanel(): React.ReactElement {
   // [2026-04-30] 备用配置折叠状态
   const [fallbacksExpanded, setFallbacksExpanded] = useState(true)
 
+  // [2026-05-03] 麦克风设备列表
+  const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([])
+  useEffect(() => {
+    const loadMics = async (): Promise<void> => {
+      try {
+        // 先请求权限，否则 label 为空
+        await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop()))
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        setMicDevices(devices.filter(d => d.kind === 'audioinput'))
+      } catch {
+        // 无权限时忽略
+      }
+    }
+    void loadMics()
+    navigator.mediaDevices.addEventListener('devicechange', loadMics)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', loadMics)
+  }, [])
+
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return
     const unsub = window.electronAPI.onUpdateStatus((payload) => {
@@ -778,29 +796,30 @@ export function SettingsPanel(): React.ReactElement {
           {lang === 'zh' ? '语音识别' : 'Speech Recognition'}
         </div>
         {/* 显示麦克风按钮开关 */}
-        <label className="flex cursor-pointer items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-xs text-claude-text">{lang === 'zh' ? '显示麦克风按钮' : 'Show mic button'}</div>
             <div className="text-[10px] text-claude-muted">{lang === 'zh' ? '在终端标题栏显示语音输入按钮（默认隐藏）' : 'Show voice input button in terminal header (hidden by default)'}</div>
           </div>
-          <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors shrink-0"
-            style={{ backgroundColor: form.speech?.enabled ? '#f59e0b' : undefined }}>
-            <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-              style={{ transform: form.speech?.enabled ? 'translateX(16px)' : 'translateX(0)' }} />
-          </div>
-          <input type="checkbox" className="sr-only"
-            checked={!!form.speech?.enabled}
-            onChange={(e) => setForm(prev => ({ ...prev, speech: { engine: 'webSpeech', language: 'zh-CN', shortcut: 'Alt+V', whisperEndpoint: '', whisperToken: '', whisperModel: 'whisper-1', ...prev.speech, enabled: e.target.checked } }))}
-          />
-        </label>
+          <button
+            onClick={() => {
+              const next = !form.speech?.enabled
+              setForm(prev => ({ ...prev, speech: { engine: 'whisper', language: 'zh-CN', shortcut: 'Alt+M', whisperEndpoint: '', whisperToken: '', whisperModel: 'whisper-1', ...prev.speech, enabled: next } }))
+              setSaved(false)
+            }}
+            className={`relative w-8 h-4 shrink-0 rounded-full transition-colors ${form.speech?.enabled ? 'bg-amber-500' : 'bg-claude-border'}`}
+          >
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${form.speech?.enabled ? 'left-4' : 'left-0.5'}`} />
+          </button>
+        </div>
 
         {form.speech?.enabled && (<>
           {/* 快捷键 */}
           <Field label={lang === 'zh' ? '快捷键' : 'Shortcut'}>
             <input type="text"
-              value={form.speech?.shortcut ?? 'Alt+V'}
+              value={form.speech?.shortcut ?? 'Alt+M'}
               onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, shortcut: e.target.value } }))}
-              placeholder="Alt+V"
+              placeholder="Alt+M"
               className="field-input font-mono"
             />
           </Field>
@@ -808,12 +827,12 @@ export function SettingsPanel(): React.ReactElement {
           {/* 引擎 */}
           <Field label={lang === 'zh' ? '识别引擎' : 'Engine'}>
             <select
-              value={form.speech?.engine ?? 'webSpeech'}
+              value={form.speech?.engine ?? 'whisper'}
               onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, engine: e.target.value as 'webSpeech' | 'whisper' } }))}
               className="field-input"
             >
-              <option value="webSpeech">{lang === 'zh' ? 'Web Speech API（浏览器内置，流式）' : 'Web Speech API (built-in, streaming)'}</option>
-              <option value="whisper">{lang === 'zh' ? 'Whisper API（转写更准，需配置）' : 'Whisper API (more accurate, needs config)'}</option>
+              <option value="webSpeech" disabled>{lang === 'zh' ? 'Web Speech API（Electron 中不可用）' : 'Web Speech API (unavailable in Electron)'}</option>
+              <option value="whisper">{lang === 'zh' ? 'Whisper API（推荐，需填写下方配置）' : 'Whisper API (recommended, needs config below)'}</option>
             </select>
           </Field>
 
@@ -856,7 +875,34 @@ export function SettingsPanel(): React.ReactElement {
                 className="field-input"
               />
             </Field>
+            <Field label={lang === 'zh' ? '转写提示词' : 'Transcription Prompt'}>
+              <input type="text"
+                value={form.speech?.whisperPrompt ?? ''}
+                onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, whisperPrompt: e.target.value } }))}
+                placeholder={lang === 'zh' ? '以下是普通话的句子。' : 'Hint to guide output style'}
+                className="field-input"
+              />
+              <p className="text-[9px] text-claude-muted mt-0.5">
+                {lang === 'zh' ? '填"以下是普通话的句子。"可引导输出简体中文' : 'Guides Whisper output style, e.g. simplified Chinese'}
+              </p>
+            </Field>
           </>)}
+
+          {/* 麦克风选择 */}
+          <Field label={lang === 'zh' ? '麦克风' : 'Microphone'}>
+            <select
+              value={form.speech?.micDeviceId ?? ''}
+              onChange={(e) => setForm(prev => ({ ...prev, speech: { ...prev.speech!, micDeviceId: e.target.value || undefined } }))}
+              className="field-input"
+            >
+              <option value="">{lang === 'zh' ? '系统默认' : 'System default'}</option>
+              {micDevices.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `麦克风 ${d.deviceId.slice(0, 8)}`}
+                </option>
+              ))}
+            </select>
+          </Field>
         </>)}
       </div>
 

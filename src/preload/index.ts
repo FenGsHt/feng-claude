@@ -78,6 +78,12 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC.SETTINGS_CHANGED, handler)
   },
 
+  onSpeechToggle: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('speech:toggle', handler)
+    return () => ipcRenderer.removeListener('speech:toggle', handler)
+  },
+
   // [2026-04-28] API Profile 管理
   profiles: {
     add: (profile: ApiProfile): Promise<ProfileResult> =>

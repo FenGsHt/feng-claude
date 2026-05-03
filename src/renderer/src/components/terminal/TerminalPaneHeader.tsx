@@ -107,8 +107,10 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   // 语音识别状态
   const [speechRecording, setSpeechRecording] = useState(false)
   const [speechInterim, setSpeechInterim] = useState('')
+  const [speechError, setSpeechError] = useState('')
   const [speechSettings, setSpeechSettings] = useState<{ enabled: boolean; shortcut: string; config: SpeechConfig } | null>(null)
   const speechRecordingRef = useRef(false)
+  const focusedRef = useRef(focused)
 
   const candidates = useMemo(
     () => getSplitWorkdirCandidates(history, sessions),
@@ -165,13 +167,15 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       if (!sp?.enabled) { setSpeechSettings(null); return }
       setSpeechSettings({
         enabled: true,
-        shortcut: sp.shortcut || 'Alt+V',
+        shortcut: sp.shortcut || 'Alt+M',
         config: {
           engine: sp.engine,
           language: sp.language,
           whisperEndpoint: sp.whisperEndpoint,
           whisperToken: sp.whisperToken,
           whisperModel: sp.whisperModel,
+          micDeviceId: sp.micDeviceId,
+          whisperPrompt: sp.whisperPrompt,
         }
       })
     }
@@ -180,25 +184,8 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     return unsub
   }, [])
 
-  // 快捷键：按下开始录音，松开停止（push-to-talk）
-  useEffect(() => {
-    if (!speechSettings?.enabled || !focused) return
-    const shortcut = speechSettings.shortcut || 'Alt+V'
-    const [mod, key] = shortcut.includes('+') ? shortcut.split('+') : ['', shortcut]
-    const matchKey = (e: KeyboardEvent): boolean => {
-      if (mod === 'Alt' && !e.altKey) return false
-      if (mod === 'Ctrl' && !e.ctrlKey) return false
-      if (mod === 'Shift' && !e.shiftKey) return false
-      return e.key.toLowerCase() === key.toLowerCase()
-    }
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (!matchKey(e) || speechRecordingRef.current) return
-      e.preventDefault()
-      toggleSpeech()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [speechSettings, focused])
+  // 保持 focusedRef 与 prop 同步
+  useEffect(() => { focusedRef.current = focused }, [focused])
 
   const toggleSpeech = useCallback((): void => {
     if (!speechSettings) return
@@ -225,14 +212,24 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           setSpeechInterim('')
         },
         onError: (msg) => {
-          console.warn('[speech]', msg)
           speechRecordingRef.current = false
           setSpeechRecording(false)
           setSpeechInterim('')
+          setSpeechError(msg)
+          setTimeout(() => setSpeechError(''), 6000)
         },
       })
     }
   }, [speechSettings, sess?.id])
+
+  // 快捷键：由主进程 before-input-event 拦截后通过 IPC 触发
+  useEffect(() => {
+    if (!speechSettings?.enabled) return
+    const unsub = window.electronAPI.onSpeechToggle(() => {
+      if (focusedRef.current) toggleSpeech()
+    })
+    return unsub
+  }, [speechSettings?.enabled, toggleSpeech])
 
   async function beginSplit(mode: CreateSessionMode): Promise<void> {
     if (mode === 'split-worktree') {
@@ -361,7 +358,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           {speechSettings?.enabled && (
             <button
               onMouseDown={(e) => { e.stopPropagation(); toggleSpeech() }}
-              title={`语音输入 (${speechSettings.shortcut || 'Alt+V'})`}
+              title={`语音输入 (${speechSettings.shortcut || 'Alt+M'})`}
               className={`relative flex h-5 w-5 items-center justify-center rounded transition-colors ${
                 speechRecording
                   ? 'bg-red-500/30 text-red-400'
@@ -398,6 +395,18 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
             className="ml-auto shrink-0 text-[9px] text-red-400 hover:text-red-300"
           >
             停止
+          </button>
+        </div>
+      )}
+      {/* 语音识别错误提示条 */}
+      {speechError && (
+        <div className="flex items-center gap-1.5 border-b border-amber-900/40 bg-amber-950/20 px-2 py-0.5">
+          <span className="truncate text-[10px] text-amber-300">{speechError}</span>
+          <button
+            onClick={() => setSpeechError('')}
+            className="ml-auto shrink-0 text-[9px] text-amber-500 hover:text-amber-300"
+          >
+            ✕
           </button>
         </div>
       )}

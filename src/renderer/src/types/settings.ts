@@ -139,7 +139,7 @@ export interface ClaudeSettings {
     engine: 'webSpeech' | 'whisper'
     /** 识别语言 */
     language: 'zh-CN' | 'en-US' | 'auto'
-    /** 触发快捷键，格式如 "Alt+V" */
+    /** 触发快捷键，格式如 "Alt+M" */
     shortcut: string
     /** Whisper API endpoint */
     whisperEndpoint: string
@@ -147,6 +147,10 @@ export interface ClaudeSettings {
     whisperToken: string
     /** Whisper 模型名 */
     whisperModel: string
+    /** 麦克风设备 ID（空字符串=系统默认） */
+    micDeviceId?: string
+    /** Whisper prompt，用于引导输出风格（如简体中文） */
+    whisperPrompt?: string
   }
 }
 

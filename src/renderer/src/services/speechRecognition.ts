@@ -13,6 +13,8 @@ export interface SpeechConfig {
   whisperEndpoint: string
   whisperToken: string
   whisperModel: string
+  micDeviceId?: string
+  whisperPrompt?: string
 }
 
 export interface SpeechCallbacks {
@@ -52,7 +54,16 @@ function startWebSpeech(config: SpeechConfig, cb: SpeechCallbacks): void {
 
   rec.onstart = () => cb.onStart?.()
   rec.onend = () => cb.onStop?.()
-  rec.onerror = (e: { error: string }) => cb.onError?.(e.error)
+  rec.onerror = (e: { error: string }) => {
+    const msgs: Record<string, string> = {
+      'network': 'Web Speech API 需要连接 Google 服务，在 Electron 中不可用，请在设置中改用 Whisper 引擎',
+      'not-allowed': '麦克风权限被拒绝，请检查系统设置',
+      'audio-capture': '无法访问麦克风，请确认设备已连接',
+      'no-speech': '未检测到语音输入',
+      'service-not-allowed': '语音服务不可用',
+    }
+    cb.onError?.(msgs[e.error] ?? e.error)
+  }
 
   rec.onresult = (e: { results: { isFinal: boolean; [i: number]: { transcript: string } }[]; resultIndex: number }) => {
     let interim = ''
@@ -82,14 +93,38 @@ function stopWebSpeech(): void {
 let mediaRecorder: MediaRecorder | null = null
 let audioChunks: Blob[] = []
 let mediaStream: MediaStream | null = null
+let peakRms = 0
+let analyserRaf = 0
+
+// 最低有效音量阈值（0-1），低于此值认为是背景噪音
+const MIN_RMS_THRESHOLD = 0.02
 
 function startWhisper(config: SpeechConfig, cb: SpeechCallbacks): void {
   stopWhisper()
   navigator.mediaDevices
-    .getUserMedia({ audio: true })
+    .getUserMedia({ audio: config.micDeviceId ? { deviceId: { exact: config.micDeviceId } } : true })
     .then((stream) => {
       mediaStream = stream
       audioChunks = []
+      peakRms = 0
+
+      // 用 AnalyserNode 实时测量录音音量
+      const audioCtx = new AudioContext()
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+      const buf = new Float32Array(analyser.fftSize)
+      const measureRms = (): void => {
+        analyser.getFloatTimeDomainData(buf)
+        let sum = 0
+        for (const v of buf) sum += v * v
+        const rms = Math.sqrt(sum / buf.length)
+        if (rms > peakRms) peakRms = rms
+        analyserRaf = requestAnimationFrame(measureRms)
+      }
+      analyserRaf = requestAnimationFrame(measureRms)
+
       mediaRecorder = new MediaRecorder(stream)
 
       mediaRecorder.ondataavailable = (e) => {
@@ -97,9 +132,16 @@ function startWhisper(config: SpeechConfig, cb: SpeechCallbacks): void {
       }
 
       mediaRecorder.onstop = async () => {
+        cancelAnimationFrame(analyserRaf)
+        audioCtx.close()
         cb.onStop?.()
         const blob = new Blob(audioChunks, { type: 'audio/webm' })
         audioChunks = []
+        console.log('[whisper] peak RMS:', peakRms.toFixed(4), '/ threshold:', MIN_RMS_THRESHOLD)
+        if (peakRms < MIN_RMS_THRESHOLD) {
+          console.log('[whisper] 音量过低，跳过转写（背景噪音）')
+          return
+        }
         try {
           const text = await transcribeWithWhisper(blob, config)
           if (text) cb.onResult(text)
@@ -130,8 +172,12 @@ async function transcribeWithWhisper(blob: Blob, config: SpeechConfig): Promise<
   const form = new FormData()
   form.append('file', blob, 'audio.webm')
   form.append('model', config.whisperModel || 'whisper-1')
+  form.append('response_format', 'verbose_json')
   if (config.language !== 'auto') {
     form.append('language', config.language.split('-')[0]) // 'zh-CN' → 'zh'
+  }
+  if (config.whisperPrompt) {
+    form.append('prompt', config.whisperPrompt)
   }
 
   const resp = await fetch(url, {
@@ -145,7 +191,24 @@ async function transcribeWithWhisper(blob: Blob, config: SpeechConfig): Promise<
     throw new Error(`Whisper API ${resp.status}: ${err}`)
   }
 
-  const json = await resp.json() as { text?: string }
+  type Segment = { no_speech_prob: number; text: string }
+  const json = await resp.json() as { text?: string; segments?: Segment[] }
+
+  console.log('[whisper] raw response:', JSON.stringify(json, null, 2))
+
+  // 用 no_speech_prob 过滤幻觉：segments 全部超过阈值则视为静音
+  const NO_SPEECH_THRESHOLD = 0.6
+  if (json.segments && json.segments.length > 0) {
+    console.log('[whisper] segments no_speech_prob:', json.segments.map(s => `${s.no_speech_prob.toFixed(3)} "${s.text}"`))
+    const validText = json.segments
+      .filter(s => s.no_speech_prob < NO_SPEECH_THRESHOLD)
+      .map(s => s.text)
+      .join('')
+      .trim()
+    console.log('[whisper] filtered result:', JSON.stringify(validText))
+    return validText
+  }
+
   return json.text?.trim() ?? ''
 }
 

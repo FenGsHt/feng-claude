@@ -144,8 +144,25 @@ function createWindow(): BrowserWindow {
     // [2026-05-01] 在主进程拦截 Ctrl+Shift+C，绕过 Electron 菜单加速器
     if (input.control && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {
       event.preventDefault()
-      // 通知渲染进程执行复制，渲染进程用 term.getSelection() 获取 xterm 内部选区
       win.webContents.send('terminal:copy-selection')
+    }
+    // [2026-05-03] 语音快捷键：在主进程拦截以绕过 Windows Alt 菜单捕获
+    if (input.type === 'keyDown') {
+      const sp = settingsStore.get().speech
+      if (sp?.enabled && sp.shortcut) {
+        const parts = sp.shortcut.split('+')
+        const key = parts[parts.length - 1]
+        const mods = parts.slice(0, -1).map((m: string) => m.toLowerCase())
+        const matches =
+          (mods.includes('alt') === input.alt) &&
+          (mods.includes('ctrl') === input.control) &&
+          (mods.includes('shift') === input.shift) &&
+          input.key.toLowerCase() === key.toLowerCase()
+        if (matches) {
+          event.preventDefault()
+          win.webContents.send('speech:toggle')
+        }
+      }
     }
   })
 
