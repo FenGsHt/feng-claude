@@ -51,6 +51,7 @@ export function injectMockElectronAPI(): void {
       onTokenUsageUpdate: listener,
       onSettingsChanged: listener,
       onSpeechToggle: listener,
+      onElementPicked: listener,
       settings: {
         get: async () => ({ ...DEFAULT_SETTINGS }),
         set: async () => ({ success: true })

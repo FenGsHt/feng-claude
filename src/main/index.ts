@@ -23,7 +23,7 @@ import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 import { existsSync, copyFileSync, mkdirSync } from 'fs'
 import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
-import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView } from './browserViewManager'
+import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView, startElementPicker, startCdpProxy } from './browserViewManager'
 import { ensureBrowserToolsMcpRegistered, ensureVisualAgentMcpRegistered } from './mcpManager'
 import { startApiProxy, stopApiProxy } from './apiProxyServer'
 
@@ -132,14 +132,20 @@ function createWindow(): BrowserWindow {
   }
 
   // ── Embedded browser for debugging ──────────────────────────────
-  startBrowserServer(win)
+  void startBrowserServer(win)
+  startCdpProxy()
   registerBrowserViewIpc()
 
-  // Ctrl+Shift+D — toggle embedded browser
   win.webContents.on('before-input-event', (event, input) => {
-    if (input.control && input.shift && input.key.toLowerCase() === 'd') {
+    // Ctrl+Shift+D — toggle embedded browser
+    if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'd') {
       event.preventDefault()
       toggleBrowserView(win)
+    }
+    // Ctrl+Shift+Q — element picker
+    if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
+      event.preventDefault()
+      void startElementPicker()
     }
     // [2026-05-01] 在主进程拦截 Ctrl+Shift+C，绕过 Electron 菜单加速器
     if (input.control && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {

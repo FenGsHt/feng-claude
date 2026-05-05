@@ -96,36 +96,75 @@ let mediaStream: MediaStream | null = null
 let peakRms = 0
 let analyserRaf = 0
 
-// 最低有效音量阈值（0-1），低于此值认为是背景噪音
+// 音量阈值：低于此值视为静音
 const MIN_RMS_THRESHOLD = 0.02
+// 说话判定阈值：超过此值认为在说话
+const SPEECH_RMS_THRESHOLD = 0.03
+// 静音持续多久后自动停止（ms）
+const SILENCE_TIMEOUT_MS = 1200
 
 function startWhisper(config: SpeechConfig, cb: SpeechCallbacks): void {
   stopWhisper()
+
+  const audioConstraints: MediaTrackConstraints = {
+    ...(config.micDeviceId ? { deviceId: { exact: config.micDeviceId } } : {}),
+    sampleRate: 16000,   // Whisper 原生采样率，减少转换损耗
+    channelCount: 1,     // 单声道足够
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  }
+
   navigator.mediaDevices
-    .getUserMedia({ audio: config.micDeviceId ? { deviceId: { exact: config.micDeviceId } } : true })
+    .getUserMedia({ audio: audioConstraints })
     .then((stream) => {
       mediaStream = stream
       audioChunks = []
       peakRms = 0
 
-      // 用 AnalyserNode 实时测量录音音量
       const audioCtx = new AudioContext()
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 256
+      analyser.fftSize = 512
       source.connect(analyser)
       const buf = new Float32Array(analyser.fftSize)
+
+      // 自动停止状态
+      let hasSpeech = false          // 是否已检测到说话
+      let silenceStart = 0           // 开始静音的时间戳
+
       const measureRms = (): void => {
         analyser.getFloatTimeDomainData(buf)
         let sum = 0
         for (const v of buf) sum += v * v
         const rms = Math.sqrt(sum / buf.length)
         if (rms > peakRms) peakRms = rms
+
+        if (rms >= SPEECH_RMS_THRESHOLD) {
+          hasSpeech = true
+          silenceStart = 0
+        } else if (hasSpeech) {
+          // 已经说过话，现在静音了
+          if (silenceStart === 0) silenceStart = Date.now()
+          if (Date.now() - silenceStart >= SILENCE_TIMEOUT_MS) {
+            // 静音超时，自动停止
+            stopWhisper()
+            return
+          }
+        }
+
         analyserRaf = requestAnimationFrame(measureRms)
       }
       analyserRaf = requestAnimationFrame(measureRms)
 
-      mediaRecorder = new MediaRecorder(stream)
+      // 提高录音质量：128kbps
+      const recorderOptions: MediaRecorderOptions = {}
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        recorderOptions.mimeType = 'audio/webm;codecs=opus'
+        recorderOptions.audioBitsPerSecond = 128000
+      }
+      mediaRecorder = new MediaRecorder(stream, recorderOptions)
+      const mimeType = mediaRecorder.mimeType || 'audio/webm'
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunks.push(e.data)
@@ -135,12 +174,10 @@ function startWhisper(config: SpeechConfig, cb: SpeechCallbacks): void {
         cancelAnimationFrame(analyserRaf)
         audioCtx.close()
         cb.onStop?.()
-        const blob = new Blob(audioChunks, { type: 'audio/webm' })
+        const blob = new Blob(audioChunks, { type: mimeType })
         audioChunks = []
-        console.log('[whisper] peak RMS:', peakRms.toFixed(4), '/ threshold:', MIN_RMS_THRESHOLD)
         if (peakRms < MIN_RMS_THRESHOLD) {
-          console.log('[whisper] 音量过低，跳过转写（背景噪音）')
-          return
+          return  // 全程静音，跳过
         }
         try {
           const text = await transcribeWithWhisper(blob, config)
@@ -150,7 +187,7 @@ function startWhisper(config: SpeechConfig, cb: SpeechCallbacks): void {
         }
       }
 
-      mediaRecorder.start()
+      mediaRecorder.start(100)  // 每 100ms 触发一次 ondataavailable
       cb.onStart?.()
     })
     .catch((e) => cb.onError?.(String(e)))

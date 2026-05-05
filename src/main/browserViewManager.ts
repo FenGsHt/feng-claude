@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, screen, WebContentsView, WebPreferences } from 'electron'
-import { createServer, IncomingMessage, ServerResponse } from 'http'
+import { createServer, IncomingMessage, ServerResponse, Server } from 'http'
 import { URL } from 'url'
+import { WebSocketServer, WebSocket } from 'ws'
 
 interface BrowserPanelState {
   view: WebContentsView | null
@@ -201,6 +202,7 @@ button:disabled { opacity: 0.3; cursor: default; }
   <button id="fwd-btn" title="前进">▶</button>
   <button id="reload-btn" title="刷新">⟳</button>
   <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
+  <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框">⊕</button>
   <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
   <button id="close-btn" title="关闭浏览器">×</button>
 <script>
@@ -220,6 +222,7 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('reload-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'reload'))
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
+  $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
   $('url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) ipcRenderer.send('browser-nav:navigate', v) }
   })
@@ -227,40 +230,7 @@ button:disabled { opacity: 0.3; cursor: default; }
   ipcRenderer.on('browser-nav:nav-state', (_, d) => { $('back-btn').disabled = !d.canGoBack; $('fwd-btn').disabled = !d.canGoForward })
   ipcRenderer.on('browser-nav:devtools', (_, d) => { $('devtools-btn').classList.toggle('active', d.enabled) })
   ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
-</script></body></html>`
-
-// [2026-04-30] 分隔线 HTML — 用于拖拽调整 DevTools 宽度
-// 注意：拖拽过程中鼠标会离开分隔线，所以 mousemove/mouseup 由主进程监听主窗口
-const SEPARATOR_HTML = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: #333;
-  height: 100%;
-  cursor: col-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-body:hover { background: #f59e0b; }
-.drag-indicator {
-  width: 2px;
-  height: 50%;
-  background: #555;
-  border-radius: 1px;
-}
-body:hover .drag-indicator { background: #fff; }
-</style></head><body>
-  <div class="drag-indicator"></div>
-<script>
-const { ipcRenderer } = require('electron')
-document.body.addEventListener('mousedown', e => {
-  ipcRenderer.send('browser-nav:devtools-drag-start')
-  e.preventDefault()
-})
-document.body.addEventListener('mouseup', () => {
-  ipcRenderer.send('browser-nav:devtools-drag-end')
-})
+  ipcRenderer.on('browser-nav:pick-active', (_, d) => { $('pick-btn').classList.toggle('active', d.active) })
 </script></body></html>`
 
 function createNavView(): WebContentsView {
@@ -273,19 +243,6 @@ function createNavView(): WebContentsView {
   nav.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   nav.webContents.loadURL(`data:text/html;base64,${Buffer.from(NAVBAR_HTML, 'utf-8').toString('base64')}`).catch(() => {})
   return nav
-}
-
-// [2026-04-30] 创建 DevTools 分隔线视图
-function createDevToolsSeparatorView(): WebContentsView {
-  const prefs: WebPreferences = {
-    nodeIntegration: true,
-    contextIsolation: false,
-    backgroundThrottling: false
-  }
-  const sep = new WebContentsView({ webPreferences: prefs })
-  sep.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  sep.webContents.loadURL(`data:text/html;base64,${Buffer.from(SEPARATOR_HTML, 'utf-8').toString('base64')}`).catch(() => {})
-  return sep
 }
 
 // ── 导航控制 ───────────────────────────────────────────────────────
@@ -311,47 +268,18 @@ function browserNavigate(url: string): void {
   state.view.webContents.loadURL(target).catch(() => {})
 }
 
-// [2026-04-30] 切换 DevTools — 使用独立的 WebContentsView
+// 切换 DevTools — 使用 mode:'right' 内嵌在 state.view 内部，无需独立 WebContentsView
 function toggleDevTools(): void {
   if (!state.view || !state.mainWin) return
   state.devToolsVisible = !state.devToolsVisible
-  const win = state.mainWin
 
   if (state.devToolsVisible) {
-    // 创建 DevTools 视图
-    if (!state.devToolsView) {
-      const prefs: WebPreferences = {
-        nodeIntegration: false,
-        contextIsolation: true,
-      }
-      state.devToolsView = new WebContentsView({ webPreferences: prefs })
-      // 将此视图设置为 DevTools 的目标
-      state.view.webContents.setDevToolsWebContents(state.devToolsView.webContents)
-      state.devToolsView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    }
-    // 创建 DevTools 分隔线
-    if (!state.devToolsSeparatorView) {
-      state.devToolsSeparatorView = createDevToolsSeparatorView()
-    }
-    // [2026-04-30] 先添加 DevTools，再添加分隔线（分隔线需要在最上层接收鼠标事件）
-    win.contentView.addChildView(state.devToolsView)
-    win.contentView.addChildView(state.devToolsSeparatorView)
-    // 打开 DevTools（内容会显示在 devToolsView 中）
-    state.view.webContents.openDevTools()
-    // 更新布局
-    setBounds(win)
+    // mode:'right' 让 Chrome 直接在浏览器视图内右侧渲染 DevTools，无空白间隔问题
+    state.view.webContents.openDevTools({ mode: 'right' })
+    // DevTools 分阶段异步初始化，did-finish-load 之后页面仍在继续布局，
+    // 需要在多个时间点强制 setBounds + 注入 CSS 覆盖 DevTools 内部尺寸
   } else {
-    // 关闭 DevTools
     state.view.webContents.closeDevTools()
-    // 移除视图
-    if (state.devToolsView) {
-      win.contentView.removeChildView(state.devToolsView)
-    }
-    if (state.devToolsSeparatorView) {
-      win.contentView.removeChildView(state.devToolsSeparatorView)
-    }
-    // 更新布局（浏览器内容恢复全宽）
-    setBounds(win)
   }
   // 通知导航栏按钮状态
   if (state.navView?.webContents) {
@@ -380,6 +308,14 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
 
     // 拦截新窗口请求
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+    // Ctrl+Shift+D — element picker，当浏览器页面获得焦点时也能触发
+    view.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
+        event.preventDefault()
+        void startElementPicker()
+      }
+    })
 
     // URL 变化时更新导航栏地址
     view.webContents.on('did-navigate', (_, navUrl) => {
@@ -513,6 +449,259 @@ export async function navigateTo(url: string): Promise<{ success: boolean; url: 
   }
 }
 
+// ── CDP 代理（让 browser-tools MCP 直接连接内嵌浏览器）────────────────────
+
+const CDP_PROXY_PORT = 9223   // browser-tools 配置此端口即可连接内嵌浏览器
+
+let cdpWss: WebSocketServer | null = null
+
+export function startCdpProxy(): void {
+  if (cdpWss) return  // 已启动
+
+  const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url ?? '/', `http://localhost:${CDP_PROXY_PORT}`)
+    const path = url.pathname
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Content-Type', 'application/json')
+
+    const wc = state.view?.webContents
+    const currentUrl = wc?.getURL() ?? 'about:blank'
+    const title = wc?.getTitle() ?? 'Embedded Browser'
+
+    if (path === '/json' || path === '/json/list') {
+      const targets = wc ? [{
+        description: 'Feng Claude Embedded Browser',
+        devtoolsFrontendUrl: `chrome-devtools://devtools/bundled/inspector.html?ws=localhost:${CDP_PROXY_PORT}/devtools/page/embedded`,
+        id: 'embedded',
+        title,
+        type: 'page',
+        url: currentUrl,
+        webSocketDebuggerUrl: `ws://localhost:${CDP_PROXY_PORT}/devtools/page/embedded`
+      }] : []
+      res.writeHead(200); res.end(JSON.stringify(targets))
+      return
+    }
+
+    if (path === '/json/version') {
+      res.writeHead(200); res.end(JSON.stringify({
+        Browser: 'Chrome/120.0.0.0',
+        'Protocol-Version': '1.3',
+        'User-Agent': 'Mozilla/5.0 Feng-Claude-Embedded',
+        'V8-Version': '12.0.267.17',
+        'WebKit-Version': '537.36 (@embedded)',
+        webSocketDebuggerUrl: `ws://localhost:${CDP_PROXY_PORT}/devtools/browser`
+      }))
+      return
+    }
+
+    res.writeHead(404); res.end('{}')
+  })
+
+  cdpWss = new WebSocketServer({ noServer: true })
+
+  httpServer.on('upgrade', (req, socket, head) => {
+    const url = req.url ?? ''
+    if (url.startsWith('/devtools/page/embedded') || url.startsWith('/devtools/browser')) {
+      cdpWss!.handleUpgrade(req, socket, head, (ws) => startCdpSession(ws))
+    } else {
+      socket.destroy()
+    }
+  })
+
+  httpServer.listen(CDP_PROXY_PORT, '127.0.0.1', () => {
+    console.log(`[browser] CDP proxy listening on port ${CDP_PROXY_PORT} — configure browser-tools to use this port`)
+  })
+
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[browser] CDP proxy port ${CDP_PROXY_PORT} already in use`)
+    }
+  })
+}
+
+function startCdpSession(ws: WebSocket): void {
+  const wc = state.view?.webContents
+  if (!wc) { ws.close(); return }
+
+  // 附加调试器（可能已附加，忽略错误）
+  try { wc.debugger.attach('1.3') } catch { /* already attached */ }
+
+  // 内嵌浏览器 → client（CDP 事件推送）
+  type DebuggerMessageHandler = (event: Electron.Event, method: string, params: unknown) => void
+  const onMsg: DebuggerMessageHandler = (_evt, method, params) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ method, params }))
+    }
+  }
+  wc.debugger.on('message', onMsg)
+
+  // client → 内嵌浏览器（CDP 命令转发）
+  ws.on('message', async (data) => {
+    let msg: { id: number; method: string; params?: Record<string, unknown>; sessionId?: string }
+    try { msg = JSON.parse(data.toString()) } catch { return }
+    try {
+      const result = await wc.debugger.sendCommand(msg.method, msg.params ?? {}, msg.sessionId)
+      ws.send(JSON.stringify({ id: msg.id, result: result ?? {} }))
+    } catch (e) {
+      ws.send(JSON.stringify({ id: msg.id, error: { code: -32000, message: String(e) } }))
+    }
+  })
+
+  ws.on('close', () => {
+    wc.debugger.removeListener('message', onMsg)
+    try { wc.debugger.detach() } catch { /* ignore */ }
+  })
+
+  ws.on('error', () => {
+    wc.debugger.removeListener('message', onMsg)
+    try { wc.debugger.detach() } catch { /* ignore */ }
+  })
+}
+
+// ── 元素拾取器 ─────────────────────────────────────────────────────────
+
+let isPickerActive = false
+
+export async function startElementPicker(): Promise<void> {
+  if (!state.view?.webContents || !state.mainWin) return
+
+  // 已在拾取中 → 再按一次取消
+  if (isPickerActive) {
+    isPickerActive = false
+    if (state.navView?.webContents) {
+      state.navView.webContents.send('browser-nav:pick-active', { active: false })
+    }
+    // 向页面派发 Escape，触发拾取器已有的 onKey 清理逻辑
+    await state.view.webContents.executeJavaScript(
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`
+    ).catch(() => {})
+    return
+  }
+
+  isPickerActive = true
+  // 激活按钮视觉反馈
+  if (state.navView?.webContents) {
+    state.navView.webContents.send('browser-nav:pick-active', { active: true })
+  }
+
+  const PICKER_JS = `
+new Promise((resolve) => {
+  let highlighted = null
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;pointer-events:none;background:rgba(59,130,246,0.25);border:2px solid #3b82f6;z-index:2147483647;box-sizing:border-box;border-radius:2px'
+  document.body.appendChild(overlay)
+
+  const tooltip = document.createElement('div')
+  tooltip.style.cssText = 'position:fixed;background:#1e293b;color:#93c5fd;font-family:monospace;font-size:11px;padding:3px 7px;border-radius:4px;z-index:2147483647;pointer-events:none;max-width:500px;word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 6px rgba(0,0,0,0.5)'
+  document.body.appendChild(tooltip)
+
+  function getSelector(el) {
+    const parts = []
+    let cur = el
+    while (cur && cur !== document.documentElement && cur.tagName) {
+      let part = cur.tagName.toLowerCase()
+      if (cur.id) { part += '#' + CSS.escape(cur.id); parts.unshift(part); break }
+      const siblings = cur.parentNode ? Array.from(cur.parentNode.children).filter(c => c.tagName === cur.tagName) : []
+      if (siblings.length > 1) {
+        const idx = Array.from(cur.parentNode.children).indexOf(cur) + 1
+        part += ':nth-child(' + idx + ')'
+      }
+      parts.unshift(part)
+      cur = cur.parentElement
+    }
+    return parts.join(' > ')
+  }
+
+  function getPath(el) {
+    const chain = []
+    let cur = el
+    while (cur && cur.tagName) {
+      let desc = cur.tagName.toLowerCase()
+      if (cur.id) desc += '#' + cur.id
+      else if (cur.className && typeof cur.className === 'string') {
+        const cls = cur.className.trim().split(/\\s+/).filter(Boolean).slice(0, 3).join('.')
+        if (cls) desc += '.' + cls
+      }
+      chain.unshift(desc)
+      cur = cur.parentElement
+    }
+    return chain.join(' > ')
+  }
+
+  function highlight(el) {
+    if (el === overlay || el === tooltip) return
+    const r = el.getBoundingClientRect()
+    overlay.style.left = r.left + 'px'
+    overlay.style.top = r.top + 'px'
+    overlay.style.width = r.width + 'px'
+    overlay.style.height = r.height + 'px'
+    const sel = getSelector(el)
+    tooltip.textContent = sel
+    const ty = r.top > 28 ? r.top - 24 : r.bottom + 4
+    const tx = Math.max(4, Math.min(r.left, window.innerWidth - 420))
+    tooltip.style.left = tx + 'px'
+    tooltip.style.top = ty + 'px'
+  }
+
+  function onMove(e) {
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    if (el && el !== overlay && el !== tooltip) { highlighted = el; highlight(el) }
+  }
+
+  function onClick(e) {
+    e.preventDefault(); e.stopPropagation()
+    const el = highlighted
+    cleanup()
+    if (!el) { resolve(null); return }
+    const r = el.getBoundingClientRect()
+    resolve({
+      tag: el.tagName.toLowerCase(),
+      id: el.id || null,
+      classes: Array.from(el.classList),
+      selector: getSelector(el),
+      path: getPath(el),
+      text: (el.innerText || '').trim().slice(0, 300),
+      html: el.outerHTML.slice(0, 600),
+      bounds: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
+    })
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') { cleanup(); resolve(null) }
+  }
+
+  function cleanup() {
+    document.removeEventListener('mousemove', onMove, true)
+    document.removeEventListener('click', onClick, true)
+    document.removeEventListener('keydown', onKey, true)
+    document.body.style.cursor = prev
+    overlay.remove()
+    tooltip.remove()
+  }
+
+  const prev = document.body.style.cursor
+  document.body.style.cursor = 'crosshair'
+  document.addEventListener('mousemove', onMove, true)
+  document.addEventListener('click', onClick, true)
+  document.addEventListener('keydown', onKey, true)
+})
+`
+
+  try {
+    const result = await state.view.webContents.executeJavaScript(PICKER_JS)
+    if (result && state.mainWin?.webContents) {
+      state.mainWin.webContents.send('browser:element-picked', result)
+    }
+  } catch (e) {
+    console.warn('[browser] element picker error:', e)
+  } finally {
+    isPickerActive = false
+    if (state.navView?.webContents) {
+      state.navView.webContents.send('browser-nav:pick-active', { active: false })
+    }
+  }
+}
+
 // ─ IPC ────────────────────────────────────────────────────────────────
 
 export function registerBrowserViewIpc(): void {
@@ -534,6 +723,7 @@ export function registerBrowserViewIpc(): void {
     else if (action === 'reload') browserReload()
     else if (action === 'devtools') toggleDevTools()
     else if (action === 'close') hideBrowserView()
+    else if (action === 'pick') void startElementPicker()
   })
 
   ipcMain.on('browser-nav:navigate', (_event, url: string) => {
@@ -683,11 +873,18 @@ function handleBrowserDragEnd(win: BrowserWindow): void {
 
 // ─ HTTP API ──────────────────────────────────────────────────────────
 
+let browserHttpServer: Server | null = null
+let browserServerPort = 0   // OS 分配后写入，供 ptyManager 读取
+
+/** 返回当前实例浏览器 HTTP 服务的端口（0 = 尚未启动） */
+export function getBrowserServerPort(): number { return browserServerPort }
+
 export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }> {
   /* [2026-04-30] HTTP /show 可能早于用户手动打开浏览器；原来未保存 win，state.mainWin=null 时仍返回 visible:true 但不显示。 */
   state.mainWin = win
+
   return new Promise((resolve) => {
-    const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    browserHttpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
       res.setHeader('Content-Type', 'application/json')
       res.setHeader('Access-Control-Allow-Origin', '*')
 
@@ -699,6 +896,7 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           res.writeHead(200); res.end(JSON.stringify({ status: 'ok' }))
           return
         }
+
 
         if (path === '/navigate' && req.method === 'POST') {
           const body = await readBody(req)
@@ -863,7 +1061,7 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
-        if (path === '/show' && req.method === 'POST') {
+        if (path === '/show') {
           if (!state.mainWin) {
             res.writeHead(500); res.end(JSON.stringify({ visible: false, error: 'No main window is registered for embedded browser' }))
             return
@@ -873,35 +1071,35 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
-        if (path === '/hide' && req.method === 'POST') {
+        if (path === '/hide') {
           hideBrowserView()
           res.writeHead(200); res.end(JSON.stringify({ visible: false }))
           return
         }
 
-        // POST /devtools — toggle DevTools
-        if (path === '/devtools' && req.method === 'POST') {
+        // /devtools — toggle DevTools（GET 或 POST 均可）
+        if (path === '/devtools') {
           toggleDevTools()
           res.writeHead(200); res.end(JSON.stringify({ visible: state.devToolsVisible }))
           return
         }
 
-        // POST /back
-        if (path === '/back' && req.method === 'POST') {
+        // /back
+        if (path === '/back') {
           browserBack()
           res.writeHead(200); res.end(JSON.stringify({ ok: true }))
           return
         }
 
-        // POST /forward
-        if (path === '/forward' && req.method === 'POST') {
+        // /forward
+        if (path === '/forward') {
           browserForward()
           res.writeHead(200); res.end(JSON.stringify({ ok: true }))
           return
         }
 
-        // POST /reload
-        if (path === '/reload' && req.method === 'POST') {
+        // /reload
+        if (path === '/reload') {
           browserReload()
           res.writeHead(200); res.end(JSON.stringify({ ok: true }))
           return
@@ -924,17 +1122,16 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
       }
     })
 
-    server.listen(DEFAULT_PORT, () => {
-      console.log(`[browser] HTTP API server listening on port ${DEFAULT_PORT}`)
-      resolve({ port: DEFAULT_PORT })
+    // port 0 → OS 自动分配空闲端口，多实例互不冲突
+    browserHttpServer!.listen(0, '127.0.0.1', () => {
+      const addr = browserHttpServer!.address() as { port: number }
+      browserServerPort = addr.port
+      console.log(`[browser] HTTP API server listening on port ${browserServerPort}`)
+      resolve({ port: browserServerPort })
     })
 
-    server.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        console.warn(`[browser] Port ${DEFAULT_PORT} in use, browser API may already be running`)
-      } else {
-        console.error('[browser] HTTP server error:', err.message)
-      }
+    browserHttpServer!.on('error', (err: NodeJS.ErrnoException) => {
+      console.error('[browser] HTTP server error:', err.message)
     })
   })
 }

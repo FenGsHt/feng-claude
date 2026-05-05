@@ -231,6 +231,22 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     return unsub
   }, [speechSettings?.enabled, toggleSpeech])
 
+  // 浏览器元素拾取器：将拾取的元素信息插入当前聚焦的终端
+  useEffect(() => {
+    if (typeof window.electronAPI.onElementPicked !== 'function') return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsub = window.electronAPI.onElementPicked((info: any) => {
+      if (!focusedRef.current || !sess?.id) return
+      const lines: string[] = []
+      lines.push(`[Element] ${info.path}`)
+      lines.push(`Selector: ${info.selector}`)
+      if (info.text) lines.push(`Text: "${info.text.replace(/\n/g, ' ')}"`)
+      lines.push(`HTML: ${info.html}`)
+      window.electronAPI.sendInput(sess.id, '\n' + lines.join('\n') + '\n')
+    })
+    return unsub
+  }, [sess?.id])
+
   async function beginSplit(mode: CreateSessionMode): Promise<void> {
     if (mode === 'split-worktree') {
       setShowWorktreeDialog(true)

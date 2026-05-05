@@ -9,7 +9,7 @@
 
 const http = require('http')
 
-const BASE = 'http://localhost:3100'
+const BASE = `http://localhost:${process.env.FENG_CLAUDE_BROWSER_PORT || 3100}`
 
 // [2026-04-30] MCP tools/list must use inputSchema; input_schema lets Claude Code load the server but hide its tools.
 const TOOLS = [
@@ -134,7 +134,7 @@ async function callHttp(path, body) {
     })
     req.on('error', (e) => {
       if (e.code === 'ECONNREFUSED') {
-        resolve({ error: 'Browser server not running. Open the embedded browser first (Ctrl+Shift+D).' })
+        resolve({ error: `Browser server not running on port ${process.env.FENG_CLAUDE_BROWSER_PORT || 3100}. Open the embedded browser first.` })
       } else {
         reject(e)
       }

@@ -10,6 +10,7 @@ import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { getConfigDir } from './configDir'
 import { getProxyPort } from './apiProxyServer'
+import { getBrowserServerPort } from './browserViewManager'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
 
@@ -69,6 +70,9 @@ function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> 
     /* [2026-04-29] 使用用户全局 ~/.claude 目录，让 Claude Code 能读取全局技能、MCP、OAuth 等配置。
      * 应用自身设置仍通过 electron-store 保存在独立目录，互不干扰。 */
     CLAUDE_CONFIG_DIR: join(homedir(), '.claude'),
+    // 当前实例内嵌浏览器的 HTTP API 端口（动态分配），供 browser-tools MCP 使用
+    // 每个 feng-claude 实例端口不同，多实例互不影响
+    FENG_CLAUDE_BROWSER_PORT: String(getBrowserServerPort() || 3100),
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     FORCE_COLOR: '3',

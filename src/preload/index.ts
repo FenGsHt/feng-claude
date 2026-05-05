@@ -84,6 +84,14 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('speech:toggle', handler)
   },
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onElementPicked: (callback: (info: any) => void): (() => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handler = (_: Electron.IpcRendererEvent, info: any): void => callback(info)
+    ipcRenderer.on('browser:element-picked', handler)
+    return () => ipcRenderer.removeListener('browser:element-picked', handler)
+  },
+
   // [2026-04-28] API Profile 管理
   profiles: {
     add: (profile: ApiProfile): Promise<ProfileResult> =>
