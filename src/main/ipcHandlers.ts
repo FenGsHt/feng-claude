@@ -145,6 +145,7 @@ export function registerIpcHandlers(
 
       const resume = payload.resume ?? false
       const profileId = payload.profileId as string | undefined
+      const shellOnly = payload.shellOnly === true
       const settings = settingsStore.get()
 
       // [2026-04-28] 获取指定的 profile 或使用全局激活的
@@ -154,7 +155,7 @@ export function registerIpcHandlers(
 
       // Read scrollback before creating session (file written by previous session's close)
       const scrollback = ptyManager.readScrollback(workdir)
-      const result = ptyManager.createSession(sessionId, workdir, profile, settings, resume)
+      const result = ptyManager.createSession(sessionId, workdir, profile, settings, resume, shellOnly)
       // Start watching JSONL for accurate per-session token counting
       sessionWatcher.watchSession(sessionId, workdir)
       // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行

@@ -124,8 +124,9 @@ interface SessionStore {
    * @param splitFromSessionId 分屏时从该 session 所在格拆出；缺省则使用当前 active（与点哪个窗格上的分屏一致）
    * @param resume 传 true 时以 --continue 恢复该目录上次对话上下文
    * @param profileId [2026-04-28] 指定使用的 API profile ID（可选）
+   * @param shellOnly [2026-05-06] true 时仅打开 Shell，不自动启动 Claude Code
    */
-  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string) => Promise<void>
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string, shellOnly?: boolean) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
 
@@ -162,13 +163,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     mode: CreateSessionMode = 'fullscreen',
     splitFromSessionId?: string,
     resume?: boolean,
-    profileId?: string
+    profileId?: string,
+    shellOnly?: boolean
   ) => {
     /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const raw = await window.electronAPI.createSession(workdir, resume, profileId)
+    const raw = await window.electronAPI.createSession(workdir, resume, profileId, shellOnly)
     const result = normalizeCreateSessionResult(raw, workdir)
     /* [2026-04-23] 原假定 invoke 恒成功；主进程 PTY 失败时改为 ok 判别。
      * [2026-04-23] 若在 !ok 时 throw，App 启动与 restoreFromHistory 等路径未全部 try/catch，会 Uncaught (in promise)；失败时仅打日志并 return */
@@ -189,7 +191,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       createdAt: Date.now(),
       updatedAt: Date.now(),
       ptyPid: result.pid,
-      profileId: sessionProfileId ?? undefined
+      profileId: sessionProfileId ?? undefined,
+      shellOnly: shellOnly || undefined
     }
 
     set((s) => {
@@ -410,8 +413,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     for (let i = 0; i < pw.sessionWorkdirs.length; i++) {
       const wd = pw.sessionWorkdirs[i]
       const profileId = pw.profileIds?.[i]
+      // [2026-05-06] Shell-only sessions: restore=false, shellOnly=true
+      const shellOnly = pw.shellOnlySlots?.[i] ?? false
       try {
-        const result = normalizeCreateSessionResult(await window.electronAPI.createSession(wd, true, profileId), wd)
+        // Shell-only 不带 --continue，直接开 shell；普通 session 恢复上次会话
+        const result = normalizeCreateSessionResult(
+          await window.electronAPI.createSession(wd, shellOnly ? false : true, profileId, shellOnly),
+          wd
+        )
         /* [2026-04-23] 原仅 catch 网络式错误；结构化 ok:false 不会抛，须显式跳过以免误用字段 */
         if (!result.ok) {
           console.warn(`[workspace restore] skipped (${result.error}): ${wd}`)
@@ -430,7 +439,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           createdAt: Date.now(),
           updatedAt: Date.now(),
           ptyPid: result.pid,
-          profileId: result.profileId ?? profileId
+          profileId: result.profileId ?? profileId,
+          shellOnly: shellOnly || undefined
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently

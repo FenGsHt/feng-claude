@@ -14,7 +14,7 @@ export function injectMockElectronAPI(): void {
     ;(window as any).electronAPI = {
       readClipboardTextSync: () => '',
       writeClipboardText: (_text: string) => {},
-      createSession: async (workdir: string, _resume?: boolean, profileId?: string) => ({
+      createSession: async (workdir: string, _resume?: boolean, profileId?: string, _shellOnly?: boolean) => ({
         ok: true as const,
         sessionId: 'mock-session-' + Math.random().toString(36).slice(2),
         pid: 0,

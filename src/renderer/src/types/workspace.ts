@@ -21,6 +21,8 @@ export interface PersistedWorkspace {
   sessionWorkdirs: string[]
   /** [2026-04-28] 每个 sessionWorkdir 对应的 profileId（可选，缺失则用全局 active） */
   profileIds?: string[]
+  /** [2026-05-06] 每个 slot 是否为纯 Shell 会话（不启动 Claude Code） */
+  shellOnlySlots?: boolean[]
   layoutRoot: PersistedPaneNode | null
   /** 上次激活的会话在 sessionWorkdirs 中的下标 */
   activeSlotIndex: number

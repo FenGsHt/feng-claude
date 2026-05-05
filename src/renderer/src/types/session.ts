@@ -32,6 +32,8 @@ export interface Session {
   ptyPid?: number
   /** [2026-04-28] 该 session 使用的 API profile ID（null 表示使用全局激活的 profile）*/
   profileId?: string | null
+  /** [2026-05-06] 纯 Shell 会话：不自动启动 Claude Code */
+  shellOnly?: boolean
 }
 
 export interface HistoryRecord {

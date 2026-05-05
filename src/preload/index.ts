@@ -18,8 +18,8 @@ const electronAPI = {
   },
 
   // Session
-  createSession: (workdir: string, resume?: boolean, profileId?: string): Promise<SessionCreateResult> =>
-    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId }),
+  createSession: (workdir: string, resume?: boolean, profileId?: string, shellOnly?: boolean): Promise<SessionCreateResult> =>
+    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId, shellOnly }),
 
   closeSession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC.SESSION_CLOSE, { sessionId }),

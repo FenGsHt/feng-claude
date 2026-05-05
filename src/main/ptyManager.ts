@@ -227,7 +227,8 @@ export class PtyManager {
     workdir: string,
     profile: ApiProfile,
     settings?: ClaudeSettings,
-    resume?: boolean
+    resume?: boolean,
+    shellOnly?: boolean
   ): { pid: number } {
     const s = settings ?? this.settingsStore.get()
     // [2026-04-30] 代理开启时使用本地代理 URL
@@ -263,11 +264,14 @@ export class PtyManager {
       continueFallbackDone: false
     }
 
-    setTimeout(() => {
-      session.firstAutoLaunchAt = Date.now()
-      ptyProcess.write(claudeLaunchLine(s, isWindows, { continueSession: !!resume }))
-      session.claudeRunning = true
-    }, 300)
+    // [2026-05-06] Shell-only 会话不自动启动 Claude Code，直接保持 shell 状态
+    if (!shellOnly) {
+      setTimeout(() => {
+        session.firstAutoLaunchAt = Date.now()
+        ptyProcess.write(claudeLaunchLine(s, isWindows, { continueSession: !!resume }))
+        session.claudeRunning = true
+      }, 300)
+    }
 
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return

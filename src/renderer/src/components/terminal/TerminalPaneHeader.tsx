@@ -439,6 +439,13 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
             )
             setSplitMode(null)
           }}
+          onPickShell={(workdir) => {
+            // [2026-05-06] 空控制台：不启动 Claude Code
+            void createSession(workdir, splitMode, sessionId, undefined, undefined, true).catch((e) =>
+              console.warn('[TerminalPaneHeader] 分屏创建空控制台失败', e)
+            )
+            setSplitMode(null)
+          }}
           onPickOther={async () => {
             const dir = await window.electronAPI.openDirDialog()
             if (dir) {

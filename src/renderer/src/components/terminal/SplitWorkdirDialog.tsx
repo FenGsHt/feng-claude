@@ -8,6 +8,8 @@ interface Props {
   mode: CreateSessionMode
   currentWorkdir?: string
   onPick: (workdir: string) => void
+  /** "空控制台"按钮：在指定目录打开纯 Shell，不启动 Claude Code */
+  onPickShell: (workdir: string) => void
   onPickOther: () => void
   onClose: () => void
 }
@@ -19,6 +21,7 @@ export function SplitWorkdirDialog({
   mode,
   currentWorkdir,
   onPick,
+  onPickShell,
   onPickOther,
   onClose
 }: Props): React.ReactElement | null {
@@ -60,7 +63,7 @@ export function SplitWorkdirDialog({
           {currentWorkdir && (
             <button
               type="button"
-              onClick={() => onPick(currentWorkdir)}
+              onClick={() => onPickShell(currentWorkdir)}
               className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-claude-border/40 border-b border-claude-border/30"
             >
               <span className="text-amber-400/80 text-sm leading-none">▸</span>

@@ -44,12 +44,16 @@ export function workspaceToPersisted(
 
   // [2026-04-28] Collect profileIds for each session (keep all, including nulls)
   const profileIds = sessions.map((s) => s.profileId)
+  // [2026-05-06] Persist shellOnly flag
+  const shellOnlySlots = sessions.map((s) => !!s.shellOnly)
 
   return {
     version: WORKSPACE_VERSION,
     sessionWorkdirs: sessions.map((s) => s.workdir),
     // Only include profileIds if at least one is set
     profileIds: profileIds.some((id) => id != null) ? profileIds as string[] : undefined,
+    // Only include shellOnlySlots if at least one session is shell-only
+    shellOnlySlots: shellOnlySlots.some(Boolean) ? shellOnlySlots : undefined,
     layoutRoot: layoutPersisted,
     activeSlotIndex
   }
@@ -97,6 +101,11 @@ export function parsePersistedWorkspace(raw: unknown): PersistedWorkspace | null
   if (o.profileIds !== undefined && Array.isArray(o.profileIds)) {
     if (o.profileIds.some((id) => typeof id !== 'string')) return null
     if (o.profileIds.length !== o.sessionWorkdirs.length) return null
+  }
+  // [2026-05-06] Validate shellOnlySlots if present
+  if (o.shellOnlySlots !== undefined && Array.isArray(o.shellOnlySlots)) {
+    if (o.shellOnlySlots.some((v) => typeof v !== 'boolean')) return null
+    if (o.shellOnlySlots.length !== o.sessionWorkdirs.length) return null
   }
   return o as PersistedWorkspace
 }
