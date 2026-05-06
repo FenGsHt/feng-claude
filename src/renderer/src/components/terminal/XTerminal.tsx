@@ -9,7 +9,7 @@ import { useUserPromptStore } from '../../store/userPromptStore'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
-import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
+import { beginSlashPtyEchoRound, setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
 import { DARK_THEME, FALLOUT_THEME, LIGHT_THEME, useResolvedTheme } from '../../hooks/useTheme'
@@ -136,7 +136,12 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   if (!raw.length) return
   const firstLine = raw.split('\n')[0]?.trimStart() ?? ''
   /* [2026-05-06] 仅斜杠命令需要把 PTY 原文写入转录（/mcp 等）；普通对话仍以 JSONL 为准避免重复 */
-  setEmbedSlashPtyEchoActive(sessionId, firstLine.startsWith('/'))
+  /* [2026-05-06] 每条新斜杠命令先 flush 并重置缓冲，否则多次 /mcp 在同一会话里会把整屏输出重复堆叠 */
+  if (firstLine.startsWith('/')) {
+    beginSlashPtyEchoRound(sessionId)
+  } else {
+    setEmbedSlashPtyEchoActive(sessionId, false)
+  }
   bufferUserInput(sessionId, `${raw}\n`)
   /* [2026-05-06] 原 emitTerminalCommittedLine → notifyTerminalCommittedLine 经 normalize 会丢弃
    * SKIP_TERMINAL_LINES（含整行「claude」）及易误判内容，侧栏历史主标题长期空白 */

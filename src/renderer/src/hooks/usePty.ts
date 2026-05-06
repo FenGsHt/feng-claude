@@ -24,6 +24,7 @@ import {
 // This prevents premature notifications between multi-step tool calls
 const NOTIFY_DEBOUNCE_MS = 30_000
 const lastTokenTime = new Map<string, number>()
+const DEBUG_EMBED_MCP = true
 
 function notifyTaskDone(sessionId: string): void {
   const lastToken = lastTokenTime.get(sessionId)
@@ -60,6 +61,16 @@ export function usePty(): void {
     // ── PTY output: write to terminal ────────────────────────
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
       const { sessionId, data } = payload
+      if (DEBUG_EMBED_MCP && /Manage MCP servers|User MCPs|Built-in MCPs|View tools|Reconnect|Disable/.test(data)) {
+        console.log('[embed-mcp][pty:chunk]', {
+          sessionId,
+          len: data.length,
+          hasCr: data.includes('\r'),
+          hasLf: data.includes('\n'),
+          hasAltEnter: /\x1b\[\?(1049|1047)h/.test(data),
+          hasAltExit: /\x1b\[\?(1049|1047)l/.test(data)
+        })
+      }
       writeToTerminal(sessionId, data)
       /* [2026-05-06] 原顺序为先 ingestEmbedPtyEcho 再 feedPtyAlternateScreenFromOutput；
        * 导致同一 TCP chunk 末尾的 ?1049h 尚未入账时仍整段写入转录，全屏 TUI 帧污染外嵌区。

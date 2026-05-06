@@ -18,12 +18,14 @@ interface Props {
  * [2026-05-06] 外嵌 Beta 专用：替代 xterm 的键入，输入经 PTY 送给 Claude Code
  * [2026-05-06] `/` 触发命令面板，与 Claude Code 内置命令文档对齐（静态映射 + MCP 说明）
  * [2026-05-06] Enter 发送；Ctrl/Cmd+Enter 换行；Shift+Enter 默认换行（不发送）
+ * [2026-05-06] 命令补全打开时：↑↓ 选择，Tab 填入高亮项；Enter 仍发送全文（原 Enter 只填入导致无法发送）
  */
 export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
   const alternateScreen = usePtyAlternateScreenStore((s) => s.bySession[sessionId] === true)
   const [draft, setDraft] = useState('')
   const [cursor, setCursor] = useState(0)
   const [selectedSlash, setSelectedSlash] = useState(0)
+  const [slashInteractiveMode, setSlashInteractiveMode] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   useEmbedPtyResize(sessionId, true)
@@ -108,6 +110,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     if (!t.trim()) return
     setDraft('')
     setCursor(0)
+    setSlashInteractiveMode(t.trimStart().startsWith('/'))
     submitEmbedSessionInput(sessionId, t)
     requestAnimationFrame(() => taRef.current?.focus())
   }, [alternateScreen, draft, sessionId])
@@ -132,7 +135,83 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     })
   }, [])
 
+  const exitSlashInteraction = useCallback((): void => {
+    /* [2026-05-06] 原只退出前端交互态，Claude Code TUI 仍停在选项状态；退出时同步发送 Esc 给 PTY。 */
+    // setSlashInteractiveMode(false)
+    sendRawPtyInput(sessionId, '\x1b')
+    setSlashInteractiveMode(false)
+    requestAnimationFrame(() => taRef.current?.focus())
+  }, [sessionId])
+
+  const sendPtyControlKey = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      if (!slashInteractiveMode || alternateScreen) return false
+      const win = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
+      const sendRaw = (v: string): void => sendRawPtyInput(sessionId, v)
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault()
+        sendRaw('\x03')
+        return true
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        sendRaw('\x1b[A')
+        return true
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        sendRaw('\x1b[B')
+        return true
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        sendRaw('\x1b[D')
+        return true
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        sendRaw('\x1b[C')
+        return true
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        sendRaw(win ? '\r' : '\n')
+        return true
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        sendRaw('\t')
+        return true
+      }
+      if (e.key === 'Escape') {
+        /* [2026-05-06] 原 Esc 直发 PTY；按反馈改为优先退出交互态，避免用户被锁在直控模式 */
+        // e.preventDefault()
+        // sendRaw('\x1b')
+        /* [2026-05-06] 上版只退前端状态会与 Claude Code 真实 TUI 不同步；改为统一退出函数。 */
+        // setSlashInteractiveMode(false)
+        // requestAnimationFrame(() => taRef.current?.focus())
+        e.preventDefault()
+        exitSlashInteraction()
+        return true
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        sendRaw('\x7f')
+        return true
+      }
+      if (e.key.length === 1 && !e.metaKey && !e.altKey && !e.ctrlKey) {
+        e.preventDefault()
+        sendRaw(e.key)
+        return true
+      }
+      return false
+    },
+    [alternateScreen, exitSlashInteraction, sessionId, slashInteractiveMode]
+  )
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (sendPtyControlKey(e)) return
     if (slashMenuOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -144,7 +223,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
         setSelectedSlash((i) => (i - 1 + slashList.length) % slashList.length)
         return
       }
-      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+      /* [2026-05-06] 原 Enter 只 applySlashItem，用户补全已展开时无法发送；改为 Tab 填入 */
+      if (e.key === 'Tab') {
         e.preventDefault()
         const item = slashList[selectedSlash]
         if (item) applySlashItem(item)
@@ -177,6 +257,14 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
 
     if (e.key === 'Enter') {
       if (e.ctrlKey || e.metaKey) {
+        /* [2026-05-06] 原 Ctrl/Cmd+Enter 永远是换行；斜杠交互态下改为退出直控，避免无法回到普通输入 */
+        // e.preventDefault()
+        // insertNewlineAtCursor()
+        if (slashInteractiveMode) {
+          e.preventDefault()
+          exitSlashInteraction()
+          return
+        }
         e.preventDefault()
         insertNewlineAtCursor()
         return
@@ -184,10 +272,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
       if (e.shiftKey) {
         return
       }
-      if (!slashMenuOpen) {
-        e.preventDefault()
-        send()
-      }
+      e.preventDefault()
+      send()
     }
   }
 
@@ -230,6 +316,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             ref={taRef}
             value={draft}
             disabled={alternateScreen}
+            readOnly={slashInteractiveMode}
             onChange={(e) => {
               setDraft(e.target.value)
               setCursor(e.target.selectionStart ?? 0)
@@ -242,7 +329,9 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             placeholder={
               alternateScreen
                 ? '全屏终端界面进行中，输入已暂停…'
-                : '输入消息… Enter 发送 · Ctrl+Enter 换行 · / 打开命令'
+                : slashInteractiveMode
+                  ? '斜杠命令交互中：↑↓ Enter Tab 与字符键已直通 PTY；Esc / Ctrl+Enter 退出交互'
+                  : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令'
             }
             className={`min-h-[80px] w-full resize-y rounded-xl border border-white/[0.08] bg-[#161618] px-3 py-2.5 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-black/40 placeholder:text-claude-muted/55 focus:border-amber-500/40 focus:outline-none focus:ring-2 focus:ring-amber-500/15 ${
               alternateScreen ? 'cursor-not-allowed opacity-45' : ''
@@ -255,11 +344,22 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
         <button
           type="button"
           onClick={send}
-          disabled={alternateScreen}
+          disabled={alternateScreen || slashInteractiveMode}
           className="shrink-0 rounded-xl border border-amber-500/40 bg-gradient-to-b from-amber-500/25 to-amber-600/15 px-4 py-2.5 text-[11px] font-semibold text-amber-100 shadow-md shadow-amber-950/30 transition hover:from-amber-500/35 hover:to-amber-600/25 disabled:cursor-not-allowed disabled:opacity-40"
         >
           发送
         </button>
+        {slashInteractiveMode ? (
+          <button
+            type="button"
+            onClick={() => {
+              exitSlashInteraction()
+            }}
+            className="shrink-0 rounded-xl border border-emerald-500/35 bg-emerald-900/20 px-3 py-2.5 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-900/30"
+          >
+            退出交互
+          </button>
+        ) : null}
       </div>
       {alternateScreen ? (
         <div className="mx-auto mt-2 max-w-3xl rounded-lg border border-amber-500/30 bg-amber-950/25 px-3 py-2.5">
@@ -311,8 +411,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
         发送 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
         换行 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
         命令面板 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
-        <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Enter</kbd>{' '}
-        填入 · 文件拖入上方可插入 @ 路径
+        <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Tab</kbd>{' '}
+        填入 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
       </p>
     </div>
   )

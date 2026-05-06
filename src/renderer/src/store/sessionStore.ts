@@ -42,6 +42,12 @@ function normalizeCommittedTerminalLine(raw: string): string | null {
   return capped
 }
 
+/** [2026-05-06] 与侧栏 / restoreFromHistory 的 norm 对齐，避免同一目录因尾部 \\ 产生两条 history */
+function workdirToHistoryId(workdir: string): string {
+  const norm = workdir.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  return `wd:${norm}`
+}
+
 /** [2026-05-06] 外嵌输入框提交的原文：不做 SKIP_TERMINAL_LINES，否则侧栏 lastUserPrompt 常被清空 */
 function sanitizeEmbedPromptForHistory(raw: string): string | null {
   let s = raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
@@ -115,7 +121,9 @@ async function upsertWorkdirHistory(
   session: Pick<Session, 'title' | 'workdir'>,
   opts?: { lastUserPrompt?: string }
 ): Promise<void> {
-  const hid = `wd:${session.workdir.replace(/\\/g, '/').toLowerCase()}`
+  /* [2026-05-06] 原 hid 未去尾部 /，与 norm(session.workdir) 不一致时同一目录会分裂两条记录，lastUserPrompt 写在「另一条」上看起来像丢失 */
+  // const hid = `wd:${session.workdir.replace(/\\/g, '/').toLowerCase()}`
+  const hid = workdirToHistoryId(session.workdir)
   const prev = await window.electronAPI.history.get(hid)
   const now = Date.now()
   await window.electronAPI.history.save({

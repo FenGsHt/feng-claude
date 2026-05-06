@@ -35,7 +35,15 @@ export class HistoryStore {
     const history = store.get('history', [])
     const existing = history.findIndex((r) => r.id === sanitized.id)
     if (existing >= 0) {
-      history[existing] = sanitized
+      /* [2026-05-06] 原直接赋值 sanitized：与 upsertWorkdirHistory 并发时后者读到的 prev 不含刚写入的
+       * lastUserPrompt，合并字段会把磁盘上的有效 lastUserPrompt 覆盖成 undefined（侧栏主标题长期空白）。 */
+      // history[existing] = sanitized
+      const ex = history[existing]
+      history[existing] = {
+        ...ex,
+        ...sanitized,
+        lastUserPrompt: sanitized.lastUserPrompt ?? ex.lastUserPrompt
+      }
     } else {
       history.unshift(sanitized)
     }

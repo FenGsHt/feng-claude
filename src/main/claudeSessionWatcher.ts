@@ -623,8 +623,15 @@ function readFullTranscriptEntriesFromDisk(
 /** [2026-05-06] Claude Code user 行：content 可为字符串，或块数组（text / tool_use.input 等） */
 function extractUserMessageText(msg: Record<string, unknown> | undefined): string {
   if (!msg) return ''
+  /* [2026-05-06] 原忽略顶层 text / object-shaped content；CC 新版 JSONL 常见二者之一即可表达用户句 */
+  if (typeof msg.text === 'string' && msg.text.trim()) return msg.text.trim()
   const content = msg.content
   if (typeof content === 'string') return content.trim()
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    const o = content as Record<string, unknown>
+    if (typeof o.text === 'string' && o.text.trim()) return o.text.trim()
+    return ''
+  }
   if (!Array.isArray(content)) return ''
   const parts: string[] = []
   for (const c of content) {

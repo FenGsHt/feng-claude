@@ -130,7 +130,7 @@ function EntryBlock({ e }: { e: ClaudeTranscriptEntry }): React.ReactElement {
           <span className="font-mono text-[11px] normal-case tracking-normal text-emerald-300/80">/</span>
           终端输出（外嵌）
         </div>
-        <pre className="max-h-[min(280px,32vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-black/35 px-2 py-2 font-mono text-[10px] leading-[1.55] text-emerald-50/85 [scrollbar-width:thin]">
+        <pre className="max-h-[min(420px,52vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-black/35 px-2 py-2 font-mono text-[10px] leading-[1.55] text-emerald-50/85 [scrollbar-width:thin]">
           {e.text}
         </pre>
       </div>
