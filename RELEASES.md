@@ -5,6 +5,28 @@
 
 ---
 
+## v0.6.7 (2026-05-06)
+
+### 新功能 | New Features
+
+#### 持久化 Shell 会话 | Persistent Shell Sessions
+- 空控制台现在通过后台守护进程保持运行，关闭 app 后 PTY 继续存活
+- Shell-only consoles now survive Electron restarts via a detached background daemon
+- 重启 app 后自动重连，恢复 lazygit、htop 等 TUI 程序的完整状态（含历史输出回放）
+- On reopen, the app reconnects and replays scrollback — lazygit and other TUI programs resume exactly where you left off
+- 跨平台支持：Windows 使用命名管道（Named Pipe），macOS/Linux 使用 Unix Socket
+- Cross-platform: Named Pipe on Windows, Unix Socket on macOS/Linux
+- 零依赖，无需安装 tmux / zellij 等外部工具
+- Zero external dependencies — no tmux or zellij required
+
+#### browser-tools MCP 修复 | browser-tools MCP Fix
+- 内嵌浏览器未打开时，CDP 代理（端口 9223）返回空列表导致 MCP 报错
+- CDP proxy (port 9223) returned empty when embedded browser wasn't open, breaking browser-tools MCP
+- 现在首次请求时自动打开浏览器，MCP 可正常使用
+- Browser now auto-opens on first CDP request, MCP works without manual intervention
+
+---
+
 ## v0.6.6 (2026-05-02)
 
 ### 修复 | Bug Fixes

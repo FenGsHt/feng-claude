@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.7] - 2026-05-06
+
+### 新功能 | New Features
+- **持久化 Shell 会话**：空控制台通过后台守护进程（detached PTY daemon）保持运行，重启 app 后自动恢复 lazygit 等 TUI 程序；跨平台（Windows/macOS/Linux），无需安装 tmux 等外部依赖
+- **browser-tools MCP 修复**：内嵌浏览器未打开时 CDP 代理返回空列表，现在首次请求时自动打开浏览器
+
+---
+
 ## [0.6.6] - 2026-05-02
 
 ### 修复 | Bug Fixes
