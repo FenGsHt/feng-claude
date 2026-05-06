@@ -12,7 +12,7 @@ import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
 import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
-import { DARK_THEME, LIGHT_THEME, useResolvedTheme } from '../../hooks/useTheme'
+import { DARK_THEME, FALLOUT_THEME, LIGHT_THEME, useResolvedTheme } from '../../hooks/useTheme'
 
 interface Props {
   sessionId: string
@@ -355,7 +355,12 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   useEffect(() => {
     const entry = terminals.get(sessionId)
     if (entry) {
-      entry.term.options.theme = resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME
+      entry.term.options.theme =
+        resolvedTheme === 'fallout'
+          ? FALLOUT_THEME
+          : resolvedTheme === 'dark'
+            ? DARK_THEME
+            : LIGHT_THEME
     }
   }, [sessionId, resolvedTheme])
 
@@ -372,7 +377,14 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden"
-      style={{ background: resolvedTheme === 'dark' ? DARK_THEME.background : LIGHT_THEME.background }}
+      style={{
+        background:
+          resolvedTheme === 'fallout'
+            ? FALLOUT_THEME.background
+            : resolvedTheme === 'dark'
+              ? DARK_THEME.background
+              : LIGHT_THEME.background
+      }}
       onContextMenu={onContextMenu}
     />
   )

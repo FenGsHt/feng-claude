@@ -1,5 +1,7 @@
 /* ── Google Fonts: Inter (UI) — must be first ──────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+/* [2026-05-06] Fallout 变量与 CRT（html[data-theme="fallout"]）；须在自定义规则之前 */
+@import './fallout-port.css';
 
 @tailwind base;
 @tailwind components;

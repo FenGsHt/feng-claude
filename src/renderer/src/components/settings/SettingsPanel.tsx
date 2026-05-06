@@ -220,16 +220,17 @@ export function SettingsPanel(): React.ReactElement {
         <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
           {lang === 'zh' ? '主题模式' : 'Theme'}
         </span>
-        <div className="flex rounded overflow-hidden border border-claude-border text-[10px] mt-1">
+        <div className="grid grid-cols-2 rounded overflow-hidden border border-claude-border text-[10px] mt-1 gap-px bg-claude-border">
           {([
             ['dark', lang === 'zh' ? '暗色' : 'Dark'],
             ['light', lang === 'zh' ? '亮色' : 'Light'],
             ['auto', lang === 'zh' ? '自动' : 'Auto'],
+            ['fallout', lang === 'zh' ? 'Fallout' : 'Fallout'],
           ] as [ThemeMode, string][]).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setTheme(key)}
-              className={`flex-1 px-2 py-0.5 transition-colors ${
+              className={`px-2 py-0.5 transition-colors bg-claude-bg ${
                 theme === key
                   ? 'bg-amber-500 text-black font-medium'
                   : 'text-claude-muted hover:text-claude-text'

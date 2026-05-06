@@ -26,6 +26,31 @@ export const DARK_THEME = {
   brightWhite: '#ffffff'
 }
 
+/** [2026-05-06] ANSI 终端：indeed Fallout 磷光绿（与 fallout-port.css 一致） */
+export const FALLOUT_THEME = {
+  background: '#020502',
+  foreground: '#2aff4d',
+  cursor: '#aaff44',
+  cursorAccent: '#020502',
+  selectionBackground: 'rgba(42, 255, 77, 0.28)',
+  black: '#041004',
+  brightBlack: '#1baa30',
+  red: '#f87171',
+  brightRed: '#fca5a5',
+  green: '#2aff4d',
+  brightGreen: '#aaff44',
+  yellow: '#88ee22',
+  brightYellow: '#c8ff66',
+  blue: '#38f099',
+  brightBlue: '#7dffcf',
+  magenta: '#2aff4d',
+  brightMagenta: '#c8ff9a',
+  cyan: '#39ffc7',
+  brightCyan: '#9dffec',
+  white: '#c8ffc8',
+  brightWhite: '#e8ffe8'
+}
+
 /** ANSI 终端配色：明亮模式 */
 export const LIGHT_THEME = {
   background: '#f0f0f0',
@@ -56,7 +81,7 @@ export const LIGHT_THEME = {
  * Returns 'dark' or 'light' — never 'auto'.
  * Also hydrates the theme store on first mount.
  */
-export function useResolvedTheme(): 'dark' | 'light' {
+export function useResolvedTheme(): 'dark' | 'light' | 'fallout' {
   const theme = useThemeStore((s) => s.theme)
   const hydrate = useThemeStore((s) => s.hydrate)
 
@@ -66,6 +91,7 @@ export function useResolvedTheme(): 'dark' | 'light' {
   }, [])
 
   return useMemo(() => {
+    if (theme === 'fallout') return 'fallout'
     if (theme === 'dark') return 'dark'
     if (theme === 'light') return 'light'
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -92,10 +118,14 @@ export function useTheme(): void {
   useEffect(() => {
     const root = document.documentElement
 
-    const applyTheme = (resolved: 'dark' | 'light') => {
+    const applyTheme = (resolved: 'dark' | 'light' | 'fallout') => {
       root.setAttribute('data-theme', resolved)
     }
 
+    if (theme === 'fallout') {
+      applyTheme('fallout')
+      return
+    }
     if (theme === 'dark') {
       applyTheme('dark')
     } else if (theme === 'light') {

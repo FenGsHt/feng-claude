@@ -91,7 +91,8 @@ export interface ApiProfile {
   fallbackSubagentModel?: string
 }
 
-export type ThemeMode = 'dark' | 'light' | 'auto'
+/** [2026-05-06] fallout：indeed-flow-git RobCo 磷光绿（见 styles/FALLOUT_THEME_REFERENCE.md） */
+export type ThemeMode = 'dark' | 'light' | 'auto' | 'fallout'
 
 export interface ClaudeSettings {
   language: AppLanguage

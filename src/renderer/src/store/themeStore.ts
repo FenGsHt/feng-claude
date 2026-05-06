@@ -18,7 +18,7 @@ export const useThemeStore = create<ThemeStore>()((set, get) => ({
     try {
       const settings = await window.electronAPI.settings.get()
       const saved = settings?.theme as ThemeMode | undefined
-      if (saved === 'dark' || saved === 'light' || saved === 'auto') {
+      if (saved === 'dark' || saved === 'light' || saved === 'auto' || saved === 'fallout') {
         set({ theme: saved, _hydrated: true })
       } else {
         set({ _hydrated: true })
