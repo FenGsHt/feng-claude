@@ -131,6 +131,13 @@ export interface ClaudeSettings {
   enableApiProxy?: boolean
   /** [2026-05-01] 任务完成时发送系统通知 */
   enableNotifications?: boolean
+  /** [2026-05-06] 终端配置 */
+  terminal?: {
+    /** 自定义 Shell 路径（空 = 平台默认：Windows cmd.exe / Unix $SHELL） */
+    shell?: string
+    /** 空控制台会话用 tmux 包裹，实现关闭后再打开可恢复 */
+    useTmux?: boolean
+  }
   /** [2026-05-02] 语音识别配置 */
   speech?: {
     /** 是否在工具栏显示麦克风按钮（默认隐藏） */

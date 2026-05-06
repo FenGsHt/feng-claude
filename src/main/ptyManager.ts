@@ -1,8 +1,10 @@
 import * as pty from 'node-pty'
 import { createHash } from 'crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync } from 'fs'
+import { spawnSync, spawn as spawnProc } from 'child_process'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, unlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
+import * as net from 'net'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
@@ -195,21 +197,93 @@ function claudeLaunchLine(
 
 interface PtySession {
   id: string
-  ptyProcess: pty.IPty
+  ptyProcess?: pty.IPty     // undefined for daemon sessions
   workdir: string
   claudeRunning: boolean
   buffer: string
-  /** Prevents scheduling multiple re-launches if shell prompt appears in rapid succession */
   relaunchPending: boolean
-  /** 首次自动写入 claude 的时刻（ms）；用于宽限期内忽略壳提示符误检 */
   firstAutoLaunchAt: number
-  /** Rolling buffer of raw PTY output for scrollback persistence */
   scrollbackChunks: Buffer[]
   scrollbackSize: number
-  /** Whether this session was started with --continue (so we can fall back on failure) */
   usedContinue: boolean
-  /** Guard: only fall back from --continue once */
   continueFallbackDone: boolean
+  /** [2026-05-06] daemon mode: socket connection instead of direct PTY */
+  daemonSocket?: net.Socket
+  daemonStatePath?: string
+}
+
+// ── Daemon helpers ────────────────────────────────────────────────────
+
+function daemonDir(): string {
+  return join(getConfigDir(), 'pty-daemons')
+}
+
+function daemonStatePath(workdir: string): string {
+  const hash = createHash('md5').update(workdir.replace(/\\/g, '/').toLowerCase()).digest('hex')
+  return join(daemonDir(), `${hash}.json`)
+}
+
+interface DaemonState {
+  pid: number
+  pipe: string
+  shell: string
+  cwd: string
+  startedAt: number
+}
+
+function readDaemonState(statePath: string): DaemonState | null {
+  try {
+    return JSON.parse(readFileSync(statePath, 'utf8')) as DaemonState
+  } catch {
+    return null
+  }
+}
+
+/** Try to connect to an existing daemon socket. Returns socket on success, null otherwise. */
+function tryConnectDaemon(pipePath: string): Promise<net.Socket | null> {
+  return new Promise(resolve => {
+    const socket = new net.Socket()
+    const timer = setTimeout(() => { socket.destroy(); resolve(null) }, 2000)
+    socket.once('connect', () => { clearTimeout(timer); resolve(socket) })
+    socket.once('error', () => { clearTimeout(timer); resolve(null) })
+    socket.connect(pipePath)
+  })
+}
+
+/** Wait for daemon to write its state file after spawning. Polls every 50ms up to 8s. */
+function waitForDaemonState(statePath: string): Promise<DaemonState | null> {
+  return new Promise(resolve => {
+    const deadline = Date.now() + 8000
+    const check = (): void => {
+      const state = readDaemonState(statePath)
+      if (state?.pid && state?.pipe) { resolve(state); return }
+      if (Date.now() > deadline) { resolve(null); return }
+      setTimeout(check, 50)
+    }
+    setTimeout(check, 50)
+  })
+}
+
+/** Resolve and copy pty-daemon.js to userData so the subprocess can execute it. */
+function resolveDaemonScript(): string | null {
+  const dest = join(app.getPath('userData'), 'pty-daemon.js')
+  const candidates = [
+    join(app.getAppPath(), 'scripts', 'pty-daemon.js'),
+    join(process.cwd(), 'scripts', 'pty-daemon.js'),
+    join(__dirname, '..', '..', 'scripts', 'pty-daemon.js')
+  ]
+  const src = candidates.find(p => existsSync(p))
+  if (!src) {
+    console.warn('[pty-daemon] script not found. Tried:', candidates)
+    return null
+  }
+  try {
+    writeFileSync(dest, readFileSync(src, 'utf8'), 'utf8')
+    return dest
+  } catch (e) {
+    console.warn('[pty-daemon] failed to copy script:', e)
+    return null
+  }
 }
 
 export class PtyManager {
@@ -222,28 +296,35 @@ export class PtyManager {
     this.settingsStore = settingsStore
   }
 
-  createSession(
+  async createSession(
     sessionId: string,
     workdir: string,
     profile: ApiProfile,
     settings?: ClaudeSettings,
     resume?: boolean,
     shellOnly?: boolean
-  ): { pid: number } {
+  ): Promise<{ pid: number }> {
     const s = settings ?? this.settingsStore.get()
     // [2026-04-30] 代理开启时使用本地代理 URL
     const proxyUrl = s.enableApiProxy ? `http://127.0.0.1:${getProxyPort()}` : undefined
     const claudeEnv = this.settingsStore.profileToEnvWithProxy(profile, proxyUrl)
 
     const isWindows = process.platform === 'win32'
-    const shell = isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash')
+    const customShell = s.terminal?.shell?.trim()
+    const shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash'))
+    const ptyEnv = buildPtyEnv(claudeEnv)
+
+    // [2026-05-06] Daemon mode: shell survives Electron restart on all platforms
+    if (shellOnly && s.terminal?.useTmux) {
+      return this.createDaemonSession(sessionId, workdir, shell, ptyEnv)
+    }
 
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols: 120,
       rows: 40,
       cwd: workdir,
-      env: buildPtyEnv(claudeEnv)
+      env: ptyEnv
     })
 
     // Auto-launch claude CLI after shell is ready
@@ -271,6 +352,15 @@ export class PtyManager {
         ptyProcess.write(claudeLaunchLine(s, isWindows, { continueSession: !!resume }))
         session.claudeRunning = true
       }, 300)
+    } else if (s.terminal?.useTmux) {
+      // [2026-05-06] tmux 持久化：先确认 tmux 可用，再 attach/新建会话
+      const tmuxAvailable = spawnSync('tmux', ['-V'], { timeout: 2000 }).status === 0
+      if (tmuxAvailable) {
+        const tmuxId = `cg-${createHash('md5').update(workdir.replace(/\\/g, '/').toLowerCase()).digest('hex').slice(0, 12)}`
+        setTimeout(() => {
+          ptyProcess.write(`tmux new-session -A -s ${tmuxId}\r`)
+        }, 300)
+      }
     }
 
     ptyProcess.onData((data: string) => {
@@ -368,22 +458,159 @@ export class PtyManager {
     return { pid: ptyProcess.pid }
   }
 
+  private async createDaemonSession(
+    sessionId: string,
+    workdir: string,
+    shell: string,
+    ptyEnv: Record<string, string>
+  ): Promise<{ pid: number }> {
+    mkdirSync(daemonDir(), { recursive: true })
+    const statePath = daemonStatePath(workdir)
+    const session: PtySession = {
+      id: sessionId,
+      workdir,
+      claudeRunning: false,
+      buffer: '',
+      relaunchPending: false,
+      firstAutoLaunchAt: 0,
+      scrollbackChunks: [],
+      scrollbackSize: 0,
+      usedContinue: false,
+      continueFallbackDone: false,
+      daemonStatePath: statePath
+    }
+    this.sessions.set(sessionId, session)
+
+    // Try to reconnect to an existing daemon
+    const existing = readDaemonState(statePath)
+    if (existing?.pipe) {
+      const socket = await tryConnectDaemon(existing.pipe)
+      if (socket) {
+        this.routeDaemonSocket(sessionId, session, socket)
+        return { pid: existing.pid }
+      }
+    }
+
+    // No running daemon — spawn a new one
+    const scriptPath = resolveDaemonScript()
+    if (!scriptPath) {
+      this.sessions.delete(sessionId)
+      throw new Error('[pty-daemon] Script not found; cannot create persistent session')
+    }
+
+    // Remove stale state file before spawning
+    try { unlinkSync(statePath) } catch { /* ignore */ }
+
+    // Compute the exact node-pty path so the daemon can load it regardless of __dirname
+    const nodePtyPath = app.isPackaged
+      ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty')
+      : join(app.getAppPath(), 'node_modules', 'node-pty')
+
+    const electronExe = process.execPath
+    const daemonHash = createHash('md5').update(workdir.replace(/\\/g, '/').toLowerCase()).digest('hex').slice(0, 12)
+    const child = spawnProc(electronExe, [scriptPath,
+      '--id', daemonHash,
+      '--shell', shell,
+      '--cwd', workdir,
+      '--cols', '120',
+      '--rows', '40',
+      '--state-file', statePath,
+      '--resources-path', process.resourcesPath ?? '',
+      '--node-pty-path', nodePtyPath
+    ], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...ptyEnv, ELECTRON_RUN_AS_NODE: '1' }
+    })
+    child.unref()
+
+    const state = await waitForDaemonState(statePath)
+    if (!state) {
+      this.sessions.delete(sessionId)
+      throw new Error('[pty-daemon] Timed out waiting for daemon to start')
+    }
+
+    const socket = await tryConnectDaemon(state.pipe)
+    if (!socket) {
+      this.sessions.delete(sessionId)
+      throw new Error('[pty-daemon] Daemon started but could not connect to pipe')
+    }
+
+    this.routeDaemonSocket(sessionId, session, socket)
+    return { pid: state.pid }
+  }
+
+  private routeDaemonSocket(sessionId: string, session: PtySession, socket: net.Socket): void {
+    session.daemonSocket = socket
+    let lineBuf = ''
+
+    socket.on('data', (chunk: Buffer) => {
+      if (this.win.isDestroyed()) return
+      lineBuf += chunk.toString('utf8')
+      const lines = lineBuf.split('\n')
+      lineBuf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const msg = JSON.parse(line) as { t: string; d?: string; code?: number; c?: number; r?: number }
+          if (msg.t === 's' && msg.d) {
+            // Initial scrollback replay — decode and forward as terminal output
+            const raw = Buffer.from(msg.d, 'base64').toString()
+            this.win.webContents.send(IPC.PTY_OUTPUT, { sessionId, data: raw, timestamp: Date.now() })
+          } else if (msg.t === 'o' && msg.d) {
+            this.win.webContents.send(IPC.PTY_OUTPUT, { sessionId, data: msg.d, timestamp: Date.now() })
+          } else if (msg.t === 'x') {
+            if (!this.win.isDestroyed()) {
+              this.win.webContents.send(IPC.PTY_STATUS, { sessionId, status: 'exited', exitCode: msg.code ?? 0 })
+            }
+            this.sessions.delete(sessionId)
+          }
+        } catch { /* bad JSON */ }
+      }
+    })
+
+    socket.on('close', () => {
+      const still = this.sessions.get(sessionId)
+      if (still && still.daemonSocket === socket) {
+        if (!this.win.isDestroyed()) {
+          this.win.webContents.send(IPC.PTY_STATUS, { sessionId, status: 'error', exitCode: -1 })
+        }
+        this.sessions.delete(sessionId)
+      }
+    })
+
+    socket.on('error', () => { try { socket.destroy() } catch { /* ignore */ } })
+  }
+
   sendInput(sessionId: string, data: string): void {
-    this.sessions.get(sessionId)?.ptyProcess.write(data)
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    if (session.daemonSocket) {
+      session.daemonSocket.write(JSON.stringify({ t: 'i', d: data }) + '\n')
+    } else {
+      session.ptyProcess?.write(data)
+    }
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
-    this.sessions.get(sessionId)?.ptyProcess.resize(cols, rows)
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    if (session.daemonSocket) {
+      session.daemonSocket.write(JSON.stringify({ t: 'r', c: cols, r: rows }) + '\n')
+    } else {
+      session.ptyProcess?.resize(cols, rows)
+    }
   }
 
   closeSession(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session) {
-      this.flushScrollback(session)
-      try {
-        session.ptyProcess.kill()
-      } catch {
-        // already dead
+      if (session.daemonSocket) {
+        // Daemon sessions: disconnect but leave daemon running
+        try { session.daemonSocket.destroy() } catch { /* ignore */ }
+      } else {
+        this.flushScrollback(session)
+        try { session.ptyProcess?.kill() } catch { /* already dead */ }
       }
       this.sessions.delete(sessionId)
     }

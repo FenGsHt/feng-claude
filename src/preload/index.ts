@@ -72,6 +72,9 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.SETTINGS_SET, s)
   },
 
+  detectShells: (): Promise<import('../renderer/src/types/ipc').ShellDetectResult> =>
+    ipcRenderer.invoke(IPC.SHELL_DETECT),
+
   onSettingsChanged: (callback: () => void): (() => void) => {
     const handler = (): void => callback()
     ipcRenderer.on(IPC.SETTINGS_CHANGED, handler)

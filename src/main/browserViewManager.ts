@@ -464,18 +464,21 @@ export function startCdpProxy(): void {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Content-Type', 'application/json')
 
-    const wc = state.view?.webContents
-    const currentUrl = wc?.getURL() ?? 'about:blank'
-    const title = wc?.getTitle() ?? 'Embedded Browser'
+    let wc = state.view?.webContents ?? null
 
     if (path === '/json' || path === '/json/list') {
+      // [2026-05-06] CDP 客户端查询时自动打开内嵌浏览器，避免正式版首次连接返回空列表
+      if (!wc && state.mainWin) {
+        showBrowserView(state.mainWin)
+        wc = state.view?.webContents ?? null
+      }
       const targets = wc ? [{
         description: 'Feng Claude Embedded Browser',
         devtoolsFrontendUrl: `chrome-devtools://devtools/bundled/inspector.html?ws=localhost:${CDP_PROXY_PORT}/devtools/page/embedded`,
         id: 'embedded',
-        title,
+        title: wc.getTitle() || 'Embedded Browser',
         type: 'page',
-        url: currentUrl,
+        url: wc.getURL() || 'about:blank',
         webSocketDebuggerUrl: `ws://localhost:${CDP_PROXY_PORT}/devtools/page/embedded`
       }] : []
       res.writeHead(200); res.end(JSON.stringify(targets))
@@ -520,6 +523,8 @@ export function startCdpProxy(): void {
 }
 
 function startCdpSession(ws: WebSocket): void {
+  // [2026-05-06] WebSocket 连接时若浏览器未打开则自动拉起
+  if (!state.view && state.mainWin) showBrowserView(state.mainWin)
   const wc = state.view?.webContents
   if (!wc) { ws.close(); return }
 

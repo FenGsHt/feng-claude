@@ -149,7 +149,12 @@ export const en: Translations = {
     profileDefault: 'Default',
     profileActive: 'Active',
     profileCannotDeleteLast: 'Cannot delete the last profile',
-    profileSwitchHint: 'New sessions will use the switched profile'
+    profileSwitchHint: 'New sessions will use the switched profile',
+    terminalTitle: 'Terminal',
+    terminalShell: 'Custom Shell',
+    terminalShellPlaceholder: 'Leave empty for platform default (Windows: cmd.exe / Unix: $SHELL)',
+    terminalUseTmux: 'Persistent Shell Sessions',
+    terminalUseTmuxDesc: 'Keep shell-only consoles running in the background so reopening the app restores lazygit and other TUI programs (cross-platform, no extra dependencies)'
   },
   guide: {
     searchPlaceholder: 'Search tips...',

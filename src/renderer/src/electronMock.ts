@@ -56,6 +56,14 @@ export function injectMockElectronAPI(): void {
         get: async () => ({ ...DEFAULT_SETTINGS }),
         set: async () => ({ success: true })
       },
+      detectShells: async () => ({
+        shells: [
+          { name: 'cmd.exe', path: 'cmd.exe' },
+          { name: 'PowerShell 5', path: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' },
+          { name: 'Git Bash', path: 'C:\\Program Files\\Git\\bin\\bash.exe' },
+        ],
+        tmuxAvailable: false,
+      }),
       profiles: {
         add: async () => ({ success: true }),
         update: async () => ({ success: true }),

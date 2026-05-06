@@ -156,7 +156,12 @@ export const zh = {
     profileDefault: '默认',
     profileActive: '当前使用',
     profileCannotDeleteLast: '无法删除最后一个配置',
-    profileSwitchHint: '切换配置后，新创建的会话将使用新配置'
+    profileSwitchHint: '切换配置后，新创建的会话将使用新配置',
+    terminalTitle: '终端',
+    terminalShell: '自定义 Shell',
+    terminalShellPlaceholder: '留空使用平台默认（Windows: cmd.exe / Unix: $SHELL）',
+    terminalUseTmux: '持久化 Shell 会话',
+    terminalUseTmuxDesc: '空控制台在后台保持运行，重启 app 后自动恢复 lazygit 等 TUI 程序（跨平台，无需额外依赖）'
   },
   // Guide panel
   guide: {

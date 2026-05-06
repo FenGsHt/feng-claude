@@ -110,7 +110,20 @@ export const IPC = {
   TEST_OUTPUT: 'test:output',
   TEST_STATUS: 'test:status',
   TEST_CANCEL: 'test:cancel',
+
+  /** [2026-05-06] 检测本机可用 shell 列表 */
+  SHELL_DETECT: 'shell:detect',
 } as const
+
+export interface ShellOption {
+  name: string
+  path: string
+}
+
+export interface ShellDetectResult {
+  shells: ShellOption[]
+  tmuxAvailable: boolean
+}
 
 export interface SkillEntry {
   name: string

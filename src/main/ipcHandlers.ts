@@ -69,6 +69,36 @@ export function registerIpcHandlers(
     clipboard.writeText(text)
   })
 
+  // ── Shell 检测 [2026-05-06] ────────────────────────────────────
+  ipcMain.handle(IPC.SHELL_DETECT, async () => {
+    const { spawnSync: spSync } = await import('child_process')
+    const isWin = process.platform === 'win32'
+    const shells: { name: string; path: string }[] = []
+    if (isWin) {
+      shells.push({ name: 'cmd.exe', path: 'cmd.exe' })
+      const ps1 = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+      if (existsSync(ps1)) shells.push({ name: 'PowerShell 5', path: ps1 })
+      const pf = process.env['ProgramFiles'] ?? 'C:\\Program Files'
+      const pwsh7 = `${pf}\\PowerShell\\7\\pwsh.exe`
+      if (existsSync(pwsh7)) shells.push({ name: 'PowerShell 7', path: pwsh7 })
+      const gitBash = `${pf}\\Git\\bin\\bash.exe`
+      if (existsSync(gitBash)) shells.push({ name: 'Git Bash', path: gitBash })
+      const pf86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
+      const gitBash86 = `${pf86}\\Git\\bin\\bash.exe`
+      if (!existsSync(gitBash) && existsSync(gitBash86)) shells.push({ name: 'Git Bash', path: gitBash86 })
+      const wsl = 'C:\\Windows\\System32\\wsl.exe'
+      if (existsSync(wsl)) shells.push({ name: 'WSL', path: wsl })
+    } else {
+      const currentShell = process.env.SHELL
+      if (currentShell) shells.push({ name: currentShell.split('/').pop() ?? currentShell, path: currentShell })
+      for (const p of ['/bin/bash', '/bin/zsh', '/usr/bin/fish', '/bin/fish', '/bin/sh']) {
+        if (p !== currentShell && existsSync(p)) shells.push({ name: p.split('/').pop()!, path: p })
+      }
+    }
+    const tmuxAvailable = spSync('tmux', ['-V'], { timeout: 2000 }).status === 0
+    return { shells, tmuxAvailable }
+  })
+
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
   ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {
@@ -155,7 +185,7 @@ export function registerIpcHandlers(
 
       // Read scrollback before creating session (file written by previous session's close)
       const scrollback = ptyManager.readScrollback(workdir)
-      const result = ptyManager.createSession(sessionId, workdir, profile, settings, resume, shellOnly)
+      const result = await ptyManager.createSession(sessionId, workdir, profile, settings, resume, shellOnly)
       // Start watching JSONL for accurate per-session token counting
       sessionWatcher.watchSession(sessionId, workdir)
       // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
