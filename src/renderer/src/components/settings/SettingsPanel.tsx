@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
 import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../../types/settings'
-import type { ShellOption } from '../../types/ipc'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
 import { useThemeStore, type ThemeMode } from '../../store/themeStore'
@@ -27,19 +26,6 @@ export function SettingsPanel(): React.ReactElement {
   // [2026-04-30] 备用配置折叠状态
   const [fallbacksExpanded, setFallbacksExpanded] = useState(true)
 
-  // [2026-05-06] 检测到的 shell 列表（只需加载一次）
-  const [detectedShells, setDetectedShells] = useState<ShellOption[]>([])
-  const [customShell, setCustomShell] = useState(false)
-  useEffect(() => {
-    void window.electronAPI?.detectShells?.().then(r => {
-      if (!r) return
-      setDetectedShells(r.shells)
-    })
-  }, [])
-  useEffect(() => {
-    const cur = form.terminal?.shell?.trim() ?? ''
-    setCustomShell(cur !== '' && !detectedShells.some(s => s.path === cur))
-  }, [form.terminal?.shell, detectedShells])
 
   // [2026-05-03] 麦克风设备列表
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([])
@@ -926,41 +912,6 @@ export function SettingsPanel(): React.ReactElement {
         <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
           {t.settings.terminalTitle}
         </div>
-        <Field label={t.settings.terminalShell}>
-          <select
-            value={customShell ? '__custom__' : (form.terminal?.shell ?? '')}
-            onChange={(e) => {
-              const val = e.target.value
-              if (val === '__custom__') {
-                setCustomShell(true)
-              } else {
-                setCustomShell(false)
-                setForm(prev => ({ ...prev, terminal: { ...prev.terminal, shell: val } }))
-                setSaved(false)
-              }
-            }}
-            className="field-input"
-          >
-            <option value="">{lang === 'zh' ? '平台默认' : 'Platform default'}</option>
-            {detectedShells.map(s => (
-              <option key={s.path} value={s.path}>{s.name}</option>
-            ))}
-            <option value="__custom__">{lang === 'zh' ? '自定义路径...' : 'Custom path...'}</option>
-          </select>
-          {customShell && (
-            <input
-              type="text"
-              value={form.terminal?.shell ?? ''}
-              onChange={(e) => {
-                setForm(prev => ({ ...prev, terminal: { ...prev.terminal, shell: e.target.value } }))
-                setSaved(false)
-              }}
-              placeholder={t.settings.terminalShellPlaceholder}
-              className="field-input font-mono mt-1"
-              autoFocus
-            />
-          )}
-        </Field>
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-xs text-claude-text">{t.settings.terminalUseTmux}</div>
