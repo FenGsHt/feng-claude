@@ -427,7 +427,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           continue
         }
         const resolvedWd = result.workdir ?? wd
-        if (result.scrollback) {
+        // [2026-05-06] Shell-only sessions skip scrollback pre-fill:
+        // tools like lazygit use alternate screen buffer, and the cleanup
+        // sequence (\x1b[?1049l) would switch back to normal screen, leaving
+        // a confusing blank terminal. Also, we can't restore the running process.
+        if (result.scrollback && !shellOnly) {
           preFillTerminal(result.sessionId, result.scrollback)
         }
         sessions.push({
