@@ -49,6 +49,7 @@ export function injectMockElectronAPI(): void {
         get: async () => undefined
       },
       onTokenUsageUpdate: listener,
+      onClaudeTranscriptUpdate: listener,
       onSettingsChanged: listener,
       onSpeechToggle: listener,
       onElementPicked: listener,

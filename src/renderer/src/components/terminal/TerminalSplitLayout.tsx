@@ -6,6 +6,9 @@ import { TERMINAL_PANE_ATTR } from '../../lib/terminalPaneNeighbors'
 import { XTerminal } from './XTerminal'
 import { TerminalDropZone } from './TerminalDropZone'
 import { TerminalPaneHeader } from './TerminalPaneHeader'
+import { ClaudeTranscriptPane } from './ClaudeTranscriptPane'
+import { EmbedSessionComposer } from './EmbedSessionComposer'
+import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 
 interface PaneLeafProps {
   sessionId: string
@@ -19,6 +22,9 @@ export function PaneLeafShell({
   focused,
   setActiveSession
 }: PaneLeafProps): React.ReactElement {
+  /* [2026-05-06] embedClaudeOutputBeta：自建对话区 + 输入框，不再挂载 xterm（PTY 仍后台运行） */
+  const embedBeta = useEmbedClaudeOutputBeta()
+
   return (
     <div
       role="presentation"
@@ -33,9 +39,18 @@ export function PaneLeafShell({
         }`}
         onMouseDown={() => setActiveSession(sessionId)}
       >
-        <TerminalDropZone sessionId={sessionId}>
-          <XTerminal sessionId={sessionId} active={focused} />
-        </TerminalDropZone>
+        {embedBeta ? (
+          <TerminalDropZone sessionId={sessionId}>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <ClaudeTranscriptPane sessionId={sessionId} className="min-h-0 flex-1 border-b border-claude-border" />
+              <EmbedSessionComposer sessionId={sessionId} />
+            </div>
+          </TerminalDropZone>
+        ) : (
+          <TerminalDropZone sessionId={sessionId}>
+            <XTerminal sessionId={sessionId} active={focused} />
+          </TerminalDropZone>
+        )}
       </div>
     </div>
   )

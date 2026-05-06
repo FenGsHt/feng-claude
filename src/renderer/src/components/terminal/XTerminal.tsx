@@ -6,7 +6,12 @@ import 'xterm/css/xterm.css'
 import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
+import { useTranscriptStore } from '../../store/transcriptStore'
+import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
+import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
+import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
+import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
 import { DARK_THEME, LIGHT_THEME, useResolvedTheme } from '../../hooks/useTheme'
 
 interface Props {
@@ -24,7 +29,7 @@ const terminalLineBuffers = new Map<string, string>()
 const userInputBuffers = new Map<string, string[]>()
 
 /** [2026-04-28] 通用的输入缓冲函数：将发送到 PTY 的数据同时缓冲到 userInputBuffers */
-function bufferUserInput(sessionId: string, data: string): void {
+export function bufferUserInput(sessionId: string, data: string): void {
   // 按换行分割，每行单独缓冲
   const lines = data.split(/\r?\n/)
   let buf = userInputBuffers.get(sessionId) ?? []
@@ -119,6 +124,42 @@ export function commitUserPrompt(sessionId: string): void {
   }
   // 清空缓冲
   userInputBuffers.set(sessionId, [])
+}
+
+/**
+ * [2026-05-06] 外嵌 Beta：无 xterm 时通过前端输入框发往 PTY（与 onData 路径一致的缓冲与历史一行）
+ */
+export function submitEmbedSessionInput(sessionId: string, text: string): void {
+  /* [2026-05-06] 备用缓冲区（全屏 TUI）下整行提交不会进入应用逻辑；由检测层阻断避免错乱 */
+  if (isPtyAlternateScreenActive(sessionId)) return
+  const raw = text.replace(/\r\n/g, '\n').trimEnd()
+  if (!raw.length) return
+  const firstLine = raw.split('\n')[0]?.trimStart() ?? ''
+  /* [2026-05-06] 仅斜杠命令需要把 PTY 原文写入转录（/mcp 等）；普通对话仍以 JSONL 为准避免重复 */
+  setEmbedSlashPtyEchoActive(sessionId, firstLine.startsWith('/'))
+  bufferUserInput(sessionId, `${raw}\n`)
+  /* [2026-05-06] 原 emitTerminalCommittedLine → notifyTerminalCommittedLine 经 normalize 会丢弃
+   * SKIP_TERMINAL_LINES（含整行「claude」）及易误判内容，侧栏历史主标题长期空白 */
+  // emitTerminalCommittedLine(sessionId, raw)
+  useSessionStore.getState().recordEmbedLastUserPrompt(sessionId, raw)
+  const win = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
+  const lines = raw.split('\n')
+  const payload =
+    lines.length === 1
+      ? `${lines[0]!}${win ? '\r' : '\n'}`
+      : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
+  window.electronAPI.sendInput(sessionId, payload)
+  /* [2026-05-06] 外嵌输入乐观展示用户消息；JSONL 稍后若重复同一 user 行由 transcriptStore.append 去重 */
+  useTranscriptStore.getState().append(sessionId, [{ kind: 'user', text: raw, clientEcho: true }])
+  useEmbedAwaitingReplyStore.getState().markPending(sessionId)
+  markEmbedUserMessageSent(sessionId)
+}
+
+/**
+ * [2026-05-06] 不经缓冲行提交，直接向 PTY 写入字节（退出 /help 等全屏 TUI：Ctrl+C、Esc、q↵）
+ */
+export function sendRawPtyInput(sessionId: string, data: string): void {
+  window.electronAPI.sendInput(sessionId, data)
 }
 
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {

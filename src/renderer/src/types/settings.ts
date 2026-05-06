@@ -101,6 +101,10 @@ export interface ClaudeSettings {
   /** 开启后侧边栏显示「日志」tab，可查看应用日志并打开 DevTools */
   devMode?: boolean
   /**
+   * [2026-05-06] Beta：用应用内面板展示 Claude Code 会话 JSONL 中的对话摘要（需开启后才解析与推送，不影响默认终端）
+   */
+  embedClaudeOutputBeta?: boolean
+  /**
    * 填项目根路径（内含 `.claude/skills`）。非空时启动 Claude 附加 `--add-dir`，
    * 任意 cwd 会话也会合并该目录下的 skills（见 Claude Code 文档）。
    */
@@ -199,7 +203,8 @@ export const DEFAULT_SETTINGS: ClaudeSettings = {
   sharedSkillAddDir: '',
   skipDangerousModePermissionPrompt: false,
   profiles: [createDefaultProfile('Default', DEFAULT_PROFILE_ID)],
-  activeProfileId: DEFAULT_PROFILE_ID
+  activeProfileId: DEFAULT_PROFILE_ID,
+  embedClaudeOutputBeta: false
 }
 
 /**

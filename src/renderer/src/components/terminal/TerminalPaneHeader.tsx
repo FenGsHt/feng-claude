@@ -8,6 +8,7 @@ import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
+import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 
 interface WorktreeInfo {
   path: string
@@ -76,6 +77,29 @@ function BrowserIcon(): React.ReactElement {
   )
 }
 
+/** [2026-05-06] 切换外嵌 ↔ 经典终端：图标表示点击后将进入的模式 */
+function TerminalClassicIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <rect x="0.75" y="0.75" width="9.5" height="9.5" rx="1" stroke="currentColor" strokeWidth="1" />
+      <path d="M2.5 4.2L3.8 5.5L2.5 6.8" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <line x1="4.5" y1="6.8" x2="7.5" y2="6.8" stroke="currentColor" strokeWidth="0.85" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function TranscriptEmbedIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <rect x="1" y="1.5" width="9" height="6" rx="0.9" stroke="currentColor" strokeWidth="1" />
+      <path d="M2 10h7" stroke="currentColor" strokeWidth="0.85" strokeLinecap="round" />
+      <circle cx="3.3" cy="4.5" r="0.5" fill="currentColor" />
+      <circle cx="5.5" cy="4.5" r="0.5" fill="currentColor" />
+      <circle cx="7.7" cy="4.5" r="0.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 function MicIcon({ active }: { active: boolean }): React.ReactElement {
   return (
     <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
@@ -88,6 +112,7 @@ function MicIcon({ active }: { active: boolean }): React.ReactElement {
 }
 
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
+  const embedClaudeOutputBeta = useEmbedClaudeOutputBeta()
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
   const closeSession = useSessionStore((s) => s.closeSession)
@@ -116,6 +141,19 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     () => getSplitWorkdirCandidates(history, sessions),
     [history, sessions]
   )
+
+  /* [2026-05-06] 顶栏一键切换「外嵌会话」与「原版 Claude Code xterm」（读写 embedClaudeOutputBeta） */
+  const toggleEmbedVersusTerminal = useCallback(async () => {
+    try {
+      const s = await window.electronAPI.settings.get()
+      await window.electronAPI.settings.set({
+        ...s,
+        embedClaudeOutputBeta: !(s.embedClaudeOutputBeta === true)
+      })
+    } catch (e) {
+      console.warn('[TerminalPaneHeader] toggle embed / terminal failed', e)
+    }
+  }, [])
 
   // 检查是否是 git 仓库以及 worktree 状态
   const checkGitStatus = useCallback(async () => {
@@ -348,6 +386,17 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
 
         {/* Action buttons */}
         <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
+          <HeaderBtn
+            title={
+              embedClaudeOutputBeta
+                ? '切换到传统 Claude Code 终端 (xterm)'
+                : '切换到外嵌会话视图 (结构化对话)'
+            }
+            onClick={() => void toggleEmbedVersusTerminal()}
+            accent={embedClaudeOutputBeta}
+          >
+            {embedClaudeOutputBeta ? <TerminalClassicIcon /> : <TranscriptEmbedIcon />}
+          </HeaderBtn>
           {/* 合并提醒 */}
           {showMergeReminder && (
             <HeaderBtn
@@ -478,12 +527,15 @@ function HeaderBtn({
   title,
   danger,
   warning,
+  accent,
   children
 }: {
   onClick: () => void
   title: string
   danger?: boolean
   warning?: boolean
+  /** [2026-05-06] 外嵌 Beta 开启时淡化提示当前为会话视图 */
+  accent?: boolean
   children: React.ReactNode
 }): React.ReactElement {
   return (
@@ -496,7 +548,9 @@ function HeaderBtn({
           ? 'text-red-400 hover:bg-red-600/20 hover:text-red-500'
           : warning
             ? 'text-amber-400 hover:bg-amber-600/20 hover:text-amber-500 animate-pulse'
-            : 'text-claude-muted hover:bg-claude-border/60 hover:text-claude-text'
+            : accent
+              ? 'text-amber-400/95 ring-1 ring-amber-500/35 bg-amber-500/12 hover:bg-amber-500/22 hover:text-amber-300'
+              : 'text-claude-muted hover:bg-claude-border/60 hover:text-claude-text'
       }`}
     >
       {children}

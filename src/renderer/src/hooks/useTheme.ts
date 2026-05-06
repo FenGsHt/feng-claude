@@ -90,7 +90,6 @@ export function useTheme(): void {
   }, [])
 
   useEffect(() => {
-    console.log('[theme] useTheme effect running, theme:', theme)
     const root = document.documentElement
 
     const applyTheme = (resolved: 'dark' | 'light') => {

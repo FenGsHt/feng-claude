@@ -102,6 +102,7 @@ export function registerIpcHandlers(
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
   ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {
+    const prev = settingsStore.get()
     // Merge with defaults to sanitize — unknown/missing keys fall back to safe values
     const merged = { ...DEFAULT_SETTINGS, ...(settings && typeof settings === 'object' ? settings : {}) }
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
@@ -112,6 +113,14 @@ export function registerIpcHandlers(
       startApiProxy()
     } else if (!merged.enableApiProxy && isApiProxyRunning()) {
       stopApiProxy()
+    }
+    /* [2026-05-06] 首次打开外嵌 Beta：把已在跑的会话对应项目 JSONL 全量推到前端 */
+    if (merged.embedClaudeOutputBeta === true && prev.embedClaudeOutputBeta !== true) {
+      try {
+        sessionWatcher.hydrateAllActiveTranscripts()
+      } catch (e) {
+        console.warn('[ipc] hydrateAllActiveTranscripts:', e)
+      }
     }
     broadcastSettingsChanged()
     return { success: true }
@@ -187,7 +196,8 @@ export function registerIpcHandlers(
       const scrollback = ptyManager.readScrollback(workdir)
       const result = await ptyManager.createSession(sessionId, workdir, profile, settings, resume, shellOnly)
       // Start watching JSONL for accurate per-session token counting
-      sessionWatcher.watchSession(sessionId, workdir)
+      const embedBeta = settings.embedClaudeOutputBeta === true
+      sessionWatcher.watchSession(sessionId, workdir, embedBeta ? { scrollbackBase64: scrollback } : undefined)
       // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
       // ensureClaudeHudPluginDefaults()
       scheduleEnsureClaudeHudAfterSession()

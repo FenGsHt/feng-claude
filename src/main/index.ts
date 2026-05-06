@@ -96,7 +96,10 @@ function createWindow(): BrowserWindow {
   const settingsStore = new SettingsStore()
   const workspaceStore = new WorkspaceStore()
   const claudeConfigDir = join(homedir(), '.claude')
-  const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir)
+  /* [2026-05-06] 原: new ClaudeSessionWatcher(win, claudeConfigDir) — 无转录开关；现注入闭包读设置，仅 embedClaudeOutputBeta 为 true 时 JSONL 才推送转录 */
+  const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir, () =>
+    settingsStore.get().embedClaudeOutputBeta === true
+  )
   ptyManager = new PtyManager(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()

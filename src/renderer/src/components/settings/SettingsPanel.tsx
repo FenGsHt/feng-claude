@@ -264,6 +264,31 @@ export function SettingsPanel(): React.ReactElement {
         </p>
       </div>
 
+      {/* [2026-05-06] 外嵌 Beta：会话 JSONL 驱动的应用内摘要面板 */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+            {lang === 'zh' ? '外嵌输出 Beta' : 'Embedded output (Beta)'}
+          </span>
+          <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors"
+            style={{ backgroundColor: form.embedClaudeOutputBeta ? '#f59e0b' : undefined }}>
+            <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+              style={{ transform: form.embedClaudeOutputBeta ? 'translateX(16px)' : 'translateX(0)' }} />
+          </div>
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={!!form.embedClaudeOutputBeta}
+            onChange={(e) => handleChange('embedClaudeOutputBeta' as never, e.target.checked as never)}
+          />
+        </label>
+        <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+          {lang === 'zh'
+            ? '开启后隐藏传统终端，仅用本界面查看会话摘要并发消息（底层仍为 PTY）。关闭则恢复 xterm。'
+            : 'Hides the classic terminal; chat UI + JSONL transcript only (PTY still runs). Off restores xterm.'}
+        </p>
+      </div>
+
       {/* Notification toggle */}
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <label className="flex items-center justify-between cursor-pointer">

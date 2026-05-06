@@ -51,6 +51,8 @@ export const IPC = {
 
   TOKEN_USAGE_UPDATE: 'token-usage:update',
   TOOL_CALL_UPDATE: 'tool-call:update',
+  /** [2026-05-06] Beta：Claude Code 会话 JSONL 解析后的对话条目（仅设置 embedClaudeOutputBeta 时主进程推送） */
+  CLAUDE_TRANSCRIPT_UPDATE: 'claude-transcript:update',
 
   /** 主进程同步读剪贴板文本，供终端 Ctrl+V 注入（避免渲染进程剪贴板 API 失效） */
   CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync',
@@ -250,6 +252,44 @@ export interface ToolCallPayload {
   name: string
   input: Record<string, unknown>
   timestamp: number
+}
+
+/** [2026-05-06] 外嵌 Beta：来自 ~/.claude/projects/.../*.jsonl 的结构化条目 */
+export type ClaudeTranscriptEntryKind =
+  | 'user'
+  | 'assistant'
+  | 'thinking'
+  | 'tool'
+  | 'history'
+  | 'event'
+
+/** 单条 assistant JSONL 上的 `message.usage`（本条回复的 token） */
+export interface ClaudeTurnTokenUsage {
+  input: number
+  output: number
+  cacheCreate: number
+  cacheRead: number
+}
+
+export interface ClaudeTranscriptEntry {
+  kind: ClaudeTranscriptEntryKind
+  text: string
+  messageId?: string
+  /** [2026-05-06] 外嵌输入框乐观追加；JSONL 回落同一用户行时用服务端条目替换 */
+  clientEcho?: boolean
+  /** [2026-05-06] 外嵌模式 PTY 去 ANSI 后的流式块，便于与 JSONL 的 event 区分并合并 */
+  ptyEcho?: boolean
+  /** [2026-05-06] 本段助手内容对应 API 的 usage，展示在气泡底部 */
+  usage?: ClaudeTurnTokenUsage
+  /** [2026-05-06] 外嵌：从用户发送到本条助手首段出现在转录的耗时（ms） */
+  latencyMs?: number
+}
+
+export interface ClaudeTranscriptPayload {
+  sessionId: string
+  entries: ClaudeTranscriptEntry[]
+  /** true = 全量替换（含历史 JSONL 回填），默认 false 为增量追加 */
+  replace?: boolean
 }
 
 export interface PetAskPayload {

@@ -1,0 +1,319 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
+import { registerEmbedDraftInjector } from '../../lib/embedDraftBridge'
+import { sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
+import { usePtyAlternateScreenStore } from '../../store/ptyAlternateScreenStore'
+import {
+  filterSlashCommands,
+  getSlashCompletionAtStart,
+  resolveSlashInsertRange,
+  type ClaudeSlashItem
+} from '../../lib/claudeCodeSlashCommands'
+
+interface Props {
+  sessionId: string
+}
+
+/**
+ * [2026-05-06] 外嵌 Beta 专用：替代 xterm 的键入，输入经 PTY 送给 Claude Code
+ * [2026-05-06] `/` 触发命令面板，与 Claude Code 内置命令文档对齐（静态映射 + MCP 说明）
+ * [2026-05-06] Enter 发送；Ctrl/Cmd+Enter 换行；Shift+Enter 默认换行（不发送）
+ */
+export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
+  const alternateScreen = usePtyAlternateScreenStore((s) => s.bySession[sessionId] === true)
+  const [draft, setDraft] = useState('')
+  const [cursor, setCursor] = useState(0)
+  const [selectedSlash, setSelectedSlash] = useState(0)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  useEmbedPtyResize(sessionId, true)
+
+  /* [2026-05-06] 供 TerminalDropZone 拖入 @路径 / 命令时写入本框，避免仅 sendInput 而界面空白 */
+  useEffect(() => {
+    return registerEmbedDraftInjector(sessionId, (text) => {
+      setDraft((prev) => {
+        const el = taRef.current
+        const start =
+          typeof el?.selectionStart === 'number' ? el.selectionStart : prev.length
+        const end = typeof el?.selectionEnd === 'number' ? el.selectionEnd : prev.length
+        const next = prev.slice(0, start) + text + prev.slice(end)
+        const pos = start + text.length
+        requestAnimationFrame(() => {
+          const ta = taRef.current
+          if (ta) {
+            ta.focus()
+            ta.setSelectionRange(pos, pos)
+          }
+          setCursor(pos)
+        })
+        return next
+      })
+    })
+  }, [sessionId])
+
+  const slashCtx = useMemo(() => getSlashCompletionAtStart(draft, cursor), [draft, cursor])
+
+  const slashList = useMemo(() => {
+    if (!slashCtx) return []
+    return filterSlashCommands(slashCtx.query)
+  }, [slashCtx])
+
+  const slashMenuOpen = Boolean(slashCtx && slashList.length > 0)
+
+  useEffect(() => {
+    setSelectedSlash(0)
+  }, [slashCtx?.query, slashCtx?.end])
+
+  useEffect(() => {
+    setSelectedSlash((s) => (slashList.length === 0 ? 0 : Math.min(s, slashList.length - 1)))
+  }, [slashList.length])
+
+  useEffect(() => {
+    if (!slashMenuOpen || !listRef.current) return
+    const el = listRef.current.children[selectedSlash] as HTMLElement | undefined
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [selectedSlash, slashMenuOpen])
+
+  const syncCursorFromDom = useCallback((): void => {
+    const el = taRef.current
+    if (!el) return
+    setCursor(el.selectionStart ?? 0)
+  }, [])
+
+  const applySlashItem = useCallback(
+    (item: ClaudeSlashItem): void => {
+      const domCur = taRef.current?.selectionStart
+      const curPos = typeof domCur === 'number' ? domCur : cursor
+      const range = resolveSlashInsertRange(draft, curPos)
+      if (!range) return
+      const after = draft.slice(range.end)
+      const next = item.insert + after
+      setDraft(next)
+      const pos = range.start + item.insert.length
+      requestAnimationFrame(() => {
+        const el = taRef.current
+        if (el) {
+          el.focus()
+          el.setSelectionRange(pos, pos)
+          setCursor(pos)
+        }
+      })
+    },
+    [draft, cursor]
+  )
+
+  const send = useCallback((): void => {
+    if (alternateScreen) return
+    const t = draft
+    if (!t.trim()) return
+    setDraft('')
+    setCursor(0)
+    submitEmbedSessionInput(sessionId, t)
+    requestAnimationFrame(() => taRef.current?.focus())
+  }, [alternateScreen, draft, sessionId])
+
+  /** [2026-05-06] Ctrl/Cmd+Enter 在光标处插入换行（Enter 单独用于发送） */
+  const insertNewlineAtCursor = useCallback((): void => {
+    const el = taRef.current
+    if (!el) return
+    const start = el.selectionStart ?? 0
+    const end = el.selectionEnd ?? 0
+    setDraft((prev) => {
+      const next = prev.slice(0, start) + '\n' + prev.slice(end)
+      const pos = start + 1
+      requestAnimationFrame(() => {
+        const t = taRef.current
+        if (t) {
+          t.setSelectionRange(pos, pos)
+          setCursor(pos)
+        }
+      })
+      return next
+    })
+  }, [])
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (slashMenuOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedSlash((i) => (i + 1) % slashList.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedSlash((i) => (i - 1 + slashList.length) % slashList.length)
+        return
+      }
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        const item = slashList[selectedSlash]
+        if (item) applySlashItem(item)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        const ctx = getSlashCompletionAtStart(draft, cursor)
+        if (ctx) {
+          const after = draft.slice(ctx.end)
+          setDraft(after)
+          const pos = 0
+          requestAnimationFrame(() => {
+            const el = taRef.current
+            if (el) {
+              el.setSelectionRange(pos, pos)
+              setCursor(pos)
+            }
+          })
+        }
+        return
+      }
+    }
+
+    /* [2026-05-06] 原：Ctrl/Cmd+Enter 发送；改为 Enter 发送、Ctrl/Cmd+Enter 换行（与常见 IM 一致） */
+    // if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    //   e.preventDefault()
+    //   send()
+    // }
+
+    if (e.key === 'Enter') {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        insertNewlineAtCursor()
+        return
+      }
+      if (e.shiftKey) {
+        return
+      }
+      if (!slashMenuOpen) {
+        e.preventDefault()
+        send()
+      }
+    }
+  }
+
+  return (
+    <div className="shrink-0 border-t border-white/[0.06] bg-gradient-to-t from-black/40 to-[#0c0c0c] px-3 py-3">
+      <div className="mx-auto flex max-w-3xl min-h-0 items-end gap-2.5">
+        <div className="relative min-h-0 flex-1">
+          {slashMenuOpen ? (
+            <ul
+              id="slash-command-list"
+              ref={listRef}
+              role="listbox"
+              className="absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[min(280px,40vh)] overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1d] py-1 shadow-2xl shadow-black/50 ring-1 ring-white/[0.06]"
+            >
+              {slashList.map((item, idx) => (
+                <li key={`${item.matchKey}-${item.insert}-${idx}`}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={idx === selectedSlash}
+                    className={`flex w-full flex-col gap-0.5 px-2.5 py-2 text-left text-[11px] transition-colors ${
+                      idx === selectedSlash
+                        ? 'bg-amber-500/20 text-claude-text'
+                        : 'text-claude-text/90 hover:bg-white/[0.06]'
+                    }`}
+                    onMouseDown={(ev) => {
+                      ev.preventDefault()
+                      applySlashItem(item)
+                    }}
+                    onMouseEnter={() => setSelectedSlash(idx)}
+                  >
+                    <span className="font-mono text-amber-400/95">{item.insert.trimEnd()}</span>
+                    <span className="text-[10px] leading-snug text-claude-muted">{item.description}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <textarea
+            ref={taRef}
+            value={draft}
+            disabled={alternateScreen}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setCursor(e.target.selectionStart ?? 0)
+            }}
+            onSelect={syncCursorFromDom}
+            onClick={syncCursorFromDom}
+            onKeyUp={syncCursorFromDom}
+            onKeyDown={onKeyDown}
+            rows={3}
+            placeholder={
+              alternateScreen
+                ? '全屏终端界面进行中，输入已暂停…'
+                : '输入消息… Enter 发送 · Ctrl+Enter 换行 · / 打开命令'
+            }
+            className={`min-h-[80px] w-full resize-y rounded-xl border border-white/[0.08] bg-[#161618] px-3 py-2.5 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-black/40 placeholder:text-claude-muted/55 focus:border-amber-500/40 focus:outline-none focus:ring-2 focus:ring-amber-500/15 ${
+              alternateScreen ? 'cursor-not-allowed opacity-45' : ''
+            }`}
+            spellCheck={false}
+            aria-expanded={slashMenuOpen}
+            aria-controls={slashMenuOpen ? 'slash-command-list' : undefined}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={send}
+          disabled={alternateScreen}
+          className="shrink-0 rounded-xl border border-amber-500/40 bg-gradient-to-b from-amber-500/25 to-amber-600/15 px-4 py-2.5 text-[11px] font-semibold text-amber-100 shadow-md shadow-amber-950/30 transition hover:from-amber-500/35 hover:to-amber-600/25 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          发送
+        </button>
+      </div>
+      {alternateScreen ? (
+        <div className="mx-auto mt-2 max-w-3xl rounded-lg border border-amber-500/30 bg-amber-950/25 px-3 py-2.5">
+          <p className="text-[10px] leading-relaxed text-amber-100/90">
+            已检测到终端备用缓冲区（全屏 TUI，如 Ink 的{' '}
+            <kbd className="rounded border border-amber-400/30 bg-black/30 px-1 py-px font-mono text-[9px]">
+              /help
+            </kbd>
+            ）。外嵌按行输入与此类界面不兼容，已自动暂停；请用顶栏切换到「经典终端」逐键操作，或点击下方向 PTY 发送常用退出键。退出备用缓冲区后此处会自动恢复。
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              title="发送 Ctrl+C 到 PTY"
+              className="rounded-md border border-amber-400/25 bg-black/20 px-2 py-1 text-[9px] font-medium text-amber-50/95 transition hover:bg-black/35"
+              onClick={() => sendRawPtyInput(sessionId, '\x03')}
+            >
+              Ctrl+C
+            </button>
+            <button
+              type="button"
+              title="发送 Esc 到 PTY"
+              className="rounded-md border border-amber-400/25 bg-black/20 px-2 py-1 text-[9px] font-medium text-amber-50/95 transition hover:bg-black/35"
+              onClick={() => sendRawPtyInput(sessionId, '\x1b')}
+            >
+              Esc
+            </button>
+            <button
+              type="button"
+              title="发送 q 并换行"
+              className="rounded-md border border-amber-400/25 bg-black/20 px-2 py-1 text-[9px] font-medium text-amber-50/95 transition hover:bg-black/35"
+              onClick={() => {
+                const nl =
+                  typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent) ? '\r' : '\n'
+                sendRawPtyInput(sessionId, `q${nl}`)
+              }}
+            >
+              q ↵
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mx-auto mt-2 max-w-3xl text-[9px] leading-relaxed text-claude-muted/70">
+          若程序进入全屏 TUI 的备用缓冲区，下方按行输入会自动暂停直至程序发出退出信号。也可随时用顶栏切到经典终端。
+        </p>
+      )}
+      <p className="mx-auto mt-2 max-w-3xl text-center text-[9px] leading-relaxed text-claude-muted/75">
+        <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
+        发送 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
+        换行 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
+        命令面板 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
+        <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Enter</kbd>{' '}
+        填入 · 文件拖入上方可插入 @ 路径
+      </p>
+    </div>
+  )
+}

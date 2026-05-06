@@ -1,9 +1,16 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
+import { useEmbedOutputBetaStore } from '../store/embedOutputBetaStore'
+import { ingestEmbedPtyEcho } from '../lib/embedPtyTranscriptEcho'
 import { writeToTerminal, commitUserPrompt } from '../components/terminal/XTerminal'
 import { useTokenUsageStore } from '../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../store/globalTokenStore'
 import { useToolCallStore } from '../store/toolCallStore'
+import { enqueueTranscriptTokenDelta, useTranscriptStore } from '../store/transcriptStore'
+import {
+  feedPtyAlternateScreenFromOutput,
+  isPtyAlternateScreenActive
+} from '../store/ptyAlternateScreenStore'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -41,9 +48,31 @@ export function usePty(): void {
   const { updateSessionStatus } = useSessionStore()
 
   useEffect(() => {
+    void window.electronAPI.settings.get().then((s) => {
+      useEmbedOutputBetaStore.getState().setEnabled(s.embedClaudeOutputBeta === true)
+    })
+    const offEmbedSettings = window.electronAPI.onSettingsChanged(() => {
+      void window.electronAPI.settings.get().then((s) => {
+        useEmbedOutputBetaStore.getState().setEnabled(s.embedClaudeOutputBeta === true)
+      })
+    })
+
     // ── PTY output: write to terminal ────────────────────────
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
-      writeToTerminal(payload.sessionId, payload.data)
+      const { sessionId, data } = payload
+      writeToTerminal(sessionId, data)
+      /* [2026-05-06] 原顺序为先 ingestEmbedPtyEcho 再 feedPtyAlternateScreenFromOutput；
+       * 导致同一 TCP chunk 末尾的 ?1049h 尚未入账时仍整段写入转录，全屏 TUI 帧污染外嵌区。
+       * 改为先 feed 更新备用屏，再按状态决定是否 ingest（备用屏内丢弃除「进入前的包内前缀」外的字节）。 */
+      feedPtyAlternateScreenFromOutput(sessionId, data)
+      /* [2026-05-06] 全屏 TUI（如 /help）在备用屏阶段的重绘经 stripAnsi 仍会污染外嵌列表；备用屏激活时跳过，
+       * 仅保留进入全屏前同包内的前缀文本；退出 ?1049l 后的主屏输出照常 ingest */
+      if (isPtyAlternateScreenActive(sessionId)) {
+        const enterAlt = data.search(/\x1b\[\?(1049|1047)h/)
+        if (enterAlt > 0) ingestEmbedPtyEcho(sessionId, data.slice(0, enterAlt))
+      } else {
+        ingestEmbedPtyEcho(sessionId, data)
+      }
     })
 
     // ── PTY status changes ────────────────────────────────────
@@ -72,6 +101,17 @@ export function usePty(): void {
       // on new conversation). This keeps it consistent with the global "today"
       // widget: for a single pane, pane total == today total.
       useTokenUsageStore.getState().ingest(sessionId, input, output, 'add', { cacheCreate, cacheRead })
+
+      const cc = cacheCreate ?? 0
+      const cr = cacheRead ?? 0
+      if (input + output + cc + cr > 0) {
+        enqueueTranscriptTokenDelta(sessionId, {
+          input,
+          output,
+          cacheCreate: cc,
+          cacheRead: cr
+        })
+      }
 
       // [2026-04-28] Get profileId for this session to track per-profile usage
       const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
@@ -102,11 +142,23 @@ export function usePty(): void {
       })
     })
 
+    /* [2026-05-06] replace=true 为历史全量；否则为 JSONL 增量 */
+    const unsubTranscript = window.electronAPI.onClaudeTranscriptUpdate((payload) => {
+      const { sessionId, entries, replace } = payload
+      if (replace === true) {
+        useTranscriptStore.getState().replaceSession(sessionId, entries)
+      } else if (entries.length > 0) {
+        useTranscriptStore.getState().append(sessionId, entries)
+      }
+    })
+
     return () => {
+      offEmbedSettings()
       unsubOutput()
       unsubStatus()
       unsubTokens()
       unsubTools()
+      unsubTranscript()
     }
   }, [updateSessionStatus])
 }

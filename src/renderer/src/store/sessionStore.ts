@@ -7,7 +7,13 @@ import {
   replaceLeafWithSplit
 } from '../lib/paneLayout'
 import { destroyTerminal, focusTerminal, preFillTerminal } from '../components/terminal/XTerminal'
+import { useEmbedAwaitingReplyStore } from './embedAwaitingReplyStore'
+import { clearEmbedTurnLatency } from './embedTurnLatencyStore'
+import { clearEmbedPtyEchoBuffer } from '../lib/embedPtyTranscriptEcho'
+import { clearPtyAlternateScreenSession } from './ptyAlternateScreenStore'
+import { useTranscriptStore } from './transcriptStore'
 import { useTokenUsageStore } from './tokenUsageStore'
+import { useToolCallStore } from './toolCallStore'
 import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeTokenUsageParse'
 import type { PersistedWorkspace } from '../types/workspace'
 import { persistedPaneToLive, persistedSlotsValid } from '../lib/workspaceSerialize'
@@ -34,6 +40,17 @@ function normalizeCommittedTerminalLine(raw: string): string | null {
   const lower = capped.toLowerCase()
   if (SKIP_TERMINAL_LINES.has(lower)) return null
   return capped
+}
+
+/** [2026-05-06] 外嵌输入框提交的原文：不做 SKIP_TERMINAL_LINES，否则侧栏 lastUserPrompt 常被清空 */
+function sanitizeEmbedPromptForHistory(raw: string): string | null {
+  let s = raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+  s = s.replace(/\x1b[()][AB012]/g, '')
+  s = s.replace(/\x1b[\[\](){}#%;><=~^_\\]/g, '')
+  s = s.replace(/\[[0-9;]*[A-Za-z]/g, '')
+  s = s.replace(/\r/g, '').trim()
+  if (!s) return null
+  return s.length > 300 ? s.slice(0, 300) : s
 }
 
 /**
@@ -139,6 +156,8 @@ interface SessionStore {
 
   /** 终端提交完整一行后更新 lastUserPrompt（经规范化过滤） */
   notifyTerminalCommittedLine: (sessionId: string, rawLine: string) => void
+  /** [2026-05-06] 外嵌 composer 提交：直接写入 lastUserPrompt（不过滤 claude/clear 等单行） */
+  recordEmbedLastUserPrompt: (sessionId: string, rawLine: string) => void
   /** 侧栏右键：保存/清除自定义主题 */
   updateHistoryTopic: (recordId: string, topic: string | null) => Promise<void>
 
@@ -237,6 +256,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     destroyTerminal(id)
     clearTokenUsageBuffer(id)
     useTokenUsageStore.getState().clearSession(id)
+    useTranscriptStore.getState().clearSession(id)
+    useToolCallStore.getState().clearSession(id)
+    clearEmbedPtyEchoBuffer(id)
+    useEmbedAwaitingReplyStore.getState().clearPending(id)
+    clearEmbedTurnLatency(id)
+    clearPtyAlternateScreenSession(id)
     window.electronAPI.closeSession(id)
     set((s) => {
       const remaining = s.sessions.filter((sess) => sess.id !== id)
@@ -318,6 +343,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     notifyDebounceTimers.set(sessionId, timer)
   },
 
+  recordEmbedLastUserPrompt: (sessionId: string, rawLine: string) => {
+    const line = sanitizeEmbedPromptForHistory(rawLine)
+    if (!line) return
+    void (async () => {
+      const sess = get().sessions.find((s) => s.id === sessionId)
+      if (!sess) return
+      await upsertWorkdirHistory(sess, { lastUserPrompt: line })
+      await get().loadHistory()
+    })()
+  },
+
   updateHistoryTopic: async (recordId: string, topic: string | null) => {
     const prev = await window.electronAPI.history.get(recordId)
     if (!prev) return
@@ -340,6 +376,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     destroyTerminal(id)
     clearTokenUsageBuffer(id)
     useTokenUsageStore.getState().clearSession(id)
+    useTranscriptStore.getState().clearSession(id)
+    useToolCallStore.getState().clearSession(id)
+    clearEmbedPtyEchoBuffer(id)
+    useEmbedAwaitingReplyStore.getState().clearPending(id)
+    clearEmbedTurnLatency(id)
+    clearPtyAlternateScreenSession(id)
     window.electronAPI.closeSession(id)
 
     /* [2026-04-30] 重新打开同一会话时 /resume 恢复该目录对话（与重开应用行为一致）

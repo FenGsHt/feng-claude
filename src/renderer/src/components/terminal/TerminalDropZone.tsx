@@ -6,6 +6,7 @@ import {
   type FileDragPayload
 } from '../../lib/claudeRef'
 import { CC_SLASH_DRAG_MIME, CC_SLASH_PLAIN_PREFIX } from '../../lib/ccSlashDrag'
+import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 import { focusTerminal } from './XTerminal'
 
 /** 包住 xterm：从文件树拖入时往当前 Claude 会话注入 @path 引用（经 PTY 发送） */
@@ -21,6 +22,15 @@ export function TerminalDropZone({
   const setActiveSession = useSessionStore((s) => s.setActiveSession)
 
   const workdir = sessions.find((s) => s.id === sessionId)?.workdir ?? ''
+
+  /** [2026-05-06] 外嵌 Beta 有 EmbedSessionComposer 时写入输入框，否则保持 PTY sendInput */
+  const tryEmbedDraft = (text: string): boolean => {
+    if (injectEmbedDraft(sessionId, text)) {
+      setActiveSession(sessionId)
+      return true
+    }
+    return false
+  }
 
   /** 资源管理器拖入：Chromium 常见 type 为 Files；另支持 text/uri-list */
   const hasFileDropHint = (types: readonly string[]): boolean =>
@@ -120,6 +130,7 @@ export function TerminalDropZone({
       if (raw) {
         const o = JSON.parse(raw) as { command?: string }
         if (o.command && typeof o.command === 'string' && o.command.startsWith('/')) {
+          if (tryEmbedDraft(o.command)) return
           setActiveSession(sessionId)
           window.electronAPI.sendInput(sessionId, o.command)
           queueMicrotask(() => focusTerminal(sessionId))
@@ -132,6 +143,7 @@ export function TerminalDropZone({
     const plainFirst = e.dataTransfer.getData('text/plain').trim()
     if (plainFirst.startsWith(CC_SLASH_PLAIN_PREFIX)) {
       const cmd = plainFirst.slice(CC_SLASH_PLAIN_PREFIX.length)
+      if (tryEmbedDraft(cmd)) return
       setActiveSession(sessionId)
       window.electronAPI.sendInput(sessionId, cmd)
       queueMicrotask(() => focusTerminal(sessionId))
@@ -140,6 +152,10 @@ export function TerminalDropZone({
 
     const osPaths = pathsFromOsDrop(e)
     if (osPaths.length > 0) {
+      const blob = osPaths
+        .map((p) => `${formatFileRefForClaudeCode(p, workdir, false)} `)
+        .join('')
+      if (tryEmbedDraft(blob)) return
       setActiveSession(sessionId)
       for (const p of osPaths) {
         const ref = formatFileRefForClaudeCode(p, workdir, false)
@@ -153,6 +169,7 @@ export function TerminalDropZone({
     if (!payload) return
 
     const ref = formatFileRefForClaudeCode(payload.path, workdir, payload.kind === 'directory')
+    if (tryEmbedDraft(`${ref} `)) return
     setActiveSession(sessionId)
     window.electronAPI.sendInput(sessionId, `${ref} `)
     queueMicrotask(() => focusTerminal(sessionId))
