@@ -135,12 +135,26 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     })
   }, [])
 
+  /* [2026-05-06] /mcp 二级菜单中单次 Esc 只退一层；退出前端交互前连发多拍 Esc，尽量与 Claude Code 选单栈对齐 */
+  const SLASH_EXIT_ESC_BURST = 6
+  const SLASH_EXIT_ESC_GAP_MS = 30
+
   const exitSlashInteraction = useCallback((): void => {
-    /* [2026-05-06] 原只退出前端交互态，Claude Code TUI 仍停在选项状态；退出时同步发送 Esc 给 PTY。 */
+    /* [2026-05-06] 原单次 Esc；进入子菜单后仍留在 Ink 选单内，与前端已退出不同步 */
+    // sendRawPtyInput(sessionId, '\x1b')
     // setSlashInteractiveMode(false)
-    sendRawPtyInput(sessionId, '\x1b')
-    setSlashInteractiveMode(false)
-    requestAnimationFrame(() => taRef.current?.focus())
+    let sent = 0
+    const pump = (): void => {
+      sendRawPtyInput(sessionId, '\x1b')
+      sent += 1
+      if (sent < SLASH_EXIT_ESC_BURST) {
+        window.setTimeout(pump, SLASH_EXIT_ESC_GAP_MS)
+      } else {
+        setSlashInteractiveMode(false)
+        requestAnimationFrame(() => taRef.current?.focus())
+      }
+    }
+    pump()
   }, [sessionId])
 
   const sendPtyControlKey = useCallback(

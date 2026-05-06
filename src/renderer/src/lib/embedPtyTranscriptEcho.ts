@@ -30,15 +30,13 @@ export function beginSlashPtyEchoRound(sessionId: string): void {
   let b = buffers.get(sessionId)
   if (b?.timer) clearTimeout(b.timer)
   if (b) {
+    // [2026-05-06] 保留 screenLines 和光标坐标，与实际 PTY 光标保持同步。
+    // 若重置为 row=0，第二次 /mcp 菜单用相对光标移动（CSI A/B）从 PTY 当前行往上定位，
+    // 而模拟器从第 0 行算，写到错误行，❯ 位置就乱了。
     b.raw = ''
     b.sentCleanLen = 0
     b.timer = null
     b.lastMcpScreen = ''
-    b.screenLines = ['']
-    b.cursorRow = 0
-    b.cursorCol = 0
-    b.savedCursorRow = 0
-    b.savedCursorCol = 0
   } else {
     buffers.set(sessionId, {
       raw: '',
@@ -188,8 +186,13 @@ function applyCsi(b: Buf, paramsRaw: string, final: string): void {
       return
     }
     if (mode === 0) {
-      b.screenLines[b.cursorRow] = (b.screenLines[b.cursorRow] ?? '').slice(0, b.cursorCol)
-      b.screenLines = b.screenLines.slice(0, b.cursorRow + 1)
+      /* [2026-05-06] 原用 slice 截断 screenLines，等于删掉下方物理行；Ink 后续 CSI 仍按原行号定位，造成幽灵箭头与 menuLineCount 偶发为 0 */
+      // b.screenLines[b.cursorRow] = (b.screenLines[b.cursorRow] ?? '').slice(0, b.cursorCol)
+      // b.screenLines = b.screenLines.slice(0, b.cursorRow + 1)
+      ensureRow(b, b.cursorRow)
+      const cur = b.screenLines[b.cursorRow] ?? ''
+      b.screenLines[b.cursorRow] = cur.slice(0, b.cursorCol)
+      for (let r = b.cursorRow + 1; r < b.screenLines.length; r += 1) b.screenLines[r] = ''
       return
     }
     return
@@ -307,7 +310,36 @@ function countMenuLines(text: string): number {
 }
 
 function findSelectedLine(text: string): string {
-  return text.split('\n').find((line) => /^\s*[❯>]\s*/.test(line))?.trim() ?? ''
+  const lines = text.split('\n')
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (/^\s*[❯>]\s*/.test(lines[i])) return lines[i].trim()
+  }
+  return ''
+}
+
+function dedupeMcpMenuCarets(text: string): string {
+  const lines = text.split('\n')
+  const serverRes = [/plugin:github:github/, /visual-agent/, /browser-tools/]
+  const caretIdx: number[] = []
+  lines.forEach((line, i) => {
+    if (!/^\s*[❯>]/.test(line)) return
+    if (serverRes.some((re) => re.test(line))) caretIdx.push(i)
+  })
+  if (caretIdx.length <= 1) return text
+  const keep = caretIdx[caretIdx.length - 1]
+  return lines
+    .map((line, i) => {
+      if (!caretIdx.includes(i) || i === keep) return line
+      return line.replace(/^\s*[❯>]\s*/, '')
+    })
+    .join('\n')
+}
+
+function shouldRejectDegenerateMcpSnapshot(prev: string, next: string): boolean {
+  if (!prev.trim()) return false
+  if (countMenuLines(prev) < 2) return false
+  if (countMenuLines(next) > 0) return false
+  return /to navigate · Enter to confirm · Esc to cancel/i.test(prev)
 }
 
 function cropLatestCompleteMcpBlock(text: string): { text: string; reason: string; startLine: number } {
@@ -511,6 +543,12 @@ function flushSessionSync(sessionId: string): void {
   let snapshot = normalizeSlashPtyEchoPlaintext(screenToText(b))
   const crop = cropLatestCompleteMcpBlock(snapshot)
   snapshot = crop.text
+  const prevSnap = b.lastMcpScreen
+  if (shouldRejectDegenerateMcpSnapshot(prevSnap, snapshot)) {
+    snapshot = prevSnap
+  } else {
+    snapshot = dedupeMcpMenuCarets(snapshot)
+  }
   b.lastMcpScreen = snapshot
   if (snapshot.trim().length > 0) {
     useTranscriptStore.getState().setLatestPtyEchoChunk(sessionId, snapshot)
