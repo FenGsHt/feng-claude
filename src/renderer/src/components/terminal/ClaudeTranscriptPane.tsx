@@ -70,6 +70,45 @@ function deriveAiWorkingLabel(args: {
   }
 }
 
+/** [2026-05-08] 伪流式输出：助手条目到达后按字符逐步揭示 */
+const STREAM_DURATION_MS = 1200
+const STREAM_TICK_MS = 30
+
+function usePseudoStream(text: string): string {
+  const [revealedLen, setRevealedLen] = useState(0)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    if (text.length === 0) {
+      setDone(true)
+      return
+    }
+    setRevealedLen(0)
+    setDone(false)
+    const ticks = Math.ceil(STREAM_DURATION_MS / STREAM_TICK_MS)
+    const increment = Math.max(1, Math.ceil(text.length / ticks))
+    const id = setInterval(() => {
+      setRevealedLen((prev) => {
+        const next = Math.min(text.length, prev + increment)
+        if (next >= text.length) {
+          clearInterval(id)
+          setDone(true)
+        }
+        return next
+      })
+    }, STREAM_TICK_MS)
+    return () => clearInterval(id)
+  }, [text])
+
+  if (done || revealedLen >= text.length) return text
+  return text.slice(0, revealedLen)
+}
+
+function AssistantStreamContent({ content }: { content: string }): React.ReactElement {
+  const streamedText = usePseudoStream(content)
+  return <MarkdownRenderer content={streamedText} />
+}
+
 /** [2026-05-06] 助手气泡底部：JSONL usage + 外嵌首包耗时 */
 function AssistantReplyMeta({
   usage,
@@ -272,7 +311,7 @@ function EntryBlock({
             Claude
           </div>
           <div className="prose prose-invert max-w-none text-[12px] leading-relaxed prose-p:my-1.5 prose-pre:my-2">
-            <MarkdownRenderer content={e.text} />
+            <AssistantStreamContent content={e.text} />
           </div>
           <AssistantReplyMeta usage={e.usage} latencyMs={e.latencyMs} />
         </div>
