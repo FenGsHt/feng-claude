@@ -158,6 +158,45 @@ html[data-theme='fallout']::after {
   }
 }
 
+/* ── Fallout 外嵌转录面板：放大字体 + 去圆角泡泡边框 ───────────────
+ * 目标：VT323 在小尺寸下和普通字体看起来一样小，需要整体放大 ~1.3x
+ * 技巧：在 .claude-transcript-root 上设基准 font-size，后代用 em 继承
+ * ──────────────────────────────────────────────────────────────── */
+
+html[data-theme='fallout'] .claude-transcript-root {
+  font-family: 'VT323', 'Courier New', Courier, monospace;
+  font-size: 17px;
+  letter-spacing: 0.5px;
+}
+
+/* 助手气泡：去背景、去圆角、去 ring，只留左侧竖线 */
+html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-left: 2px solid rgba(42, 255, 77, 0.5) !important;
+  border-radius: 0 !important;
+  padding-left: 10px !important;
+}
+
+/* 用户气泡：去背景、去圆角，右侧前缀 > 替代样式 */
+html[data-theme='fallout'] .claude-transcript-root .fo-user-bubble {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* 工具 pill：去圆角 */
+html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill {
+  border-radius: 0 !important;
+}
+
+/* 思考块 */
+html[data-theme='fallout'] .claude-transcript-root details {
+  border-radius: 0 !important;
+}
+
 /* ── Fallout 终端容器专属样式 ──────────────────────────────────────
  * 仅对 XTerminal 的 .xterm-theme-fallout 容器生效，不影响其他主题。
  * 效果：双线边框 + 内嵌阴影模拟 CRT 灯管泛光 + 轻微扫描线纹理

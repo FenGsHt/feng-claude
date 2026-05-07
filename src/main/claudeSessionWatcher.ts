@@ -142,10 +142,10 @@ export class ClaudeSessionWatcher {
       this.scanExisting(sw)
     }
 
-    // Poll every 1 s — reliable on Windows where FSEvents can be flaky.
+    // [2026-05-06] 原 1000ms；外嵌模式需要更快响应，改为 200ms 让助手回复尽快出现
     sw.timer = setInterval(() => {
       this.poll(sw)
-    }, 1000)
+    }, 200)
     console.log('[Token] timer started for projectDir:', projectDir)
 
     this.sessions.set(sessionId, sw)

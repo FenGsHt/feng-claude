@@ -108,7 +108,7 @@ export function PaneLeafShell({
               </div>
             ) : null}
             {nativeTerminalOpen ? (
-              <div className="absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(760px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]">
+              <div className="absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(560px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]">
                 <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-header)] px-2.5">
                   <div className="min-w-0">
                     <span className="text-[10px] font-semibold text-[var(--theme-accent-text)]">需要终端交互</span>

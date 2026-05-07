@@ -241,7 +241,7 @@ function EntryBlock({
   if (e.kind === 'user') {
     return (
       <div className="flex w-full justify-end">
-        <div className="max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
+        <div className="fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
           <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--theme-accent-muted)]">你</div>
           <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-claude-text">{e.text}</pre>
         </div>
@@ -254,7 +254,7 @@ function EntryBlock({
     }
     return (
       <div className="flex w-full justify-start">
-        <div className="inline-flex max-w-[min(100%,28rem)] items-center gap-2 rounded-full border border-[var(--theme-tool-border)] bg-[var(--theme-tool-bg)] px-3 py-1.5 text-[11px] text-[var(--theme-accent-text)]">
+        <div className="fo-tool-pill inline-flex max-w-[min(100%,28rem)] items-center gap-2 rounded-full border border-[var(--theme-tool-border)] bg-[var(--theme-tool-bg)] px-3 py-1.5 text-[11px] text-[var(--theme-accent-text)]">
           <span className="shrink-0 rounded bg-[var(--theme-accent-bg)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--theme-accent-muted)]">
             tool
           </span>
@@ -266,7 +266,7 @@ function EntryBlock({
   if (e.kind === 'assistant') {
     return (
       <div className="flex w-full justify-start">
-        <div className="max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
+        <div className="fo-assistant-bubble max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
           <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-claude-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--theme-success-text)]" aria-hidden />
             Claude
@@ -318,11 +318,15 @@ function isToolResultEcho(e: ClaudeTranscriptEntry): boolean {
     /* [2026-05-06] EnterPlanMode / ExitPlanMode 返回的系统提示文本，对用户无信息量，直接隐藏。 */
     /^Entered plan mode\./i.test(text) ||
     /^Exited plan mode/i.test(text) ||
-    /* TodoWrite / TodoRead 的机器回执 */
+    /* TodoWrite / TodoRead / TaskCreate 等的机器回执 */
     /^Todos have been (updated|created)/i.test(text) ||
     /^No todos found/i.test(text) ||
+    /^Task #\d+ created successfully/i.test(text) ||
+    /^Task #\d+ (updated|deleted|completed)/i.test(text) ||
+    /^Tasks? (created|updated|deleted|completed)/i.test(text) ||
     /* 其他元工具固定回执模式 */
-    /^The plan has been submitted/i.test(text)
+    /^The plan has been submitted/i.test(text) ||
+    /^View current tasks with /i.test(text)
   )
 }
 
@@ -653,7 +657,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
 
   return (
     <div
-      className={`flex min-h-0 flex-col overflow-hidden bg-[var(--theme-panel-bg)] ${className}`}
+      className={`claude-transcript-root flex min-h-0 flex-col overflow-hidden bg-[var(--theme-panel-bg)] ${className}`}
       aria-label="Claude transcript"
     >
       <header className="shrink-0 border-b border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-2 backdrop-blur-sm">
