@@ -9,7 +9,6 @@ import { TerminalPaneHeader } from './TerminalPaneHeader'
 import { ClaudeTranscriptPane } from './ClaudeTranscriptPane'
 import { EmbedSessionComposer } from './EmbedSessionComposer'
 import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
-import { useEmbedSlashTerminalStore } from '../../store/embedSlashTerminalStore'
 
 interface PaneLeafProps {
   sessionId: string
@@ -25,9 +24,6 @@ export function PaneLeafShell({
 }: PaneLeafProps): React.ReactElement {
   /* [2026-05-06] embedClaudeOutputBeta：自建对话区 + 输入框，不再挂载 xterm（PTY 仍后台运行） */
   const embedBeta = useEmbedClaudeOutputBeta()
-  const slashTerminalVisible = useEmbedSlashTerminalStore(
-    (s) => s.visibleBySession[sessionId] ?? false
-  )
 
   return (
     <div
@@ -45,16 +41,9 @@ export function PaneLeafShell({
       >
         {embedBeta ? (
           <TerminalDropZone sessionId={sessionId}>
-            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <ClaudeTranscriptPane sessionId={sessionId} className="min-h-0 flex-1 border-b border-claude-border" />
               <EmbedSessionComposer sessionId={sessionId} />
-              {/* [2026-05-07] 斜杠命令交互时弹出真实 xterm 覆盖层，原生渲染 Ink TUI */}
-              <div
-                className="absolute inset-0 z-20 flex flex-col bg-[#0c0c0c]"
-                style={{ display: slashTerminalVisible ? 'flex' : 'none' }}
-              >
-                <XTerminal sessionId={sessionId} active={false} />
-              </div>
             </div>
           </TerminalDropZone>
         ) : (

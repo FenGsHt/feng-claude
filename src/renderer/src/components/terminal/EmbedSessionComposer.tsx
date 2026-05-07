@@ -11,7 +11,6 @@ import {
 } from '../../lib/claudeCodeSlashCommands'
 import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { useTranscriptStore } from '../../store/transcriptStore'
-import { useEmbedSlashTerminalStore } from '../../store/embedSlashTerminalStore'
 
 interface Props {
   sessionId: string
@@ -31,8 +30,6 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
   const [slashInteractiveMode, setSlashInteractiveMode] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
-  const showSlashTerminal = useEmbedSlashTerminalStore((s) => s.show)
-  const hideSlashTerminal = useEmbedSlashTerminalStore((s) => s.hide)
   useEmbedPtyResize(sessionId, true)
 
   /* [2026-05-06] 供 TerminalDropZone 拖入 @路径 / 命令时写入本框，避免仅 sendInput 而界面空白 */
@@ -115,12 +112,10 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     if (!t.trim()) return
     setDraft('')
     setCursor(0)
-    const isSlash = t.trimStart().startsWith('/')
-    setSlashInteractiveMode(isSlash)
-    if (isSlash) showSlashTerminal(sessionId)
+    setSlashInteractiveMode(t.trimStart().startsWith('/'))
     submitEmbedSessionInput(sessionId, t)
     requestAnimationFrame(() => taRef.current?.focus())
-  }, [alternateScreen, draft, sessionId, showSlashTerminal])
+  }, [alternateScreen, draft, sessionId])
 
   /** [2026-05-06] Ctrl/Cmd+Enter 在光标处插入换行（Enter 单独用于发送） */
   const insertNewlineAtCursor = useCallback((): void => {
@@ -159,13 +154,12 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
       } else {
         useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
         setEmbedSlashPtyEchoActive(sessionId, false)
-        hideSlashTerminal(sessionId)
         setSlashInteractiveMode(false)
         requestAnimationFrame(() => taRef.current?.focus())
       }
     }
     pump()
-  }, [sessionId, hideSlashTerminal])
+  }, [sessionId])
 
   const sendPtyControlKey = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
