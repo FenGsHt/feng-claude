@@ -18,10 +18,11 @@ const TERM_ROWS = 50
 /** 每次 write callback 后延迟 flush，确保 xterm 内部队列处理完毕 */
 const FLUSH_MS = 120
 /**
- * 从发出斜杠命令到首次看到交互式 TUI 的超时：超时后自动退出 slashInteractiveMode。
- * 针对 /clear /help 等不产生 TUI 的命令。
+ * 看到非 TUI 内容后等待此时长再发出 done 信号：
+ * 给 PTY 留时间把剩余输出送完，避免提前退出。
+ * 适用于 /clear /compact 等不产生交互式 TUI 的命令。
  */
-const IDLE_AUTO_EXIT_MS = 1500
+const NON_TUI_DONE_MS = 800
 
 interface Buf {
   term: Terminal
@@ -29,8 +30,8 @@ interface Buf {
   lastMcpScreen: string
   /** 本轮是否曾见到交互式 TUI 内容（用于检测 TUI 自然退出） */
   sawInteractive: boolean
-  /** 无 TUI 内容时的兜底自动退出计时器 */
-  idleTimer: ReturnType<typeof setTimeout> | null
+  /** /clear 等无 TUI 命令：收到非交互内容后延迟发出 done */
+  nonTuiTimer: ReturnType<typeof setTimeout> | null
 }
 
 const buffers = new Map<string, Buf>()
@@ -41,7 +42,7 @@ function makeBuf(): Buf {
     timer: null,
     lastMcpScreen: '',
     sawInteractive: false,
-    idleTimer: null
+    nonTuiTimer: null
   }
 }
 
@@ -205,17 +206,26 @@ function doFlush(sessionId: string): void {
 
   const interactive = isInteractiveContent(snapshot)
   if (interactive) {
-    // 进入/持续交互态：取消 idle 超时
+    // 进入/持续交互态：取消 nonTuiTimer
     b.sawInteractive = true
-    if (b.idleTimer) {
-      clearTimeout(b.idleTimer)
-      b.idleTimer = null
+    if (b.nonTuiTimer) {
+      clearTimeout(b.nonTuiTimer)
+      b.nonTuiTimer = null
     }
   } else if (b.sawInteractive) {
     // 曾有交互 TUI，现在消失 → 斜杠命令自然结束
     _exitSlashEcho(sessionId, b)
     signalSlashDone(sessionId)
     return
+  } else if (snapshot.trim().length > 0 && !b.nonTuiTimer) {
+    // 非 TUI 命令（/clear 等）：收到输出后等 NON_TUI_DONE_MS 再发出完成信号
+    b.nonTuiTimer = setTimeout(() => {
+      b.nonTuiTimer = null
+      if (slashEchoSessions.has(sessionId) && !b.sawInteractive) {
+        _exitSlashEcho(sessionId, b)
+        signalSlashDone(sessionId)
+      }
+    }, NON_TUI_DONE_MS)
   }
 
   b.lastMcpScreen = snapshot
@@ -238,9 +248,9 @@ function doFlush(sessionId: string): void {
 /** 内部：清除 slash echo 状态（不删 xterm buffer，保留光标） */
 function _exitSlashEcho(sessionId: string, b: Buf): void {
   if (b.timer) clearTimeout(b.timer)
-  if (b.idleTimer) clearTimeout(b.idleTimer)
+  if (b.nonTuiTimer) clearTimeout(b.nonTuiTimer)
   b.timer = null
-  b.idleTimer = null
+  b.nonTuiTimer = null
   b.lastMcpScreen = ''
   b.sawInteractive = false
   slashEchoSessions.delete(sessionId)
@@ -263,8 +273,9 @@ export function beginSlashPtyEchoRound(sessionId: string): void {
   let b = buffers.get(sessionId)
   if (b) {
     if (b.timer) clearTimeout(b.timer)
-    if (b.idleTimer) clearTimeout(b.idleTimer)
+    if (b.nonTuiTimer) clearTimeout(b.nonTuiTimer)
     b.timer = null
+    b.nonTuiTimer = null
     b.lastMcpScreen = ''
     b.sawInteractive = false
     // xterm terminal 保留当前 buffer 状态（光标位置正确），无需重置
@@ -273,16 +284,6 @@ export function beginSlashPtyEchoRound(sessionId: string): void {
     buffers.set(sessionId, b)
   }
   slashEchoSessions.add(sessionId)
-
-  // 兜底：1.5s 内没有出现交互式 TUI（/clear 等命令），自动退出 slashInteractiveMode
-  b.idleTimer = setTimeout(() => {
-    b!.idleTimer = null
-    if (!b!.sawInteractive && slashEchoSessions.has(sessionId)) {
-      _exitSlashEcho(sessionId, b!)
-      signalSlashDone(sessionId)
-    }
-  }, IDLE_AUTO_EXIT_MS)
-
   if (DEBUG_EMBED_MCP) {
     console.log('[embed-mcp][round-begin]', { sessionId })
   }

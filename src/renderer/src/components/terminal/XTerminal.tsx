@@ -347,17 +347,26 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     }
   }, [sessionId, scheduleFit])
 
-  // Fit + scroll to bottom when becoming active
+  // Fit then scroll to bottom when becoming active (fit first, then scroll so resize doesn't undo it)
   useEffect(() => {
     if (!active) return
-    const entry = terminals.get(sessionId)
-    entry?.term.scrollToBottom()
     const t = window.setTimeout(() => {
-      scheduleFit()
-      terminals.get(sessionId)?.term.scrollToBottom()
-    }, 100)
+      const entry = terminals.get(sessionId)
+      const el = containerRef.current
+      if (!entry || !el || el.clientWidth < 4 || el.clientHeight < 4) return
+      try {
+        entry.fitAddon.fit()
+        const { cols, rows } = entry.term
+        const prev = lastPtyGeomRef.current
+        if (!prev || prev.cols !== cols || prev.rows !== rows) {
+          lastPtyGeomRef.current = { cols, rows }
+          window.electronAPI?.resizePty(sessionId, cols, rows)
+        }
+      } catch {}
+      entry.term.scrollToBottom()
+    }, 200)
     return () => clearTimeout(t)
-  }, [active, sessionId, scheduleFit])
+  }, [active, sessionId])
 
   // [2026-04-29] Update xterm theme when resolved theme changes
   useEffect(() => {
