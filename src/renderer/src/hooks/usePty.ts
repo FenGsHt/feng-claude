@@ -13,6 +13,7 @@ import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive
 } from '../store/ptyAlternateScreenStore'
+import { stripAnsi } from '../lib/stripAnsi'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -28,7 +29,7 @@ const NOTIFY_DEBOUNCE_MS = 30_000
 const lastTokenTime = new Map<string, number>()
 const DEBUG_EMBED_MCP = true
 const TERMINAL_INTERACTION_HINT_RE =
-  /Enter to select|(?:↑|↓|\^|\x1b\[A|\x1b\[B).*to navigate|Esc to cancel|Space to cycle|Search skills/i
+  /Enter to select|(?:↑|↓|\^|\x1b\[A|\x1b\[B).*to navigate|Esc to cancel|Space to cycle|Search skills|Do you want to proceed|Would you like to|Allow this action|Press Enter to confirm|yes\/no|Y\/n\)?[\s]*$/im
 
 function shouldKeepEmbedLoadingForTranscript(
   entries: Array<{ kind: string; text: string }>
@@ -90,7 +91,8 @@ export function usePty(): void {
           hasAltExit: /\x1b\[\?(1049|1047)l/.test(data)
         })
       }
-      if (TERMINAL_INTERACTION_HINT_RE.test(data)) {
+      /* [2026-05-07] 剥离 ANSI 后再检测：权限提示字符间夹有转义码会导致原始 data 匹配失败 */
+      if (TERMINAL_INTERACTION_HINT_RE.test(stripAnsi(data))) {
         useNativeTerminalRequestStore.getState().requestNativeTerminal(sessionId, '检测到终端交互')
       }
       writeToTerminal(sessionId, data)
@@ -115,6 +117,10 @@ export function usePty(): void {
         notifyTaskDone(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
+      }
+      /* [2026-05-07] waiting_input = Claude Code 等待用户确认（如 MCP 权限弹窗）→ 自动打开浮窗以便用户交互 */
+      if (status === 'waiting_input') {
+        useNativeTerminalRequestStore.getState().requestNativeTerminal(sessionId, '等待输入确认')
       }
       updateSessionStatus(sessionId, status as any)
     })

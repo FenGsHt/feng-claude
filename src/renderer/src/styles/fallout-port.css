@@ -161,30 +161,37 @@ html[data-theme='fallout']::after {
 /* ── Fallout 外嵌转录面板：放大字体 + 去圆角泡泡边框 ───────────────
  * 目标：VT323 在小尺寸下和普通字体看起来一样小，需要整体放大 ~1.3x
  * 技巧：在 .claude-transcript-root 上设基准 font-size，后代用 em 继承
+ * 颜色策略：正文用深磷光绿 #1aaa35（接近真实 Fallout 终端），
+ *           标签/高亮仍用亮绿 #2aff4d / --claude-accent
  * ──────────────────────────────────────────────────────────────── */
 
 html[data-theme='fallout'] .claude-transcript-root {
   font-family: 'VT323', 'Courier New', Courier, monospace;
   font-size: 17px;
+  font-weight: bold;
   letter-spacing: 0.5px;
+  /* 深磷光绿：比 --claude-text #2aff4d 暗约 40%，更贴近 Fallout 终端原色 */
+  color: #1aaa35;
 }
 
-/* 助手气泡：去背景、去圆角、去 ring，只留左侧竖线 */
+/* 助手气泡：去背景、去圆角、去 ring，只留左侧竖线；竖线沿用深绿 */
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  border-left: 2px solid rgba(42, 255, 77, 0.5) !important;
+  border-left: 2px solid #1aaa35 !important;
   border-radius: 0 !important;
   padding-left: 10px !important;
+  color: #1aaa35 !important;
 }
 
-/* 用户气泡：去背景、去圆角，右侧前缀 > 替代样式 */
+/* 用户气泡：去背景、去圆角；用户输入略亮以示区分 */
 html[data-theme='fallout'] .claude-transcript-root .fo-user-bubble {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
+  color: #24cc44 !important;
 }
 
 /* 工具 pill：去圆角 */
@@ -192,9 +199,26 @@ html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill {
   border-radius: 0 !important;
 }
 
-/* 思考块 */
+/* 思考块：更暗的绿色，保持沉浸感 */
 html[data-theme='fallout'] .claude-transcript-root details {
   border-radius: 0 !important;
+  color: #0f8c28 !important;
+}
+
+/* 思考块摘要行（header）略亮 */
+html[data-theme='fallout'] .claude-transcript-root details > summary {
+  color: #1aaa35 !important;
+}
+
+/* 代码块 / inline code：沿用亮绿以突出 */
+html[data-theme='fallout'] .claude-transcript-root code,
+html[data-theme='fallout'] .claude-transcript-root pre {
+  color: #2aff4d !important;
+}
+
+/* 标签文字（小号 muted）：稍暗 */
+html[data-theme='fallout'] .claude-transcript-root .fo-label-muted {
+  color: #0f8c28 !important;
 }
 
 /* ── Fallout 终端容器专属样式 ──────────────────────────────────────
