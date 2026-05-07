@@ -137,8 +137,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     })
   }, [])
 
-  /* [2026-05-06] /mcp 二级菜单中单次 Esc 只退一层；退出前端交互前连发多拍 Esc，尽量与 Claude Code 选单栈对齐 */
-  const SLASH_EXIT_ESC_BURST = 6
+  /* [2026-05-07] 只发 1 次 Esc：多于 1 次会在 Claude Code 关闭菜单后误触 Rewind UI */
+  const SLASH_EXIT_ESC_BURST = 1
   const SLASH_EXIT_ESC_GAP_MS = 30
 
   const exitSlashInteraction = useCallback((): void => {
