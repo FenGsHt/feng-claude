@@ -72,6 +72,7 @@ html[data-theme='fallout']::before {
   inset: 0;
   pointer-events: none;
   z-index: 9997;
+  will-change: background-position;
   background: linear-gradient(
     to bottom,
     transparent 0%,
@@ -103,6 +104,7 @@ html[data-theme='fallout']::after {
   inset: 0;
   pointer-events: none;
   z-index: 9998;
+  will-change: opacity;
   background:
     linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.12) 50%),
     linear-gradient(
@@ -208,21 +210,24 @@ html[data-theme='fallout'] .claude-transcript-root pre {
   color: #7fff7f !important;
 }
 
-/* 气泡/卡片类子元素去除边框色——排除 loading bar（.fo-working-bar-inner 保留自有样式） */
-html[data-theme='fallout'] .claude-transcript-root *:not(.fo-working-bar):not(.fo-working-bar-inner):not(.fo-working-bar-inner *) {
-  border-color: transparent !important;
-}
-
-/* ── Tailwind text-[Xpx] 覆盖 ────────────────────────────────────
- * 子元素硬编码的 text-[10px]/[11px]/[12px] 会覆盖基准 font-size；
- * Fallout 主题下统一放大，排除 loading bar。
+/* ── [2026-05-08] 性能重写：去掉 *:not(...) 通配符和复合 :not() ──────
+ * 原 *:not(.fo-working-bar-inner *) 会对每个子元素做祖先扫描，
+ * 在转录内容更新时触发大量 style recalc。改为精确类名选择器。
  * ──────────────────────────────────────────────────────────────── */
-html[data-theme='fallout'] .claude-transcript-root p:not(.fo-working-bar-inner p),
-html[data-theme='fallout'] .claude-transcript-root pre:not(.fo-working-bar-inner pre),
-html[data-theme='fallout'] .claude-transcript-root code:not(.fo-working-bar-inner code),
-html[data-theme='fallout'] .claude-transcript-root summary,
-html[data-theme='fallout'] .claude-transcript-root span:not(.fo-working-bar-inner span),
-html[data-theme='fallout'] .claude-transcript-root div:not(.fo-working-bar):not(.fo-working-bar-inner) {
+
+/* 转录内容区（排除 loading bar 外层）：统一字号 + 行高 */
+html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble p,
+html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble pre,
+html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble code,
+html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble span,
+html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble div,
+html[data-theme='fallout'] .claude-transcript-root .fo-user-bubble p,
+html[data-theme='fallout'] .claude-transcript-root .fo-user-bubble span,
+html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill span,
+html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill code,
+html[data-theme='fallout'] .claude-transcript-root details summary,
+html[data-theme='fallout'] .claude-transcript-root details pre,
+html[data-theme='fallout'] .claude-transcript-root details p {
   font-size: 14px !important;
   line-height: 1.2 !important;
 }
