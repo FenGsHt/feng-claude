@@ -347,14 +347,17 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     }
   }, [sessionId, scheduleFit])
 
-  // Fit when becoming active（延后到下一帧，避免与分屏/layout 同一 tick 内多次 resize）
+  // Fit + scroll to bottom when becoming active
   useEffect(() => {
     if (!active) return
+    const entry = terminals.get(sessionId)
+    entry?.term.scrollToBottom()
     const t = window.setTimeout(() => {
       scheduleFit()
+      terminals.get(sessionId)?.term.scrollToBottom()
     }, 100)
     return () => clearTimeout(t)
-  }, [active, scheduleFit])
+  }, [active, sessionId, scheduleFit])
 
   // [2026-04-29] Update xterm theme when resolved theme changes
   useEffect(() => {
