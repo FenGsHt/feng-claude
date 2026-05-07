@@ -140,8 +140,8 @@ html[data-theme='fallout']::after {
 
 html[data-theme='fallout'] .claude-transcript-root {
   font-family: 'VT323', 'Courier New', Courier, monospace;
-  font-size: 22px;
-  line-height: 1.25;
+  font-size: 25px;
+  line-height: 1.15;
   font-weight: bold;
   letter-spacing: 0.6px;
   color: #2aff4d;
@@ -208,9 +208,36 @@ html[data-theme='fallout'] .claude-transcript-root pre {
   color: #7fff7f !important;
 }
 
-/* 所有子元素继承去除背景边框 */
-html[data-theme='fallout'] .claude-transcript-root * {
+/* 气泡/卡片类子元素去除边框色——排除 loading bar（.fo-working-bar-inner 保留自有样式） */
+html[data-theme='fallout'] .claude-transcript-root *:not(.fo-working-bar):not(.fo-working-bar-inner):not(.fo-working-bar-inner *) {
   border-color: transparent !important;
+}
+
+/* ── Fallout loading bar：绿光终端风格背景 ─────────────────────────
+ * [2026-05-08] 原 --theme-card-bg 在 fallout 下近黑，loading 看不清；
+ * 改为亮绿边框 + 半透明深绿背景，配合 VT323 字体。
+ * ──────────────────────────────────────────────────────────────── */
+html[data-theme='fallout'] .claude-transcript-root .fo-working-bar-inner {
+  background: rgba(2, 18, 4, 0.96) !important;
+  border-color: rgba(42, 255, 77, 0.6) !important;
+  border-radius: 0 !important;
+  box-shadow:
+    0 0 12px rgba(42, 255, 77, 0.15),
+    inset 0 0 8px rgba(42, 255, 77, 0.06) !important;
+}
+
+html[data-theme='fallout'] .claude-transcript-root .fo-working-bar-inner p {
+  font-family: 'VT323', monospace !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  color: #2aff4d !important;
+  font-weight: bold !important;
+}
+
+/* loading spinner: 绿色旋转环 */
+html[data-theme='fallout'] .claude-transcript-root .fo-working-bar-inner span {
+  border-color: rgba(42, 255, 77, 0.2) !important;
+  border-top-color: #2aff4d !important;
 }
 
 /* ── Fallout 终端容器专属样式 ──────────────────────────────────────

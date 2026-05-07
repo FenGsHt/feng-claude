@@ -29,11 +29,11 @@ function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): R
   if (!open) return null
   return (
     <div
-      className="pointer-events-none absolute bottom-0 left-0 right-0 z-[12] px-3 pb-3 pt-6"
+      className="fo-working-bar pointer-events-none absolute bottom-0 left-0 right-0 z-[12] px-3 pb-3 pt-6"
       role="status"
       aria-live="polite"
     >
-      <div className="mx-auto flex max-w-3xl items-center gap-2.5 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] px-3 py-2.5 shadow-[0_-12px_40px_var(--theme-shadow)] backdrop-blur-md">
+      <div className="fo-working-bar-inner mx-auto flex max-w-3xl items-center gap-2.5 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] px-3 py-2.5 shadow-[0_-12px_40px_var(--theme-shadow)] backdrop-blur-md">
         <span
           className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-accent-bg-strong)] border-t-[var(--theme-accent-muted)]"
           aria-hidden
