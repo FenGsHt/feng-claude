@@ -158,67 +158,83 @@ html[data-theme='fallout']::after {
   }
 }
 
-/* ── Fallout 外嵌转录面板：放大字体 + 去圆角泡泡边框 ───────────────
- * 目标：VT323 在小尺寸下和普通字体看起来一样小，需要整体放大 ~1.3x
- * 技巧：在 .claude-transcript-root 上设基准 font-size，后代用 em 继承
- * 颜色策略：正文用深磷光绿 #1aaa35（接近真实 Fallout 终端），
- *           标签/高亮仍用亮绿 #2aff4d / --claude-accent
+/* ── Fallout 外嵌转录面板：纯文本终端风格，无边框无背景 ──────────────
+ * [2026-05-07] 全面去除气泡/思考块/工具pill所有边框、背景、圆角、阴影，
+ * 只保留文本本身，字体放大到 19px 并调亮颜色，营造真实终端打字感。
  * ──────────────────────────────────────────────────────────────── */
 
 html[data-theme='fallout'] .claude-transcript-root {
   font-family: 'VT323', 'Courier New', Courier, monospace;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: bold;
-  letter-spacing: 0.5px;
-  /* 深磷光绿：比 --claude-text #2aff4d 暗约 40%，更贴近 Fallout 终端原色 */
-  color: #1aaa35;
+  letter-spacing: 0.6px;
+  color: #2aff4d;
 }
 
-/* 助手气泡：去背景、去圆角、去 ring，只留左侧竖线；竖线沿用深绿 */
+/* 助手气泡：全部清零，纯文本 */
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble {
   background: transparent !important;
   border: none !important;
+  border-left: none !important;
   box-shadow: none !important;
-  border-left: 2px solid #1aaa35 !important;
   border-radius: 0 !important;
-  padding-left: 10px !important;
-  color: #1aaa35 !important;
+  padding-left: 0 !important;
+  color: #2aff4d !important;
 }
 
-/* 用户气泡：去背景、去圆角；用户输入略亮以示区分 */
+/* 用户气泡：同样清零，用 > 前缀区分（见 ClaudeTranscriptPane） */
 html[data-theme='fallout'] .claude-transcript-root .fo-user-bubble {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
-  color: #24cc44 !important;
+  color: #7fff7f !important;
 }
 
-/* 工具 pill：去圆角 */
+/* 工具 pill：去所有装饰，只留文本 */
 html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   border-radius: 0 !important;
+  color: #1bcc3a !important;
 }
 
-/* 思考块：更暗的绿色，保持沉浸感 */
+/* 思考块容器：完全透明，无边框 */
 html[data-theme='fallout'] .claude-transcript-root details {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   border-radius: 0 !important;
-  color: #0f8c28 !important;
+  color: #1bcc3a !important;
 }
 
-/* 思考块摘要行（header）略亮 */
+/* 思考块摘要行 */
 html[data-theme='fallout'] .claude-transcript-root details > summary {
-  color: #1aaa35 !important;
-}
-
-/* 代码块 / inline code：沿用亮绿以突出 */
-html[data-theme='fallout'] .claude-transcript-root code,
-html[data-theme='fallout'] .claude-transcript-root pre {
+  background: transparent !important;
+  border: none !important;
   color: #2aff4d !important;
 }
 
-/* 标签文字（小号 muted）：稍暗 */
-html[data-theme='fallout'] .claude-transcript-root .fo-label-muted {
-  color: #0f8c28 !important;
+/* 思考块展开内容 */
+html[data-theme='fallout'] .claude-transcript-root details > div,
+html[data-theme='fallout'] .claude-transcript-root details > p {
+  background: transparent !important;
+  border: none !important;
+  color: #1bcc3a !important;
+}
+
+/* 代码块 / inline code：更亮突出 */
+html[data-theme='fallout'] .claude-transcript-root code,
+html[data-theme='fallout'] .claude-transcript-root pre {
+  background: transparent !important;
+  border: none !important;
+  color: #7fff7f !important;
+}
+
+/* 所有子元素继承去除背景边框 */
+html[data-theme='fallout'] .claude-transcript-root * {
+  border-color: transparent !important;
 }
 
 /* ── Fallout 终端容器专属样式 ──────────────────────────────────────
