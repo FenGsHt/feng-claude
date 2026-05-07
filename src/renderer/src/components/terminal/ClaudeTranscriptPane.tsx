@@ -330,14 +330,23 @@ function isToolResultEcho(e: ClaudeTranscriptEntry): boolean {
   )
 }
 
-function hasRecentReadTool(entries: ClaudeTranscriptEntry[], index: number): boolean {
-  for (let i = index - 1, seen = 0; i >= 0 && seen < 4; i -= 1, seen += 1) {
+/** 向前找最近 N 步内是否有指定工具调用（跨越 assistant 停止） */
+function hasRecentTool(entries: ClaudeTranscriptEntry[], index: number, toolNames: string[]): boolean {
+  const nameSet = new Set(toolNames.map((n) => n.toLowerCase()))
+  for (let i = index - 1, seen = 0; i >= 0 && seen < 6; i -= 1, seen += 1) {
     const e = entries[i]
     if (!e) continue
-    if (e.kind === 'tool' && (e.toolName ?? e.text).trim() === 'Read') return true
-    if (e.kind === 'assistant' || e.kind === 'user') return false
+    if (e.kind === 'tool') {
+      const name = (e.toolName ?? e.text).trim().toLowerCase()
+      if (nameSet.has(name)) return true
+    }
+    if (e.kind === 'user') return false
   }
   return false
+}
+
+function hasRecentReadTool(entries: ClaudeTranscriptEntry[], index: number): boolean {
+  return hasRecentTool(entries, index, ['read'])
 }
 
 function isReadToolResultEcho(
@@ -351,6 +360,67 @@ function isReadToolResultEcho(
   if (lines.length < 8) return false
   const numbered = lines.filter((line) => /^\s*\d+\s+/.test(line)).length
   return numbered >= Math.ceil(lines.length * 0.55)
+}
+
+/** [2026-05-08] Glob/Bash/Write/Edit 等工具结果也以 user role 写入 JSONL；
+ *  检测：前面有对应工具调用，且内容看起来是文件路径列表或命令输出。 */
+function isOtherToolResultEcho(
+  e: ClaudeTranscriptEntry,
+  entries: ClaudeTranscriptEntry[],
+  index: number
+): boolean {
+  if (e.kind !== 'user') return false
+  const text = e.text.trim()
+  if (!text) return false
+
+  /* Glob 结果：多数行是文件路径（含 / 或 \）*/
+  if (hasRecentTool(entries, index, ['glob'])) {
+    const lines = text.split('\n').filter((l) => l.trim().length > 0)
+    if (lines.length >= 2) {
+      const pathLike = lines.filter((l) => /[/\\]/.test(l) || /\.\w{1,6}$/.test(l.trim())).length
+      if (pathLike >= Math.ceil(lines.length * 0.6)) return true
+    }
+  }
+
+  /* Bash 结果：前一步是 Bash 工具，且回显内容不像用户说话（无问句、无完整句子）*/
+  if (hasRecentTool(entries, index, ['bash'])) {
+    /* 纯命令输出特征：无中文、多为路径/数字/符号，或内容是固定短语 */
+    if (!/[一-鿿]/.test(text) && text.length < 2000) {
+      const lines = text.split('\n').filter((l) => l.trim())
+      const codelike = lines.filter((l) =>
+        /^\s*([\w./$\\{}\-]+\s*)+$/.test(l) || /^\d+(\.\d+)?(\s|$)/.test(l.trim())
+      ).length
+      if (lines.length >= 2 && codelike >= Math.ceil(lines.length * 0.5)) return true
+    }
+  }
+
+  /* Write / Edit / MultiEdit 固定回执短语 */
+  if (hasRecentTool(entries, index, ['write', 'edit', 'multiedit'])) {
+    if (
+      /^(Wrote|Created|Updated|Edited|Modified)\s+\d+\s+lines/i.test(text) ||
+      /^The file .{0,120} (has been|was) (written|created|updated|edited)/i.test(text) ||
+      /^\[\d+ file/i.test(text)
+    ) return true
+  }
+
+  /* mcp__browser-tools 结果：JSON / 固定前缀 */
+  if (hasRecentTool(entries, index, [
+    'mcp__browser-tools__browser_screenshot',
+    'mcp__browser-tools__browser_get_text',
+    'mcp__browser-tools__browser_console',
+    'mcp__browser-tools__browser_navigate',
+    'mcp__browser-tools__browser_reload',
+    'mcp__browser-tools__browser_get_url',
+  ])) {
+    if (
+      /^\(mcp__.+completed with no output\)$/i.test(text) ||
+      /^Screenshot (saved|taken|failed)/i.test(text) ||
+      /^\{[\s\S]*\}$/.test(text) ||
+      text.startsWith('http://') || text.startsWith('https://')
+    ) return true
+  }
+
+  return false
 }
 
 function aggregateToolEntries(entries: ClaudeTranscriptEntry[]): DisplayEntry[] {
@@ -393,6 +463,7 @@ function filterNoiseTranscriptEntries(entries: ClaudeTranscriptEntry[]): ClaudeT
     if (isRejectedAskUserQuestionEcho(e)) return false
     if (isToolResultEcho(e)) return false
     if (isReadToolResultEcho(e, entries, index)) return false
+    if (isOtherToolResultEcho(e, entries, index)) return false
     return e.kind !== 'event' || e.ptyEcho === true
   })
 }
