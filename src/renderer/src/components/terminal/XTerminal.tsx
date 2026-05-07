@@ -398,14 +398,20 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     return () => clearTimeout(t)
   }, [active, sessionId])
 
-  // [2026-04-29] Update xterm theme when resolved theme changes
+  // [2026-04-29] Update xterm theme + font options when resolved theme changes
   useEffect(() => {
     const entry = terminals.get(sessionId)
-    if (entry) {
-      /* [2026-05-07] 原按主题 id 三元判断选择 palette；改由主题注册表提供，方便新增主题。 */
-      // entry.term.options.theme = resolvedTheme === 'fallout' ? FALLOUT_THEME : resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME
-      entry.term.options.theme = getThemeDefinition(resolvedTheme).terminal
-    }
+    if (!entry) return
+    const def = getThemeDefinition(resolvedTheme)
+    entry.term.options.theme = def.terminal
+    // [2026-05-06] 按主题覆盖字体/行高等选项；回退到全局默认值（dark/light 无 terminalOptions）
+    const opts = def.terminalOptions
+    entry.term.options.fontFamily = opts?.fontFamily ?? '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace'
+    entry.term.options.fontSize = opts?.fontSize ?? 13
+    entry.term.options.lineHeight = opts?.lineHeight ?? 1.45
+    entry.term.options.letterSpacing = opts?.letterSpacing ?? 0.3
+    entry.term.options.cursorBlink = opts?.cursorBlink ?? false
+    if (opts?.cursorStyle) entry.term.options.cursorStyle = opts.cursorStyle
   }, [sessionId, resolvedTheme])
 
   const onContextMenu = (e: React.MouseEvent): void => {
@@ -420,10 +426,9 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-hidden"
+      className={`flex-1 overflow-hidden xterm-theme-${resolvedTheme}`}
       style={{
         /* [2026-05-07] 背景色跟随 registry 的 terminal palette，避免新增主题时漏改。 */
-        // background: resolvedTheme === 'fallout' ? FALLOUT_THEME.background : resolvedTheme === 'dark' ? DARK_THEME.background : LIGHT_THEME.background
         background: getThemeDefinition(resolvedTheme).terminal.background
       }}
       onContextMenu={onContextMenu}
