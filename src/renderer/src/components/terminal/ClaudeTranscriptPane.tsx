@@ -415,6 +415,17 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     return () => ro.disconnect()
   }, [sessionId, entries.length, updateStickFromScroll])
 
+  /* [2026-05-07] PTY echo 原地替换时（entries 数组新引用但长度不变）不触发 ResizeObserver；
+   * 强制将 pre 滚到底并读取 scrollHeight 触发浏览器 repaint */
+  useEffect(() => {
+    const root = scrollRootRef.current
+    if (!root) return
+    const echoEls = root.querySelectorAll<HTMLPreElement>('[data-transcript-pty="slash"] pre')
+    echoEls.forEach((pre) => {
+      pre.scrollTop = pre.scrollHeight
+    })
+  }, [entries])
+
   const handleScrollPane = useCallback((): void => {
     updateStickFromScroll()
     if (scrollRestoreAnchorRef.current) return

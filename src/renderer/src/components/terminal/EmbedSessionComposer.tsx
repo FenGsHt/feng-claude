@@ -9,6 +9,8 @@ import {
   resolveSlashInsertRange,
   type ClaudeSlashItem
 } from '../../lib/claudeCodeSlashCommands'
+import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
+import { useTranscriptStore } from '../../store/transcriptStore'
 
 interface Props {
   sessionId: string
@@ -150,6 +152,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
       if (sent < SLASH_EXIT_ESC_BURST) {
         window.setTimeout(pump, SLASH_EXIT_ESC_GAP_MS)
       } else {
+        useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
+        setEmbedSlashPtyEchoActive(sessionId, false)
         setSlashInteractiveMode(false)
         requestAnimationFrame(() => taRef.current?.focus())
       }

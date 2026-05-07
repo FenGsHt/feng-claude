@@ -108,6 +108,8 @@ interface TranscriptState {
   /** [2026-05-06] 历史全量回填（与 append 互斥于同一 IPC 批次） */
   replaceSession: (sessionId: string, entries: ClaudeTranscriptEntry[]) => void
   clearSession: (sessionId: string) => void
+  /** [2026-05-07] 外嵌 Esc 退出交互后移除末尾 ptyEcho 块，避免残留在转录区 */
+  clearLatestPtyEchoChunk: (sessionId: string) => void
 }
 
 export const useTranscriptStore = create<TranscriptState>((set) => ({
@@ -263,5 +265,12 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       pendingTokenDeltaBySession.delete(sessionId)
       const { [sessionId]: _removed, ...rest } = s.bySession
       return { bySession: rest }
+    }),
+  clearLatestPtyEchoChunk: (sessionId) =>
+    set((s) => {
+      const prev = s.bySession[sessionId] ?? []
+      const last = prev[prev.length - 1]
+      if (last?.kind !== 'event' || last.ptyEcho !== true) return s
+      return { bySession: { ...s.bySession, [sessionId]: prev.slice(0, -1) } }
     })
 }))
