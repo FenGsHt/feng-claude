@@ -3,12 +3,19 @@ import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
 import { registerEmbedDraftInjector } from '../../lib/embedDraftBridge'
 import { sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
 import { usePtyAlternateScreenStore } from '../../store/ptyAlternateScreenStore'
+import { useSessionStore } from '../../store/sessionStore'
 import {
   filterSlashCommands,
   getSlashCompletionAtStart,
   resolveSlashInsertRange,
   type ClaudeSlashItem
 } from '../../lib/claudeCodeSlashCommands'
+import {
+  filterAtCommands,
+  flattenTreeToAtItems,
+  getAtCompletionAt,
+  type FileAtItem
+} from '../../lib/claudeCodeAtCommands'
 import { setEmbedSlashPtyEchoActive, subscribeSlashDone } from '../../lib/embedPtyTranscriptEcho'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
@@ -33,13 +40,17 @@ export function EmbedSessionComposer({
   const [draft, setDraft] = useState('')
   const [cursor, setCursor] = useState(0)
   const [selectedSlash, setSelectedSlash] = useState(0)
+  const [selectedAt, setSelectedAt] = useState(0)
   const [slashInteractiveMode, setSlashInteractiveMode] = useState(false)
+  const [atItems, setAtItems] = useState<FileAtItem[]>([])
   const taRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const atListRef = useRef<HTMLUListElement>(null)
   const historyCursorRef = useRef<number | null>(null)
   const draftBeforeHistoryRef = useRef('')
   const inputHistory = useEmbedInputHistoryStore((s) => s.bySession[sessionId] ?? [])
   const pushInputHistory = useEmbedInputHistoryStore((s) => s.pushHistory)
+  const workdir = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.workdir ?? '')
   /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
   // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
   const clearNativeTerminal = useNativeTerminalRequestStore((s) => s.clearNativeTerminal)
@@ -78,6 +89,20 @@ export function EmbedSessionComposer({
     })
   }, [sessionId])
 
+  /* [2026-05-07] @ 补全：预加载文件树 */
+  useEffect(() => {
+    if (!workdir) { setAtItems([]); return }
+    let cancelled = false
+    window.electronAPI.readFileTree(workdir, 3).then((nodes) => {
+      if (!cancelled) {
+        setAtItems(flattenTreeToAtItems(nodes, workdir))
+      }
+    }).catch(() => {
+      if (!cancelled) setAtItems([])
+    })
+    return () => { cancelled = true }
+  }, [workdir])
+
   const slashCtx = useMemo(() => getSlashCompletionAtStart(draft, cursor), [draft, cursor])
 
   const slashList = useMemo(() => {
@@ -86,6 +111,19 @@ export function EmbedSessionComposer({
   }, [slashCtx])
 
   const slashMenuOpen = Boolean(slashCtx && slashList.length > 0)
+
+  /* [2026-05-07] @ 补全：与 / 菜单互斥 */
+  const atCtx = useMemo(() => {
+    if (slashMenuOpen) return null
+    return getAtCompletionAt(draft, cursor)
+  }, [draft, cursor, slashMenuOpen])
+
+  const atList = useMemo(() => {
+    if (!atCtx) return []
+    return filterAtCommands(atItems, atCtx.query)
+  }, [atCtx, atItems])
+
+  const atMenuOpen = Boolean(atCtx && atList.length > 0)
 
   useEffect(() => {
     setSelectedSlash(0)
@@ -100,6 +138,21 @@ export function EmbedSessionComposer({
     const el = listRef.current.children[selectedSlash] as HTMLElement | undefined
     el?.scrollIntoView({ block: 'nearest' })
   }, [selectedSlash, slashMenuOpen])
+
+  /* [2026-05-07] @ 菜单选择重置 & 滚动 */
+  useEffect(() => {
+    setSelectedAt(0)
+  }, [atCtx?.query, atCtx?.end])
+
+  useEffect(() => {
+    setSelectedAt((s) => (atList.length === 0 ? 0 : Math.min(s, atList.length - 1)))
+  }, [atList.length])
+
+  useEffect(() => {
+    if (!atMenuOpen || !atListRef.current) return
+    const el = atListRef.current.children[selectedAt] as HTMLElement | undefined
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [selectedAt, atMenuOpen])
 
   const syncCursorFromDom = useCallback((): void => {
     const el = taRef.current
@@ -127,6 +180,26 @@ export function EmbedSessionComposer({
       })
     },
     [draft, cursor]
+  )
+
+  const applyAtItem = useCallback(
+    (item: FileAtItem): void => {
+      if (!atCtx) return
+      const after = draft.slice(atCtx.end)
+      const before = draft.slice(0, atCtx.start)
+      const next = before + item.insert + after
+      setDraft(next)
+      const pos = atCtx.start + item.insert.length
+      requestAnimationFrame(() => {
+        const el = taRef.current
+        if (el) {
+          el.focus()
+          el.setSelectionRange(pos, pos)
+          setCursor(pos)
+        }
+      })
+    },
+    [draft, atCtx]
   )
 
   const send = useCallback((): void => {
@@ -310,6 +383,43 @@ export function EmbedSessionComposer({
       }
     }
 
+    /* [2026-05-07] @ 文件补全键盘处理：与 / 菜单互斥，同一模式处理 */
+    if (atMenuOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedAt((i) => (i + 1) % atList.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedAt((i) => (i - 1 + atList.length) % atList.length)
+        return
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const item = atList[selectedAt]
+        if (item) applyAtItem(item)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (atCtx) {
+          const after = draft.slice(atCtx.end)
+          const before = draft.slice(0, atCtx.start)
+          setDraft(before + after)
+          const pos = atCtx.start
+          requestAnimationFrame(() => {
+            const el = taRef.current
+            if (el) {
+              el.setSelectionRange(pos, pos)
+              setCursor(pos)
+            }
+          })
+        }
+        return
+      }
+    }
+
     if (handleHistoryKey(e)) return
 
     /* [2026-05-06] 原：Ctrl/Cmd+Enter 发送；改为 Enter 发送、Ctrl/Cmd+Enter 换行（与常见 IM 一致） */
@@ -375,6 +485,38 @@ export function EmbedSessionComposer({
               ))}
             </ul>
           ) : null}
+          {/* [2026-05-07] @ 文件/目录补全：与 / 菜单互斥，同一位置渲染 */}
+          {atMenuOpen ? (
+            <ul
+              id="at-file-list"
+              ref={atListRef}
+              role="listbox"
+              className="absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[min(280px,40vh)] overflow-y-auto rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] py-1 shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]"
+            >
+              {atList.map((item, idx) => (
+                <li key={`${item.matchKey}-${idx}`}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={idx === selectedAt}
+                    className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[11px] transition-colors ${
+                      idx === selectedAt
+                        ? 'bg-[var(--theme-accent-bg-strong)] text-claude-text'
+                        : 'text-claude-text/90 hover:bg-[var(--theme-panel-bg-soft)]'
+                    }`}
+                    onMouseDown={(ev) => {
+                      ev.preventDefault()
+                      applyAtItem(item)
+                    }}
+                    onMouseEnter={() => setSelectedAt(idx)}
+                  >
+                    <span className="font-mono text-[var(--theme-accent-muted)] flex-1 truncate">{item.insert.trimEnd()}</span>
+                    <span className="text-[10px] text-claude-muted shrink-0">{item.isDirectory ? '目录' : '文件'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <textarea
             ref={taRef}
             value={draft}
@@ -399,14 +541,14 @@ export function EmbedSessionComposer({
                 ? '全屏终端界面进行中，输入已暂停…'
                 : slashInteractiveMode
                   ? '斜杠命令交互中：请在上方内嵌终端直接输入；Ctrl+Enter 强制退出'
-                  : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令'
+                  : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
             className={`min-h-[80px] w-full resize-y rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-field-bg)] px-3 py-2.5 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-[color:var(--theme-shadow)] placeholder:text-claude-muted/55 focus:border-[var(--theme-accent-border)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
               alternateScreen ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}
-            aria-expanded={slashMenuOpen}
-            aria-controls={slashMenuOpen ? 'slash-command-list' : undefined}
+            aria-expanded={slashMenuOpen || atMenuOpen}
+            aria-controls={slashMenuOpen ? 'slash-command-list' : atMenuOpen ? 'at-file-list' : undefined}
           />
         </div>
         <button
