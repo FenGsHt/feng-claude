@@ -231,16 +231,18 @@ html[data-theme='fallout'] .xterm-theme-fallout {
   outline: 1px solid rgba(42, 255, 77, 0.55);
   outline-offset: -1px;
   box-shadow:
-    inset 0 0 18px rgba(42, 255, 77, 0.08),
-    inset 0 0 4px  rgba(42, 255, 77, 0.12),
-    0 0 8px rgba(42, 255, 77, 0.08);
+    inset 0 0 12px rgba(42, 255, 77, 0.05),
+    inset 0 0 3px  rgba(42, 255, 77, 0.08),
+    0 0 6px rgba(42, 255, 77, 0.06);
   /* 轻微桶形失真感 via overflow+border-radius */
   border-radius: 2px;
   /* 扫描线纹理：覆盖在终端内容上 */
   position: relative;
 }
 
-/* 扫描线 pseudo-overlay（不干扰鼠标交互） */
+/* 扫描线 pseudo-overlay（不干扰鼠标交互）
+ * [2026-05-07] 原 3px 间距 + 0.18 不透明度导致 VT323 字体发虚；
+ * 改为 4px 间距 + 0.08 透明度，保留扫描感同时不影响文字清晰度。 */
 html[data-theme='fallout'] .xterm-theme-fallout::after {
   content: '';
   position: absolute;
@@ -250,9 +252,9 @@ html[data-theme='fallout'] .xterm-theme-fallout::after {
   background: repeating-linear-gradient(
     to bottom,
     transparent 0px,
-    transparent 2px,
-    rgba(0, 0, 0, 0.18) 2px,
-    rgba(0, 0, 0, 0.18) 3px
+    transparent 3px,
+    rgba(0, 0, 0, 0.08) 3px,
+    rgba(0, 0, 0, 0.08) 4px
   );
 }
 
