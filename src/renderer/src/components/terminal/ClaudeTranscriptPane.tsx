@@ -310,11 +310,19 @@ function isToolResultEcho(e: ClaudeTranscriptEntry): boolean {
   if (e.kind !== 'user') return false
   const text = e.text.trim()
   return (
-    /* [2026-05-07] 原 Write/Edit 等工具结果会被 Claude Code 写成 user role，外嵌里误显示成“你”的气泡；展示层隐藏这类机器回执。 */
+    /* [2026-05-07] 原 Write/Edit 等工具结果会被 Claude Code 写成 user role，外嵌里误显示成”你”的气泡；展示层隐藏这类机器回执。 */
     /^File (created|updated) successfully at:/i.test(text) ||
     /^The file .+ has been (updated|created) successfully/i.test(text) ||
     /^Tool use was successful/i.test(text) ||
-    /^File state is current in your context/i.test(text)
+    /^File state is current in your context/i.test(text) ||
+    /* [2026-05-06] EnterPlanMode / ExitPlanMode 返回的系统提示文本，对用户无信息量，直接隐藏。 */
+    /^Entered plan mode\./i.test(text) ||
+    /^Exited plan mode/i.test(text) ||
+    /* TodoWrite / TodoRead 的机器回执 */
+    /^Todos have been (updated|created)/i.test(text) ||
+    /^No todos found/i.test(text) ||
+    /* 其他元工具固定回执模式 */
+    /^The plan has been submitted/i.test(text)
   )
 }
 
