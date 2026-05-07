@@ -350,7 +350,22 @@ function cropLatestCompleteMcpBlock(text: string): { text: string; reason: strin
     }
     return -1
   })()
-  if (navIdx < 0 || !/User MCPs|Built-in MCPs|Manage MCP servers/.test(text)) {
+  if (navIdx < 0) {
+    if (!/User MCPs|Built-in MCPs|Manage MCP servers/.test(text)) {
+      return { text, reason: 'none', startLine: 0 }
+    }
+    /* [2026-05-07] nav footer 未到但已有 Manage MCP servers 头部（首次渲染 PTY 分两批发送时）：
+     * 从最后一个 Manage 头部往后截取，避免把 session 状态整屏输出给用户 */
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      if (/Manage MCP servers/.test(lines[i])) {
+        return { text: lines.slice(i).join('\n'), reason: 'partial-no-nav', startLine: i }
+      }
+    }
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      if (/User MCPs/.test(lines[i])) {
+        return { text: lines.slice(i).join('\n'), reason: 'partial-no-nav-user', startLine: i }
+      }
+    }
     return { text, reason: 'none', startLine: 0 }
   }
 
