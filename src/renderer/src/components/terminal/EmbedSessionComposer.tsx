@@ -395,7 +395,7 @@ export function EmbedSessionComposer({
         setSelectedAt((i) => (i - 1 + atList.length) % atList.length)
         return
       }
-      if (e.key === 'Tab') {
+      if (e.key === 'Tab' || e.key === 'Enter') {
         e.preventDefault()
         const item = atList[selectedAt]
         if (item) applyAtItem(item)
