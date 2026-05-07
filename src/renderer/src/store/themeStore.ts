@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ThemeMode } from '../types/settings'
+import { isThemeMode } from '../theme/themeRegistry'
 
 export type { ThemeMode }
 
@@ -18,7 +19,9 @@ export const useThemeStore = create<ThemeStore>()((set, get) => ({
     try {
       const settings = await window.electronAPI.settings.get()
       const saved = settings?.theme as ThemeMode | undefined
-      if (saved === 'dark' || saved === 'light' || saved === 'auto' || saved === 'fallout') {
+      /* [2026-05-07] 原主题白名单散落在 store；改用 themeRegistry，新增主题只扩注册表。 */
+      // if (saved === 'dark' || saved === 'light' || saved === 'auto' || saved === 'fallout') {
+      if (isThemeMode(saved)) {
         set({ theme: saved, _hydrated: true })
       } else {
         set({ _hydrated: true })

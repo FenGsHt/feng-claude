@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react'
 import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
-import { useThemeStore, type ThemeMode } from '../../store/themeStore'
+import { useThemeStore } from '../../store/themeStore'
 import type { UpdateStatusPayload } from '../../types/ipc'
 import { v4 as uuidv4 } from 'uuid'
+import { selectableThemes } from '../../theme/themeRegistry'
 
 export function SettingsPanel(): React.ReactElement {
   const [form, setForm] = useState<ClaudeSettings>(DEFAULT_SETTINGS)
@@ -221,22 +222,19 @@ export function SettingsPanel(): React.ReactElement {
           {lang === 'zh' ? '主题模式' : 'Theme'}
         </span>
         <div className="grid grid-cols-2 rounded overflow-hidden border border-claude-border text-[10px] mt-1 gap-px bg-claude-border">
-          {([
-            ['dark', lang === 'zh' ? '暗色' : 'Dark'],
-            ['light', lang === 'zh' ? '亮色' : 'Light'],
-            ['auto', lang === 'zh' ? '自动' : 'Auto'],
-            ['fallout', lang === 'zh' ? 'Fallout' : 'Fallout'],
-          ] as [ThemeMode, string][]).map(([key, label]) => (
+          {/* [2026-05-07] 原主题按钮数组硬编码在设置页；改由 themeRegistry 驱动，便于后续新增主题。 */}
+          {/* {(['dark', 'light', 'auto', 'fallout'] as const).map(...) } */}
+          {selectableThemes.map(({ id: key, label }) => (
             <button
               key={key}
               onClick={() => setTheme(key)}
-              className={`px-2 py-0.5 transition-colors bg-claude-bg ${
+              className={`px-2 py-0.5 transition-colors ${
                 theme === key
-                  ? 'bg-amber-500 text-black font-medium'
-                  : 'text-claude-muted hover:text-claude-text'
+                  ? 'bg-[var(--theme-accent-bg-strong)] text-[var(--theme-accent-text)] font-medium'
+                  : 'bg-claude-bg text-claude-muted hover:text-claude-text'
               }`}
             >
-              {label}
+              {label[lang]}
             </button>
           ))}
         </div>

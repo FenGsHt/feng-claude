@@ -1,6 +1,7 @@
 import { Terminal } from 'xterm'
 import { useEmbedOutputBetaStore } from '../store/embedOutputBetaStore'
 import { useTranscriptStore } from '../store/transcriptStore'
+import { useNativeTerminalRequestStore } from '../store/nativeTerminalRequestStore'
 
 /**
  * [2026-05-07] 外嵌模式 PTY 输出转录
@@ -32,6 +33,8 @@ interface Buf {
   sawInteractive: boolean
   /** /clear 等无 TUI 命令：收到非交互内容后延迟发出 done */
   nonTuiTimer: ReturnType<typeof setTimeout> | null
+  /** [2026-05-07] 真实内嵌 xterm 需要原始 PTY 回放，避免组件挂载略晚时丢首帧 */
+  rawReplay: string[]
 }
 
 const buffers = new Map<string, Buf>()
@@ -42,13 +45,15 @@ function makeBuf(): Buf {
     timer: null,
     lastMcpScreen: '',
     sawInteractive: false,
-    nonTuiTimer: null
+    nonTuiTimer: null,
+    rawReplay: []
   }
 }
 
 // ─── 斜杠命令完成通知（供 EmbedSessionComposer 订阅）──────────────────────────
 
 const slashDoneCallbacks = new Map<string, () => void>()
+const slashOutputCallbacks = new Map<string, Set<(data: string) => void>>()
 
 export function subscribeSlashDone(sessionId: string, cb: () => void): () => void {
   slashDoneCallbacks.set(sessionId, cb)
@@ -59,6 +64,32 @@ export function subscribeSlashDone(sessionId: string, cb: () => void): () => voi
 
 function signalSlashDone(sessionId: string): void {
   slashDoneCallbacks.get(sessionId)?.()
+}
+
+export function subscribeSlashPtyOutput(
+  sessionId: string,
+  cb: (data: string) => void
+): () => void {
+  let set = slashOutputCallbacks.get(sessionId)
+  if (!set) {
+    set = new Set()
+    slashOutputCallbacks.set(sessionId, set)
+  }
+  set.add(cb)
+  const replay = buffers.get(sessionId)?.rawReplay ?? []
+  for (const chunk of replay) cb(chunk)
+  return () => {
+    const current = slashOutputCallbacks.get(sessionId)
+    if (!current) return
+    current.delete(cb)
+    if (current.size === 0) slashOutputCallbacks.delete(sessionId)
+  }
+}
+
+function emitSlashPtyOutput(sessionId: string, data: string): void {
+  const callbacks = slashOutputCallbacks.get(sessionId)
+  if (!callbacks) return
+  for (const cb of callbacks) cb(data)
 }
 
 // ─── 判断内容是否属于交互式 TUI ──────────────────────────────────────────────
@@ -229,9 +260,10 @@ function doFlush(sessionId: string): void {
   }
 
   b.lastMcpScreen = snapshot
-  if (snapshot.trim().length > 0) {
-    useTranscriptStore.getState().setLatestPtyEchoChunk(sessionId, snapshot)
-  }
+  /* [2026-05-07] 方案 1：交互式斜杠命令改由真实内嵌 xterm 渲染；不再把 headless xterm 快照写成 <pre> 文本。 */
+  // if (snapshot.trim().length > 0) {
+  //   useTranscriptStore.getState().setLatestPtyEchoChunk(sessionId, snapshot)
+  // }
   if (DEBUG_EMBED_MCP) {
     console.log('[embed-mcp][flush]', {
       sessionId,
@@ -253,8 +285,11 @@ function _exitSlashEcho(sessionId: string, b: Buf): void {
   b.nonTuiTimer = null
   b.lastMcpScreen = ''
   b.sawInteractive = false
+  b.rawReplay = []
   slashEchoSessions.delete(sessionId)
   useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
+  /* [2026-05-07] 原 slash 自然结束只清 echo，native 浮窗状态可能残留；结束时同步清理终端请求。 */
+  useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -278,12 +313,20 @@ export function beginSlashPtyEchoRound(sessionId: string): void {
     b.nonTuiTimer = null
     b.lastMcpScreen = ''
     b.sawInteractive = false
+    b.rawReplay = []
+    /* [2026-05-07] 原保留 headless buffer 会把上一次 /mcp 画面带入结束检测；新一轮先清空终端屏幕。 */
     // xterm terminal 保留当前 buffer 状态（光标位置正确），无需重置
+    b.term.reset()
+    b.term.clear()
   } else {
     b = makeBuf()
     buffers.set(sessionId, b)
   }
   slashEchoSessions.add(sessionId)
+  /* [2026-05-07] 原创建 ptyEcho 让外嵌列表渲染内嵌 SlashTerminalBlock；现在统一用悬浮原生终端。 */
+  // useTranscriptStore.getState().setLatestPtyEchoChunk(sessionId, SLASH_TERMINAL_EVENT_TEXT)
+  useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
+  useNativeTerminalRequestStore.getState().requestNativeTerminal(sessionId, '斜杠命令')
   if (DEBUG_EMBED_MCP) {
     console.log('[embed-mcp][round-begin]', { sessionId })
   }
@@ -315,6 +358,9 @@ export function ingestEmbedPtyEcho(sessionId: string, data: string): void {
     })
   }
 
+  b.rawReplay.push(data)
+  if (b.rawReplay.length > 400) b.rawReplay = b.rawReplay.slice(-240)
+  emitSlashPtyOutput(sessionId, data)
   // write callback 保证 xterm 解析完毕后再 schedule flush
   b.term.write(data, () => scheduleFlush(sessionId))
 }

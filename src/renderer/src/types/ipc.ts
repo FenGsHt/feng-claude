@@ -283,6 +283,9 @@ export interface ClaudeTranscriptEntry {
   usage?: ClaudeTurnTokenUsage
   /** [2026-05-06] 外嵌：从用户发送到本条助手首段出现在转录的耗时（ms） */
   latencyMs?: number
+  /** [2026-05-07] 外嵌无法完整承载的交互工具（如 AskUserQuestion），需切回原生终端处理 */
+  requiresNativeTerminal?: boolean
+  toolName?: string
 }
 
 export interface ClaudeTranscriptPayload {

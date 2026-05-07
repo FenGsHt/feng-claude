@@ -11,9 +11,12 @@ import {
 } from '../../lib/claudeCodeSlashCommands'
 import { setEmbedSlashPtyEchoActive, subscribeSlashDone } from '../../lib/embedPtyTranscriptEcho'
 import { useTranscriptStore } from '../../store/transcriptStore'
+import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
+import { useEmbedInputHistoryStore } from '../../store/embedInputHistoryStore'
 
 interface Props {
   sessionId: string
+  nativeTerminalOverlayVisible?: boolean
 }
 
 /**
@@ -22,7 +25,10 @@ interface Props {
  * [2026-05-06] Enter 发送；Ctrl/Cmd+Enter 换行；Shift+Enter 默认换行（不发送）
  * [2026-05-06] 命令补全打开时：↑↓ 选择，Tab 填入高亮项；Enter 仍发送全文（原 Enter 只填入导致无法发送）
  */
-export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
+export function EmbedSessionComposer({
+  sessionId,
+  nativeTerminalOverlayVisible = false
+}: Props): React.ReactElement {
   const alternateScreen = usePtyAlternateScreenStore((s) => s.bySession[sessionId] === true)
   const [draft, setDraft] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -30,7 +36,16 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
   const [slashInteractiveMode, setSlashInteractiveMode] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
-  useEmbedPtyResize(sessionId, true)
+  const historyCursorRef = useRef<number | null>(null)
+  const draftBeforeHistoryRef = useRef('')
+  const inputHistory = useEmbedInputHistoryStore((s) => s.bySession[sessionId] ?? [])
+  const pushInputHistory = useEmbedInputHistoryStore((s) => s.pushHistory)
+  /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
+  // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
+  const clearNativeTerminal = useNativeTerminalRequestStore((s) => s.clearNativeTerminal)
+  /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
+  // useEmbedPtyResize(sessionId, true)
+  useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible)
 
   /* PTY 侧检测到斜杠命令自然结束（TUI 消失 / idle 超时）→ 自动退出交互态 */
   useEffect(() => {
@@ -118,12 +133,18 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     if (alternateScreen) return
     const t = draft
     if (!t.trim()) return
+    pushInputHistory(sessionId, t)
+    historyCursorRef.current = null
+    draftBeforeHistoryRef.current = ''
     setDraft('')
     setCursor(0)
-    setSlashInteractiveMode(t.trimStart().startsWith('/'))
+    const isSlash = t.trimStart().startsWith('/')
+    setSlashInteractiveMode(isSlash)
     submitEmbedSessionInput(sessionId, t)
-    requestAnimationFrame(() => taRef.current?.focus())
-  }, [alternateScreen, draft, sessionId])
+    requestAnimationFrame(() => {
+      if (!isSlash) taRef.current?.focus()
+    })
+  }, [alternateScreen, draft, pushInputHistory, sessionId])
 
   /** [2026-05-06] Ctrl/Cmd+Enter 在光标处插入换行（Enter 单独用于发送） */
   const insertNewlineAtCursor = useCallback((): void => {
@@ -145,95 +166,109 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
     })
   }, [])
 
-  /* [2026-05-07] 只发 1 次 Esc：多于 1 次会在 Claude Code 关闭菜单后误触 Rewind UI */
-  const SLASH_EXIT_ESC_BURST = 1
-  const SLASH_EXIT_ESC_GAP_MS = 30
-
   const exitSlashInteraction = useCallback((): void => {
-    /* [2026-05-06] 原单次 Esc；进入子菜单后仍留在 Ink 选单内，与前端已退出不同步 */
+    /* [2026-05-07] 方案 1：Esc 是 TUI 内“退一层”，不能再直接关闭前端；强制退出用 Ctrl+C 并等待 PTY 自然结束。 */
     // sendRawPtyInput(sessionId, '\x1b')
+    // useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
+    // setEmbedSlashPtyEchoActive(sessionId, false)
     // setSlashInteractiveMode(false)
-    let sent = 0
-    const pump = (): void => {
-      sendRawPtyInput(sessionId, '\x1b')
-      sent += 1
-      if (sent < SLASH_EXIT_ESC_BURST) {
-        window.setTimeout(pump, SLASH_EXIT_ESC_GAP_MS)
-      } else {
-        useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
-        setEmbedSlashPtyEchoActive(sessionId, false)
-        setSlashInteractiveMode(false)
-        requestAnimationFrame(() => taRef.current?.focus())
-      }
-    }
-    pump()
-  }, [sessionId])
+    sendRawPtyInput(sessionId, '\x03')
+    /* [2026-05-07] 原这里只隐藏浮窗；强制退出后必须同步清理 open/needed，避免状态残留。 */
+    // dismissNativeTerminal(sessionId)
+    clearNativeTerminal(sessionId)
+    window.setTimeout(() => {
+      setSlashInteractiveMode((active) => {
+        if (active) {
+          /* [2026-05-07] Ctrl+C 未产生可检测退出帧时兜底清理，避免输入框长期 readOnly。 */
+          useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
+          setEmbedSlashPtyEchoActive(sessionId, false)
+          requestAnimationFrame(() => taRef.current?.focus())
+        }
+        return false
+      })
+    }, 250)
+  }, [clearNativeTerminal, sessionId])
 
   const sendPtyControlKey = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (!slashInteractiveMode || alternateScreen) return false
-      const win = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
-      const sendRaw = (v: string): void => sendRawPtyInput(sessionId, v)
-
-      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
-        e.preventDefault()
-        sendRaw('\x03')
-        return true
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        sendRaw('\x1b[A')
-        return true
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        sendRaw('\x1b[B')
-        return true
-      }
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        sendRaw('\x1b[D')
-        return true
-      }
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        sendRaw('\x1b[C')
-        return true
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        sendRaw(win ? '\r' : '\n')
-        return true
-      }
-      if (e.key === 'Tab') {
-        e.preventDefault()
-        sendRaw('\t')
-        return true
-      }
-      if (e.key === 'Escape') {
-        /* [2026-05-06] 原 Esc 直发 PTY；按反馈改为优先退出交互态，避免用户被锁在直控模式 */
-        // e.preventDefault()
-        // sendRaw('\x1b')
-        /* [2026-05-06] 上版只退前端状态会与 Claude Code 真实 TUI 不同步；改为统一退出函数。 */
-        // setSlashInteractiveMode(false)
-        // requestAnimationFrame(() => taRef.current?.focus())
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
         exitSlashInteraction()
         return true
       }
-      if (e.key === 'Backspace') {
+      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
         e.preventDefault()
-        sendRaw('\x7f')
+        exitSlashInteraction()
         return true
       }
-      if (e.key.length === 1 && !e.metaKey && !e.altKey && !e.ctrlKey) {
-        e.preventDefault()
-        sendRaw(e.key)
-        return true
-      }
-      return false
+      /* [2026-05-07] 原在 textarea 里手动转发 ↑↓/字符/Tab；/skills 这类带输入框 TUI 需要真实 xterm 处理焦点、组合键和输入。 */
+      // sendRawPtyInput(sessionId, data)
+      e.preventDefault()
+      return true
     },
     [alternateScreen, exitSlashInteraction, sessionId, slashInteractiveMode]
+  )
+
+  const setDraftFromHistory = useCallback((text: string): void => {
+    setDraft(text)
+    requestAnimationFrame(() => {
+      const el = taRef.current
+      if (!el) return
+      const pos = text.length
+      el.setSelectionRange(pos, pos)
+      setCursor(pos)
+    })
+  }, [])
+
+  const handleHistoryKey = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      if (slashInteractiveMode || alternateScreen || slashMenuOpen) return false
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false
+      if (draft.includes('\n')) return false
+      const el = taRef.current
+      const selectionStart = el?.selectionStart ?? cursor
+      const selectionEnd = el?.selectionEnd ?? cursor
+      if (selectionStart !== selectionEnd) return false
+      if (e.key === 'ArrowUp' && selectionStart > 0 && draft.trim().length > 0) return false
+      if (e.key === 'ArrowDown' && selectionStart < draft.length) return false
+      if (inputHistory.length === 0) return false
+
+      e.preventDefault()
+      if (e.key === 'ArrowUp') {
+        const current = historyCursorRef.current
+        if (current === null) {
+          draftBeforeHistoryRef.current = draft
+          historyCursorRef.current = inputHistory.length - 1
+        } else {
+          historyCursorRef.current = Math.max(0, current - 1)
+        }
+        setDraftFromHistory(inputHistory[historyCursorRef.current] ?? '')
+        return true
+      }
+
+      const current = historyCursorRef.current
+      if (current === null) return true
+      if (current >= inputHistory.length - 1) {
+        historyCursorRef.current = null
+        setDraftFromHistory(draftBeforeHistoryRef.current)
+        draftBeforeHistoryRef.current = ''
+        return true
+      }
+      historyCursorRef.current = current + 1
+      setDraftFromHistory(inputHistory[historyCursorRef.current] ?? '')
+      return true
+    },
+    [
+      alternateScreen,
+      cursor,
+      draft,
+      inputHistory,
+      setDraftFromHistory,
+      slashInteractiveMode,
+      slashMenuOpen
+    ]
   )
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -275,6 +310,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
       }
     }
 
+    if (handleHistoryKey(e)) return
+
     /* [2026-05-06] 原：Ctrl/Cmd+Enter 发送；改为 Enter 发送、Ctrl/Cmd+Enter 换行（与常见 IM 一致） */
     // if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     //   e.preventDefault()
@@ -304,7 +341,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
   }
 
   return (
-    <div className="shrink-0 border-t border-white/[0.06] bg-gradient-to-t from-black/40 to-[#0c0c0c] px-3 py-3">
+    <div className="shrink-0 border-t border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-3 py-3">
       <div className="mx-auto flex max-w-3xl min-h-0 items-end gap-2.5">
         <div className="relative min-h-0 flex-1">
           {slashMenuOpen ? (
@@ -312,7 +349,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
               id="slash-command-list"
               ref={listRef}
               role="listbox"
-              className="absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[min(280px,40vh)] overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1d] py-1 shadow-2xl shadow-black/50 ring-1 ring-white/[0.06]"
+              className="absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[min(280px,40vh)] overflow-y-auto rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] py-1 shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]"
             >
               {slashList.map((item, idx) => (
                 <li key={`${item.matchKey}-${item.insert}-${idx}`}>
@@ -322,8 +359,8 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
                     aria-selected={idx === selectedSlash}
                     className={`flex w-full flex-col gap-0.5 px-2.5 py-2 text-left text-[11px] transition-colors ${
                       idx === selectedSlash
-                        ? 'bg-amber-500/20 text-claude-text'
-                        : 'text-claude-text/90 hover:bg-white/[0.06]'
+                        ? 'bg-[var(--theme-accent-bg-strong)] text-claude-text'
+                        : 'text-claude-text/90 hover:bg-[var(--theme-panel-bg-soft)]'
                     }`}
                     onMouseDown={(ev) => {
                       ev.preventDefault()
@@ -331,7 +368,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
                     }}
                     onMouseEnter={() => setSelectedSlash(idx)}
                   >
-                    <span className="font-mono text-amber-400/95">{item.insert.trimEnd()}</span>
+                    <span className="font-mono text-[var(--theme-accent-muted)]">{item.insert.trimEnd()}</span>
                     <span className="text-[10px] leading-snug text-claude-muted">{item.description}</span>
                   </button>
                 </li>
@@ -344,11 +381,16 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             disabled={alternateScreen}
             readOnly={slashInteractiveMode}
             onChange={(e) => {
+              historyCursorRef.current = null
+              draftBeforeHistoryRef.current = ''
               setDraft(e.target.value)
               setCursor(e.target.selectionStart ?? 0)
             }}
             onSelect={syncCursorFromDom}
             onClick={syncCursorFromDom}
+            onFocus={() => {
+              if (slashInteractiveMode) requestAnimationFrame(() => taRef.current?.blur())
+            }}
             onKeyUp={syncCursorFromDom}
             onKeyDown={onKeyDown}
             rows={3}
@@ -356,10 +398,10 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
               alternateScreen
                 ? '全屏终端界面进行中，输入已暂停…'
                 : slashInteractiveMode
-                  ? '斜杠命令交互中：↑↓ Enter Tab 与字符键已直通 PTY；Esc / Ctrl+Enter 退出交互'
+                  ? '斜杠命令交互中：请在上方内嵌终端直接输入；Ctrl+Enter 强制退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令'
             }
-            className={`min-h-[80px] w-full resize-y rounded-xl border border-white/[0.08] bg-[#161618] px-3 py-2.5 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-black/40 placeholder:text-claude-muted/55 focus:border-amber-500/40 focus:outline-none focus:ring-2 focus:ring-amber-500/15 ${
+            className={`min-h-[80px] w-full resize-y rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-field-bg)] px-3 py-2.5 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-[color:var(--theme-shadow)] placeholder:text-claude-muted/55 focus:border-[var(--theme-accent-border)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
               alternateScreen ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}
@@ -371,7 +413,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
           type="button"
           onClick={send}
           disabled={alternateScreen || slashInteractiveMode}
-          className="shrink-0 rounded-xl border border-amber-500/40 bg-gradient-to-b from-amber-500/25 to-amber-600/15 px-4 py-2.5 text-[11px] font-semibold text-amber-100 shadow-md shadow-amber-950/30 transition hover:from-amber-500/35 hover:to-amber-600/25 disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           发送
         </button>
@@ -381,17 +423,17 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             onClick={() => {
               exitSlashInteraction()
             }}
-            className="shrink-0 rounded-xl border border-emerald-500/35 bg-emerald-900/20 px-3 py-2.5 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-900/30"
+            className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
           >
-            退出交互
+            强制退出
           </button>
         ) : null}
       </div>
       {alternateScreen ? (
-        <div className="mx-auto mt-2 max-w-3xl rounded-lg border border-amber-500/30 bg-amber-950/25 px-3 py-2.5">
-          <p className="text-[10px] leading-relaxed text-amber-100/90">
+        <div className="mx-auto mt-2 max-w-3xl rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5">
+          <p className="text-[10px] leading-relaxed text-[var(--theme-accent-text)]">
             已检测到终端备用缓冲区（全屏 TUI，如 Ink 的{' '}
-            <kbd className="rounded border border-amber-400/30 bg-black/30 px-1 py-px font-mono text-[9px]">
+            <kbd className="rounded border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-px font-mono text-[9px]">
               /help
             </kbd>
             ）。外嵌按行输入与此类界面不兼容，已自动暂停；请用顶栏切换到「经典终端」逐键操作，或点击下方向 PTY 发送常用退出键。退出备用缓冲区后此处会自动恢复。
@@ -400,7 +442,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             <button
               type="button"
               title="发送 Ctrl+C 到 PTY"
-              className="rounded-md border border-amber-400/25 bg-black/20 px-2 py-1 text-[9px] font-medium text-amber-50/95 transition hover:bg-black/35"
+              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
               onClick={() => sendRawPtyInput(sessionId, '\x03')}
             >
               Ctrl+C
@@ -408,7 +450,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             <button
               type="button"
               title="发送 Esc 到 PTY"
-              className="rounded-md border border-amber-400/25 bg-black/20 px-2 py-1 text-[9px] font-medium text-amber-50/95 transition hover:bg-black/35"
+              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
               onClick={() => sendRawPtyInput(sessionId, '\x1b')}
             >
               Esc
@@ -416,7 +458,7 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
             <button
               type="button"
               title="发送 q 并换行"
-              className="rounded-md border border-amber-400/25 bg-black/20 px-2 py-1 text-[9px] font-medium text-amber-50/95 transition hover:bg-black/35"
+              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
               onClick={() => {
                 const nl =
                   typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent) ? '\r' : '\n'
@@ -433,12 +475,12 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
         </p>
       )}
       <p className="mx-auto mt-2 max-w-3xl text-center text-[9px] leading-relaxed text-claude-muted/75">
-        <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
-        发送 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
-        换行 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
-        命令面板 · <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
-        <kbd className="rounded-md border border-white/10 bg-white/[0.05] px-1 py-0.5 font-mono">Tab</kbd>{' '}
-        填入 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
+        <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
+        发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
+        换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
+        命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
+        <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
+        填入/历史 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
       </p>
     </div>
   )

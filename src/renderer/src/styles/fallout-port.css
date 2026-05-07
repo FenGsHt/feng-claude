@@ -20,6 +20,34 @@ html[data-theme='fallout'] {
   --field-border: rgba(42, 255, 77, 0.32);
   --field-placeholder: rgba(27, 170, 48, 0.55);
   --overlay-bg: #040904;
+  --theme-focus-ring: rgba(42, 255, 77, 0.58);
+  --theme-panel-bg: #020502;
+  --theme-panel-bg-soft: rgba(42, 255, 77, 0.04);
+  --theme-panel-border: rgba(42, 255, 77, 0.18);
+  --theme-card-bg: rgba(4, 16, 4, 0.88);
+  --theme-card-border: rgba(42, 255, 77, 0.24);
+  --theme-accent-bg: rgba(42, 255, 77, 0.1);
+  --theme-accent-bg-strong: rgba(42, 255, 77, 0.18);
+  --theme-accent-border: rgba(42, 255, 77, 0.38);
+  --theme-accent-text: #c8ffc8;
+  --theme-accent-muted: rgba(170, 255, 68, 0.9);
+  --theme-user-bg: rgba(42, 255, 77, 0.08);
+  --theme-user-border: rgba(170, 255, 68, 0.35);
+  --theme-tool-bg: rgba(42, 255, 77, 0.06);
+  --theme-tool-border: rgba(42, 255, 77, 0.28);
+  --theme-thinking-bg: rgba(10, 42, 10, 0.86);
+  --theme-thinking-border: rgba(42, 255, 77, 0.24);
+  --theme-thinking-text: rgba(200, 255, 200, 0.92);
+  --theme-success-text: rgba(170, 255, 68, 0.95);
+  --theme-danger-bg: rgba(255, 80, 80, 0.12);
+  --theme-danger-border: rgba(255, 128, 128, 0.45);
+  --theme-danger-text: #ffd0d0;
+  --theme-shadow: rgba(0, 20, 0, 0.72);
+  --theme-terminal-overlay-bg: rgba(2, 5, 2, 0.98);
+  --theme-terminal-overlay-header: rgba(4, 16, 4, 0.92);
+  --theme-field-bg: #020502;
+  --theme-kbd-bg: rgba(42, 255, 77, 0.06);
+  --theme-kbd-border: rgba(42, 255, 77, 0.2);
 }
 
 html[data-theme='fallout'] body,

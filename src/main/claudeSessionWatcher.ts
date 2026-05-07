@@ -512,7 +512,14 @@ function parseTranscriptEntries(line: string): ClaudeTranscriptEntry[] {
         }
         if (typ === 'tool_use' && typeof block.name === 'string' && block.name) {
           flushText()
-          out.push({ kind: 'tool', text: block.name, messageId })
+          const toolName = block.name
+          out.push({
+            kind: 'tool',
+            text: toolName,
+            messageId,
+            toolName,
+            requiresNativeTerminal: toolName === 'AskUserQuestion'
+          })
           continue
         }
         /* [2026-05-06] 原 push tool_result 为「会话记录」event；产品要求外嵌不再展示此类原始块 */

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useSessionStore } from '../../store/sessionStore'
 import type { PaneNode } from '../../types/paneLayout'
@@ -9,6 +9,11 @@ import { TerminalPaneHeader } from './TerminalPaneHeader'
 import { ClaudeTranscriptPane } from './ClaudeTranscriptPane'
 import { EmbedSessionComposer } from './EmbedSessionComposer'
 import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
+import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
+/* [2026-05-07] 浮窗 × 不再强制退出 PTY，移除关闭路径中的输入/echo 清理依赖。 */
+// import { sendRawPtyInput, wakeTerminal } from './XTerminal'
+// import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
+import { wakeTerminal } from './XTerminal'
 
 interface PaneLeafProps {
   sessionId: string
@@ -24,6 +29,30 @@ export function PaneLeafShell({
 }: PaneLeafProps): React.ReactElement {
   /* [2026-05-06] embedClaudeOutputBeta：自建对话区 + 输入框，不再挂载 xterm（PTY 仍后台运行） */
   const embedBeta = useEmbedClaudeOutputBeta()
+  const nativeTerminalRequest = useNativeTerminalRequestStore((s) => s.bySession[sessionId])
+  const openNativeTerminal = useNativeTerminalRequestStore((s) => s.openNativeTerminal)
+  const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
+  const nativeTerminalOpen = nativeTerminalRequest?.open === true
+  const nativeTerminalNeeded = nativeTerminalRequest?.needed === true
+  const closeNativeTerminalOverlay = (): void => {
+    /* [2026-05-07] 原关闭浮窗时直接 Ctrl+C，会打断 Claude Code TUI 并导致终端黑屏；× 现在只隐藏浮窗。 */
+    // sendRawPtyInput(sessionId, '\x03')
+    // setEmbedSlashPtyEchoActive(sessionId, false)
+    dismissNativeTerminal(sessionId)
+  }
+
+  useEffect(() => {
+    if (!nativeTerminalOpen) return
+    const wake = (): void => wakeTerminal(sessionId)
+    const raf = requestAnimationFrame(wake)
+    const t1 = window.setTimeout(wake, 80)
+    const t2 = window.setTimeout(wake, 220)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [nativeTerminalOpen, sessionId])
 
   return (
     <div
@@ -35,17 +64,80 @@ export function PaneLeafShell({
       <div
         role="presentation"
         className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-sm transition-shadow ${
-          focused ? 'ring-1 ring-amber-500/60 ring-inset' : 'ring-1 ring-transparent'
+          focused ? 'ring-1 ring-[var(--theme-focus-ring)] ring-inset' : 'ring-1 ring-transparent'
         }`}
         onMouseDown={() => setActiveSession(sessionId)}
       >
         {embedBeta ? (
-          <TerminalDropZone sessionId={sessionId}>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <ClaudeTranscriptPane sessionId={sessionId} className="min-h-0 flex-1 border-b border-claude-border" />
-              <EmbedSessionComposer sessionId={sessionId} />
-            </div>
-          </TerminalDropZone>
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <TerminalDropZone sessionId={sessionId}>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <ClaudeTranscriptPane sessionId={sessionId} className="min-h-0 flex-1 border-b border-claude-border" />
+                <EmbedSessionComposer sessionId={sessionId} nativeTerminalOverlayVisible={nativeTerminalOpen} />
+              </div>
+            </TerminalDropZone>
+            {!nativeTerminalOpen ? (
+              <div
+                className={`absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-xl px-3 py-2 shadow-xl shadow-[color:var(--theme-shadow)] ring-1 ${
+                  nativeTerminalNeeded
+                    ? 'border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] ring-[var(--theme-accent-border)]'
+                    : 'border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] ring-[var(--theme-panel-border)]'
+                }`}
+              >
+                <div className="min-w-0">
+                  {/* [2026-05-07] 原只在检测到 TUI 时显示按钮；现在无检测时也给用户手动查看原生终端的入口。 */}
+                  {/* <div className="text-[10px] font-semibold text-amber-100">检测到终端交互</div> */}
+                  <div className={`text-[10px] font-semibold ${nativeTerminalNeeded ? 'text-[var(--theme-accent-text)]' : 'text-claude-text'}`}>
+                    {nativeTerminalNeeded ? '检测到终端交互' : '原生终端'}
+                  </div>
+                  <div className="max-w-[240px] truncate text-[9px] text-claude-muted">
+                    {nativeTerminalRequest?.reason ?? '可手动打开查看当前 Claude Code 状态'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition ${
+                    nativeTerminalNeeded
+                      ? 'border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-bg-strong)]'
+                      : 'border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] text-claude-text hover:bg-[var(--theme-accent-bg)]'
+                  }`}
+                  onClick={() => openNativeTerminal(sessionId, nativeTerminalRequest?.reason ?? '手动打开')}
+                >
+                  {nativeTerminalNeeded ? '打开终端' : '显示终端'}
+                </button>
+              </div>
+            ) : null}
+            {nativeTerminalOpen ? (
+              <div className="absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(760px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]">
+                <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-header)] px-2.5">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-semibold text-[var(--theme-accent-text)]">需要终端交互</span>
+                    {nativeTerminalRequest?.reason ? (
+                      <span className="ml-2 text-[9px] text-claude-muted">{nativeTerminalRequest.reason}</span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    /* [2026-05-07] 原关闭按钮过小且对比弱，用户不容易发现；改为更明显的浮窗关闭控件。 */
+                    // className="rounded border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[12px] leading-none text-claude-muted transition hover:bg-white/[0.08] hover:text-claude-text"
+                    className="grid h-7 w-7 place-items-center rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[18px] font-bold leading-none text-[var(--theme-accent-text)] shadow-sm shadow-[color:var(--theme-shadow)] transition hover:border-[var(--theme-danger-border)] hover:bg-[var(--theme-danger-bg)] hover:text-[var(--theme-danger-text)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]"
+                    aria-label="关闭原生终端浮窗"
+                    title="关闭终端浮窗"
+                    onClick={closeNativeTerminalOverlay}
+                  >
+                    ×
+                  </button>
+                </div>
+                {/* [2026-05-07] 原空白提示会长期压在终端内容上，影响观感；保留 wakeTerminal 逻辑即可。 */}
+                {/* <div className="pointer-events-none absolute left-3 top-10 z-10 rounded bg-black/45 px-2 py-1 text-[9px] text-claude-muted">
+                  若短暂空白，请等待输出或点击终端区域
+                </div> */}
+                <TerminalDropZone sessionId={sessionId}>
+                  <XTerminal sessionId={sessionId} active={focused || nativeTerminalOpen} />
+                </TerminalDropZone>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <TerminalDropZone sessionId={sessionId}>
             <XTerminal sessionId={sessionId} active={focused} />

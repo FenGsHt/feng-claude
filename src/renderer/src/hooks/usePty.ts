@@ -7,6 +7,8 @@ import { useTokenUsageStore } from '../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../store/globalTokenStore'
 import { useToolCallStore } from '../store/toolCallStore'
 import { enqueueTranscriptTokenDelta, useTranscriptStore } from '../store/transcriptStore'
+import { useNativeTerminalRequestStore } from '../store/nativeTerminalRequestStore'
+import { useEmbedAwaitingReplyStore } from '../store/embedAwaitingReplyStore'
 import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive
@@ -25,6 +27,23 @@ import {
 const NOTIFY_DEBOUNCE_MS = 30_000
 const lastTokenTime = new Map<string, number>()
 const DEBUG_EMBED_MCP = true
+const TERMINAL_INTERACTION_HINT_RE =
+  /Enter to select|(?:↑|↓|\^|\x1b\[A|\x1b\[B).*to navigate|Esc to cancel|Space to cycle|Search skills/i
+
+function shouldKeepEmbedLoadingForTranscript(
+  entries: Array<{ kind: string; text: string }>
+): boolean {
+  return entries.some((e) => {
+    if (e.kind === 'thinking' || e.kind === 'tool') return true
+    if (e.kind !== 'user') return false
+    const text = e.text.trim()
+    return (
+      /* [2026-05-07] 原 AskUserQuestion 回答回执不走普通输入 markPending，Claude 继续运行时 loading 会短暂消失。 */
+      text.includes('User has answered your questions') ||
+      text.includes("You can now continue with the user's answers in mind")
+    )
+  })
+}
 
 function notifyTaskDone(sessionId: string): void {
   const lastToken = lastTokenTime.get(sessionId)
@@ -71,6 +90,9 @@ export function usePty(): void {
           hasAltExit: /\x1b\[\?(1049|1047)l/.test(data)
         })
       }
+      if (TERMINAL_INTERACTION_HINT_RE.test(data)) {
+        useNativeTerminalRequestStore.getState().requestNativeTerminal(sessionId, '检测到终端交互')
+      }
       writeToTerminal(sessionId, data)
       /* [2026-05-06] 原顺序为先 ingestEmbedPtyEcho 再 feedPtyAlternateScreenFromOutput；
        * 导致同一 TCP chunk 末尾的 ?1049h 尚未入账时仍整段写入转录，全屏 TUI 帧污染外嵌区。
@@ -91,6 +113,8 @@ export function usePty(): void {
       const { sessionId, status } = payload
       if (status === 'idle') {
         notifyTaskDone(sessionId)
+        /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
+        useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
       }
       updateSessionStatus(sessionId, status as any)
     })
@@ -144,6 +168,8 @@ export function usePty(): void {
 
     // ── Tool call updates ─────────────────────────────────────
     const unsubTools = window.electronAPI.onToolCallUpdate((payload) => {
+      /* [2026-05-07] 原仅普通输入 markPending；进入工具执行但 token 暂停时外嵌 loading 会短暂消失。 */
+      useEmbedAwaitingReplyStore.getState().markPending(payload.sessionId)
       useToolCallStore.getState().addCall({
         id: payload.toolId,
         sessionId: payload.sessionId,
@@ -159,6 +185,9 @@ export function usePty(): void {
       if (replace === true) {
         useTranscriptStore.getState().replaceSession(sessionId, entries)
       } else if (entries.length > 0) {
+        if (shouldKeepEmbedLoadingForTranscript(entries)) {
+          useEmbedAwaitingReplyStore.getState().markPending(sessionId)
+        }
         useTranscriptStore.getState().append(sessionId, entries)
       }
     })

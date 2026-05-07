@@ -6,6 +6,7 @@ import { useToolCallStore } from '../../store/toolCallStore'
 import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 import type { ClaudeTranscriptEntry, ClaudeTurnTokenUsage } from '../../types/ipc'
 import { formatLatencyMs, formatTokenCount } from '../../lib/formatTokens'
+import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 
 interface Props {
   sessionId: string
@@ -13,6 +14,15 @@ interface Props {
 }
 
 const TOOL_LABEL_FRESH_MS = 18_000
+
+interface ToolGroupEntry {
+  kind: 'toolGroup'
+  text: string
+  tools: string[]
+  messageId?: string
+}
+
+type DisplayEntry = ClaudeTranscriptEntry | ToolGroupEntry
 
 /** [2026-05-06] 底部固定条：会话 running 或已发送待响应时持续显示 loading，覆盖思考/工具/输出阶段 */
 function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): React.ReactElement | null {
@@ -23,12 +33,12 @@ function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): R
       role="status"
       aria-live="polite"
     >
-      <div className="mx-auto flex max-w-3xl items-center gap-2.5 rounded-xl border border-amber-500/35 bg-[#0c0c0d]/95 px-3 py-2.5 shadow-[0_-12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md">
+      <div className="mx-auto flex max-w-3xl items-center gap-2.5 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] px-3 py-2.5 shadow-[0_-12px_40px_var(--theme-shadow)] backdrop-blur-md">
         <span
-          className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-amber-400/20 border-t-amber-400"
+          className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-accent-bg-strong)] border-t-[var(--theme-accent-muted)]"
           aria-hidden
         />
-        <p className="min-w-0 flex-1 text-[11px] font-medium leading-snug text-amber-50/95">{label}</p>
+        <p className="min-w-0 flex-1 text-[11px] font-medium leading-snug text-[var(--theme-accent-text)]">{label}</p>
       </div>
     </div>
   )
@@ -42,10 +52,11 @@ function deriveAiWorkingLabel(args: {
   toolFresh: boolean
 }): string {
   const { sessionBusy, pendingReply, lastKind, latestToolName, toolFresh } = args
-  if (pendingReply && !sessionBusy) return '已发送，等待 Claude 响应…'
-  if (sessionBusy && latestToolName && toolFresh) {
+  if (latestToolName && toolFresh) {
+    /* [2026-05-07] 原仅 sessionBusy 时显示工具名；PTY 状态短暂 idle 时也应提示工具仍在运行。 */
     return `运行工具 · ${latestToolName}`
   }
+  if (pendingReply && !sessionBusy) return '已发送，等待 Claude 响应…'
   if (!sessionBusy) return '等待中…'
   switch (lastKind) {
     case 'thinking':
@@ -73,28 +84,28 @@ function AssistantReplyMeta({
   const hasTok = Boolean(usage && sum > 0)
   if (latencyMs === undefined && !hasTok) return null
   return (
-    <div className="mt-2 space-y-1.5 border-t border-white/[0.07] pt-2">
+    <div className="mt-2 space-y-1.5 border-t border-[var(--theme-panel-border)] pt-2">
       {latencyMs !== undefined ? (
         <div className="text-[9px] text-claude-muted" title="从发送到本条助手出现在此列表的耗时">
           耗时{' '}
-          <span className="font-mono tabular-nums text-sky-400/90">{formatLatencyMs(latencyMs)}</span>
+          <span className="font-mono tabular-nums text-[var(--theme-accent-muted)]">{formatLatencyMs(latencyMs)}</span>
         </div>
       ) : null}
       {hasTok && usage ? (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[9px] tabular-nums text-claude-muted">
           <span title="input">in {formatTokenCount(usage.input)}</span>
-          <span className="text-white/15">·</span>
+          <span className="text-claude-muted/40">·</span>
           <span title="output">out {formatTokenCount(usage.output)}</span>
           {usage.cacheCreate > 0 || usage.cacheRead > 0 ? (
             <>
-              <span className="text-white/15">·</span>
+              <span className="text-claude-muted/40">·</span>
               <span title="cache">
                 cache +{formatTokenCount(usage.cacheCreate)} / {formatTokenCount(usage.cacheRead)}
               </span>
             </>
           ) : null}
-          <span className="text-white/15">·</span>
-          <span className="font-semibold text-emerald-400/85" title="本条回复合计">
+          <span className="text-claude-muted/40">·</span>
+          <span className="font-semibold text-[var(--theme-success-text)]" title="本条回复合计">
             Σ {formatTokenCount(sum)}
           </span>
         </div>
@@ -103,15 +114,92 @@ function AssistantReplyMeta({
   )
 }
 
-function EntryBlock({ e }: { e: ClaudeTranscriptEntry }): React.ReactElement {
+function NativeTerminalRequiredCard({
+  sessionId,
+  toolName
+}: {
+  sessionId: string
+  toolName: string
+}): React.ReactElement {
+  const requestNativeTerminal = useNativeTerminalRequestStore((s) => s.requestNativeTerminal)
+  const openNativeTerminal = useNativeTerminalRequestStore((s) => s.openNativeTerminal)
+
+  useEffect(() => {
+    requestNativeTerminal(sessionId, toolName)
+  }, [requestNativeTerminal, sessionId, toolName])
+
+  return (
+    <div className="w-full max-w-3xl rounded-xl border border-[var(--theme-tool-border)] bg-[var(--theme-tool-bg)] px-3 py-2.5 shadow-inner shadow-[color:var(--theme-shadow)]">
+      <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-accent-muted)]">
+        <span className="rounded bg-[var(--theme-accent-bg)] px-1.5 py-0.5 text-[9px]">TOOL</span>
+        {toolName}
+      </div>
+      <p className="text-[11px] leading-relaxed text-[var(--theme-accent-text)]">
+        此步骤需要 Claude Code 原生终端交互。请点击提示打开终端浮窗后完成选择，外嵌转录会继续同步结果。
+      </p>
+      <button
+        type="button"
+        onClick={() => openNativeTerminal(sessionId, toolName)}
+        className="mt-2 rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
+      >
+        打开终端浮窗
+      </button>
+    </div>
+  )
+}
+
+function requiresNativeTerminalTool(e: ClaudeTranscriptEntry): boolean {
+  if (e.kind !== 'tool') return false
+  const name = (e.toolName ?? e.text).trim()
+  return e.requiresNativeTerminal === true || name === 'AskUserQuestion'
+}
+
+function ToolGroupBlock({ tools }: { tools: string[] }): React.ReactElement {
+  const counts = new Map<string, number>()
+  for (const name of tools) counts.set(name, (counts.get(name) ?? 0) + 1)
+  const compact = [...counts.entries()].map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+  const preview = compact.slice(0, 4).join(' · ')
+  const rest = Math.max(0, compact.length - 4)
+  return (
+    <div className="flex w-full justify-start">
+      <details className="group inline-flex max-w-[min(100%,34rem)] flex-col rounded-xl border border-[var(--theme-tool-border)] bg-[var(--theme-tool-bg)] px-3 py-2 text-[11px] text-[var(--theme-accent-text)]">
+        <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="shrink-0 rounded bg-[var(--theme-accent-bg)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--theme-accent-muted)]">
+            tools
+          </span>
+          <span className="font-semibold">工具调用 · {tools.length}</span>
+          {preview ? <code className="truncate font-mono text-[10px] text-[var(--theme-accent-text)] opacity-80">{preview}{rest > 0 ? ` · +${rest}` : ''}</code> : null}
+        </summary>
+        <div className="mt-2 flex flex-wrap gap-1 border-t border-[var(--theme-tool-border)] pt-2">
+          {compact.map((name) => (
+            <code key={name} className="rounded-md border border-[var(--theme-tool-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--theme-accent-text)]">
+              {name}
+            </code>
+          ))}
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function EntryBlock({
+  e,
+  sessionId
+}: {
+  e: DisplayEntry
+  sessionId: string
+}): React.ReactElement {
+  if (e.kind === 'toolGroup') {
+    return <ToolGroupBlock tools={e.tools} />
+  }
   if (e.kind === 'history') {
     return (
-      <div className="w-full max-w-3xl rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 shadow-inner">
+      <div className="w-full max-w-3xl rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-2.5 shadow-inner">
         <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-claude-muted">
           <span className="text-[11px] opacity-70">◇</span>
           先前终端缓冲
         </div>
-        <pre className="max-h-[min(280px,35vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-black/30 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-claude-text/85">
+        <pre className="max-h-[min(280px,35vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-[var(--theme-panel-bg-soft)] px-2 py-1.5 font-mono text-[10px] leading-relaxed text-claude-text/85">
           {e.text}
         </pre>
       </div>
@@ -121,20 +209,14 @@ function EntryBlock({ e }: { e: ClaudeTranscriptEntry }): React.ReactElement {
     /* [2026-05-06] 仅渲染 PTY 外嵌 echo；会话记录类 event 已在列表层过滤 */
     if (e.ptyEcho !== true) return null
     /* [2026-05-06] 外嵌 PTY 仅用于斜杠命令（/help、/mcp）；专用样式避免与助手 Markdown 气泡混淆 */
-    return (
-      <div
-        className="claude-transcript-pty-echo claude-transcript-pty-echo--slash w-full max-w-3xl rounded-xl border border-emerald-500/25 bg-gradient-to-br from-[#0a1210] via-[#0c1012] to-[#0a0c10] px-3 py-2.5 shadow-inner shadow-black/40 ring-1 ring-emerald-500/10"
-        data-transcript-pty="slash"
-      >
-        <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90">
-          <span className="font-mono text-[11px] normal-case tracking-normal text-emerald-300/80">/</span>
-          终端输出（外嵌）
-        </div>
-        <pre className="max-h-[min(420px,52vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-black/35 px-2 py-2 font-mono text-[10px] leading-[1.55] text-emerald-50/85 [scrollbar-width:thin]">
-          {e.text}
-        </pre>
-      </div>
-    )
+    /* [2026-05-07] 原用 <pre> 展示 headless xterm 文本快照；/mcp 二级菜单会丢光标语义，改为真实内嵌 xterm。 */
+    // return (
+    //   <pre className="max-h-[min(420px,52vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-black/35 px-2 py-2 font-mono text-[10px] leading-[1.55] text-emerald-50/85 [scrollbar-width:thin]">
+    //     {e.text}
+    //   </pre>
+    // )
+    /* [2026-05-07] slash/TUI 统一使用悬浮原生终端；旧 ptyEcho 事件不再占用外嵌消息流。 */
+    return null
   }
   if (e.kind === 'thinking') {
     return (
@@ -142,14 +224,14 @@ function EntryBlock({ e }: { e: ClaudeTranscriptEntry }): React.ReactElement {
         {/* [2026-05-06] 默认展开；仍可点击标题收起 */}
         <details
           open
-          className="group w-full max-w-3xl rounded-xl border border-violet-400/20 bg-gradient-to-br from-violet-950/40 to-[#1a1525] px-3 py-2 ring-1 ring-violet-500/10 open:ring-violet-400/25"
+          className="group w-full max-w-3xl rounded-xl border border-[var(--theme-thinking-border)] bg-[var(--theme-thinking-bg)] px-3 py-2 ring-1 ring-[var(--theme-thinking-border)]"
         >
-          <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wide text-violet-300/90 [&::-webkit-details-marker]:hidden">
-            <span className="mr-1.5 inline-block text-violet-400">◇</span>
+          <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-thinking-text)] [&::-webkit-details-marker]:hidden">
+            <span className="mr-1.5 inline-block text-[var(--theme-accent-muted)]">◇</span>
             思考过程
-            <span className="ml-2 text-[9px] font-normal normal-case text-violet-200/50 group-open:hidden">点击展开</span>
+            <span className="ml-2 text-[9px] font-normal normal-case text-[var(--theme-thinking-text)] opacity-50 group-open:hidden">点击展开</span>
           </summary>
-          <pre className="mt-2 max-h-[min(320px,40vh)] overflow-auto whitespace-pre-wrap border-t border-violet-500/10 pt-2 font-mono text-[11px] leading-relaxed text-violet-100/90">
+          <pre className="mt-2 max-h-[min(320px,40vh)] overflow-auto whitespace-pre-wrap border-t border-[var(--theme-thinking-border)] pt-2 font-mono text-[11px] leading-relaxed text-[var(--theme-thinking-text)]">
             {e.text}
           </pre>
         </details>
@@ -159,18 +241,21 @@ function EntryBlock({ e }: { e: ClaudeTranscriptEntry }): React.ReactElement {
   if (e.kind === 'user') {
     return (
       <div className="flex w-full justify-end">
-        <div className="max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-amber-500/35 bg-gradient-to-br from-amber-500/15 to-amber-600/5 px-3.5 py-2.5 shadow-md shadow-black/20">
-          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-amber-400/90">你</div>
+        <div className="max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
+          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--theme-accent-muted)]">你</div>
           <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-claude-text">{e.text}</pre>
         </div>
       </div>
     )
   }
   if (e.kind === 'tool') {
+    if (requiresNativeTerminalTool(e)) {
+      return <NativeTerminalRequiredCard sessionId={sessionId} toolName={e.toolName ?? e.text} />
+    }
     return (
       <div className="flex w-full justify-start">
-        <div className="inline-flex max-w-[min(100%,28rem)] items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/[0.07] px-3 py-1.5 text-[11px] text-amber-100/95">
-          <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400">
+        <div className="inline-flex max-w-[min(100%,28rem)] items-center gap-2 rounded-full border border-[var(--theme-tool-border)] bg-[var(--theme-tool-bg)] px-3 py-1.5 text-[11px] text-[var(--theme-accent-text)]">
+          <span className="shrink-0 rounded bg-[var(--theme-accent-bg)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--theme-accent-muted)]">
             tool
           </span>
           <code className="truncate font-mono text-[11px]">{e.text}</code>
@@ -181,9 +266,9 @@ function EntryBlock({ e }: { e: ClaudeTranscriptEntry }): React.ReactElement {
   if (e.kind === 'assistant') {
     return (
       <div className="flex w-full justify-start">
-        <div className="max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-white/[0.08] bg-[#1c1c1e] px-3.5 py-2.5 shadow-lg shadow-black/25 ring-1 ring-white/[0.04]">
+        <div className="max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
           <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-claude-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80" aria-hidden />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--theme-success-text)]" aria-hidden />
             Claude
           </div>
           <div className="prose prose-invert max-w-none text-[12px] leading-relaxed prose-p:my-1.5 prose-pre:my-2">
@@ -208,10 +293,96 @@ const SCROLL_BOTTOM_THRESHOLD_PX = 80
 const INITIAL_HISTORY_TAIL = 80
 const HISTORY_LOAD_CHUNK = 60
 const TOP_LOAD_SCROLL_THRESHOLD_PX = 140
+const USER_WAITING_FALLBACK_MS = 12_000
+
+function isRejectedAskUserQuestionEcho(e: ClaudeTranscriptEntry): boolean {
+  if (e.kind !== 'user') return false
+  const text = e.text.trim()
+  return (
+    /* [2026-05-07] 原 AskUserQuestion 被拒绝后的工具回执会被解析成“你”的气泡，展示上很突兀；这里只在外嵌转录层隐藏。 */
+    text.includes("The user doesn't want to proceed with this tool use") &&
+    text.includes('The tool use was rejected') &&
+    text.includes('Questions asked and answers provided')
+  )
+}
+
+function isToolResultEcho(e: ClaudeTranscriptEntry): boolean {
+  if (e.kind !== 'user') return false
+  const text = e.text.trim()
+  return (
+    /* [2026-05-07] 原 Write/Edit 等工具结果会被 Claude Code 写成 user role，外嵌里误显示成“你”的气泡；展示层隐藏这类机器回执。 */
+    /^File (created|updated) successfully at:/i.test(text) ||
+    /^The file .+ has been (updated|created) successfully/i.test(text) ||
+    /^Tool use was successful/i.test(text) ||
+    /^File state is current in your context/i.test(text)
+  )
+}
+
+function hasRecentReadTool(entries: ClaudeTranscriptEntry[], index: number): boolean {
+  for (let i = index - 1, seen = 0; i >= 0 && seen < 4; i -= 1, seen += 1) {
+    const e = entries[i]
+    if (!e) continue
+    if (e.kind === 'tool' && (e.toolName ?? e.text).trim() === 'Read') return true
+    if (e.kind === 'assistant' || e.kind === 'user') return false
+  }
+  return false
+}
+
+function isReadToolResultEcho(
+  e: ClaudeTranscriptEntry,
+  entries: ClaudeTranscriptEntry[],
+  index: number
+): boolean {
+  if (e.kind !== 'user') return false
+  if (!hasRecentReadTool(entries, index)) return false
+  const lines = e.text.trim().split('\n').filter((line) => line.trim().length > 0)
+  if (lines.length < 8) return false
+  const numbered = lines.filter((line) => /^\s*\d+\s+/.test(line)).length
+  return numbered >= Math.ceil(lines.length * 0.55)
+}
+
+function aggregateToolEntries(entries: ClaudeTranscriptEntry[]): DisplayEntry[] {
+  const out: DisplayEntry[] = []
+  let pendingTools: string[] = []
+  let pendingMessageId: string | undefined
+
+  const flushTools = (): void => {
+    if (pendingTools.length === 0) return
+    out.push({
+      kind: 'toolGroup',
+      text: pendingTools.join('\n'),
+      tools: pendingTools,
+      messageId: pendingMessageId
+    })
+    pendingTools = []
+    pendingMessageId = undefined
+  }
+
+  for (const e of entries) {
+    if (e.kind === 'tool' && !requiresNativeTerminalTool(e)) {
+      /* [2026-05-07] 原连续 tool 各占一行，批量 Read/Write/Edit 时信息密度过高；展示层合并成一个工具组。 */
+      pendingMessageId ??= e.messageId
+      pendingTools.push((e.toolName ?? e.text).trim())
+      continue
+    }
+    flushTools()
+    out.push(e)
+  }
+  flushTools()
+  return out
+}
 
 /** [2026-05-06] 去掉所有 JSONL 兜底「会话记录」；仅保留 ptyEcho 的终端外嵌块 */
 function filterNoiseTranscriptEntries(entries: ClaudeTranscriptEntry[]): ClaudeTranscriptEntry[] {
-  return entries.filter((e) => e.kind !== 'event' || e.ptyEcho === true)
+  return entries.filter((e, index) => {
+    /* [2026-05-07] 原 JSONL/乐观 echo 会把 /mcp、/skills 等控制命令渲染成“你”的历史气泡；slash 命令交给终端块展示。 */
+    // return e.kind !== 'event' || e.ptyEcho === true
+    if (e.kind === 'user' && e.text.trimStart().startsWith('/')) return false
+    if (isRejectedAskUserQuestionEcho(e)) return false
+    if (isToolResultEcho(e)) return false
+    if (isReadToolResultEcho(e, entries, index)) return false
+    return e.kind !== 'event' || e.ptyEcho === true
+  })
 }
 
 /** [2026-05-06] 从过滤后的列表尾部跳过终端外嵌 echo，避免末尾 event 挡住「最后一条是助手」判断 */
@@ -246,7 +417,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const visibleLenRef = useRef(0)
 
   const displayedEntries = useMemo(
-    () => visibleEntries.slice(historyStartIndex),
+    () => aggregateToolEntries(visibleEntries.slice(historyStartIndex)),
     [visibleEntries, historyStartIndex]
   )
 
@@ -302,8 +473,12 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     return () => clearTimeout(id)
   }, [assistantTailFingerprint])
 
+  const latestToolFresh = Boolean(
+    latestTool && Date.now() - latestTool.timestamp < TOOL_LABEL_FRESH_MS
+  )
+
   const suppressBarAfterAssistantDone =
-    assistantTailQuiet && lastMeaningfulEntry?.kind === 'assistant'
+    assistantTailQuiet && lastMeaningfulEntry?.kind === 'assistant' && !latestToolFresh
 
   useEffect(() => {
     if (suppressBarAfterAssistantDone) {
@@ -311,10 +486,40 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     }
   }, [suppressBarAfterAssistantDone, sessionId])
 
-  const showAiWorkingBar =
-    Boolean(sessionBusy || pendingReply) && !suppressBarAfterAssistantDone
-
   const [workingTick, setWorkingTick] = useState(0)
+  const [lastUserWaitingUntil, setLastUserWaitingUntil] = useState(0)
+  const lastUserWaitingFingerprint = useMemo(() => {
+    const last = lastMeaningfulEntry
+    if (!last || last.kind !== 'user') return null
+    return `${last.messageId ?? 'noid'}:${last.text}`
+  }, [lastMeaningfulEntry])
+
+  useEffect(() => {
+    if (lastUserWaitingFingerprint === null) {
+      setLastUserWaitingUntil(0)
+      return
+    }
+    /* [2026-05-07] 原仅依赖 pending/status/tool；用户消息已出现但 PTY/token 事件延迟时 loading 会短暂空窗。 */
+    setLastUserWaitingUntil(Date.now() + USER_WAITING_FALLBACK_MS)
+  }, [lastUserWaitingFingerprint])
+
+  void workingTick
+  const userWaitingFallbackActive = lastUserWaitingUntil > 0 && Date.now() < lastUserWaitingUntil
+  const activeTranscriptTail =
+    lastMeaningfulEntry?.kind === 'thinking' || lastMeaningfulEntry?.kind === 'tool'
+
+  const showAiWorkingBar =
+    /* [2026-05-07] 原只看 sessionBusy/pending；工具调用期间 token 暂停会让 loading 短暂消失。 */
+    /* [2026-05-07] 若转录尾部已是 thinking/tool，说明 Claude 仍在处理中，即使 status 暂为 idle 也显示 loading。 */
+    Boolean(
+      sessionBusy ||
+        pendingReply ||
+        latestToolFresh ||
+        userWaitingFallbackActive ||
+        activeTranscriptTail
+    ) &&
+    !suppressBarAfterAssistantDone
+
   useEffect(() => {
     if (!showAiWorkingBar) return
     const id = window.setInterval(() => setWorkingTick((n) => n + 1), 900)
@@ -322,24 +527,21 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   }, [showAiWorkingBar])
 
   const aiWorkingLabel = useMemo(() => {
-    void workingTick
-    const toolFresh = Boolean(
-      latestTool && Date.now() - latestTool.timestamp < TOOL_LABEL_FRESH_MS
-    )
     return deriveAiWorkingLabel({
       sessionBusy,
-      pendingReply,
+      pendingReply: pendingReply || userWaitingFallbackActive,
       lastKind: lastMeaningfulEntry?.kind,
       latestToolName: latestTool?.name,
-      toolFresh
+      toolFresh: latestToolFresh
     })
   }, [
     workingTick,
     sessionBusy,
     pendingReply,
+    userWaitingFallbackActive,
     lastMeaningfulEntry?.kind,
     latestTool?.name,
-    latestTool?.timestamp
+    latestToolFresh
   ])
 
   /* [2026-05-06] 会话切换或历史条数突变：默认只保留末尾 INITIAL_HISTORY_TAIL 条，减轻 DOM */
@@ -443,13 +645,13 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
 
   return (
     <div
-      className={`flex min-h-0 flex-col overflow-hidden bg-gradient-to-b from-[#121212] via-[#141414] to-[#101010] ${className}`}
+      className={`flex min-h-0 flex-col overflow-hidden bg-[var(--theme-panel-bg)] ${className}`}
       aria-label="Claude transcript"
     >
-      <header className="shrink-0 border-b border-white/[0.06] bg-black/20 px-3 py-2 backdrop-blur-sm">
+      <header className="shrink-0 border-b border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-2 backdrop-blur-sm">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-sm text-amber-400/90 ring-1 ring-amber-500/25">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--theme-accent-bg)] text-sm text-[var(--theme-accent-muted)] ring-1 ring-[var(--theme-accent-border)]">
               ◈
             </span>
             <div>
@@ -457,7 +659,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
               <div className="text-[9px] text-claude-muted">思考块 · 工具 · 每条助手气泡底部 token · 底部为会话累计</div>
             </div>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-claude-muted">
+          <span className="rounded-full border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-claude-muted">
             Beta
           </span>
         </div>
@@ -471,12 +673,12 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
         >
           <div className="mx-auto flex max-w-3xl flex-col gap-3">
             {hasOlderAbove ? (
-              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[10px] text-claude-muted">
+              <div className="rounded-lg border border-dashed border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-2 text-center text-[10px] text-claude-muted">
                 已在顶部附近 · 继续上滑加载更早的 {Math.min(HISTORY_LOAD_CHUNK, historyStartIndex)} 条…
               </div>
             ) : null}
             {visibleEntries.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center">
+              <div className="rounded-xl border border-dashed border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-4 py-8 text-center">
                 <p className="mx-auto max-w-sm text-[11px] leading-relaxed text-claude-muted">
                   在此查看 Claude Code 的结构化输出。在下方输入并发送后，<span className="text-claude-text/90">你的消息会立即出现在这里</span>
                   ，助手回复随会话文件同步追加。
@@ -489,6 +691,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
                   <EntryBlock
                     key={`${e.kind}-${e.messageId ?? 'noid'}-${globalIdx}-${e.text.slice(0, 24)}`}
                     e={e}
+                    sessionId={sessionId}
                   />
                 )
               })
@@ -500,7 +703,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
         {visibleEntries.length > 0 && !nearBottom ? (
           <button
             type="button"
-            className="absolute bottom-4 right-4 z-[14] flex h-9 w-9 items-center justify-center rounded-full border border-amber-500/35 bg-[#1c1c1e]/95 text-sm text-amber-200 shadow-lg shadow-black/40 backdrop-blur-sm transition hover:border-amber-400/50 hover:bg-[#252528] hover:text-amber-50"
+            className="absolute bottom-4 right-4 z-[14] flex h-9 w-9 items-center justify-center rounded-full border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] text-sm text-[var(--theme-accent-text)] shadow-lg shadow-[color:var(--theme-shadow)] backdrop-blur-sm transition hover:bg-[var(--theme-accent-bg-strong)]"
             title="回到底部"
             aria-label="回到底部"
             onClick={() => scrollToBottom('smooth')}

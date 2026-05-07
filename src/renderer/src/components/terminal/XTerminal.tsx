@@ -12,7 +12,8 @@ import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
 import { beginSlashPtyEchoRound, setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
-import { DARK_THEME, FALLOUT_THEME, LIGHT_THEME, useResolvedTheme } from '../../hooks/useTheme'
+import { DARK_THEME, useResolvedTheme } from '../../hooks/useTheme'
+import { getThemeDefinition } from '../../theme/themeRegistry'
 
 interface Props {
   sessionId: string
@@ -94,6 +95,25 @@ export function focusTerminal(sessionId: string): void {
   terminals.get(sessionId)?.term.focus()
 }
 
+/** [2026-05-07] 浮窗挂载同一 xterm 时，布局稳定前 fit 可能吃到 0 尺寸；显式唤醒重绘 */
+export function wakeTerminal(sessionId: string): void {
+  const entry = terminals.get(sessionId)
+  if (!entry) return
+  try {
+    entry.fitAddon.fit()
+    window.electronAPI?.resizePty(sessionId, entry.term.cols, entry.term.rows)
+  } catch {
+    // ignore hidden/detached terminal fit errors
+  }
+  try {
+    entry.term.refresh(0, Math.max(0, entry.term.rows - 1))
+  } catch {
+    // refresh is best-effort
+  }
+  entry.term.scrollToBottom()
+  entry.term.focus()
+}
+
 /** 恢复历史 scrollback：创建（或复用）terminal 实例并写入 base64 编码的原始终端数据 */
 export function preFillTerminal(sessionId: string, rawBase64: string): void {
   const { term } = getOrCreateTerminal(sessionId)
@@ -135,18 +155,14 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   const raw = text.replace(/\r\n/g, '\n').trimEnd()
   if (!raw.length) return
   const firstLine = raw.split('\n')[0]?.trimStart() ?? ''
+  const isSlashCommand = firstLine.startsWith('/')
   /* [2026-05-06] 仅斜杠命令需要把 PTY 原文写入转录（/mcp 等）；普通对话仍以 JSONL 为准避免重复 */
   /* [2026-05-06] 每条新斜杠命令先 flush 并重置缓冲，否则多次 /mcp 在同一会话里会把整屏输出重复堆叠 */
-  if (firstLine.startsWith('/')) {
+  if (isSlashCommand) {
     beginSlashPtyEchoRound(sessionId)
   } else {
     setEmbedSlashPtyEchoActive(sessionId, false)
   }
-  bufferUserInput(sessionId, `${raw}\n`)
-  /* [2026-05-06] 原 emitTerminalCommittedLine → notifyTerminalCommittedLine 经 normalize 会丢弃
-   * SKIP_TERMINAL_LINES（含整行「claude」）及易误判内容，侧栏历史主标题长期空白 */
-  // emitTerminalCommittedLine(sessionId, raw)
-  useSessionStore.getState().recordEmbedLastUserPrompt(sessionId, raw)
   const win = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
   const lines = raw.split('\n')
   const payload =
@@ -154,6 +170,20 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
       ? `${lines[0]!}${win ? '\r' : '\n'}`
       : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
   window.electronAPI.sendInput(sessionId, payload)
+  if (isSlashCommand) {
+    /* [2026-05-07] 原把 /mcp、/skills 当普通用户消息写入转录和历史，外嵌里会堆出一串生硬的右侧气泡；slash 只驱动终端交互块。 */
+    // bufferUserInput(sessionId, `${raw}\n`)
+    // useSessionStore.getState().recordEmbedLastUserPrompt(sessionId, raw)
+    // useTranscriptStore.getState().append(sessionId, [{ kind: 'user', text: raw, clientEcho: true }])
+    // useEmbedAwaitingReplyStore.getState().markPending(sessionId)
+    // markEmbedUserMessageSent(sessionId)
+    return
+  }
+  bufferUserInput(sessionId, `${raw}\n`)
+  /* [2026-05-06] 原 emitTerminalCommittedLine → notifyTerminalCommittedLine 经 normalize 会丢弃
+   * SKIP_TERMINAL_LINES（含整行「claude」）及易误判内容，侧栏历史主标题长期空白 */
+  // emitTerminalCommittedLine(sessionId, raw)
+  useSessionStore.getState().recordEmbedLastUserPrompt(sessionId, raw)
   /* [2026-05-06] 外嵌输入乐观展示用户消息；JSONL 稍后若重复同一 user 行由 transcriptStore.append 去重 */
   useTranscriptStore.getState().append(sessionId, [{ kind: 'user', text: raw, clientEcho: true }])
   useEmbedAwaitingReplyStore.getState().markPending(sessionId)
@@ -372,12 +402,9 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   useEffect(() => {
     const entry = terminals.get(sessionId)
     if (entry) {
-      entry.term.options.theme =
-        resolvedTheme === 'fallout'
-          ? FALLOUT_THEME
-          : resolvedTheme === 'dark'
-            ? DARK_THEME
-            : LIGHT_THEME
+      /* [2026-05-07] 原按主题 id 三元判断选择 palette；改由主题注册表提供，方便新增主题。 */
+      // entry.term.options.theme = resolvedTheme === 'fallout' ? FALLOUT_THEME : resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME
+      entry.term.options.theme = getThemeDefinition(resolvedTheme).terminal
     }
   }, [sessionId, resolvedTheme])
 
@@ -395,12 +422,9 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       ref={containerRef}
       className="flex-1 overflow-hidden"
       style={{
-        background:
-          resolvedTheme === 'fallout'
-            ? FALLOUT_THEME.background
-            : resolvedTheme === 'dark'
-              ? DARK_THEME.background
-              : LIGHT_THEME.background
+        /* [2026-05-07] 背景色跟随 registry 的 terminal palette，避免新增主题时漏改。 */
+        // background: resolvedTheme === 'fallout' ? FALLOUT_THEME.background : resolvedTheme === 'dark' ? DARK_THEME.background : LIGHT_THEME.background
+        background: getThemeDefinition(resolvedTheme).terminal.background
       }}
       onContextMenu={onContextMenu}
     />
