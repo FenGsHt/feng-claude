@@ -213,6 +213,20 @@ html[data-theme='fallout'] .claude-transcript-root *:not(.fo-working-bar):not(.f
   border-color: transparent !important;
 }
 
+/* ── Tailwind text-[Xpx] 覆盖 ────────────────────────────────────
+ * 子元素硬编码的 text-[10px]/[11px]/[12px] 会覆盖基准 font-size；
+ * Fallout 主题下统一放大，排除 loading bar。
+ * ──────────────────────────────────────────────────────────────── */
+html[data-theme='fallout'] .claude-transcript-root p:not(.fo-working-bar-inner p),
+html[data-theme='fallout'] .claude-transcript-root pre:not(.fo-working-bar-inner pre),
+html[data-theme='fallout'] .claude-transcript-root code:not(.fo-working-bar-inner code),
+html[data-theme='fallout'] .claude-transcript-root summary,
+html[data-theme='fallout'] .claude-transcript-root span:not(.fo-working-bar-inner span),
+html[data-theme='fallout'] .claude-transcript-root div:not(.fo-working-bar):not(.fo-working-bar-inner) {
+  font-size: 20px !important;
+  line-height: 1.2 !important;
+}
+
 /* ── Fallout loading bar：绿光终端风格背景 ─────────────────────────
  * [2026-05-08] 原 --theme-card-bg 在 fallout 下近黑，loading 看不清；
  * 改为亮绿边框 + 半透明深绿背景，配合 VT323 字体。
