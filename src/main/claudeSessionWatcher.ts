@@ -645,6 +645,9 @@ function extractUserMessageText(msg: Record<string, unknown> | undefined): strin
     if (!c || typeof c !== 'object') continue
     const block = c as Record<string, unknown>
     const typ = String(block.type ?? '')
+    /* [2026-05-08] tool_result 块是工具返回值（Glob 文件列表、Bash 输出、Read 内容等），
+     * 不是用户输入，跳过避免在用户气泡中显示工具结果。 */
+    if (typ === 'tool_result') continue
     if (
       (typ === 'text' || typ === 'input_text') &&
       typeof block.text === 'string' &&
