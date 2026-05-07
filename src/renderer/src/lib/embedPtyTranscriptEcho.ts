@@ -14,7 +14,14 @@ export function setEmbedSlashPtyEchoActive(sessionId: string, active: boolean): 
     flushSessionSync(sessionId)
     const b = buffers.get(sessionId)
     if (b?.timer) clearTimeout(b.timer)
-    buffers.delete(sessionId)
+    // [2026-05-07] 不删除 buffer：保留 screenLines 和 cursorRow 供下次斜杠命令使用。
+    // 若 delete 后重建，cursorRow=0 与实际 PTY 光标不符，导致每次 Esc 后的首次 /mcp 渲染错位。
+    if (b) {
+      b.raw = ''
+      b.sentCleanLen = 0
+      b.timer = null
+      b.lastMcpScreen = ''
+    }
     slashEchoSessions.delete(sessionId)
     return
   }
