@@ -662,7 +662,15 @@ function flushSessionSync(sessionId: string): void {
 /** PTY 原始块（可能含跨 chunk 的 ANSI） */
 export function ingestEmbedPtyEcho(sessionId: string, data: string): void {
   if (!useEmbedOutputBetaStore.getState().enabled || !data) return
-  if (!slashEchoSessions.has(sessionId)) return
+  if (!slashEchoSessions.has(sessionId)) {
+    // [2026-05-07] 非 slash 模式：仅更新光标坐标，保持 screenLines 与 PTY 同步。
+    // Esc 退出后 PTY 继续输出（dismissed 提示、shell 提示符等），不跟踪则下次 /mcp 的
+    // 相对光标移动起点偏移，导致菜单渲染错位。仅当 buffer 已存在时才跟踪（避免为普通
+    // xterm 会话创建不必要的 buffer）。
+    const b = buffers.get(sessionId)
+    if (b) applyTerminalChunk(b, data)
+    return
+  }
   let b = buffers.get(sessionId)
   if (!b) {
     b = {
