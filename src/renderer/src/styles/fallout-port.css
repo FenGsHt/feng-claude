@@ -65,7 +65,7 @@ html[data-theme='fallout'] :focus-visible {
   outline-offset: 1px;
 }
 
-/* CRT：滚动亮带（摘自 indeed fallout.css，挂载在 html 以免盖住独立窗口 chrome） */
+/* CRT：滚动亮带 — [2026-05-08] 减轻波纹：亮度降至 0.04/0.06，周期拉长到 11s */
 html[data-theme='fallout']::before {
   content: '';
   position: fixed;
@@ -75,16 +75,16 @@ html[data-theme='fallout']::before {
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    transparent 40%,
-    rgba(42, 255, 77, 0.06) 48%,
-    rgba(42, 255, 77, 0.1) 50%,
-    rgba(42, 255, 77, 0.06) 52%,
-    transparent 60%,
+    transparent 42%,
+    rgba(42, 255, 77, 0.03) 48%,
+    rgba(42, 255, 77, 0.05) 50%,
+    rgba(42, 255, 77, 0.03) 52%,
+    transparent 58%,
     transparent 100%
   );
   background-size: 100% 220px;
   background-repeat: no-repeat;
-  animation: fo-scanroll 7s linear infinite;
+  animation: fo-scanroll 11s linear infinite;
 }
 
 @keyframes fo-scanroll {
@@ -96,6 +96,7 @@ html[data-theme='fallout']::before {
   }
 }
 
+/* [2026-05-08] 全局扫描线 + 闪烁：透明度大幅降低，闪烁幅度压缩到 0.97 附近 */
 html[data-theme='fallout']::after {
   content: '';
   position: fixed;
@@ -103,59 +104,33 @@ html[data-theme='fallout']::after {
   pointer-events: none;
   z-index: 9998;
   background:
-    linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.26) 50%),
+    linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.12) 50%),
     linear-gradient(
       90deg,
-      rgba(255, 0, 0, 0.04),
-      rgba(0, 255, 0, 0.015),
-      rgba(0, 0, 255, 0.04)
+      rgba(255, 0, 0, 0.015),
+      rgba(0, 255, 0, 0.006),
+      rgba(0, 0, 255, 0.015)
     );
   background-size:
     100% 3px,
     4px 100%;
-  animation: fo-flicker 13s steps(1) infinite;
+  animation: fo-flicker 18s steps(1) infinite;
 }
 
 @keyframes fo-flicker {
-  0% {
-    opacity: 1;
-  }
-  3% {
-    opacity: 0.86;
-  }
-  4% {
-    opacity: 1;
-  }
-  29% {
-    opacity: 1;
-  }
-  30% {
-    opacity: 0.93;
-  }
-  31% {
-    opacity: 1;
-  }
-  76% {
-    opacity: 1;
-  }
-  77% {
-    opacity: 0.83;
-  }
-  78% {
-    opacity: 0.97;
-  }
-  79% {
-    opacity: 1;
-  }
-  96% {
-    opacity: 1;
-  }
-  97% {
-    opacity: 0.91;
-  }
-  98% {
-    opacity: 1;
-  }
+  0%   { opacity: 1; }
+  4%   { opacity: 0.97; }
+  5%   { opacity: 1; }
+  33%  { opacity: 1; }
+  34%  { opacity: 0.98; }
+  35%  { opacity: 1; }
+  78%  { opacity: 1; }
+  79%  { opacity: 0.96; }
+  80%  { opacity: 0.99; }
+  81%  { opacity: 1; }
+  97%  { opacity: 1; }
+  98%  { opacity: 0.97; }
+  99%  { opacity: 1; }
 }
 
 /* ── Fallout 外嵌转录面板：纯文本终端风格，无边框无背景 ──────────────
@@ -165,7 +140,8 @@ html[data-theme='fallout']::after {
 
 html[data-theme='fallout'] .claude-transcript-root {
   font-family: 'VT323', 'Courier New', Courier, monospace;
-  font-size: 19px;
+  font-size: 22px;
+  line-height: 1.25;
   font-weight: bold;
   letter-spacing: 0.6px;
   color: #2aff4d;
