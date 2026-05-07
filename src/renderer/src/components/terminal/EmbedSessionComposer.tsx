@@ -9,7 +9,7 @@ import {
   resolveSlashInsertRange,
   type ClaudeSlashItem
 } from '../../lib/claudeCodeSlashCommands'
-import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
+import { setEmbedSlashPtyEchoActive, subscribeSlashDone } from '../../lib/embedPtyTranscriptEcho'
 import { useTranscriptStore } from '../../store/transcriptStore'
 
 interface Props {
@@ -31,6 +31,14 @@ export function EmbedSessionComposer({ sessionId }: Props): React.ReactElement {
   const taRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   useEmbedPtyResize(sessionId, true)
+
+  /* PTY 侧检测到斜杠命令自然结束（TUI 消失 / idle 超时）→ 自动退出交互态 */
+  useEffect(() => {
+    return subscribeSlashDone(sessionId, () => {
+      setSlashInteractiveMode(false)
+      requestAnimationFrame(() => taRef.current?.focus())
+    })
+  }, [sessionId])
 
   /* [2026-05-06] 供 TerminalDropZone 拖入 @路径 / 命令时写入本框，避免仅 sendInput 而界面空白 */
   useEffect(() => {
