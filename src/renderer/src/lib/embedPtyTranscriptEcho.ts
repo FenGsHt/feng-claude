@@ -167,13 +167,7 @@ function doFlush(sessionId: string): void {
 
   let snapshot = normalizeSlashPtyEchoPlaintext(readScreen(b))
   const crop = cropLatestCompleteMcpBlock(snapshot)
-  snapshot = crop.text
-  const prev = b.lastMcpScreen
-  if (shouldRejectDegenerateMcpSnapshot(prev, snapshot)) {
-    snapshot = prev
-  } else {
-    snapshot = dedupeMcpMenuCarets(snapshot)
-  }
+  snapshot = dedupeMcpMenuCarets(crop.text)
   b.lastMcpScreen = snapshot
   if (snapshot.trim().length > 0) {
     useTranscriptStore.getState().setLatestPtyEchoChunk(sessionId, snapshot)
