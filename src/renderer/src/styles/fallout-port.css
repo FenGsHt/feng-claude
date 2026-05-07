@@ -223,7 +223,7 @@ html[data-theme='fallout'] .claude-transcript-root code:not(.fo-working-bar-inne
 html[data-theme='fallout'] .claude-transcript-root summary,
 html[data-theme='fallout'] .claude-transcript-root span:not(.fo-working-bar-inner span),
 html[data-theme='fallout'] .claude-transcript-root div:not(.fo-working-bar):not(.fo-working-bar-inner) {
-  font-size: 20px !important;
+  font-size: 17px !important;
   line-height: 1.2 !important;
 }
 
