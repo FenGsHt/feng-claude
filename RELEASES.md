@@ -5,7 +5,27 @@
 
 ---
 
-## v0.6.7 (2026-05-06)
+## v0.6.8 (2026-05-09)
+
+### 新功能 | New Features
+
+#### Telegram 多 Bot 预设与一键切换 | Multi-Bot Presets & Quick Switch
+- 支持添加多条 Telegram Bot 预设，每条独立配置 Token 与状态目录
+- 标签栏下拉框一键切换 Bot，切换后自动重启会话并应用新的 Bot Token
+- 每个 Bot 的配对状态、访问控制隔离在独立目录 `~/.claude/channels/<id>/`
+- 自动清理残留 bot.pid，解决退出重开后 --continue 导致 Bot 无法连接的问题
+
+#### 外嵌界面 Beta 重大升级 | Embed Output Beta Major Upgrade
+- **@ 文件/目录自动补全**：输入 `@` 弹出文件列表，支持模糊搜索，Tab/Enter 选中插入 `@path` 引用
+- **Claude 转录回显**：会话 JSONL 消息实时渲染，替代传统终端查看对话历史
+- **斜杠命令 TUI 支持**：/mcp 等交互菜单在外嵌面板中正常渲染，支持键盘导航
+- **Fallout 磷光主题**：新增 CRT 怀旧风格的 Fallout 终端主题（参考 indeed-flow-git RobCo 绿光）
+- 工具回执过滤、MCP 权限弹窗检测、中断/发送一致性等多项修复
+
+#### 设置面板改进 | Settings Panel Improvements
+- 保存/更新按钮固定在底部，不再随内容滚动
+
+### v0.6.7 (2026-05-06)
 
 ### 新功能 | New Features
 
