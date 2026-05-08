@@ -307,6 +307,8 @@ function prepareTelegramChannel(
     mkdirSync(dir, { recursive: true })
     /* [2026-05-08] 官方插件固定读取 TELEGRAM_STATE_DIR/.env；仅写入用户配置目录，避免 token 进仓库。 */
     writeFileSync(join(dir, '.env'), `TELEGRAM_BOT_TOKEN=${token}\n`, 'utf8')
+    /* [2026-05-09] 删除残留 bot.pid：退出再开时 --continue 可能让旧 PID 欺骗 plugin 跳过启动。 */
+    try { unlinkSync(join(dir, 'bot.pid')) } catch { /* may not exist */ }
   } catch (e) {
     console.warn('[telegram-channel] failed to prepare state dir:', e)
     return { config: effectiveConfig, launchEnabled: false }
