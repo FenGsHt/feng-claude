@@ -295,6 +295,14 @@ function prepareTelegramChannel(
     return { config: effectiveConfig, launchEnabled: false }
   }
   const dir = telegramStateDir(stateDirId)
+  console.log('[telegram-channel] prepare', {
+    sessionId,
+    stateDirId,
+    dir,
+    tokenPreview: token.slice(0, 12) + '...',
+    requestedBotToken: (requested?.botToken ?? '').slice(0, 12) + '...',
+    requestedStateDirId: requested?.stateDirId
+  })
   try {
     mkdirSync(dir, { recursive: true })
     /* [2026-05-08] 官方插件固定读取 TELEGRAM_STATE_DIR/.env；仅写入用户配置目录，避免 token 进仓库。 */
