@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
 import { registerEmbedDraftInjector } from '../../lib/embedDraftBridge'
-import { sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
+import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
 import { usePtyAlternateScreenStore } from '../../store/ptyAlternateScreenStore'
 import { useSessionStore } from '../../store/sessionStore'
 import {
@@ -20,6 +20,7 @@ import { setEmbedSlashPtyEchoActive, subscribeSlashDone } from '../../lib/embedP
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 import { useEmbedInputHistoryStore } from '../../store/embedInputHistoryStore'
+import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 
 interface Props {
   sessionId: string
@@ -50,15 +51,67 @@ export function EmbedSessionComposer({
   const atListRef = useRef<HTMLUListElement>(null)
   const historyCursorRef = useRef<number | null>(null)
   const draftBeforeHistoryRef = useRef('')
+  /** [2026-05-08] 记录最近一次外嵌发送的普通（非 /）正文；PTY 收到 Ctrl+C 后填回输入框（含经典终端按键） */
+  const lastPlainEmbedSentRef = useRef<string>('')
+  /** [2026-05-08] 防止 Enter 双击 / 合成键重复触发同一帧两次 submit，导致乐观气泡重复 */
+  const embedSendBusyRef = useRef(false)
+  /** [2026-05-08] 与 draft state 同步；onChange 即写入，避免仅靠闭包/React 批处理滞后 */
+  const draftMirrorRef = useRef('')
   const inputHistory = useEmbedInputHistoryStore((s) => s.bySession[sessionId] ?? [])
   const pushInputHistory = useEmbedInputHistoryStore((s) => s.pushHistory)
   const workdir = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.workdir ?? '')
+  /* [2026-05-08] interruptSuppress 只用于收起底部「处理中」条；若绑在按钮上，中断一次后 suppress 恒真直至 idle，按钮会长期不出现，也无法二次中断 */
+  const sessionStatus = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status)
+  const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
+  const showInterrupt =
+    !alternateScreen &&
+    !slashInteractiveMode &&
+    (sessionStatus === 'running' ||
+      sessionStatus === 'waiting_input' ||
+      pendingReply)
   /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
   // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
   const clearNativeTerminal = useNativeTerminalRequestStore((s) => s.clearNativeTerminal)
   /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
   // useEmbedPtyResize(sessionId, true)
   useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible)
+
+  useEffect(() => {
+    lastPlainEmbedSentRef.current = ''
+    draftMirrorRef.current = ''
+  }, [sessionId])
+
+  /* [2026-05-08] 主进程在任意 sendInput 含 Ctrl+C 时广播；与经典终端 xterm 打断同源，恢复上次普通提问草稿 */
+  useEffect(() => {
+    const off = window.electronAPI.onPtyIntrSent((payload) => {
+      if (payload.sessionId !== sessionId) return
+      const saved = lastPlainEmbedSentRef.current.trim()
+      if (!saved) return
+      /* [2026-05-08] 终端 xterm 仍显示旧行「在吗」但外嵌已输入「在吗123」时：live 已与快照不同，禁止用快照 setDraft，否则会冲掉 draftMirrorRef(onChange 同步的)，发送读到「在吗」 */
+      const live = (taRef.current?.value ?? '').trim()
+      if (live.length > 0 && live !== saved.trim()) return
+      /* [2026-05-08] 仅当末尾乐观气泡与本次可恢复正文一致时才弹出，避免 /skills 等路径发 Ctrl+C 误删上一条用户消息 */
+      const entries = useTranscriptStore.getState().bySession[sessionId] ?? []
+      const last = entries[entries.length - 1]
+      if (
+        last?.kind === 'user' &&
+        last.clientEcho === true &&
+        last.text.trim() === saved
+      ) {
+        useTranscriptStore.getState().popLastOptimisticUserEcho(sessionId)
+      }
+      draftMirrorRef.current = saved
+      setDraft(saved)
+      setCursor(saved.length)
+      requestAnimationFrame(() => {
+        const ta = taRef.current
+        if (!ta) return
+        ta.focus()
+        ta.setSelectionRange(saved.length, saved.length)
+      })
+    })
+    return off
+  }, [sessionId])
 
   /* PTY 侧检测到斜杠命令自然结束（TUI 消失 / idle 超时）→ 自动退出交互态 */
   useEffect(() => {
@@ -78,6 +131,7 @@ export function EmbedSessionComposer({
         const end = typeof el?.selectionEnd === 'number' ? el.selectionEnd : prev.length
         const next = prev.slice(0, start) + text + prev.slice(end)
         const pos = start + text.length
+        draftMirrorRef.current = next
         requestAnimationFrame(() => {
           const ta = taRef.current
           if (ta) {
@@ -179,6 +233,7 @@ export function EmbedSessionComposer({
       if (!range) return
       const after = draft.slice(range.end)
       const next = item.insert + after
+      draftMirrorRef.current = next
       setDraft(next)
       const pos = range.start + item.insert.length
       requestAnimationFrame(() => {
@@ -199,6 +254,7 @@ export function EmbedSessionComposer({
       const after = draft.slice(atCtx.end)
       const before = draft.slice(0, atCtx.start)
       const next = before + item.insert + after
+      draftMirrorRef.current = next
       setDraft(next)
       const pos = atCtx.start + item.insert.length
       requestAnimationFrame(() => {
@@ -213,18 +269,35 @@ export function EmbedSessionComposer({
     [draft, atCtx]
   )
 
+  const interruptGeneration = useCallback((): void => {
+    sendPtyInterruptSignal(sessionId)
+  }, [sessionId])
+
+  /* [2026-05-08] 发送正文顺序：draftMirrorRef(onChange 首行同步，不被 PTY 快照 setDraft 污染) > DOM > draft；勿把 taRef 作唯一来源以免受控 value 仍为「在吗」时传入 send */
   const send = useCallback((): void => {
     if (alternateScreen) return
-    const t = draft
+    if (embedSendBusyRef.current) return
+    const t = (draftMirrorRef.current || taRef.current?.value || draft).replace(/\r\n/g, '\n')
     if (!t.trim()) return
+    embedSendBusyRef.current = true
+    draftMirrorRef.current = ''
     pushInputHistory(sessionId, t)
     historyCursorRef.current = null
     draftBeforeHistoryRef.current = ''
     setDraft('')
     setCursor(0)
     const isSlash = t.trimStart().startsWith('/')
+    /* [2026-05-08] 斜杠命令不把正文当作「可恢复的最后一次提问」，避免中断后误填旧普通消息 */
+    if (isSlash) {
+      lastPlainEmbedSentRef.current = ''
+    } else {
+      lastPlainEmbedSentRef.current = t
+    }
     setSlashInteractiveMode(isSlash)
     submitEmbedSessionInput(sessionId, t)
+    queueMicrotask(() => {
+      embedSendBusyRef.current = false
+    })
     requestAnimationFrame(() => {
       if (!isSlash) taRef.current?.focus()
     })
@@ -239,6 +312,7 @@ export function EmbedSessionComposer({
     setDraft((prev) => {
       const next = prev.slice(0, start) + '\n' + prev.slice(end)
       const pos = start + 1
+      draftMirrorRef.current = next
       requestAnimationFrame(() => {
         const t = taRef.current
         if (t) {
@@ -295,6 +369,7 @@ export function EmbedSessionComposer({
   )
 
   const setDraftFromHistory = useCallback((text: string): void => {
+    draftMirrorRef.current = text
     setDraft(text)
     requestAnimationFrame(() => {
       const el = taRef.current
@@ -380,6 +455,7 @@ export function EmbedSessionComposer({
         const ctx = getSlashCompletionAtStart(draft, cursor)
         if (ctx) {
           const after = draft.slice(ctx.end)
+          draftMirrorRef.current = after
           setDraft(after)
           const pos = 0
           requestAnimationFrame(() => {
@@ -417,7 +493,9 @@ export function EmbedSessionComposer({
         if (atCtx) {
           const after = draft.slice(atCtx.end)
           const before = draft.slice(0, atCtx.start)
-          setDraft(before + after)
+          const next = before + after
+          draftMirrorRef.current = next
+          setDraft(next)
           const pos = atCtx.start
           requestAnimationFrame(() => {
             const el = taRef.current
@@ -456,8 +534,12 @@ export function EmbedSessionComposer({
       if (e.shiftKey) {
         return
       }
+      /* [2026-05-08] IME 组字未结束时 Enter 交给输入法，避免截断中文 */
+      if (e.nativeEvent.isComposing) return
       e.preventDefault()
-      send()
+      /* [2026-05-08] 受控 textarea：同一帧内「最后一键」的 input/onChange 可能晚于 Enter 的 keydown，currentTarget.value 仍是旧串。
+       * defer 到 macrotask 后浏览器与 React 已处理完 input，再读 taRef.value 发送完整正文 */
+      window.setTimeout(() => send(), 0)
     }
   }
 
@@ -536,6 +618,7 @@ export function EmbedSessionComposer({
             onChange={(e) => {
               historyCursorRef.current = null
               draftBeforeHistoryRef.current = ''
+              draftMirrorRef.current = e.target.value
               setDraft(e.target.value)
               setCursor(e.target.selectionStart ?? 0)
             }}
@@ -562,9 +645,19 @@ export function EmbedSessionComposer({
             aria-controls={slashMenuOpen ? 'slash-command-list' : atMenuOpen ? 'at-file-list' : undefined}
           />
         </div>
+        {showInterrupt ? (
+          <button
+            type="button"
+            title="向 PTY 发送 Ctrl+C；若在经典终端按 Ctrl+C，上次普通提问也会回到输入框。"
+            onClick={interruptGeneration}
+            className="shrink-0 rounded-xl border border-red-500/55 bg-red-500/12 px-3 py-2.5 text-[11px] font-semibold text-red-400 shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-red-500/20"
+          >
+            中断
+          </button>
+        ) : null}
         <button
           type="button"
-          onClick={send}
+          onClick={() => send()}
           disabled={alternateScreen || slashInteractiveMode}
           className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -633,7 +726,7 @@ export function EmbedSessionComposer({
         换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
         命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
         <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
-        填入/历史 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
+        填入/历史 · running / 等待确认时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
       </p>
     </div>
   )

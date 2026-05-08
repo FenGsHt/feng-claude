@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import type { PtyOutputPayload, PtyStatusPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
+import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings, ApiProfile } from '../renderer/src/types/settings'
@@ -43,6 +43,13 @@ const electronAPI = {
       callback(payload)
     ipcRenderer.on(IPC.PTY_STATUS, handler)
     return () => ipcRenderer.removeListener(IPC.PTY_STATUS, handler)
+  },
+
+  onPtyIntrSent: (callback: (payload: PtyIntrSentPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: PtyIntrSentPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.PTY_INTR_SENT, handler)
+    return () => ipcRenderer.removeListener(IPC.PTY_INTR_SENT, handler)
   },
 
   // Working directory

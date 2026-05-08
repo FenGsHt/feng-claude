@@ -9,6 +9,7 @@ import { useToolCallStore } from '../store/toolCallStore'
 import { enqueueTranscriptTokenDelta, useTranscriptStore } from '../store/transcriptStore'
 import { useNativeTerminalRequestStore } from '../store/nativeTerminalRequestStore'
 import { useEmbedAwaitingReplyStore } from '../store/embedAwaitingReplyStore'
+import { useEmbedInterruptSuppressStore } from '../store/embedInterruptSuppressStore'
 import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive
@@ -79,6 +80,12 @@ export function usePty(): void {
     })
 
     // ── PTY output: write to terminal ────────────────────────
+    /* [2026-05-08] 任意 Ctrl+C 进 PTY：清 pending + 收起「处理中」。去掉末尾乐观气泡仅在 EmbedSessionComposer 内按正文匹配执行，避免斜杠 TUI 等误删历史「你」气泡 */
+    const unsubIntr = window.electronAPI.onPtyIntrSent((payload) => {
+      useEmbedAwaitingReplyStore.getState().clearPending(payload.sessionId)
+      useEmbedInterruptSuppressStore.getState().setInterrupted(payload.sessionId)
+    })
+
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
       const { sessionId, data } = payload
       if (DEBUG_EMBED_MCP && /Manage MCP servers|User MCPs|Built-in MCPs|View tools|Reconnect|Disable/.test(data)) {
@@ -200,6 +207,7 @@ export function usePty(): void {
 
     return () => {
       offEmbedSettings()
+      unsubIntr()
       unsubOutput()
       unsubStatus()
       unsubTokens()

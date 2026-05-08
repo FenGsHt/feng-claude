@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
+import { useEmbedInterruptSuppressStore } from '../../store/embedInterruptSuppressStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useToolCallStore } from '../../store/toolCallStore'
 import { MarkdownRenderer } from '../chat/MarkdownRenderer'
@@ -484,6 +485,9 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const entries = useTranscriptStore((s) => s.bySession[sessionId] ?? [])
   const visibleEntries = useMemo(() => filterNoiseTranscriptEntries(entries), [entries])
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
+  const interruptSuppress = useEmbedInterruptSuppressStore(
+    (s) => s.suppressWorkingBarBySession[sessionId] === true
+  )
   const sessionStatus =
     useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status ?? 'idle')
   const sessionBusy = sessionStatus === 'running'
@@ -525,9 +529,11 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   )
 
   /* [2026-05-06] 原在出现首条非 user 转录时 clearPending，导致思考/工具阶段不再显示等待；改为仅 idle 时清除 */
+  /* [2026-05-08] idle 时同步清中断抑制，否则 suppress 长期占用导致下一轮 behavior 异常 */
   useEffect(() => {
     if (sessionStatus === 'idle') {
       useEmbedAwaitingReplyStore.getState().clearPending(sessionId)
+      useEmbedInterruptSuppressStore.getState().clear(sessionId)
     }
   }, [sessionStatus, sessionId])
 
@@ -592,6 +598,8 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     lastMeaningfulEntry?.kind === 'thinking' || lastMeaningfulEntry?.kind === 'tool'
 
   const showAiWorkingBar =
+    /* [2026-05-08] 用户已 Ctrl+C：在 PTY 仍为 running 时也收起处理中条，避免假 loading */
+    !interruptSuppress &&
     /* [2026-05-07] 原只看 sessionBusy/pending；工具调用期间 token 暂停会让 loading 短暂消失。 */
     /* [2026-05-07] 若转录尾部已是 thinking/tool，说明 Claude 仍在处理中，即使 status 暂为 idle 也显示 loading。 */
     Boolean(

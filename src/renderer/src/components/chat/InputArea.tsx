@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
+import { sendPtyInterruptSignal } from '../terminal/XTerminal'
 
 export function InputArea(): React.ReactElement {
   const [text, setText] = useState('')
@@ -26,8 +27,8 @@ export function InputArea(): React.ReactElement {
 
   const handleInterrupt = () => {
     if (!activeSessionId) return
-    // Send Ctrl+C to interrupt
-    window.electronAPI.sendInput(activeSessionId, '\x03')
+    /* [2026-05-08] 与 XTerminal.sendPtyInterruptSignal 一致，避免第二轮中断单次 SIGINT 被吞 */
+    sendPtyInterruptSignal(activeSessionId)
   }
 
   return (

@@ -237,8 +237,15 @@ export function registerIpcHandlers(
   })
 
   // ── PTY I/O ─────────────────────────────────────────────────
-  ipcMain.on(IPC.PTY_INPUT, (_e, payload) => {
+  /* [2026-05-08] 原仅转发 PTY；经典终端 Ctrl+C 与外嵌「中断」同源，渲染层需据此把上次普通提问填回输入框 */
+  ipcMain.on(IPC.PTY_INPUT, (e, payload: { sessionId: string; data: string }) => {
     ptyManager.sendInput(payload.sessionId, payload.data)
+    if (typeof payload?.data === 'string' && payload.data.includes('\x03')) {
+      const win = BrowserWindow.fromWebContents(e.sender)
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(IPC.PTY_INTR_SENT, { sessionId: payload.sessionId })
+      }
+    }
   })
 
   ipcMain.on(IPC.PTY_RESIZE, (_e, payload) => {

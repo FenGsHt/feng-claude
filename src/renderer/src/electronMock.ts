@@ -27,6 +27,7 @@ export function injectMockElectronAPI(): void {
       resizePty: noop,
       onPtyOutput: listener,
       onPtyStatus: listener,
+      onPtyIntrSent: listener,
       openDirDialog: async () => '/mock/workdir',
       resolveWorkdirMany: async (paths: string[]) => paths.map((p) => p),
       readFileTree: async () => [

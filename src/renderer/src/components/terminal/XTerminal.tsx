@@ -8,6 +8,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
+import { useEmbedInterruptSuppressStore } from '../../store/embedInterruptSuppressStore'
 import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
 import { beginSlashPtyEchoRound, setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
@@ -154,6 +155,8 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   if (isPtyAlternateScreenActive(sessionId)) return
   const raw = text.replace(/\r\n/g, '\n').trimEnd()
   if (!raw.length) return
+  /* [2026-05-08] 新一轮用户提交时取消「中断后隐藏 loading」抑制，否则永远不显示处理中 */
+  useEmbedInterruptSuppressStore.getState().clear(sessionId)
   const firstLine = raw.split('\n')[0]?.trimStart() ?? ''
   const isSlashCommand = firstLine.startsWith('/')
   /* [2026-05-06] 仅斜杠命令需要把 PTY 原文写入转录（/mcp 等）；普通对话仍以 JSONL 为准避免重复 */
@@ -165,10 +168,22 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   }
   const win = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
   const lines = raw.split('\n')
-  const payload =
+  /* [2026-05-08] 原仅发正文+行尾；光标若停在上一次输出同一行（终端里已有「在吗」），外嵌再发会视觉上拼成「在吗在吗」。普通消息先清 PTY 当前行，斜杠命令避免额外控制键影响 TUI */
+  // const payload =
+  //   lines.length === 1
+  //     ? `${lines[0]!}${win ? '\r' : '\n'}`
+  //     : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
+  let payload =
     lines.length === 1
       ? `${lines[0]!}${win ? '\r' : '\n'}`
       : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
+  if (!isSlashCommand) {
+    /* [2026-05-08] 原用前置换行把视觉输入挪到新行；中断后 PTY 当前行若残留「在吗」，换行会先提交旧 buffer，导致外嵌显示「在吗123」但实际发送「在吗」。 */
+    // const freshLine = win ? '\r\n' : '\n'
+    // payload = `${freshLine}${payload}`
+    /* [2026-05-08] Ctrl+U 清空当前输入行，再提交外嵌最新正文；避免旧 xterm 行内容参与本次发送。 */
+    payload = `\x15${payload}`
+  }
   window.electronAPI.sendInput(sessionId, payload)
   if (isSlashCommand) {
     /* [2026-05-07] 原把 /mcp、/skills 当普通用户消息写入转录和历史，外嵌里会堆出一串生硬的右侧气泡；slash 只驱动终端交互块。 */
@@ -195,6 +210,15 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
  */
 export function sendRawPtyInput(sessionId: string, data: string): void {
   window.electronAPI.sendInput(sessionId, data)
+}
+
+/**
+ * [2026-05-08] 外嵌/输入栏「中断」专用：同一 IPC 内写入连续两个 Ctrl+C。
+ * Claude Code 等在第一轮中断后子进程或中间层常吞掉单次 SIGINT；第二次再点中断时单次 \x03 往往无效。
+ * 必须用一次 sendInput（不可拆成两次），否则每条各触发 PTY_INTR_SENT，恢复草稿/弹气泡会跑两遍。
+ */
+export function sendPtyInterruptSignal(sessionId: string): void {
+  window.electronAPI.sendInput(sessionId, '\x03\x03')
 }
 
 export function XTerminal({ sessionId, active }: Props): React.ReactElement {

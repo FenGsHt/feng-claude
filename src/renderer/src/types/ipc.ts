@@ -10,6 +10,8 @@ export const IPC = {
   PTY_OUTPUT: 'pty:output',
   PTY_RESIZE: 'pty:resize',
   PTY_STATUS: 'pty:status',
+  /** [2026-05-08] 任意路径向 PTY 写入含 Ctrl+C 的字节时广播，供外嵌输入框恢复上次普通提问 */
+  PTY_INTR_SENT: 'pty:intrSent',
 
   WORKDIR_OPEN_DIALOG: 'workdir:openDialog',
   /** 与 SESSION_CREATE 一致，将路径 resolve 为绝对路径，供侧栏历史「同目录复用标签」比对 */
@@ -230,6 +232,10 @@ export interface PtyStatusPayload {
   sessionId: string
   status: 'idle' | 'running' | 'exited' | 'error'
   exitCode?: number
+}
+
+export interface PtyIntrSentPayload {
+  sessionId: string
 }
 
 export interface WorkdirChangePayload {

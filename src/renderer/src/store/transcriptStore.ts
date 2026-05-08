@@ -110,6 +110,8 @@ interface TranscriptState {
   clearSession: (sessionId: string) => void
   /** [2026-05-07] 外嵌 Esc 退出交互后移除末尾 ptyEcho 块，避免残留在转录区 */
   clearLatestPtyEchoChunk: (sessionId: string) => void
+  /** [2026-05-08] Ctrl+C 中断：去掉尚未被 JSONL「盖住」的最后一条乐观用户气泡，避免与恢复草稿后的再次发送叠加 */
+  popLastOptimisticUserEcho: (sessionId: string) => void
 }
 
 export const useTranscriptStore = create<TranscriptState>((set) => ({
@@ -151,6 +153,15 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
             row.clientEcho !== true
           ) {
             merged[merged.length - 1] = { ...row }
+            continue
+          }
+          /* [2026-05-08] 连续两条 clientEcho 且正文相同：双击发送 / 重入 append；丢弃后者避免「在吗」「在吗在吗」堆叠 */
+          if (
+            row.clientEcho === true &&
+            last.kind === 'user' &&
+            last.clientEcho === true &&
+            last.text.trim() === row.text.trim()
+          ) {
             continue
           }
         }
@@ -272,5 +283,18 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       const last = prev[prev.length - 1]
       if (last?.kind !== 'event' || last.ptyEcho !== true) return s
       return { bySession: { ...s.bySession, [sessionId]: prev.slice(0, -1) } }
+    }),
+  popLastOptimisticUserEcho: (sessionId) =>
+    set((s) => {
+      const prev = s.bySession[sessionId] ?? []
+      if (prev.length === 0) return s
+      const last = prev[prev.length - 1]
+      if (last?.kind !== 'user' || last.clientEcho !== true) return s
+      return {
+        bySession: {
+          ...s.bySession,
+          [sessionId]: prev.slice(0, -1)
+        }
+      }
     })
 }))
