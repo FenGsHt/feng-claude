@@ -8,12 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.6.4 主要更新
+### v0.6.8 主要更新
 
-- 增强内置调试浏览器，Claude Code 现在可以通过 MCP 更稳定地打开、控制和截图浏览器。
-- 修复 `browser-tools` 工具链，解决工具不显示、截图为空、浏览器无法自动拉起等问题。
-- 优化浏览器交互体验，默认窗口更小，并修复拖拽调整大小。
-- 完善发布打包，确保浏览器 MCP 能随应用一起正常发布。
+- **Telegram 多 Bot 预设**：支持添加多条 Bot Token 预设，每条约独立的配对状态与访问控制。标签栏一键切换 Bot，自动应用新 Token。
+- **外嵌界面 Beta**：支持 `@` 文件/目录自动补全、会话 JSONL 转录回显、斜杠命令 TUI 交互、Fallout 磷光主题。
+- **设置面板改进**：保存/更新按钮固定在底部，不再随内容滚动。
 
 ### 核心亮点
 
@@ -61,8 +60,10 @@
 
 | 功能 | 描述 |
 |------|------|
-| **终端集成** | xterm.js + node-pty，支持分屏、多会话 |
+| **终端集成** | xterm.js + node-pty，支持分屏、多会话、持久化 shell（后台守护进程） |
 | **文件树** | 浏览项目文件，拖拽生成 `@` 引用 |
+| **外嵌界面 Beta** | `@` 文件自动补全、会话 JSONL 转录、斜杠 TUI、Fallout 主题 |
+| **Telegram Channel** | 多 Bot 预设一键切换，独立 Token/配对状态/访问控制 |
 | **历史记录** | 会话历史，支持标签、搜索、快速恢复（多窗口独立保存） |
 | **Slash Commands** | 管理 `~/.claude/commands/` 自定义命令 |
 | **MCP 面板** | 可视化管理 MCP 服务器连接 |
@@ -162,6 +163,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
+### v0.6.8 Highlights
+
+- **Telegram Multi-Bot Presets**: Multiple bot tokens with isolated pairing state & access control. Quick switch via tab bar dropdown.
+- **Embed Output Beta**: `@` file autocomplete, JSONL transcript rendering, slash command TUI support, Fallout CRT theme.
+- **Persistent Shell Sessions**: Survive app restarts via background daemon, no tmux required.
+
 ### Key Features
 
 #### 🔄 Multi-API Profile Switching
@@ -207,8 +214,10 @@ Each profile stores: API Key, Base URL, default model, pricing, etc. New session
 
 | Feature | Description |
 |---------|-------------|
-| **Terminal Integration** | xterm.js + node-pty, split panes, multi-session |
+| **Terminal Integration** | xterm.js + node-pty, split panes, multi-session, persistent shell daemon |
 | **File Tree** | Browse files, drag to create `@` references |
+| **Embed Output Beta** | `@` autocomplete, JSONL transcript, slash TUI, Fallout theme |
+| **Telegram Channel** | Multi-bot presets, quick switch, isolated pairing & access control |
 | **History** | Session history with labels, search, quick resume (multi-window independent) |
 | **Slash Commands** | Manage `~/.claude/commands/` |
 | **MCP Panel** | Visual MCP server management |
