@@ -277,7 +277,9 @@ export function SettingsPanel(): React.ReactElement {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
       {/* Language selector */}
       <div className="px-3 pt-3 pb-2 flex items-center justify-between">
         <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
@@ -1163,9 +1165,10 @@ export function SettingsPanel(): React.ReactElement {
           </button>
         </div>
       </div>
+      </div>
 
-      {/* Save button */}
-      <div className="px-3 pb-4">
+      {/* Fixed bottom bar */}
+      <div className="shrink-0 px-3 pb-4 border-t border-claude-border pt-3 space-y-2">
         <button
           onClick={handleSave}
           className={`w-full py-1.5 rounded text-xs font-medium transition-colors ${
@@ -1176,10 +1179,8 @@ export function SettingsPanel(): React.ReactElement {
         >
           {saved ? `✓ ${t.settings.saved}` : t.settings.save}
         </button>
-      </div>
 
-      {/* Check update */}
-      <div className="px-3 pb-4 border-t border-claude-border pt-2">
+        {/* Check update */}
         <button
           onClick={() => { setChecking(true); window.electronAPI?.checkForUpdates() }}
           disabled={checking}
