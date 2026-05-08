@@ -6,22 +6,42 @@ const IGNORE_DIRS = new Set([
   'node_modules',
   '.git',
   '.svn',
+  '.hg',
   'dist',
+  'dist-build-tmp',
   'out',
   'build',
   '__pycache__',
+  '.venv',
+  'venv',
+  '.cache',
+  '.turbo',
+  '.idea',
+  '.vscode',
+  'target',
+  '.gradle',
+  '.parcel-cache',
   '.next',
   '.nuxt',
   'coverage'
 ])
 
+const MAX_TREE_NODES = 2500
+
 export class FileSystemHandler {
   readTree(dirPath: string, maxDepth = 3): FileTreeNode[] {
-    return this._readDir(dirPath, 0, maxDepth)
+    /* [2026-05-08] 原同步递归无上限，大目录会卡住 Electron 主进程；加节点预算保护。 */
+    const budget = { remaining: MAX_TREE_NODES }
+    return this._readDir(dirPath, 0, maxDepth, budget)
   }
 
-  private _readDir(dirPath: string, depth: number, maxDepth: number): FileTreeNode[] {
-    if (depth >= maxDepth) return []
+  private _readDir(
+    dirPath: string,
+    depth: number,
+    maxDepth: number,
+    budget: { remaining: number }
+  ): FileTreeNode[] {
+    if (depth >= maxDepth || budget.remaining <= 0) return []
 
     let entries: string[]
     try {
@@ -33,6 +53,7 @@ export class FileSystemHandler {
     const nodes: FileTreeNode[] = []
 
     for (const name of entries) {
+      if (budget.remaining <= 0) break
       if (name.startsWith('.') && depth === 0) continue
       if (IGNORE_DIRS.has(name)) continue
 
@@ -45,13 +66,15 @@ export class FileSystemHandler {
       }
 
       if (stat.isDirectory()) {
+        budget.remaining -= 1
         nodes.push({
           name,
           path: fullPath,
           type: 'directory',
-          children: this._readDir(fullPath, depth + 1, maxDepth)
+          children: this._readDir(fullPath, depth + 1, maxDepth, budget)
         })
       } else {
+        budget.remaining -= 1
         nodes.push({ name, path: fullPath, type: 'file' })
       }
     }

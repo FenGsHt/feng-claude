@@ -26,6 +26,8 @@ interface Props {
   nativeTerminalOverlayVisible?: boolean
 }
 
+const atItemsCache = new Map<string, FileAtItem[]>()
+
 /**
  * [2026-05-06] 外嵌 Beta 专用：替代 xterm 的键入，输入经 PTY 送给 Claude Code
  * [2026-05-06] `/` 触发命令面板，与 Claude Code 内置命令文档对齐（静态映射 + MCP 说明）
@@ -89,20 +91,6 @@ export function EmbedSessionComposer({
     })
   }, [sessionId])
 
-  /* [2026-05-07] @ 补全：预加载文件树 */
-  useEffect(() => {
-    if (!workdir) { setAtItems([]); return }
-    let cancelled = false
-    window.electronAPI.readFileTree(workdir, 3).then((nodes) => {
-      if (!cancelled) {
-        setAtItems(flattenTreeToAtItems(nodes, workdir))
-      }
-    }).catch(() => {
-      if (!cancelled) setAtItems([])
-    })
-    return () => { cancelled = true }
-  }, [workdir])
-
   const slashCtx = useMemo(() => getSlashCompletionAtStart(draft, cursor), [draft, cursor])
 
   const slashList = useMemo(() => {
@@ -117,6 +105,29 @@ export function EmbedSessionComposer({
     if (slashMenuOpen) return null
     return getAtCompletionAt(draft, cursor)
   }, [draft, cursor, slashMenuOpen])
+
+  /* [2026-05-08] 原组件挂载即 readFileTree(workdir, 3)，大目录会同步卡住主进程；改为输入 @ 后按需加载并缓存。 */
+  useEffect(() => {
+    if (!workdir || !atCtx) {
+      setAtItems([])
+      return
+    }
+    const cached = atItemsCache.get(workdir)
+    if (cached) {
+      setAtItems(cached)
+      return
+    }
+    let cancelled = false
+    window.electronAPI.readFileTree(workdir, 2).then((nodes) => {
+      if (cancelled) return
+      const items = flattenTreeToAtItems(nodes, workdir)
+      atItemsCache.set(workdir, items)
+      setAtItems(items)
+    }).catch(() => {
+      if (!cancelled) setAtItems([])
+    })
+    return () => { cancelled = true }
+  }, [atCtx, workdir])
 
   const atList = useMemo(() => {
     if (!atCtx) return []

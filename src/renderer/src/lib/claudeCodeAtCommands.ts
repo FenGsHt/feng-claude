@@ -5,6 +5,9 @@
 import type { FileTreeNode } from '../types/fs'
 import { formatFileRefForClaudeCode } from './claudeRef'
 
+const MAX_AT_ITEMS = 1500
+const MAX_AT_FILTER_SCAN = 1500
+
 export interface FileAtItem {
   insert: string
   matchKey: string
@@ -15,9 +18,12 @@ export interface FileAtItem {
 export function flattenTreeToAtItems(nodes: FileTreeNode[], workdir: string): FileAtItem[] {
   const dirs: FileAtItem[] = []
   const files: FileAtItem[] = []
+  let seen = 0
 
   function walk(items: FileTreeNode[]) {
     for (const n of items) {
+      if (seen >= MAX_AT_ITEMS) return
+      seen += 1
       const isDir = n.type === 'directory'
       const insert = formatFileRefForClaudeCode(n.path, workdir, isDir) + ' '
       // Compute relative display label
@@ -62,12 +68,13 @@ export function getAtCompletionAt(
 
 export function filterAtCommands(items: FileAtItem[], query: string): FileAtItem[] {
   const q = query.trim()
+  const scoped = items.length > MAX_AT_FILTER_SCAN ? items.slice(0, MAX_AT_FILTER_SCAN) : items
   if (!q) {
-    const out = items.slice(0, 50)
+    const out = scoped.slice(0, 50)
     return out
   }
 
-  const ranked = items
+  const ranked = scoped
     .map((item) => {
       const mk = item.matchKey
       let rank = -1
