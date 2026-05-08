@@ -46,6 +46,8 @@ export function workspaceToPersisted(
   const profileIds = sessions.map((s) => s.profileId)
   // [2026-05-06] Persist shellOnly flag
   const shellOnlySlots = sessions.map((s) => !!s.shellOnly)
+  // [2026-05-08] Persist per-pane Telegram Channel config so each window keeps its own pairing state.
+  const telegramChannelSlots = sessions.map((s) => s.telegramChannel)
 
   return {
     version: WORKSPACE_VERSION,
@@ -54,6 +56,7 @@ export function workspaceToPersisted(
     profileIds: profileIds.some((id) => id != null) ? profileIds as string[] : undefined,
     // Only include shellOnlySlots if at least one session is shell-only
     shellOnlySlots: shellOnlySlots.some(Boolean) ? shellOnlySlots : undefined,
+    telegramChannelSlots: telegramChannelSlots.some(Boolean) ? telegramChannelSlots : undefined,
     layoutRoot: layoutPersisted,
     activeSlotIndex
   }
@@ -106,6 +109,19 @@ export function parsePersistedWorkspace(raw: unknown): PersistedWorkspace | null
   if (o.shellOnlySlots !== undefined && Array.isArray(o.shellOnlySlots)) {
     if (o.shellOnlySlots.some((v) => typeof v !== 'boolean')) return null
     if (o.shellOnlySlots.length !== o.sessionWorkdirs.length) return null
+  }
+  // [2026-05-08] Validate Telegram Channel slot configs; token shape is validated only at launch.
+  if (o.telegramChannelSlots !== undefined && Array.isArray(o.telegramChannelSlots)) {
+    if (o.telegramChannelSlots.length !== o.sessionWorkdirs.length) return null
+    for (const cfg of o.telegramChannelSlots) {
+      if (cfg === undefined || cfg === null) continue
+      if (typeof cfg !== 'object') return null
+      const c = cfg as Record<string, unknown>
+      if (typeof c.enabled !== 'boolean') return null
+      if (c.useGlobalDefault !== undefined && typeof c.useGlobalDefault !== 'boolean') return null
+      if (c.botToken !== undefined && typeof c.botToken !== 'string') return null
+      if (c.stateDirId !== undefined && typeof c.stateDirId !== 'string') return null
+    }
   }
   return o as PersistedWorkspace
 }

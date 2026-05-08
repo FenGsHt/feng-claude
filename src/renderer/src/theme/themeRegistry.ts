@@ -12,7 +12,10 @@ export interface ThemeDefinition {
   dataTheme: ResolvedThemeId
   terminal: ITheme
   /** 覆盖 xterm 默认字体/行高等选项；未指定时继承全局默认值 */
-  terminalOptions?: Pick<ITerminalOptions, 'fontFamily' | 'fontSize' | 'lineHeight' | 'letterSpacing' | 'cursorBlink' | 'cursorStyle'>
+  terminalOptions?: Pick<
+    ITerminalOptions,
+    'fontFamily' | 'fontSize' | 'lineHeight' | 'letterSpacing' | 'cursorBlink' | 'cursorStyle' | 'cursorWidth'
+  >
 }
 
 export const DARK_TERMINAL_THEME: ITheme = {
@@ -106,13 +109,15 @@ export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {
     dataTheme: 'fallout',
     terminal: FALLOUT_TERMINAL_THEME,
     // [2026-05-06] Fallout 专属：复古点阵字体 VT323，稍大字号强化磷光屏感
+    // [2026-05-08] 原 block 填满单元格；改为粗竖条 bar + cursorWidth，更接近老式终端 “|” 光标
     terminalOptions: {
       fontFamily: '"VT323", "Courier New", Courier, monospace',
       fontSize: 16,
       lineHeight: 1.25,
       letterSpacing: 1.5,
       cursorBlink: true,
-      cursorStyle: 'block'
+      cursorStyle: 'bar',
+      cursorWidth: 11
     }
   }
 }

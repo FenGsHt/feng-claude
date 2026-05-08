@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Session, HistoryRecord } from '../types/session'
+import type { TelegramChannelSessionConfig } from '../types/settings'
 import type { PaneNode, CreateSessionMode } from '../types/paneLayout'
 import {
   collectLeafSessionIds,
@@ -151,7 +152,7 @@ interface SessionStore {
    * @param profileId [2026-04-28] 指定使用的 API profile ID（可选）
    * @param shellOnly [2026-05-06] true 时仅打开 Shell，不自动启动 Claude Code
    */
-  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string, shellOnly?: boolean) => Promise<void>
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string, shellOnly?: boolean, telegramChannel?: TelegramChannelSessionConfig) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
 
@@ -173,10 +174,17 @@ interface SessionStore {
   restoreWorkspace: (pw: PersistedWorkspace) => Promise<void>
 
   /** 原地重启：关闭当前 PTY，在相同 workdir 重新创建，保持 tab 位置不变 */
-  restartSession: (id: string, newProfileId?: string) => Promise<void>
+  /** [2026-05-08] telegramChannelOverride：切换 TG 预设后避免仍用 store 内旧 env 创建 PTY */
+  restartSession: (
+    id: string,
+    newProfileId?: string,
+    telegramChannelOverride?: TelegramChannelSessionConfig
+  ) => Promise<void>
 
   /** [2026-04-28] 更新会话的 profileId（切换配置） */
   updateSessionProfileId: (sessionId: string, profileId: string) => void
+  /** [2026-05-08] 更新会话的 Telegram Channel 配置；重启后生效 */
+  updateSessionTelegramChannel: (sessionId: string, telegramChannel?: TelegramChannelSessionConfig) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -191,13 +199,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     splitFromSessionId?: string,
     resume?: boolean,
     profileId?: string,
-    shellOnly?: boolean
+    shellOnly?: boolean,
+    telegramChannel?: TelegramChannelSessionConfig
   ) => {
     /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const raw = await window.electronAPI.createSession(workdir, resume, profileId, shellOnly)
+    const raw = await window.electronAPI.createSession(workdir, resume, profileId, shellOnly, telegramChannel)
     const result = normalizeCreateSessionResult(raw, workdir)
     /* [2026-04-23] 原假定 invoke 恒成功；主进程 PTY 失败时改为 ok 判别。
      * [2026-04-23] 若在 !ok 时 throw，App 启动与 restoreFromHistory 等路径未全部 try/catch，会 Uncaught (in promise)；失败时仅打日志并 return */
@@ -219,7 +228,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       updatedAt: Date.now(),
       ptyPid: result.pid,
       profileId: sessionProfileId ?? undefined,
-      shellOnly: shellOnly || undefined
+      shellOnly: shellOnly || undefined,
+      telegramChannel: result.telegramChannel ?? telegramChannel
     }
 
     set((s) => {
@@ -374,12 +384,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await get().loadHistory()
   },
 
-  restartSession: async (id: string, newProfileId?: string) => {
+  restartSession: async (id: string, newProfileId?: string, telegramChannelOverride?: TelegramChannelSessionConfig) => {
     const sess = get().sessions.find((s) => s.id === id)
     if (!sess) return
     // [2026-04-28] Use newProfileId if provided, otherwise keep existing
     const targetProfileId = newProfileId ?? sess.profileId
     const { workdir, createdAt } = sess
+    /* [2026-05-08] 原仅解构 sess.telegramChannel；切换预设后若未传入覆盖，restart 仍可能读到切换前快照 */
+    const telegramChannel = telegramChannelOverride ?? sess.telegramChannel
 
     destroyTerminal(id)
     clearTokenUsageBuffer(id)
@@ -395,13 +407,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     /* [2026-04-30] 重新打开同一会话时 /resume 恢复该目录对话（与重开应用行为一致）
      * [2026-04-23] 原未处理创建失败：旧 PTY 已关，若仍假定 result 必有 sessionId 会破坏状态 */
     let result = normalizeCreateSessionResult(
-      await window.electronAPI.createSession(workdir, true, targetProfileId),
+      await window.electronAPI.createSession(workdir, true, targetProfileId, sess.shellOnly, telegramChannel),
       workdir
     )
     if (!result.ok) {
       console.warn('[restartSession] 带 resume 创建失败，尝试普通启动:', result.error)
       result = normalizeCreateSessionResult(
-        await window.electronAPI.createSession(workdir, false, targetProfileId),
+        await window.electronAPI.createSession(workdir, false, targetProfileId, sess.shellOnly, telegramChannel),
         workdir
       )
     }
@@ -433,7 +445,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       createdAt,
       updatedAt: Date.now(),
       ptyPid: result.pid,
-      profileId: targetProfileId
+      profileId: targetProfileId,
+      shellOnly: sess.shellOnly,
+      telegramChannel: result.telegramChannel ?? telegramChannel
     }
 
     function replaceLeafId(node: PaneNode, oldId: string, newId: string): PaneNode {
@@ -465,10 +479,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const profileId = pw.profileIds?.[i]
       // [2026-05-06] Shell-only sessions: restore=false, shellOnly=true
       const shellOnly = pw.shellOnlySlots?.[i] ?? false
+      const telegramChannel = pw.telegramChannelSlots?.[i]
       try {
         // Shell-only 不带 --continue，直接开 shell；普通 session 恢复上次会话
         const result = normalizeCreateSessionResult(
-          await window.electronAPI.createSession(wd, shellOnly ? false : true, profileId, shellOnly),
+          await window.electronAPI.createSession(wd, shellOnly ? false : true, profileId, shellOnly, telegramChannel),
           wd
         )
         /* [2026-04-23] 原仅 catch 网络式错误；结构化 ok:false 不会抛，须显式跳过以免误用字段 */
@@ -494,7 +509,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           updatedAt: Date.now(),
           ptyPid: result.pid,
           profileId: result.profileId ?? profileId,
-          shellOnly: shellOnly || undefined
+          shellOnly: shellOnly || undefined,
+          telegramChannel: result.telegramChannel ?? telegramChannel
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently
@@ -533,6 +549,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((s) => ({
       sessions: s.sessions.map((sess) =>
         sess.id === sessionId ? { ...sess, profileId } : sess
+      )
+    }))
+  },
+
+  updateSessionTelegramChannel: (sessionId: string, telegramChannel?: TelegramChannelSessionConfig) => {
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, telegramChannel } : sess
       )
     }))
   }

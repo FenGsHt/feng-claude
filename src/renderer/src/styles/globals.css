@@ -119,6 +119,33 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* [2026-05-08] 全局表单控件：Telegram 弹窗等场景若未挂载设置页，勿仅靠 SettingsPanel 内联 .field-input（否则退回浏览器白底浅字） */
+.field-input,
+select.field-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--claude-text);
+  outline: none;
+  font-family: 'Cascadia Code', ui-monospace, monospace;
+}
+.field-input:focus,
+select.field-input:focus {
+  border-color: var(--claude-accent);
+}
+.field-input::placeholder {
+  color: var(--field-placeholder);
+}
+
+/* [2026-05-08] 同页多条 Bot Token：多个 type=password 易被 Chromium 折叠；用文本框 + 圆点掩码（Electron/Chromium） */
+.field-input.field-input-secret {
+  -webkit-text-security: disc;
+}
+
 /* ── Selection ────────────────────────────────────────────── */
 ::selection {
   background: rgba(245, 158, 11, 0.3);

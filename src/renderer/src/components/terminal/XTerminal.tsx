@@ -436,6 +436,8 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     entry.term.options.letterSpacing = opts?.letterSpacing ?? 0.3
     entry.term.options.cursorBlink = opts?.cursorBlink ?? false
     if (opts?.cursorStyle) entry.term.options.cursorStyle = opts.cursorStyle
+    /* [2026-05-08] Fallout 等主题的粗 bar 光标需显式 width；切回其他主题时恢复默认宽度 */
+    entry.term.options.cursorWidth = opts?.cursorWidth ?? 1
   }, [sessionId, resolvedTheme])
 
   const onContextMenu = (e: React.MouseEvent): void => {

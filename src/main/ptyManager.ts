@@ -9,6 +9,7 @@ import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 import type { ClaudeSettings, SettingsStore, ApiProfile } from './settingsStore'
+import type { TelegramChannelSessionConfig } from '../renderer/src/types/settings'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { getConfigDir } from './configDir'
 import { getProxyPort } from './apiProxyServer'
@@ -61,11 +62,26 @@ const PTY_ENV_STRIP = [
   'ANTHROPIC_MODEL'
 ] as const
 
+/** [2026-05-08] Bun 默认装在 ~/.bun/bin；Electron 包壳启动时常继承不到用户后来在终端里改的 PATH，Telegram 等官方插件会 spawn bun 失败。 */
+export function augmentPathWithBunInstallDirs(basePath: string): string {
+  const sep = process.platform === 'win32' ? ';' : ':'
+  const bunBin = join(homedir(), '.bun', 'bin')
+  if (!existsSync(bunBin)) return basePath
+  const norm = (p: string) => p.replace(/[/\\]+$/g, '').replace(/\\/g, '/').toLowerCase()
+  const target = norm(bunBin)
+  for (const segment of basePath.split(sep)) {
+    if (segment && norm(segment) === target) return basePath
+  }
+  return `${bunBin}${sep}${basePath}`
+}
+
 function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> {
   const e = { ...(process.env as Record<string, string>) }
   for (const k of PTY_ENV_STRIP) {
     delete e[k]
   }
+  /* [2026-05-08] 原末尾 PATH: process.env.PATH ?? ''：未把 ~/.bun/bin 并入，插件内调用 bun 因找不到命令失败。 */
+  const pathAugmented = augmentPathWithBunInstallDirs(e.PATH ?? process.env.PATH ?? '')
   return {
     ...e,
     ...claudeEnv, // our settings (API key, base URL, model, etc.)
@@ -80,7 +96,7 @@ function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> 
     FORCE_COLOR: '3',
     CLICOLOR: '1',
     CLICOLOR_FORCE: '1',
-    PATH: process.env.PATH ?? ''
+    PATH: pathAugmented
   }
 }
 
@@ -181,12 +197,16 @@ function scrollbackPath(workdir: string): string {
 function claudeLaunchLine(
   settings: ClaudeSettings,
   isWindows: boolean,
-  opts?: { continueSession?: boolean }
+  opts?: { continueSession?: boolean; telegramChannelEnabled?: boolean }
 ): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
   let line = `claude --permission-mode ${mode}`
   if (opts?.continueSession) {
     line += ' --continue'
+  }
+  if (opts?.telegramChannelEnabled) {
+    /* [2026-05-08] 官方 Telegram Channel：插件负责长轮询/配对；模型调用仍走当前 Claude Code 环境变量。 */
+    line += ' --channels plugin:telegram@claude-plugins-official'
   }
   const addDir = resolveClaudeAddDir(settings).trim()
   if (addDir) {
@@ -207,9 +227,90 @@ interface PtySession {
   scrollbackSize: number
   usedContinue: boolean
   continueFallbackDone: boolean
+  /** [2026-05-08] 与会话创建时 prepareTelegramChannel.launchEnabled 一致；shell 误判或 Claude 退出后的自动重跑须沿用，否则会丢掉 --channels */
+  telegramChannelLaunchEnabled: boolean
   /** [2026-05-06] daemon mode: socket connection instead of direct PTY */
   daemonSocket?: net.Socket
   daemonStatePath?: string
+}
+
+interface PreparedTelegramChannel {
+  config?: TelegramChannelSessionConfig
+  env?: Record<string, string>
+  launchEnabled: boolean
+}
+
+function sanitizeTelegramStateId(value: string): string {
+  const safe = value.trim().replace(/[^a-zA-Z0-9_.-]/g, '-').replace(/-+/g, '-')
+  return safe || `telegram-${Date.now()}`
+}
+
+/** [2026-05-08] 新建会话：启用后以 botPresets[0] 为准（无则回落旧版 defaultBotToken） */
+function defaultTelegramFromGlobal(
+  global: NonNullable<ClaudeSettings['telegramChannel']>
+): TelegramChannelSessionConfig | undefined {
+  if (!global.enabled) return undefined
+  const tok =
+    global.botPresets?.[0]?.botToken?.trim() || global.defaultBotToken?.trim()
+  if (!tok) return undefined
+  const stateRaw =
+    global.botPresets?.[0]?.stateDirId?.trim() ||
+    global.defaultStateDirId?.trim() ||
+    'telegram'
+  return {
+    enabled: true,
+    botToken: tok,
+    stateDirId: stateRaw || 'telegram'
+  }
+}
+
+function telegramStateDir(id: string): string {
+  /* [2026-05-08] 原 join(getConfigDir(), 'telegram-channels', …)，文件落在 AppData\…\feng-claude\telegram-channels，
+   * 用户按官方说明查看 %USERPROFILE%\.claude\channels\telegram 会认为「没自动生成」；插件与文档也以 ~/.claude/channels 为惯例。 */
+  return join(homedir(), '.claude', 'channels', sanitizeTelegramStateId(id))
+}
+
+function prepareTelegramChannel(
+  sessionId: string,
+  settings: ClaudeSettings,
+  requested?: TelegramChannelSessionConfig,
+  shellOnly?: boolean
+): PreparedTelegramChannel {
+  if (shellOnly) return { config: requested, launchEnabled: false }
+  const global = settings.telegramChannel
+  /* [2026-05-08] 原 enableForNewSessions + 首条预设：改为 enabled + defaultTelegramFromGlobal */
+  const config = requested ?? (global ? defaultTelegramFromGlobal(global) : undefined)
+  if (!config) return { launchEnabled: false }
+  if (!config.enabled) return { config, launchEnabled: false }
+  const legacyGlobal = (config as TelegramChannelSessionConfig).useGlobalDefault === true
+  const token = (legacyGlobal ? global?.defaultBotToken : config.botToken)?.trim()
+  /* [2026-05-08] 原 || session-${sessionId}：未填时落到 feng 专用子目录名；未填时默认 telegram 与 ~/.claude/channels/telegram 约定一致。 */
+  const stateDirId = config.stateDirId?.trim() || 'telegram'
+  const effectiveConfig: TelegramChannelSessionConfig = {
+    ...config,
+    stateDirId
+  }
+  if (!token) {
+    console.warn('[telegram-channel] enabled but bot token is empty; channel launch skipped')
+    return { config: effectiveConfig, launchEnabled: false }
+  }
+  const dir = telegramStateDir(stateDirId)
+  try {
+    mkdirSync(dir, { recursive: true })
+    /* [2026-05-08] 官方插件固定读取 TELEGRAM_STATE_DIR/.env；仅写入用户配置目录，避免 token 进仓库。 */
+    writeFileSync(join(dir, '.env'), `TELEGRAM_BOT_TOKEN=${token}\n`, 'utf8')
+  } catch (e) {
+    console.warn('[telegram-channel] failed to prepare state dir:', e)
+    return { config: effectiveConfig, launchEnabled: false }
+  }
+  return {
+    config: effectiveConfig,
+    env: {
+      TELEGRAM_STATE_DIR: dir,
+      TELEGRAM_BOT_TOKEN: token
+    },
+    launchEnabled: true
+  }
 }
 
 // ── Daemon helpers ────────────────────────────────────────────────────
@@ -302,8 +403,9 @@ export class PtyManager {
     profile: ApiProfile,
     settings?: ClaudeSettings,
     resume?: boolean,
-    shellOnly?: boolean
-  ): Promise<{ pid: number }> {
+    shellOnly?: boolean,
+    telegramChannel?: TelegramChannelSessionConfig
+  ): Promise<{ pid: number; telegramChannel?: TelegramChannelSessionConfig }> {
     const s = settings ?? this.settingsStore.get()
     // [2026-04-30] 代理开启时使用本地代理 URL
     const proxyUrl = s.enableApiProxy ? `http://127.0.0.1:${getProxyPort()}` : undefined
@@ -312,11 +414,16 @@ export class PtyManager {
     const isWindows = process.platform === 'win32'
     const customShell = s.terminal?.shell?.trim()
     const shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash'))
-    const ptyEnv = buildPtyEnv(claudeEnv)
+    const preparedTelegram = prepareTelegramChannel(sessionId, s, telegramChannel, shellOnly)
+    const ptyEnv = {
+      ...buildPtyEnv(claudeEnv),
+      ...(preparedTelegram.env ?? {})
+    }
 
     // [2026-05-06] Daemon mode: shell survives Electron restart on all platforms
     if (shellOnly && s.terminal?.useTmux) {
-      return this.createDaemonSession(sessionId, workdir, shell, ptyEnv)
+      const result = await this.createDaemonSession(sessionId, workdir, shell, ptyEnv)
+      return { ...result, telegramChannel: preparedTelegram.config }
     }
 
     const ptyProcess = pty.spawn(shell, [], {
@@ -342,14 +449,18 @@ export class PtyManager {
       scrollbackChunks: [],
       scrollbackSize: 0,
       usedContinue: !!resume,
-      continueFallbackDone: false
+      continueFallbackDone: false,
+      telegramChannelLaunchEnabled: preparedTelegram.launchEnabled
     }
 
     // [2026-05-06] Shell-only 会话不自动启动 Claude Code，直接保持 shell 状态
     if (!shellOnly) {
       setTimeout(() => {
         session.firstAutoLaunchAt = Date.now()
-        ptyProcess.write(claudeLaunchLine(s, isWindows, { continueSession: !!resume }))
+        ptyProcess.write(claudeLaunchLine(s, isWindows, {
+          continueSession: !!resume,
+          telegramChannelEnabled: session.telegramChannelLaunchEnabled
+        }))
         session.claudeRunning = true
       }, 300)
     } else if (s.terminal?.useTmux) {
@@ -403,7 +514,9 @@ export class PtyManager {
             session.claudeRunning = true
             session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
-            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))
+            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
+              telegramChannelEnabled: session.telegramChannelLaunchEnabled
+            }))
           }
         }, 300)
         return
@@ -429,7 +542,12 @@ export class PtyManager {
             session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
             // Relaunch without --continue: only the initial launch uses it
-            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32'))
+            /* [2026-05-08] 原仅 claudeLaunchLine(settings, platform)，未带 telegramChannelEnabled，
+             * 首次启动若很快出现类似 cmd 提示符的输出，会误判「已回 shell」并在 ~500ms 再写一行 claude，
+             * 该行丢失 --channels，用户误以为 Telegram Channel 从未启用。 */
+            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
+              telegramChannelEnabled: session.telegramChannelLaunchEnabled
+            }))
           }
         }, 500)
       }
@@ -455,7 +573,7 @@ export class PtyManager {
     })
 
     this.sessions.set(sessionId, session)
-    return { pid: ptyProcess.pid }
+    return { pid: ptyProcess.pid, telegramChannel: preparedTelegram.config }
   }
 
   private async createDaemonSession(
@@ -477,6 +595,7 @@ export class PtyManager {
       scrollbackSize: 0,
       usedContinue: false,
       continueFallbackDone: false,
+      telegramChannelLaunchEnabled: false,
       daemonStatePath: statePath
     }
     this.sessions.set(sessionId, session)

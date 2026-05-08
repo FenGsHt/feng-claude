@@ -1,5 +1,5 @@
 import type { HistoryRecord } from './session'
-import type { ApiProfile } from './settings'
+import type { ApiProfile, TelegramChannelSessionConfig } from './settings'
 
 export const IPC = {
   SESSION_CREATE: 'session:create',
@@ -117,6 +117,8 @@ export const IPC = {
 
   /** [2026-05-06] 检测本机可用 shell 列表 */
   SHELL_DETECT: 'shell:detect',
+  /** [2026-05-08] 检测 Claude Code Telegram Channel 可用性 */
+  TELEGRAM_CHANNEL_CHECK: 'telegram:channelCheck',
 } as const
 
 export interface ShellOption {
@@ -127,6 +129,14 @@ export interface ShellOption {
 export interface ShellDetectResult {
   shells: ShellOption[]
   tmuxAvailable: boolean
+}
+
+export interface TelegramChannelCheckResult {
+  claudeVersion?: string
+  pluginCommand: boolean
+  channelsFlag: boolean
+  telegramPluginInstalled: boolean
+  error?: string
 }
 
 export interface SkillEntry {
@@ -187,6 +197,10 @@ export interface SessionCreatePayload {
   resume?: boolean
   /** [2026-04-28] 指定使用的 API profile ID（可选，默认使用全局激活的 profile）*/
   profileId?: string
+  /** [2026-05-06] true 时仅打开 Shell，不自动启动 Claude Code */
+  shellOnly?: boolean
+  /** [2026-05-08] 官方 Telegram Channel 每会话配置 */
+  telegramChannel?: TelegramChannelSessionConfig
 }
 
 /** [2026-04-23] 原仅有成功字段；PTY spawn 失败时 invoke 抛错导致渲染层大量未捕获 rejection，改为判别联合 */
@@ -202,6 +216,8 @@ export interface SessionCreateOk {
   scrollback?: string | null
   /** [2026-04-28] The profile ID used for this session */
   profileId?: string
+  /** [2026-05-08] Effective Telegram Channel config used for this session */
+  telegramChannel?: TelegramChannelSessionConfig
 }
 
 export interface SessionCreateErr {

@@ -14,13 +14,14 @@ export function injectMockElectronAPI(): void {
     ;(window as any).electronAPI = {
       readClipboardTextSync: () => '',
       writeClipboardText: (_text: string) => {},
-      createSession: async (workdir: string, _resume?: boolean, profileId?: string, _shellOnly?: boolean) => ({
+      createSession: async (workdir: string, _resume?: boolean, profileId?: string, _shellOnly?: boolean, telegramChannel?: import('./types/settings').TelegramChannelSessionConfig) => ({
         ok: true as const,
         sessionId: 'mock-session-' + Math.random().toString(36).slice(2),
         pid: 0,
         workdir: workdir || '.',
         scrollback: undefined as string | undefined,
-        profileId
+        profileId,
+        telegramChannel
       }),
       closeSession: async () => ({ success: true }),
       sendInput: noop,
@@ -65,6 +66,12 @@ export function injectMockElectronAPI(): void {
           { name: 'Git Bash', path: 'C:\\Program Files\\Git\\bin\\bash.exe' },
         ],
         tmuxAvailable: false,
+      }),
+      checkTelegramChannel: async () => ({
+        claudeVersion: 'mock',
+        pluginCommand: true,
+        channelsFlag: true,
+        telegramPluginInstalled: false
       }),
       profiles: {
         add: async () => ({ success: true }),

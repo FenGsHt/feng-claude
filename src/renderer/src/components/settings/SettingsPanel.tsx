@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../../types/settings'
+import type { ClaudeSettings, ApiProfile, FallbackConfig, TelegramBotPreset } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
 import { useThemeStore } from '../../store/themeStore'
-import type { UpdateStatusPayload } from '../../types/ipc'
+import type { TelegramChannelCheckResult, UpdateStatusPayload } from '../../types/ipc'
 import { v4 as uuidv4 } from 'uuid'
 import { selectableThemes } from '../../theme/themeRegistry'
+import { uniqueStateDirIdForPreset } from '../../lib/telegramPresetStateDir'
 
 export function SettingsPanel(): React.ReactElement {
   const [form, setForm] = useState<ClaudeSettings>(DEFAULT_SETTINGS)
@@ -18,6 +19,11 @@ export function SettingsPanel(): React.ReactElement {
   // Update status
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
   const [checking, setChecking] = useState(false)
+  const [telegramCheck, setTelegramCheck] = useState<TelegramChannelCheckResult | null>(null)
+  const [telegramChecking, setTelegramChecking] = useState(false)
+  /** [2026-05-08] 添加 Bot 预设表单（列表可多条） */
+  const [tgNewName, setTgNewName] = useState('')
+  const [tgNewToken, setTgNewToken] = useState('')
 
   // [2026-04-28] Profile 编辑弹窗
   const [editingProfile, setEditingProfile] = useState<ApiProfile | null>(null)
@@ -56,14 +62,43 @@ export function SettingsPanel(): React.ReactElement {
   }, [])
 
   useEffect(() => {
-    window.electronAPI.settings.get().then((s) => {
+    window.electronAPI.settings.get().then((raw) => {
+      const s = { ...raw }
+      const tc = s.telegramChannel
+      if (tc) {
+        const m = { ...tc }
+        /* [2026-05-08] 旧版仅 defaultBotToken：迁移为一条预设 */
+        if ((!m.botPresets || m.botPresets.length === 0) && m.defaultBotToken?.trim()) {
+          const nm = useLangStore.getState().lang === 'zh' ? '默认' : 'Default'
+          m.botPresets = [
+            {
+              id: uuidv4(),
+              name: nm,
+              botToken: m.defaultBotToken.trim(),
+              stateDirId: uniqueStateDirIdForPreset(nm, [])
+            }
+          ]
+        }
+        s.telegramChannel = m
+      }
       setForm(s)
       setLoading(false)
     })
   }, [])
 
+  const runTelegramCheck = async (): Promise<void> => {
+    setTelegramChecking(true)
+    try {
+      const result = await window.electronAPI.checkTelegramChannel()
+      setTelegramCheck(result)
+    } finally {
+      setTelegramChecking(false)
+    }
+  }
+
   // 获取当前激活的 profile
   const activeProfile = form.profiles.find(p => p.id === form.activeProfileId) ?? form.profiles[0]
+  const telegramChannel = form.telegramChannel ?? DEFAULT_SETTINGS.telegramChannel!
 
   // 处理非 API 配置的变化
   const handleChange = <K extends keyof ClaudeSettings>(key: K, value: ClaudeSettings[K]) => {
@@ -72,6 +107,55 @@ export function SettingsPanel(): React.ReactElement {
     if (key === 'language') {
       useLangStore.getState().setLang(value as ClaudeSettings['language'])
     }
+  }
+
+  /** [2026-05-08] 合并 telegramChannel（多预设列表） */
+  const patchTelegramChannel = (
+    fn: (tc: NonNullable<ClaudeSettings['telegramChannel']>) => NonNullable<ClaudeSettings['telegramChannel']>
+  ): void => {
+    setForm((prev) => ({
+      ...prev,
+      telegramChannel: fn(prev.telegramChannel ?? DEFAULT_SETTINGS.telegramChannel!)
+    }))
+    setSaved(false)
+  }
+
+  const handleAddTelegramPresetRow = (): void => {
+    const name = tgNewName.trim()
+    const token = tgNewToken.trim()
+    if (!name || !token) return
+    patchTelegramChannel((tc) => {
+      const list = tc.botPresets ?? []
+      const stateDirId = uniqueStateDirIdForPreset(name, list)
+      const row: TelegramBotPreset = { id: uuidv4(), name, botToken: token, stateDirId }
+      return { ...tc, botPresets: [...list, row] }
+    })
+    setTgNewName('')
+    setTgNewToken('')
+  }
+
+  const handleRemoveTelegramPreset = (id: string): void => {
+    patchTelegramChannel((tc) => ({
+      ...tc,
+      botPresets: (tc.botPresets ?? []).filter((p) => p.id !== id)
+    }))
+  }
+
+  const handleUpdateTelegramPreset = (id: string, patch: Partial<TelegramBotPreset>): void => {
+    patchTelegramChannel((tc) => {
+      const list = tc.botPresets ?? []
+      let merged = patch
+      if (typeof patch.name === 'string') {
+        merged = {
+          ...patch,
+          stateDirId: uniqueStateDirIdForPreset(patch.name, list, id)
+        }
+      }
+      return {
+        ...tc,
+        botPresets: list.map((p) => (p.id === id ? { ...p, ...merged } : p))
+      }
+    })
   }
 
   // [2026-04-28] 处理 profile 切换
@@ -309,6 +393,132 @@ export function SettingsPanel(): React.ReactElement {
         <p className="mt-1 text-[9px] leading-snug text-claude-muted">
           {lang === 'zh' ? '长时间任务完成后发送系统通知提醒' : 'Send system notification when a long task completes'}
         </p>
+      </div>
+
+      {/* [2026-05-08] Telegram：开关 + 多条 Bot 预设（首条=新建会话默认） */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+            Telegram Channel
+          </span>
+          <button
+            type="button"
+            onClick={() => void runTelegramCheck()}
+            className="rounded border border-claude-border bg-claude-bg px-2 py-0.5 text-[9px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
+          >
+            {telegramChecking ? (lang === 'zh' ? '检测中…' : 'Checking…') : (lang === 'zh' ? '检测' : 'Check')}
+          </button>
+        </div>
+        <label className="mb-2 flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={telegramChannel.enabled}
+            onChange={(e) =>
+              patchTelegramChannel((tc) => ({
+                ...tc,
+                enabled: e.target.checked
+              }))
+            }
+            className="w-4 h-4 accent-amber-500"
+          />
+          <span className="text-[11px] text-claude-text">{t.settings.telegramSimpleEnable}</span>
+        </label>
+
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-claude-muted">
+          {t.settings.telegramPresetListTitle}
+        </div>
+        <div className="mb-2 max-h-96 space-y-2 overflow-y-auto">
+          {(telegramChannel.botPresets ?? []).map((pr, idx) => (
+            <div
+              key={pr.id}
+              className="rounded border border-claude-border bg-claude-bg/45 px-2 py-1.5 space-y-1.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[9px] text-claude-muted">
+                  {lang === 'zh' ? `预设 ${idx + 1}` : `Preset ${idx + 1}`}
+                  {idx === 0 ? (
+                    <span className="ml-1 text-amber-500/90">
+                      （{lang === 'zh' ? '新建会话默认' : 'default for new sessions'}）
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 text-[9px] text-red-400 hover:text-red-300"
+                  onClick={() => handleRemoveTelegramPreset(pr.id)}
+                >
+                  {t.settings.telegramPresetRemove}
+                </button>
+              </div>
+              <input
+                type="text"
+                value={pr.name}
+                onChange={(e) => handleUpdateTelegramPreset(pr.id, { name: e.target.value })}
+                placeholder={t.settings.telegramPresetColName}
+                className="field-input w-full text-[11px]"
+                autoComplete="off"
+              />
+              {/* [2026-05-08] 原 type="password"；多条预设时第二个及以后的密码框在 Chromium 中可能被折叠不可见，改用 field-input-secret */}
+              <input
+                type="text"
+                value={pr.botToken}
+                onChange={(e) => handleUpdateTelegramPreset(pr.id, { botToken: e.target.value })}
+                placeholder={t.settings.telegramSimpleTokenPlaceholder}
+                className="field-input field-input-secret w-full text-[11px]"
+                autoComplete="off"
+                spellCheck={false}
+                id={`telegram-preset-token-${pr.id}`}
+              />
+              <p className="truncate font-mono text-[9px] text-claude-muted/90" title={`~/.claude/channels/${pr.stateDirId}`}>
+                {lang === 'zh' ? '状态目录' : 'State dir'}: {pr.stateDirId}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-2 rounded border border-claude-border border-dashed bg-claude-bg/30 px-2 py-2 space-y-1.5">
+          <div className="text-[10px] font-semibold text-claude-muted">{t.settings.telegramPresetAddSection}</div>
+          <input
+            type="text"
+            value={tgNewName}
+            onChange={(e) => setTgNewName(e.target.value)}
+            placeholder={t.settings.telegramPresetAddNamePh}
+            className="field-input w-full text-[11px]"
+            autoComplete="off"
+          />
+          {/* [2026-05-08] 同上与预设列表并列，避免与多条 password 冲突 */}
+          <input
+            type="text"
+            value={tgNewToken}
+            onChange={(e) => setTgNewToken(e.target.value)}
+            placeholder={t.settings.telegramSimpleTokenPlaceholder}
+            className="field-input field-input-secret w-full text-[11px]"
+            autoComplete="off"
+            spellCheck={false}
+            id="telegram-preset-new-token"
+          />
+          <button
+            type="button"
+            onClick={handleAddTelegramPresetRow}
+            className="w-full rounded border border-claude-border bg-claude-bg px-2 py-1.5 text-[11px] text-claude-text hover:border-amber-600/50"
+          >
+            {t.settings.telegramPresetAddBtn}
+          </button>
+        </div>
+
+        <p className="text-[9px] leading-snug text-claude-muted">{t.settings.telegramPresetsMultiHint}</p>
+        {telegramCheck ? (
+          <div className="mt-2 rounded border border-claude-border bg-claude-bg/60 px-2 py-1.5 text-[9px] leading-relaxed text-claude-muted">
+            <div>Claude: <span className="font-mono text-claude-text">{telegramCheck.claudeVersion || 'unknown'}</span></div>
+            <div>
+              plugin: {telegramCheck.pluginCommand ? 'OK' : 'NO'} · channels: {telegramCheck.channelsFlag ? 'OK' : 'NO'} · telegram plugin: {telegramCheck.telegramPluginInstalled ? 'installed' : 'not found'}
+            </div>
+            {!telegramCheck.telegramPluginInstalled ? (
+              <div className="mt-1 font-mono text-[var(--theme-accent-muted)]">/plugin install telegram@claude-plugins-official</div>
+            ) : null}
+            {telegramCheck.error ? <div className="text-red-400">{telegramCheck.error}</div> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
@@ -1020,25 +1230,6 @@ export function SettingsPanel(): React.ReactElement {
         />
       )}
 
-      <style>{`
-        .field-input {
-          width: 100%;
-          background: var(--field-bg);
-          border: 1px solid var(--field-border);
-          border-radius: 4px;
-          padding: 4px 6px;
-          font-size: 11px;
-          color: var(--claude-text);
-          outline: none;
-          font-family: 'Cascadia Code', monospace;
-        }
-        .field-input:focus {
-          border-color: var(--claude-accent);
-        }
-        .field-input::placeholder {
-          color: var(--field-placeholder);
-        }
-      `}</style>
     </div>
   )
 }

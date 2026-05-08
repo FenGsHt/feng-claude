@@ -1,3 +1,5 @@
+import type { TelegramChannelSessionConfig } from './settings'
+
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool_result'
 export type MessageStatus = 'pending' | 'streaming' | 'done' | 'error'
 export type SessionStatus = 'idle' | 'running' | 'waiting_input' | 'error' | 'exited'
@@ -34,6 +36,8 @@ export interface Session {
   profileId?: string | null
   /** [2026-05-06] 纯 Shell 会话：不自动启动 Claude Code */
   shellOnly?: boolean
+  /** [2026-05-08] 官方 Telegram Channel：每会话独立 token/stateDir */
+  telegramChannel?: TelegramChannelSessionConfig
 }
 
 export interface HistoryRecord {

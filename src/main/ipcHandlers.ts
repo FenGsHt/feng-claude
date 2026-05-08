@@ -1,10 +1,11 @@
 import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import { resolve } from 'path'
+import { resolve, join } from 'path'
+import { homedir } from 'os'
 import { existsSync } from 'fs'
 import { IPC } from '../renderer/src/types/ipc'
 import { DEFAULT_SETTINGS } from './settingsStore'
-import type { PtyManager } from './ptyManager'
+import { augmentPathWithBunInstallDirs, type PtyManager } from './ptyManager'
 import type { FileSystemHandler } from './fileSystemHandler'
 import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
@@ -16,13 +17,38 @@ import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginMana
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
 import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
-import type { McpServerConfig } from '../renderer/src/types/ipc'
+import type { McpServerConfig, SessionCreatePayload } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 import { startApiProxy, stopApiProxy, isApiProxyRunning } from './apiProxyServer'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 import { PetLogStore } from './petLogStore'
 
 const petLogStore = new PetLogStore()
+
+/** [2026-05-08] 将目录插在 PATH 前（若存在且尚未包含），与 augmentPathWithBunInstallDirs 同类逻辑 */
+function prependPathDirIfExists(basePath: string, dir: string): string {
+  const sep = process.platform === 'win32' ? ';' : ':'
+  if (!existsSync(dir)) return basePath
+  const norm = (p: string) => p.replace(/[/\\]+$/g, '').replace(/\\/g, '/').toLowerCase()
+  const target = norm(dir)
+  for (const segment of basePath.split(sep)) {
+    if (segment && norm(segment) === target) return basePath
+  }
+  return `${dir}${sep}${basePath}`
+}
+
+/** [2026-05-08] Telegram 检测须与 PTY 一致：CLAUDE_CONFIG_DIR、PATH 含 Bun + Windows npm 全局（claude.cmd） */
+function buildTelegramChannelCheckEnv(): NodeJS.ProcessEnv {
+  let pathEnv = augmentPathWithBunInstallDirs(process.env.PATH ?? '')
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    pathEnv = prependPathDirIfExists(pathEnv, join(process.env.APPDATA, 'npm'))
+  }
+  return {
+    ...process.env,
+    PATH: pathEnv,
+    CLAUDE_CONFIG_DIR: join(homedir(), '.claude')
+  } as NodeJS.ProcessEnv
+}
 
 /** [2026-04-23] 避免在 SESSION_CREATE 的 invoke 回调里同步跑 ensure（含 execSync/readdir），否则会长时间占满主线程、所有窗口一起卡死 */
 let hudEnsureAfterSessionScheduled = false
@@ -99,6 +125,58 @@ export function registerIpcHandlers(
     return { shells, tmuxAvailable }
   })
 
+  ipcMain.handle(IPC.TELEGRAM_CHANNEL_CHECK, async () => {
+    const { spawnSync: spSync } = await import('child_process')
+    const checkEnv = buildTelegramChannelCheckEnv()
+    try {
+      const version = spSync('claude', ['--version'], { encoding: 'utf8', timeout: 8000, env: checkEnv })
+      const help = spSync('claude', ['plugin', '--help'], { encoding: 'utf8', timeout: 8000, env: checkEnv })
+      const channels = spSync('claude', ['--channels', 'plugin:telegram@claude-plugins-official', '--version'], {
+        encoding: 'utf8',
+        timeout: 15000,
+        env: checkEnv
+      })
+      const list = spSync('claude', ['plugin', 'list'], { encoding: 'utf8', timeout: 15000, env: checkEnv })
+      const verStr = String(version.stdout || version.stderr || '').trim()
+      if (version.status !== 0) {
+        const hint = String(version.stderr || version.stdout || '').trim()
+        return {
+          claudeVersion: undefined,
+          pluginCommand: false,
+          channelsFlag: false,
+          telegramPluginInstalled: false,
+          error:
+            hint ||
+            `claude --version 退出码 ${version.status}。请确认已安装 Claude Code CLI，且应用能访问与用户终端相同的 PATH（Windows 常见：全局 npm 目录）。`
+        }
+      }
+
+      const listCombined = `${list.stdout ?? ''}\n${list.stderr ?? ''}`
+      /* [2026-05-08] 原 listText.includes('telegram')：CLI 表格/着色/别名可能不含裸子串；放宽正则 */
+      const listMatchesTelegram =
+        /telegram/i.test(listCombined) ||
+        /claude-plugins-official[^\r\n]*telegram|telegram[^\r\n]*claude-plugins-official/i.test(listCombined)
+      const listOk = list.status === 0 && listMatchesTelegram
+      const channelsOk = channels.status === 0
+      /* channels 与启动参数一致：能解析 plugin:telegram@… 即视为可用（list 输出格式多变时仍可用） */
+      const telegramPluginInstalled = listOk || channelsOk
+
+      return {
+        claudeVersion: verStr || undefined,
+        pluginCommand: help.status === 0,
+        channelsFlag: channelsOk,
+        telegramPluginInstalled
+      }
+    } catch (e) {
+      return {
+        pluginCommand: false,
+        channelsFlag: false,
+        telegramPluginInstalled: false,
+        error: e instanceof Error ? e.message : String(e)
+      }
+    }
+  })
+
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
   ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {
@@ -167,7 +245,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.WORKSPACE_LOAD, async () => workspaceStore.get())
 
   // ── Session management ──────────────────────────────────────
-  ipcMain.handle(IPC.SESSION_CREATE, async (_e, payload) => {
+  ipcMain.handle(IPC.SESSION_CREATE, async (_e, payload: SessionCreatePayload) => {
     const sessionId = uuidv4()
     // Resolve relative paths (e.g. '.') so the token watcher can locate the correct JSONL project dir
     const workdir = resolve(payload.workdir ?? '.')
@@ -194,7 +272,15 @@ export function registerIpcHandlers(
 
       // Read scrollback before creating session (file written by previous session's close)
       const scrollback = ptyManager.readScrollback(workdir)
-      const result = await ptyManager.createSession(sessionId, workdir, profile, settings, resume, shellOnly)
+      const result = await ptyManager.createSession(
+        sessionId,
+        workdir,
+        profile,
+        settings,
+        resume,
+        shellOnly,
+        payload.telegramChannel
+      )
       // Start watching JSONL for accurate per-session token counting
       const embedBeta = settings.embedClaudeOutputBeta === true
       sessionWatcher.watchSession(sessionId, workdir, embedBeta ? { scrollbackBase64: scrollback } : undefined)
@@ -207,7 +293,8 @@ export function registerIpcHandlers(
         pid: result.pid,
         workdir,
         scrollback,
-        profileId: profile.id
+        profileId: profile.id,
+        telegramChannel: result.telegramChannel
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

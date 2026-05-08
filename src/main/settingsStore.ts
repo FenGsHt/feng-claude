@@ -35,12 +35,34 @@ function readLocalClaudeOverrides(): Partial<ClaudeSettings> | null {
   }
 }
 
+/** [2026-05-08] 磁盘上的 telegramChannel 可能被写成不完整对象；浅合并会丢掉默认里的 enableForNewSessions/defaultBotToken，导致 PTY 不追加 --channels。 */
+function normalizeTelegramChannelFromStore(
+  fromStore?: ClaudeSettings['telegramChannel']
+): NonNullable<ClaudeSettings['telegramChannel']> {
+  const merged = {
+    ...DEFAULT_SETTINGS.telegramChannel!,
+    ...(fromStore ?? {})
+  }
+  /* [2026-05-08] botPresets 缺省时须回落 []，避免 undefined 覆盖默认 */
+  return {
+    ...merged,
+    botPresets: Array.isArray(merged.botPresets) ? merged.botPresets : []
+  }
+}
+
 function mergeClaudeSettings(stored: ClaudeSettings, overrides: Partial<ClaudeSettings>): ClaudeSettings {
   const out = { ...stored }
   for (const key of Object.keys(overrides) as (keyof ClaudeSettings)[]) {
     const v = overrides[key]
     if (v !== undefined) {
-      ;(out as Record<keyof ClaudeSettings, ClaudeSettings[keyof ClaudeSettings]>)[key] = v
+      if (key === 'telegramChannel') {
+        out.telegramChannel = normalizeTelegramChannelFromStore({
+          ...stored.telegramChannel,
+          ...(v as ClaudeSettings['telegramChannel'])
+        })
+      } else {
+        ;(out as Record<keyof ClaudeSettings, ClaudeSettings[keyof ClaudeSettings]>)[key] = v
+      }
     }
   }
   return out
@@ -56,9 +78,15 @@ export class SettingsStore {
       if ('authToken' in stored || 'baseUrl' in stored) {
         const oldFormat = stored as unknown as Record<string, unknown>
         const migrated = migrateOldSettings(oldFormat)
-        this.set(migrated)
+        /* [2026-05-08] 原 this.set(migrated) 未与 DEFAULT_SETTINGS 合并；迁移结果缺 telegramChannel 等嵌套默认值。 */
+        const mergedMigrate: ClaudeSettings = {
+          ...DEFAULT_SETTINGS,
+          ...migrated,
+          telegramChannel: normalizeTelegramChannelFromStore(migrated.telegramChannel)
+        }
+        this.set(mergedMigrate)
         const local = readLocalClaudeOverrides()
-        return local ? mergeClaudeSettings(migrated, local) : migrated
+        return local ? mergeClaudeSettings(mergedMigrate, local) : mergedMigrate
       }
       // 无旧数据也无 profiles，使用默认
       const defaultSettings = DEFAULT_SETTINGS
@@ -67,7 +95,12 @@ export class SettingsStore {
     }
 
     // 正常读取，合并 local overrides
-    const mergedStored = { ...DEFAULT_SETTINGS, ...stored }
+    /* [2026-05-08] 原 const mergedStored = { ...DEFAULT_SETTINGS, ...stored }；stored.telegramChannel 若为部分字段会整块覆盖默认值。 */
+    const mergedStored: ClaudeSettings = {
+      ...DEFAULT_SETTINGS,
+      ...stored,
+      telegramChannel: normalizeTelegramChannelFromStore(stored.telegramChannel)
+    }
     const local = readLocalClaudeOverrides()
     return local ? mergeClaudeSettings(mergedStored, local) : mergedStored
   }

@@ -116,6 +116,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
   const closeSession = useSessionStore((s) => s.closeSession)
+  const restartSession = useSessionStore((s) => s.restartSession)
   const setActiveSession = useSessionStore((s) => s.setActiveSession)
   const loadHistory = useSessionStore((s) => s.loadHistory)
   const history = useSessionStore((s) => s.history)
@@ -397,6 +398,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           >
             {embedClaudeOutputBeta ? <TerminalClassicIcon /> : <TranscriptEmbedIcon />}
           </HeaderBtn>
+          {/* [2026-05-08] Telegram 配置已迁至标签栏「模型」药丸旁的频道按钮 */}
           {/* 合并提醒 */}
           {showMergeReminder && (
             <HeaderBtn

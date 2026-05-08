@@ -1,8 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import type { Session } from '../../types/session'
-import type { ClaudeSettings, ApiProfile } from '../../types/settings'
+import type { ClaudeSettings, ApiProfile, TelegramBotPreset, TelegramChannelSessionConfig } from '../../types/settings'
+import { matchSessionToPresetId, presetToSessionConfig } from '../../lib/telegramBotPresets'
 import { useI18n } from '../../i18n'
+import { TelegramSetupGuideDialog } from '../terminal/TelegramSetupGuideDialog'
+import { navigateToSettingsTab } from '../sidebar/Sidebar'
 
 /** Status dot color for a session */
 function statusColor(status: Session['status']): string {
@@ -92,22 +95,191 @@ function ProfileDropdown({
   )
 }
 
+/** [2026-05-08] 与 ProfileDropdown 同款 portal：标签栏切换 Telegram（Token 仅在设置；此处仅说明） */
+function TelegramPresetDropdown({
+  presets,
+  sessionTelegram,
+  onSelectNone,
+  onSelectPreset,
+  onSetupGuide,
+  onClose,
+  anchorRect,
+  labels
+}: {
+  presets: TelegramBotPreset[]
+  sessionTelegram?: TelegramChannelSessionConfig
+  onSelectNone: () => void
+  onSelectPreset: (presetId: string) => void
+  onSetupGuide: () => void
+  onClose: () => void
+  anchorRect: { top: number; right: number }
+  labels: {
+    none: string
+    setupGuide: string
+    openSettings: string
+    emptyPresets: string
+  }
+}): React.ReactElement | null {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const handleClick = (e: MouseEvent) => {
+        const target = e.target as HTMLElement
+        if (!target.closest('.telegram-preset-dropdown-menu')) {
+          onClose()
+        }
+      }
+      document.addEventListener('click', handleClick)
+      return () => document.removeEventListener('click', handleClick)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [onClose])
+
+  const matchedId = matchSessionToPresetId(
+    sessionTelegram?.enabled ? sessionTelegram : undefined,
+    presets
+  )
+  const noneActive = !sessionTelegram?.enabled
+
+  return (
+    <div
+      className="telegram-preset-dropdown-menu bg-claude-surface2 border border-claude-border rounded-md shadow-xl min-w-[168px] max-w-[260px] py-1"
+      style={{
+        position: 'fixed',
+        top: anchorRect.top + 28,
+        right: anchorRect.right,
+        zIndex: 9999
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          onSelectNone()
+          onClose()
+        }}
+        className={`w-full text-left px-3 py-1.5 text-xs transition-colors rounded-t-md ${
+          noneActive ? 'text-amber-400 bg-amber-500/10' : 'text-claude-text hover:bg-claude-border'
+        }`}
+      >
+        <span className="font-medium">{labels.none}</span>
+        {noneActive ? <span className="ml-2 text-[10px] opacity-60">●</span> : null}
+      </button>
+
+      {presets.map((p, idx) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => {
+            onSelectPreset(p.id)
+            onClose()
+          }}
+          className={`w-full flex items-start justify-between gap-2 text-left px-3 py-1.5 text-xs transition-colors ${
+            !noneActive && matchedId === p.id
+              ? 'text-amber-400 bg-amber-500/10'
+              : 'text-claude-text hover:bg-claude-border'
+          }`}
+        >
+          <div className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="font-medium truncate">{p.name}</span>
+            <span className="truncate font-mono text-[9px] text-claude-muted">{p.stateDirId}</span>
+          </div>
+          {!noneActive && matchedId === p.id ? (
+            <span className="shrink-0 pt-0.5 text-[10px] opacity-60">●</span>
+          ) : null}
+        </button>
+      ))}
+
+      {presets.length === 0 ? (
+        <p className="px-3 py-1.5 text-[9px] leading-snug text-claude-muted border-t border-claude-border/80">
+          {labels.emptyPresets}
+        </p>
+      ) : null}
+
+      <div className="border-t border-claude-border/80 mt-0.5 pt-0.5">
+        <button
+          type="button"
+          onClick={() => {
+            navigateToSettingsTab()
+            onClose()
+          }}
+          className="w-full text-left px-3 py-1.5 text-[11px] text-claude-muted hover:bg-claude-border hover:text-claude-text transition-colors"
+        >
+          {labels.openSettings}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onSetupGuide()
+            onClose()
+          }}
+          className="w-full text-left px-3 py-1.5 text-xs text-claude-text hover:bg-claude-border rounded-b-md transition-colors"
+        >
+          {labels.setupGuide}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function telegramTabBadgeLabel(sess: Session, presets: TelegramBotPreset[], noneLabel: string, customLabel: string): string {
+  const tc = sess.telegramChannel
+  if (!tc?.enabled) return noneLabel
+  const mid = matchSessionToPresetId(tc, presets)
+  if (mid) {
+    return presets.find((p) => p.id === mid)?.name ?? 'TG'
+  }
+  const tok = tc.botToken?.trim()
+  if (tok) {
+    if (tok.length <= 12) return tok
+    return `${tok.slice(0, 4)}…${tok.slice(-4)}`
+  }
+  return customLabel
+}
+
 export function TabBar(): React.ReactElement {
-  const { sessions, activeSessionId, setActiveSession, createSession, closeSession, restartSession } =
-    useSessionStore()
+  const {
+    sessions,
+    activeSessionId,
+    setActiveSession,
+    createSession,
+    closeSession,
+    restartSession,
+    updateSessionTelegramChannel
+  } = useSessionStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
+  const [telegramPresets, setTelegramPresets] = useState<TelegramBotPreset[]>([])
   const [dropdownAnchor, setDropdownAnchor] = useState<{ sessionId: string; rect: { top: number; right: number } } | null>(null)
+  const [telegramDropdownAnchor, setTelegramDropdownAnchor] = useState<{
+    sessionId: string
+    rect: { top: number; right: number }
+  } | null>(null)
+  /** [2026-05-08] 安装/配对说明弹窗（不含 Token 输入） */
+  const [showTelegramSetupGuide, setShowTelegramSetupGuide] = useState(false)
   const badgeRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+  const telegramBadgeRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
 
   // Load settings to get profiles — re-fetch on broadcast changes
   useEffect(() => {
-    void window.electronAPI.settings.get().then(setSettings)
+    void window.electronAPI.settings.get().then((s) => {
+      setSettings(s)
+      setTelegramPresets(s.telegramChannel?.botPresets ?? [])
+    })
     return window.electronAPI.onSettingsChanged(() => {
-      void window.electronAPI.settings.get().then(setSettings)
+      void window.electronAPI.settings.get().then((s) => {
+        setSettings(s)
+        setTelegramPresets(s.telegramChannel?.botPresets ?? [])
+      })
     })
   }, [])
+
+  /* [2026-05-08] 设置里关闭「启用 Telegram Channel」后收起标签栏 Telegram 下拉 */
+  useEffect(() => {
+    if (settings && settings.telegramChannel?.enabled !== true) {
+      setTelegramDropdownAnchor(null)
+    }
+  }, [settings?.telegramChannel?.enabled, settings])
 
   const handleNewTab = async () => {
     const dir = await window.electronAPI.openDirDialog()
@@ -140,7 +312,44 @@ export function TabBar(): React.ReactElement {
     const badgeEl = badgeRefs.current.get(sessionId)
     if (!badgeEl) return
     const rect = badgeEl.getBoundingClientRect()
+    setTelegramDropdownAnchor(null)
     setDropdownAnchor({ sessionId, rect: { top: rect.top, right: window.innerWidth - rect.right } })
+  }
+
+  const handleTelegramBadgeClick = (sessionId: string): void => {
+    const el = telegramBadgeRefs.current.get(sessionId)
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setDropdownAnchor(null)
+    setTelegramDropdownAnchor({
+      sessionId,
+      rect: { top: rect.top, right: window.innerWidth - rect.right }
+    })
+  }
+
+  /* [2026-05-08] 原仅用 TabBar 内存里的 telegramPresets + updateSession 后立即 restart；
+   * 若设置页刚保存或 IPC 稍慢，预设 Token/stateDir 可能与磁盘不一致，第二个预设配对读错 ~/.claude/channels/<id>。
+   * 现从 electron-store 拉最新预设，并把 cfg 显式传入 restartSession，保证 PTY 环境与所选预设一致。 */
+  const handleTelegramPresetSwitch = (sessionId: string, presetId: string): void => {
+    void (async () => {
+      try {
+        const settings = await window.electronAPI.settings.get()
+        const presets = settings.telegramChannel?.botPresets ?? []
+        const p = presets.find((x) => x.id === presetId)
+        if (!p) return
+        const cfg = presetToSessionConfig(p)
+        updateSessionTelegramChannel(sessionId, cfg)
+        await restartSession(sessionId, undefined, cfg)
+      } catch (e) {
+        console.warn('[TabBar] telegram preset switch failed', e)
+      }
+    })()
+  }
+
+  const handleTelegramClear = (sessionId: string): void => {
+    const cleared = { enabled: false as const }
+    updateSessionTelegramChannel(sessionId, cleared)
+    void restartSession(sessionId, undefined, cleared)
   }
 
   // Scroll tabs with mouse wheel
@@ -167,7 +376,7 @@ export function TabBar(): React.ReactElement {
               key={sess.id}
               title={sess.workdir}
               onClick={() => setActiveSession(sess.id)}
-              className={`tab-item ${isActive ? 'tab-active' : ''} relative flex items-center gap-1.5 px-3 h-full min-w-[80px] max-w-[180px] cursor-pointer border-r border-claude-border shrink-0 group select-none ${
+              className={`tab-item ${isActive ? 'tab-active' : ''} relative flex items-center gap-1.5 px-3 h-full min-w-[80px] max-w-[260px] cursor-pointer border-r border-claude-border shrink-0 group select-none ${
                 isActive
                   ? 'bg-claude-bg text-claude-text'
                   : 'bg-claude-surface text-claude-muted hover:text-claude-text hover:bg-claude-bg/60'
@@ -193,7 +402,10 @@ export function TabBar(): React.ReactElement {
               {/* Profile badge - click to open dropdown */}
               {settings && settings.profiles.length > 0 && (
                 <button
-                  ref={(el) => { if (el) badgeRefs.current.set(sess.id, el) }}
+                  ref={(el) => {
+                    if (el) badgeRefs.current.set(sess.id, el)
+                    else badgeRefs.current.delete(sess.id)
+                  }}
                   onClick={(e) => {
                     e.stopPropagation()
                     handleBadgeClick(sess.id)
@@ -208,6 +420,32 @@ export function TabBar(): React.ReactElement {
                   {profileName || 'Default'}
                 </button>
               )}
+
+              {/* [2026-05-08] 仅全局启用 Telegram Channel 时显示药丸；否则不占位 */}
+              {settings?.telegramChannel?.enabled === true ? (
+                <button
+                  ref={(el) => {
+                    if (el) telegramBadgeRefs.current.set(sess.id, el)
+                    else telegramBadgeRefs.current.delete(sess.id)
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleTelegramBadgeClick(sess.id)
+                  }}
+                  className={`shrink-0 max-w-[76px] truncate text-[9px] px-1 py-0.5 rounded transition-colors ${
+                    isActive
+                      ? sess.telegramChannel?.enabled
+                        ? 'bg-sky-500/20 text-sky-300 hover:bg-sky-500/30'
+                        : 'bg-claude-border/90 text-claude-muted hover:bg-claude-border'
+                      : sess.telegramChannel?.enabled
+                        ? 'bg-sky-900/30 text-sky-400/85 hover:bg-sky-900/45'
+                        : 'bg-claude-border text-claude-muted hover:bg-claude-border/80'
+                  }`}
+                  title={t.tabs.telegramPresetSwitch}
+                >
+                  {telegramTabBadgeLabel(sess, telegramPresets, t.tabs.telegramChannelNone, t.tabs.telegramChannelCustom)}
+                </button>
+              ) : null}
 
               {/* Restart button */}
               <button
@@ -271,6 +509,26 @@ export function TabBar(): React.ReactElement {
           anchorRect={dropdownAnchor.rect}
         />
       )}
+
+      {telegramDropdownAnchor && settings?.telegramChannel?.enabled === true && (
+        <TelegramPresetDropdown
+          presets={telegramPresets}
+          sessionTelegram={sessions.find((s) => s.id === telegramDropdownAnchor.sessionId)?.telegramChannel}
+          onSelectNone={() => handleTelegramClear(telegramDropdownAnchor.sessionId)}
+          onSelectPreset={(presetId) => handleTelegramPresetSwitch(telegramDropdownAnchor.sessionId, presetId)}
+          onSetupGuide={() => setShowTelegramSetupGuide(true)}
+          onClose={() => setTelegramDropdownAnchor(null)}
+          anchorRect={telegramDropdownAnchor.rect}
+          labels={{
+            none: t.tabs.telegramChannelNone,
+            setupGuide: t.tabs.telegramChannelSetupGuide,
+            openSettings: t.tabs.telegramChannelOpenSettings,
+            emptyPresets: t.tabs.telegramChannelEmptyPresets
+          }}
+        />
+      )}
+
+      <TelegramSetupGuideDialog open={showTelegramSetupGuide} onClose={() => setShowTelegramSetupGuide(false)} />
     </div>
   )
 }

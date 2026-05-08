@@ -161,7 +161,42 @@ export const zh = {
     terminalShell: '自定义 Shell',
     terminalShellPlaceholder: '留空使用平台默认（Windows: cmd.exe / Unix: $SHELL）',
     terminalUseTmux: '持久化 Shell 会话',
-    terminalUseTmuxDesc: '空控制台在后台保持运行，重启 app 后自动恢复 lazygit 等 TUI 程序（跨平台，无需额外依赖）'
+    terminalUseTmuxDesc: '空控制台在后台保持运行，重启 app 后自动恢复 lazygit 等 TUI 程序（跨平台，无需额外依赖）',
+    /** [2026-05-08] Telegram 官方插件依赖 Bun；与主进程 augmentPathWithBunInstallDirs 说明一致 */
+    telegramBunHint:
+      '官方 Telegram Channel 插件依赖 Bun。安装：https://bun.sh（Windows PowerShell：irm bun.sh/install.ps1 | iex）。Feng 会自动将用户目录下的 .bun/bin 加入内嵌终端 PATH；若 Bun 装在其他目录，请将该 bin 加入系统 PATH 并重启 Feng。',
+    /** [2026-05-08] 弹窗内分步说明；命令单独组件展示勿合并进长句 */
+    telegramDialogSetupTitle: '使用前必读（按顺序操作）',
+    telegramStepBunTitle: '① 安装 Bun（缺少会导致插件无法启动）',
+    telegramStepBunDoc: '官网：https://bun.sh',
+    telegramStepBunWinLabel: 'Windows PowerShell 一键安装：',
+    telegramStepBunWinCmd: 'irm bun.sh/install.ps1 | iex',
+    telegramStepBunFengNote:
+      '默认装在「用户文件夹\\.bun\\bin」时，Feng 会自动把它加入内嵌终端 PATH。若装在别的路径，请把对应的 bin 目录加入系统环境变量 PATH，并重启 Feng。',
+    telegramStepPluginTitle: '② 安装 Telegram 插件 — 在本窗口终端出现提示符后执行：',
+    telegramStepPluginCmd: '/plugin install telegram@claude-plugins-official',
+    telegramStepPairTitle: '③ 配对 Telegram Bot — 启动 Claude 后：先在 Telegram 里给 Bot 发一条消息，再在终端输入（把尖括号里的配对码换成 Bot 回复给你的）：',
+    telegramStepPairCmd: '/telegram:access pair <配对码>',
+    telegramPresetSectionTitle: 'Bot 预设',
+    telegramPresetPlaceholder: '快捷：切换 Bot 预设',
+    telegramPresetSaveAs: '将当前表单保存为预设',
+    telegramPresetNamePh: '预设名称',
+    telegramPresetSaveBtn: '保存预设',
+    telegramPresetDeleteBtn: '删除所选预设',
+    telegramPresetApplyHint: '选择预设会填入 Token / State Dir；保存并重启后生效。',
+    telegramPresetListTitle: '已保存的 Bot 预设',
+    telegramPresetColName: '名称',
+    telegramPresetColStateDir: 'State Dir',
+    telegramPresetRemove: '删除',
+    /** [2026-05-08] 设置页：开关 + 多条预设；弹窗仍用 telegramStep* / telegramBunHint */
+    telegramSimpleEnable: '启用 Telegram Channel',
+    telegramSimpleTokenPlaceholder: 'TELEGRAM_BOT_TOKEN',
+    telegramSimpleStateDirPlaceholder: 'State Dir（默认 telegram）',
+    telegramPresetAddSection: '添加预设',
+    telegramPresetAddNamePh: '预设名称',
+    telegramPresetAddBtn: '添加预设',
+    telegramPresetsMultiHint:
+      '保存设置后生效。可配置多组 Bot：列表第一条为新建会话默认；下方可继续添加。标签栏药丸可切换到任一条。状态目录按预设名称自动生成（~/.claude/channels/<id>），改名会对应新目录；同名冲突会自动加 -2、-3。插件依赖 Bun。同一 Bot Token 请勿在多窗口同时复用。'
   },
   // Guide panel
   guide: {
@@ -180,7 +215,15 @@ export const zh = {
     newSession: '新建会话（选择文件夹）',
     closeTab: '关闭标签',
     restartSession: '重启会话',
-    switchProfile: '切换 API 配置'
+    switchProfile: '切换 API 配置',
+    /** [2026-05-08] 标签栏药丸：与 API 配置（模型）切换并列；默认未关联 Bot */
+    telegramPresetSwitch:
+      '切换 Telegram 预设（将重启本会话）。每条预设对应不同的状态目录；配对时请向该预设绑定的 Bot 发消息取码，勿混用另一个 Bot 的配对码。',
+    telegramChannelNone: '未关联',
+    telegramChannelCustom: '自定义',
+    telegramChannelSetupGuide: '安装与配对说明…',
+    telegramChannelOpenSettings: '打开设置管理预设…',
+    telegramChannelEmptyPresets: '暂无 Bot 预设：请在设置 → Telegram Channel 中添加（填写 Token）。'
   },
   // File tree
   files: {

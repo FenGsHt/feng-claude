@@ -154,7 +154,42 @@ export const en: Translations = {
     terminalShell: 'Custom Shell',
     terminalShellPlaceholder: 'Leave empty for platform default (Windows: cmd.exe / Unix: $SHELL)',
     terminalUseTmux: 'Persistent Shell Sessions',
-    terminalUseTmuxDesc: 'Keep shell-only consoles running in the background so reopening the app restores lazygit and other TUI programs (cross-platform, no extra dependencies)'
+    terminalUseTmuxDesc: 'Keep shell-only consoles running in the background so reopening the app restores lazygit and other TUI programs (cross-platform, no extra dependencies)',
+    /** [2026-05-08] Matches main-process augmentPathWithBunInstallDirs behavior */
+    telegramBunHint:
+      'The official Telegram Channel plugin requires Bun. Install from https://bun.sh (Windows PowerShell: irm bun.sh/install.ps1 | iex). Feng prepends ~/.bun/bin to the embedded terminal PATH when that folder exists. If Bun is installed elsewhere, add its bin directory to your system PATH and restart Feng.',
+    telegramDialogSetupTitle: 'Read before use (follow in order)',
+    telegramStepBunTitle: '① Install Bun (required — plugin will fail without it)',
+    telegramStepBunDoc: 'Website: https://bun.sh',
+    telegramStepBunWinLabel: 'Windows PowerShell one-liner:',
+    telegramStepBunWinCmd: 'irm bun.sh/install.ps1 | iex',
+    telegramStepBunFengNote:
+      'If Bun lands in ~/.bun/bin, Feng adds it to the embedded terminal PATH automatically. If you installed elsewhere, add that bin folder to your system PATH and restart Feng.',
+    telegramStepPluginTitle: '② Install the Telegram plugin — run in this pane after you see the shell prompt:',
+    telegramStepPluginCmd: '/plugin install telegram@claude-plugins-official',
+    telegramStepPairTitle:
+      '③ Pair your Telegram bot — after Claude starts: send any message to your bot in Telegram, then run in the terminal (replace the pairing code with what the bot sends you):',
+    telegramStepPairCmd: '/telegram:access pair <pairing-code>',
+    telegramPresetSectionTitle: 'Bot presets',
+    telegramPresetPlaceholder: 'Quick: switch bot preset',
+    telegramPresetSaveAs: 'Save current form as preset',
+    telegramPresetNamePh: 'Preset name',
+    telegramPresetSaveBtn: 'Save preset',
+    telegramPresetDeleteBtn: 'Delete selected preset',
+    telegramPresetApplyHint: 'Choosing a preset fills Token / State Dir; use Save & restart to apply.',
+    telegramPresetListTitle: 'Saved bot presets',
+    telegramPresetColName: 'Name',
+    telegramPresetColStateDir: 'State Dir',
+    telegramPresetRemove: 'Remove',
+    /** [2026-05-08] Settings: toggle + multiple presets; guide dialog still uses telegramStep* */
+    telegramSimpleEnable: 'Enable Telegram Channel',
+    telegramSimpleTokenPlaceholder: 'TELEGRAM_BOT_TOKEN',
+    telegramSimpleStateDirPlaceholder: 'State Dir (default: telegram)',
+    telegramPresetAddSection: 'Add preset',
+    telegramPresetAddNamePh: 'Preset name',
+    telegramPresetAddBtn: 'Add preset',
+    telegramPresetsMultiHint:
+      'Save settings to apply. You can add multiple bots: the first row is the default for new sessions; add more below. Use the tab-bar pill to pick a preset. State dir under ~/.claude/channels/<id> is derived from the preset name (rename → new dir; duplicates get -2, -3). Requires Bun. Do not reuse the same bot token across multiple running panes.'
   },
   guide: {
     searchPlaceholder: 'Search tips...',
@@ -171,7 +206,14 @@ export const en: Translations = {
     newSession: 'New session (pick folder)',
     closeTab: 'Close tab',
     restartSession: 'Restart session',
-    switchProfile: 'Switch API profile'
+    switchProfile: 'Switch API profile',
+    telegramPresetSwitch:
+      'Switch Telegram preset (restarts this session). Each preset uses its own state dir under ~/.claude/channels; for pairing, message the bot tied to this preset—do not reuse a code meant for another bot.',
+    telegramChannelNone: 'None',
+    telegramChannelCustom: 'Custom',
+    telegramChannelSetupGuide: 'Setup & pairing guide…',
+    telegramChannelOpenSettings: 'Open settings to manage presets…',
+    telegramChannelEmptyPresets: 'No bot presets yet — add tokens under Settings → Telegram Channel.'
   },
   files: {
     changeDir: 'Change directory',

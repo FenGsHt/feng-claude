@@ -94,6 +94,38 @@ export interface ApiProfile {
 /** [2026-05-06] fallout：indeed-flow-git RobCo 磷光绿（见 styles/FALLOUT_THEME_REFERENCE.md） */
 export type ThemeMode = 'dark' | 'light' | 'auto' | 'fallout'
 
+/** [2026-05-08] 每条预设自带 Token + State Dir，无「全局默认」概念 */
+export interface TelegramBotPreset {
+  id: string
+  name: string
+  botToken: string
+  stateDirId: string
+}
+
+export interface TelegramChannelGlobalSettings {
+  /** 是否启用 Telegram Channel（开启且填写 Token 后新建会话会套用） */
+  enabled: boolean
+  /** 全局 Bot Token；保存时同步生成单条 botPresets 供标签栏切换 */
+  defaultBotToken?: string
+  /** [2026-05-08] 对应 ~/.claude/channels/<id>，默认 telegram */
+  defaultStateDirId?: string
+  /** @deprecated 旧版「新建会话默认启用」；已由 enabled + Token 替代，读取时可忽略 */
+  enableForNewSessions?: boolean
+  /** 与 defaultBotToken 同步的单预设或多预设（标签栏） */
+  botPresets?: TelegramBotPreset[]
+}
+
+export interface TelegramChannelSessionConfig {
+  /** 当前会话是否启用官方 Telegram Channel */
+  enabled: boolean
+  /** [2026-05-08] 旧版遗留：曾为 true 时读全局 defaultBotToken；新保存不再写入 */
+  useGlobalDefault?: boolean
+  /** 本会话 Bot Token（启用时必填，除非仍为遗留 useGlobalDefault） */
+  botToken?: string
+  /** 稳定状态目录 ID，用于隔离 access.json / .env / pairing 状态 */
+  stateDirId?: string
+}
+
 export interface ClaudeSettings {
   language: AppLanguage
   permissionPreset: ClaudePermissionPreset
@@ -136,6 +168,8 @@ export interface ClaudeSettings {
   enableApiProxy?: boolean
   /** [2026-05-01] 任务完成时发送系统通知 */
   enableNotifications?: boolean
+  /** [2026-05-08] 官方 Telegram Channel 默认配置；每个会话可覆盖 */
+  telegramChannel?: TelegramChannelGlobalSettings
   /** [2026-05-06] 终端配置 */
   terminal?: {
     /** 自定义 Shell 路径（空 = 平台默认：Windows cmd.exe / Unix $SHELL） */
@@ -205,7 +239,12 @@ export const DEFAULT_SETTINGS: ClaudeSettings = {
   skipDangerousModePermissionPrompt: false,
   profiles: [createDefaultProfile('Default', DEFAULT_PROFILE_ID)],
   activeProfileId: DEFAULT_PROFILE_ID,
-  embedClaudeOutputBeta: false
+  embedClaudeOutputBeta: false,
+  telegramChannel: {
+    enabled: false,
+    defaultStateDirId: 'telegram',
+    botPresets: []
+  }
 }
 
 /**

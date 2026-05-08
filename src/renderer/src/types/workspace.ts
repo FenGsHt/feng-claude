@@ -1,3 +1,5 @@
+import type { TelegramChannelSessionConfig } from './settings'
+
 /** 持久化到磁盘的 workspace 快照（与会话 UUID 无关，用 slot 指向 sessionWorkdirs 下标） */
 
 export const WORKSPACE_VERSION = 1 as const
@@ -23,6 +25,8 @@ export interface PersistedWorkspace {
   profileIds?: string[]
   /** [2026-05-06] 每个 slot 是否为纯 Shell 会话（不启动 Claude Code） */
   shellOnlySlots?: boolean[]
+  /** [2026-05-08] 每个 slot 的官方 Telegram Channel 配置 */
+  telegramChannelSlots?: Array<TelegramChannelSessionConfig | undefined>
   layoutRoot: PersistedPaneNode | null
   /** 上次激活的会话在 sessionWorkdirs 中的下标 */
   activeSlotIndex: number

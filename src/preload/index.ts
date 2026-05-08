@@ -3,9 +3,9 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
-import type { ClaudeSettings, ApiProfile } from '../renderer/src/types/settings'
+import type { ClaudeSettings, ApiProfile, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -18,8 +18,14 @@ const electronAPI = {
   },
 
   // Session
-  createSession: (workdir: string, resume?: boolean, profileId?: string, shellOnly?: boolean): Promise<SessionCreateResult> =>
-    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId, shellOnly }),
+  createSession: (
+    workdir: string,
+    resume?: boolean,
+    profileId?: string,
+    shellOnly?: boolean,
+    telegramChannel?: TelegramChannelSessionConfig
+  ): Promise<SessionCreateResult> =>
+    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId, shellOnly, telegramChannel }),
 
   closeSession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC.SESSION_CLOSE, { sessionId }),
@@ -81,6 +87,9 @@ const electronAPI = {
 
   detectShells: (): Promise<import('../renderer/src/types/ipc').ShellDetectResult> =>
     ipcRenderer.invoke(IPC.SHELL_DETECT),
+
+  checkTelegramChannel: (): Promise<TelegramChannelCheckResult> =>
+    ipcRenderer.invoke(IPC.TELEGRAM_CHANNEL_CHECK),
 
   onSettingsChanged: (callback: () => void): (() => void) => {
     const handler = (): void => callback()

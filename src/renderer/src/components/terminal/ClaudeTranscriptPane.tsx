@@ -8,6 +8,7 @@ import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 import type { ClaudeTranscriptEntry, ClaudeTurnTokenUsage } from '../../types/ipc'
 import { formatLatencyMs, formatTokenCount } from '../../lib/formatTokens'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
+import { useThemeStore } from '../../store/themeStore'
 
 interface Props {
   sessionId: string
@@ -185,10 +186,13 @@ function ToolGroupBlock({ tools }: { tools: string[] }): React.ReactElement {
 
 function EntryBlock({
   e,
-  sessionId
+  sessionId,
+  showAssistantStreamingCursor = false
 }: {
   e: DisplayEntry
   sessionId: string
+  /** [2026-05-08] Fallout：会话仍在输出且本条为当前尾部助手气泡时，在正文末显示复古闪烁竖条 */
+  showAssistantStreamingCursor?: boolean
 }): React.ReactElement {
   if (e.kind === 'toolGroup') {
     return <ToolGroupBlock tools={e.tools} />
@@ -274,6 +278,9 @@ function EntryBlock({
           </div>
           <div className="prose prose-invert max-w-none text-[12px] leading-relaxed prose-p:my-1.5 prose-pre:my-2">
             <MarkdownRenderer content={e.text} />
+            {showAssistantStreamingCursor ? (
+              <span className="fo-ai-stream-caret" aria-hidden />
+            ) : null}
           </div>
           <AssistantReplyMeta usage={e.usage} latencyMs={e.latencyMs} />
         </div>
@@ -482,6 +489,7 @@ function lastTranscriptEntryForWorkingBar(
 }
 
 export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): React.ReactElement {
+  const themeMode = useThemeStore((s) => s.theme)
   const entries = useTranscriptStore((s) => s.bySession[sessionId] ?? [])
   const visibleEntries = useMemo(() => filterNoiseTranscriptEntries(entries), [entries])
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
@@ -635,6 +643,12 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     latestToolFresh
   ])
 
+  /* [2026-05-08] Fallout 复古光标：仅当底部「处理中」条显示且转录尾部为助手块（流式追加中） */
+  const falloutAssistantStreamCaret =
+    themeMode === 'fallout' &&
+    showAiWorkingBar &&
+    lastMeaningfulEntry?.kind === 'assistant'
+
   /* [2026-05-06] 会话切换或历史条数突变：默认只保留末尾 INITIAL_HISTORY_TAIL 条，减轻 DOM */
   useLayoutEffect(() => {
     const n = visibleEntries.length
@@ -778,11 +792,17 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
             ) : (
               displayedEntries.map((e, i) => {
                 const globalIdx = historyStartIndex + i
+                const showAssistantStreamingCursor =
+                  falloutAssistantStreamCaret &&
+                  e.kind === 'assistant' &&
+                  lastMeaningfulEntry?.kind === 'assistant' &&
+                  e === lastMeaningfulEntry
                 return (
                   <EntryBlock
                     key={`${e.kind}-${e.messageId ?? 'noid'}-${globalIdx}-${e.text.slice(0, 24)}`}
                     e={e}
                     sessionId={sessionId}
+                    showAssistantStreamingCursor={showAssistantStreamingCursor}
                   />
                 )
               })
