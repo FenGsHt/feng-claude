@@ -405,9 +405,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     window.electronAPI.closeSession(id)
 
     /* [2026-04-30] 重新打开同一会话时 /resume 恢复该目录对话（与重开应用行为一致）
-     * [2026-04-23] 原未处理创建失败：旧 PTY 已关，若仍假定 result 必有 sessionId 会破坏状态 */
+     * [2026-05-09] 切换 Telegram Bot 预设时跳过 resume：Claude 会话会缓存旧 bot 的 Telegram 插件状态，
+     *   恢复旧 session 时不会重读 .env，导致切回前一个 bot 后无响应。 */
+    const skipResume = telegramChannelOverride !== undefined
     let result = normalizeCreateSessionResult(
-      await window.electronAPI.createSession(workdir, true, targetProfileId, sess.shellOnly, telegramChannel),
+      await window.electronAPI.createSession(workdir, !skipResume, targetProfileId, sess.shellOnly, telegramChannel),
       workdir
     )
     if (!result.ok) {
