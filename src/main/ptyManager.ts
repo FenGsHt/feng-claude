@@ -241,7 +241,7 @@ interface PreparedTelegramChannel {
 }
 
 function sanitizeTelegramStateId(value: string): string {
-  const safe = value.trim().replace(/[^a-zA-Z0-9_.-]/g, '-').replace(/-+/g, '-')
+  const safe = value.trim().toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '-').replace(/-+/g, '-')
   return safe || `telegram-${Date.now()}`
 }
 
