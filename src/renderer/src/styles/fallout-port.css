@@ -2,7 +2,7 @@
  * [2026-05-06] indeed-flow-git Fallout 主题的磷光绿 / CRT 效果 → claude-gui 的 --claude-* 与 html 叠加层。
  * 启用：设置里选 Fallout，或 document.documentElement.setAttribute('data-theme','fallout')。
  */
-@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
 
 html[data-theme='fallout'] {
   --claude-bg: #020502;
@@ -463,6 +463,8 @@ html[data-theme='fallout'] .claude-transcript-root pre {
  * ──────────────────────────────────────────────────────────────── */
 
 /* 转录内容区（排除 loading bar 外层）：统一字号 + 行高 + 强制像素渲染 */
+/* [2026-05-09] 正文用 Share Tech Mono：小字号下比 VT323 更锐利清晰，终端感足够；
+ * VT323 保留给大字号装饰元素（working bar / levelup / toasts）。 */
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble p,
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble pre,
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble code,
@@ -475,17 +477,15 @@ html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill code,
 html[data-theme='fallout'] .claude-transcript-root details summary,
 html[data-theme='fallout'] .claude-transcript-root details pre,
 html[data-theme='fallout'] .claude-transcript-root details p {
-  font-size: 14px !important;
-  line-height: 1.2 !important;
-  -webkit-font-smoothing: none !important;
-  text-rendering: optimizeSpeed !important;
+  font-family: 'Share Tech Mono', 'Courier New', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+  -webkit-font-smoothing: antialiased !important;
+  text-rendering: optimizeLegibility !important;
 }
 
-/* 转录根节点下所有文字强制关闭平滑，避免 Chromium 对子元素独立判断 */
-html[data-theme='fallout'] .claude-transcript-root * {
-  -webkit-font-smoothing: none !important;
-  text-rendering: optimizeSpeed !important;
-}
+/* [2026-05-09] 不再全量关闭平滑：正文换成 Share Tech Mono 后需要 antialiased 保持清晰；
+ * VT323 大字号装饰元素由各自选择器单独控制 */
 
 /* ── Fallout loading bar：绿光终端风格背景 ─────────────────────────
  * [2026-05-08] 原 --theme-card-bg 在 fallout 下近黑，loading 看不清；

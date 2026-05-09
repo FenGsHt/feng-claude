@@ -5,6 +5,13 @@
 
 ---
 
+## v0.7.1 (2026-05-09)
+
+### 改进 | Improvements
+- **Fallout 主题字体优化**：转录区正文改用 Share Tech Mono，小字号下比 VT323 更锐利清晰；VT323 保留给 loading bar、LEVEL UP 横幅等大字号装饰元素
+
+---
+
 ## v0.7.0 (2026-05-09)
 
 ### 修复 | Bug Fixes
