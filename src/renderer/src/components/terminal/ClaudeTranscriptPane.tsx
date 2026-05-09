@@ -16,65 +16,6 @@ import { injectEmbedDraft } from '../../lib/embedDraftBridge'
  * 仅在 themeMode === 'fallout' 时挂载，用 createPortal 渲染到 document.body
  * ══════════════════════════════════════════════════════════════ */
 
-/** 每次应用启动最多显示一次 RobCo 启动画面 */
-let _falloutBootDoneThisLaunch = false
-
-const BOOT_LINES: [number, string, string?][] = [
-  [0,    'ROBCO INDUSTRIES (TM) UNIFIED OPERATING SYSTEM'],
-  [600,  'COPYRIGHT 2075-2077 ROBCO INDUSTRIES'],
-  [1050, '-Server 1-  -Loaded-'],
-  [1400, ''],
-  [1600, 'INITIALIZING CLAUDE AI INTERFACE........'],
-  [2100, 'NEURAL LINK ESTABLISHED    [OK]'],
-  [2500, 'WELCOME, OVERSEER.', 'accent'],
-]
-
-function FalloutBootOverlay({ onDone }: { onDone: () => void }): React.ReactElement {
-  const [lines, setLines] = useState<Array<{ text: string; accent?: boolean }>>([])
-  const [fading, setFading] = useState(false)
-  const doneRef = useRef(onDone)
-  doneRef.current = onDone
-
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = []
-    for (const [delay, text, style] of BOOT_LINES) {
-      timers.push(setTimeout(() => setLines((p) => [...p, { text, accent: style === 'accent' }]), delay))
-    }
-    timers.push(setTimeout(() => setFading(true), 2950))
-    timers.push(setTimeout(() => doneRef.current(), 3450))
-    return () => timers.forEach(clearTimeout)
-  }, [])
-
-  return createPortal(
-    <div
-      className={`fo-boot-overlay${fading ? ' fo-boot-fading' : ''}`}
-      onClick={() => { setFading(true); setTimeout(() => doneRef.current(), 450) }}
-    >
-      {lines.map((l, i) =>
-        l.text === '' ? (
-          <br key={i} />
-        ) : (
-          <div
-            key={i}
-            className="fo-boot-line"
-            style={{
-              animationDelay: `${i * 0.02}s`,
-              color: l.accent ? '#aaff44' : '#2aff4d',
-              fontSize: l.accent ? 22 : undefined,
-              letterSpacing: l.accent ? 4 : undefined,
-            }}
-          >
-            {l.text}
-          </div>
-        )
-      )}
-      {lines.length > 0 && <span className="fo-boot-cursor" aria-hidden />}
-      <div className="fo-boot-skip">[ CLICK TO SKIP ]</div>
-    </div>,
-    document.body
-  )
-}
-
 function BottleCapSvg({ size = 46 }: { size?: number }): React.ReactElement {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden>
@@ -721,12 +662,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const [searchCursor, setSearchCursor] = useState(0)
   const [focusPulse, setFocusPulse] = useState<{ messageId?: string; toolName?: string } | null>(null)
 
-  /* [2026-05-09] Fallout 彩蛋：启动画面 / 瓶盖 Toast / LEVEL UP */
-  const [showBootOverlay, setShowBootOverlay] = useState(() => {
-    if (!isFallout || _falloutBootDoneThisLaunch) return false
-    _falloutBootDoneThisLaunch = true
-    return true
-  })
+  /* [2026-05-09] Fallout 彩蛋：瓶盖 Toast / LEVEL UP */
   const [bottleCapCount, setBottleCapCount] = useState<number | null>(null)
   const [levelUpNum, setLevelUpNum] = useState<number | null>(null)
   const prevShowBarRef = useRef(false)
@@ -1236,9 +1172,6 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       </div>
     </div>
     {/* [2026-05-09] Fallout 彩蛋：通过 createPortal 挂到 body，不受面板 overflow 裁剪 */}
-    {isFallout && showBootOverlay && (
-      <FalloutBootOverlay onDone={() => setShowBootOverlay(false)} />
-    )}
     {isFallout && bottleCapCount !== null && (
       <FalloutBottleCapToast caps={bottleCapCount} onDone={() => setBottleCapCount(null)} />
     )}
