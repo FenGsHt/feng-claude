@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, unlink
 import { dirname, join } from 'path'
 import { homedir } from 'os'
 import * as net from 'net'
+import { request as httpsRequest } from 'https'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
@@ -447,6 +448,43 @@ function prepareTelegramChannel(
   }
 }
 
+// ── Telegram pending-update drain ─────────────────────────────────────
+/**
+ * [2026-05-09] 每次新建 session 前清空 Telegram 积压消息。
+ * grammy bot.start() 不带 drop_pending_updates=true，重启后从 offset=0 重拉所有未确认消息，
+ * 全部堆给 Claude → 每条新消息打断上一条 → "Interrupted" 死循环。
+ * 修复：先调 getUpdates?offset=-1 拿最新 update_id，再用 offset+1 确认所有旧消息，
+ * 之后 plugin 启动时队列已清空，只会收到新消息。
+ */
+function drainTelegramPendingUpdates(token: string): Promise<void> {
+  const apiBase = `https://api.telegram.org/bot${token}`
+  const doGet = (path: string): Promise<string> =>
+    new Promise((resolve) => {
+      const req = httpsRequest(`${apiBase}${path}`, (res) => {
+        let buf = ''
+        res.on('data', (c: Buffer) => { buf += c.toString() })
+        res.on('end', () => resolve(buf))
+      })
+      req.on('error', () => resolve(''))
+      req.setTimeout(6000, () => { req.destroy(); resolve('') })
+      req.end()
+    })
+
+  return doGet('/getUpdates?offset=-1&limit=1&timeout=0').then((raw) => {
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed.ok || !parsed.result?.length) return
+      const latestId: number = parsed.result[parsed.result.length - 1].update_id
+      console.log(`[telegram-channel] drain: latest update_id=${latestId}, acknowledging...`)
+      return doGet(`/getUpdates?offset=${latestId + 1}&limit=1&timeout=0`).then(() => {
+        console.log('[telegram-channel] drain: done, queue cleared')
+      })
+    } catch {
+      // 解析失败忽略，不影响正常启动
+    }
+  })
+}
+
 // ── Daemon helpers ────────────────────────────────────────────────────
 
 function daemonDir(): string {
@@ -549,6 +587,16 @@ export class PtyManager {
     const customShell = s.terminal?.shell?.trim()
     const shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash'))
     const preparedTelegram = prepareTelegramChannel(sessionId, s, telegramChannel, shellOnly)
+
+    // [2026-05-09] 清空 Telegram 积压队列，防止旧消息在 bot 启动后被重新投递导致「Interrupted」级联
+    if (preparedTelegram.launchEnabled && preparedTelegram.env?.TELEGRAM_BOT_TOKEN) {
+      try {
+        await drainTelegramPendingUpdates(preparedTelegram.env.TELEGRAM_BOT_TOKEN)
+      } catch (e) {
+        console.warn('[telegram-channel] drain failed (non-fatal):', e)
+      }
+    }
+
     const ptyEnv = {
       ...buildPtyEnv(claudeEnv),
       ...(preparedTelegram.env ?? {})
