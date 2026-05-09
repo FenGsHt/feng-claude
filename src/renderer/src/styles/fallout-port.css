@@ -58,6 +58,8 @@ html[data-theme='fallout'] {
 html[data-theme='fallout'] body,
 html[data-theme='fallout'] #root {
   font-family: 'VT323', ui-monospace, monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 /*
@@ -389,6 +391,9 @@ html[data-theme='fallout'] .claude-transcript-root {
   font-weight: bold;
   letter-spacing: 0.6px;
   color: #2aff4d;
+  /* VT323 是点阵像素字体，antialiased 反而让像素边缘模糊；关掉平滑保持锐利 */
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 /* 助手气泡：全部清零，纯文本 */
