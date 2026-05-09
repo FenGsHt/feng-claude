@@ -543,6 +543,7 @@ html[data-theme='fallout'] .xterm-theme-fallout::after {
 html[data-theme='fallout'] textarea {
   font-family: 'VT323', 'Courier New', Courier, monospace !important;
   font-size: 18px !important;
+  font-weight: 700 !important;
   letter-spacing: 0.8px;
   /* [2026-05-08] 复古磷光标颜色；caret-shape 在支持的浏览器下用块状插入点，更接终端感 */
   /* [2026-05-09] block 在 Chromium 下占字格宽，比默认细竖线粗 */
@@ -569,7 +570,7 @@ html[data-theme='fallout'] textarea.fo-embed-composer-textarea {
   letter-spacing: 0.6px !important;
   */
   font-size: 14px !important;
-  font-weight: 400 !important;
+  font-weight: 700 !important;
   line-height: 1.45 !important;
   letter-spacing: 0.45px !important;
 }
