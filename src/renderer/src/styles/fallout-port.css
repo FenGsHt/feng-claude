@@ -462,7 +462,7 @@ html[data-theme='fallout'] .claude-transcript-root pre {
  * 在转录内容更新时触发大量 style recalc。改为精确类名选择器。
  * ──────────────────────────────────────────────────────────────── */
 
-/* 转录内容区（排除 loading bar 外层）：统一字号 + 行高 */
+/* 转录内容区（排除 loading bar 外层）：统一字号 + 行高 + 强制像素渲染 */
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble p,
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble pre,
 html[data-theme='fallout'] .claude-transcript-root .fo-assistant-bubble code,
@@ -477,6 +477,14 @@ html[data-theme='fallout'] .claude-transcript-root details pre,
 html[data-theme='fallout'] .claude-transcript-root details p {
   font-size: 14px !important;
   line-height: 1.2 !important;
+  -webkit-font-smoothing: none !important;
+  text-rendering: optimizeSpeed !important;
+}
+
+/* 转录根节点下所有文字强制关闭平滑，避免 Chromium 对子元素独立判断 */
+html[data-theme='fallout'] .claude-transcript-root * {
+  -webkit-font-smoothing: none !important;
+  text-rendering: optimizeSpeed !important;
 }
 
 /* ── Fallout loading bar：绿光终端风格背景 ─────────────────────────
