@@ -14,6 +14,8 @@ export function injectMockElectronAPI(): void {
     ;(window as any).electronAPI = {
       readClipboardTextSync: () => '',
       writeClipboardText: (_text: string) => {},
+      saveClipboardImage: async (_base64: string) => ({ success: false, path: '' }),
+      deleteFile: async (_path: string) => ({ success: true }),
       createSession: async (workdir: string, _resume?: boolean, profileId?: string, _shellOnly?: boolean, telegramChannel?: import('./types/settings').TelegramChannelSessionConfig) => ({
         ok: true as const,
         sessionId: 'mock-session-' + Math.random().toString(36).slice(2),

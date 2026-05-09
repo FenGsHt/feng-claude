@@ -17,6 +17,14 @@ const electronAPI = {
     ipcRenderer.send(IPC.CLIPBOARD_WRITE_TEXT, text)
   },
 
+  saveClipboardImage: (base64Data: string, workdir?: string): Promise<{ success: boolean; path: string }> => {
+    return ipcRenderer.invoke(IPC.CLIPBOARD_SAVE_IMAGE, base64Data, workdir)
+  },
+
+  deleteFile: (path: string): Promise<{ success: boolean }> => {
+    return ipcRenderer.invoke(IPC.FS_DELETE_FILE, path)
+  },
+
   // Session
   createSession: (
     workdir: string,

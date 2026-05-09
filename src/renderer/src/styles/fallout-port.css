@@ -386,10 +386,10 @@ html[data-theme='fallout']::after {
 
 html[data-theme='fallout'] .claude-transcript-root {
   font-family: 'VT323', 'Courier New', Courier, monospace;
-  font-size: 25px;
+  font-size: 20px;
   line-height: 1.15;
   font-weight: bold;
-  letter-spacing: 0.6px;
+  letter-spacing: 0;
   color: #2aff4d;
   /* VT323 是点阵像素字体，antialiased 反而让像素边缘模糊；关掉平滑保持锐利 */
   -webkit-font-smoothing: none;

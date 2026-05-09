@@ -22,6 +22,13 @@ import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequest
 import { useEmbedInputHistoryStore } from '../../store/embedInputHistoryStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 
+/** [2026-05-10] 附件图片：blobUrl 用于预览，filePath 用于发送时的 @ 引用 */
+interface AttachedImage {
+  id: string
+  blobUrl: string
+  filePath: string
+}
+
 interface Props {
   sessionId: string
   nativeTerminalOverlayVisible?: boolean
@@ -34,6 +41,7 @@ const atItemsCache = new Map<string, FileAtItem[]>()
  * [2026-05-06] `/` 触发命令面板，与 Claude Code 内置命令文档对齐（静态映射 + MCP 说明）
  * [2026-05-06] Enter 发送；Ctrl/Cmd+Enter 换行；Shift+Enter 默认换行（不发送）
  * [2026-05-06] 命令补全打开时：↑↓ 选择，Tab 填入高亮项；Enter 仍发送全文（原 Enter 只填入导致无法发送）
+ * [2026-05-10] 支持粘贴图片：输入框下方显示预览缩略图，右上角可删除，发送时自动附加 @路径
  */
 export function EmbedSessionComposer({
   sessionId,
@@ -46,6 +54,8 @@ export function EmbedSessionComposer({
   const [selectedAt, setSelectedAt] = useState(0)
   const [slashInteractiveMode, setSlashInteractiveMode] = useState(false)
   const [atItems, setAtItems] = useState<FileAtItem[]>([])
+  /** [2026-05-10] 附件图片列表 */
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const taRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const atListRef = useRef<HTMLUListElement>(null)
@@ -79,6 +89,14 @@ export function EmbedSessionComposer({
   useEffect(() => {
     lastPlainEmbedSentRef.current = ''
     draftMirrorRef.current = ''
+  }, [sessionId])
+
+  /* [2026-05-10] 切换 session 时清空附件 */
+  useEffect(() => {
+    setAttachedImages((prev) => {
+      prev.forEach((img) => URL.revokeObjectURL(img.blobUrl))
+      return []
+    })
   }, [sessionId])
 
   /* [2026-05-08] 主进程在任意 sendInput 含 Ctrl+C 时广播；与经典终端 xterm 打断同源，恢复上次普通提问草稿 */
@@ -273,12 +291,134 @@ export function EmbedSessionComposer({
     sendPtyInterruptSignal(sessionId)
   }, [sessionId])
 
+  /* [2026-05-10] 将 blob 转 base64 发给主进程存临时文件 */
+  const saveImageBlob = useCallback(async (blob: Blob): Promise<string | null> => {
+    const reader = new FileReader()
+    return new Promise((resolve) => {
+      reader.onloadend = async () => {
+        const base64 = (reader.result as string).split(',')[1]
+        try {
+          const r = await window.electronAPI.saveClipboardImage(base64, workdir)
+          resolve(r.success ? r.path : null)
+        } catch {
+          resolve(null)
+        }
+      }
+      reader.readAsDataURL(blob)
+    })
+  }, [workdir])
+
+  /* [2026-05-10] 外嵌输入框粘贴图片：提取图片 blob → 主进程存临时文件 → 显示预览 */
+  const onPaste = useCallback((ev: React.ClipboardEvent<HTMLTextAreaElement>): void => {
+    const items = ev.clipboardData?.items
+    const files = ev.clipboardData?.files
+    if (!items && !files?.length) return
+
+    // 检测是否有图片
+    const imageItems = items
+      ? Array.from(items).filter((it) => it.type?.startsWith('image/'))
+      : []
+    const hasImage = imageItems.length > 0
+    const hasFileWithRef = files && files.length > 0 && (files[0] as File & { path?: string }).path
+
+    if (!hasImage && !hasFileWithRef) return
+
+    ev.preventDefault()
+    ev.stopPropagation()
+    const el = taRef.current
+    const insertPos = typeof el?.selectionStart === 'number' ? el.selectionStart : draft.length
+    const wd = useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir ?? ''
+
+    const newImages: AttachedImage[] = []
+    const filePaths: string[] = []
+    let pending = 0
+
+    // 处理剪贴板图片
+    for (const item of imageItems) {
+      const blob = item.getAsFile()
+      if (!blob) continue
+      pending++
+      void saveImageBlob(blob).then((filePath) => {
+        pending--
+        if (filePath) {
+          filePaths.push(filePath)
+          const blobUrl = URL.createObjectURL(blob)
+          newImages.push({ id: `img-${Date.now()}-${Math.random().toString(36).slice(2)}`, blobUrl, filePath })
+        }
+        if (pending === 0) flushRefs(newImages, filePaths, insertPos, wd)
+      })
+    }
+
+    // 处理本地文件（有 path 的）
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i] as File & { path?: string }
+        if (f.path) filePaths.push(f.path)
+      }
+    }
+
+    if (pending === 0) flushRefs([], filePaths, insertPos, wd)
+
+    function flushRefs(
+      imgs: AttachedImage[],
+      paths: string[],
+      _pos: number,
+      _wd: string
+    ): void {
+      if (paths.length === 0 && imgs.length === 0) return
+      // 本地文件（有 path 的）仍然注入 @引用到文本
+      const fileRefs = paths.filter((p) => !imgs.some((img) => img.filePath === p))
+      const refs = fileRefs.map((p) => {
+        const rel = p.replace(/\\/g, '/')
+        if (_wd && rel.toLowerCase().startsWith(_wd.replace(/\\/g, '/').toLowerCase())) {
+          const wd = _wd.replace(/\\/g, '/')
+          return `@${rel.slice(wd.length).replace(/^\/+/, '')}`
+        }
+        return `@${rel}`
+      })
+      const text = refs.join(' ') + ' '
+
+      // 图片只更新预览状态，不注入文本
+      if (imgs.length > 0) {
+        setAttachedImages((prev) => [...prev, ...imgs])
+      }
+
+      // 仅有文件引用时注入文本
+      if (text.trim()) {
+        setDraft((prev) => {
+          const next = prev.slice(0, _pos) + text + prev.slice(_pos)
+          draftMirrorRef.current = next
+          return next
+        })
+      }
+
+      requestAnimationFrame(() => {
+        const ta = taRef.current
+        if (ta) {
+          ta.focus()
+          const finalPos = _pos + text.length
+          ta.setSelectionRange(finalPos, finalPos)
+          setCursor(finalPos)
+        }
+      })
+    }
+  }, [draft, saveImageBlob, sessionId])
+
+  /* [2026-05-10] 删除附件图片 */
+  const removeImage = useCallback((id: string): void => {
+    setAttachedImages((prev) => {
+      const img = prev.find((x) => x.id === id)
+      if (img) URL.revokeObjectURL(img.blobUrl)
+      return prev.filter((x) => x.id !== id)
+    })
+  }, [])
+
   /* [2026-05-08] 发送正文顺序：draftMirrorRef(onChange 首行同步，不被 PTY 快照 setDraft 污染) > DOM > draft；勿把 taRef 作唯一来源以免受控 value 仍为「在吗」时传入 send */
   const send = useCallback((): void => {
     if (alternateScreen) return
     if (embedSendBusyRef.current) return
     const t = (draftMirrorRef.current || taRef.current?.value || draft).replace(/\r\n/g, '\n')
-    if (!t.trim()) return
+    if (!t.trim() && attachedImages.length === 0) return
     embedSendBusyRef.current = true
     draftMirrorRef.current = ''
     pushInputHistory(sessionId, t)
@@ -286,22 +426,47 @@ export function EmbedSessionComposer({
     draftBeforeHistoryRef.current = ''
     setDraft('')
     setCursor(0)
-    const isSlash = t.trimStart().startsWith('/')
+
+    // 将附件图片的 @路径 追加到发送内容 — 加 [图片N] 标记让 AI 知道顺序，整行发送避免多行输入问题
+    const imageRefs = attachedImages
+      .map((img, idx) => {
+        const abs = img.filePath.replace(/\\/g, '/')
+        return `[图片${idx + 1}] @${abs}`
+      })
+      .join(' ')
+    const finalText = `${t}${imageRefs ? ' ' + imageRefs : ''}`.trim()
+
+
+    const isSlash = finalText.trimStart().startsWith('/')
     /* [2026-05-08] 斜杠命令不把正文当作「可恢复的最后一次提问」，避免中断后误填旧普通消息 */
     if (isSlash) {
       lastPlainEmbedSentRef.current = ''
     } else {
-      lastPlainEmbedSentRef.current = t
+      lastPlainEmbedSentRef.current = finalText
     }
     setSlashInteractiveMode(isSlash)
-    submitEmbedSessionInput(sessionId, t)
+    submitEmbedSessionInput(sessionId, finalText)
+
+    // 清理附件
+    const toCleanup = [...attachedImages]
+    setAttachedImages((prev) => {
+      prev.forEach((img) => URL.revokeObjectURL(img.blobUrl))
+      return []
+    })
+    // 延迟删除临时文件（给 Claude Code 留出读取时间）
+    toCleanup.forEach((img) => {
+      setTimeout(() => {
+        window.electronAPI.deleteFile(img.filePath)
+      }, 5000)
+    })
+
     queueMicrotask(() => {
       embedSendBusyRef.current = false
     })
     requestAnimationFrame(() => {
       if (!isSlash) taRef.current?.focus()
     })
-  }, [alternateScreen, draft, pushInputHistory, sessionId])
+  }, [alternateScreen, attachedImages, draft, pushInputHistory, sessionId, workdir])
 
   /** [2026-05-06] Ctrl/Cmd+Enter 在光标处插入换行（Enter 单独用于发送） */
   const insertNewlineAtCursor = useCallback((): void => {
@@ -325,7 +490,7 @@ export function EmbedSessionComposer({
   }, [])
 
   const exitSlashInteraction = useCallback((): void => {
-    /* [2026-05-07] 方案 1：Esc 是 TUI 内“退一层”，不能再直接关闭前端；强制退出用 Ctrl+C 并等待 PTY 自然结束。 */
+    /* [2026-05-07] 方案 1：Esc 是 TUI 内"退一层"，不能再直接关闭前端；强制退出用 Ctrl+C 并等待 PTY 自然结束。 */
     // sendRawPtyInput(sessionId, '\x1b')
     // useTranscriptStore.getState().clearLatestPtyEchoChunk(sessionId)
     // setEmbedSlashPtyEchoActive(sessionId, false)
@@ -545,8 +710,33 @@ export function EmbedSessionComposer({
 
   return (
     <div className="shrink-0 border-t border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-3 py-3">
-      <div className="mx-auto flex max-w-3xl min-h-0 items-end gap-2.5">
+      <div className="mx-auto flex max-w-3xl min-h-0 flex-col gap-2">
         <div className="relative min-h-0 flex-1">
+          {/* [2026-05-10] 附件图片预览：显示在输入框上方 */}
+          {attachedImages.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {attachedImages.map((img) => (
+                <div
+                  key={img.id}
+                  className="group relative h-20 w-20 overflow-hidden rounded-lg border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)]"
+                >
+                  <img
+                    src={img.blobUrl}
+                    alt="pasted"
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(img.id)}
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500/80 text-[10px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-500"
+                    aria-label="删除图片"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {slashMenuOpen ? (
             <ul
               id="slash-command-list"
@@ -629,6 +819,7 @@ export function EmbedSessionComposer({
             }}
             onKeyUp={syncCursorFromDom}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             rows={3}
             placeholder={
               alternateScreen
@@ -645,35 +836,39 @@ export function EmbedSessionComposer({
             aria-controls={slashMenuOpen ? 'slash-command-list' : atMenuOpen ? 'at-file-list' : undefined}
           />
         </div>
-        {showInterrupt ? (
+
+        <div className="flex items-end gap-2.5">
+          <div className="min-w-0 flex-1" />
+          {showInterrupt ? (
+            <button
+              type="button"
+              title="向 PTY 发送 Ctrl+C；若在经典终端按 Ctrl+C，上次普通提问也会回到输入框。"
+              onClick={interruptGeneration}
+              className="shrink-0 rounded-xl border border-red-500/55 bg-red-500/12 px-3 py-2.5 text-[11px] font-semibold text-red-400 shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-red-500/20"
+            >
+              中断
+            </button>
+          ) : null}
           <button
             type="button"
-            title="向 PTY 发送 Ctrl+C；若在经典终端按 Ctrl+C，上次普通提问也会回到输入框。"
-            onClick={interruptGeneration}
-            className="shrink-0 rounded-xl border border-red-500/55 bg-red-500/12 px-3 py-2.5 text-[11px] font-semibold text-red-400 shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-red-500/20"
+            onClick={() => send()}
+            disabled={alternateScreen || slashInteractiveMode}
+            className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            中断
+            发送
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => send()}
-          disabled={alternateScreen || slashInteractiveMode}
-          className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          发送
-        </button>
-        {slashInteractiveMode ? (
-          <button
-            type="button"
-            onClick={() => {
-              exitSlashInteraction()
-            }}
-            className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
-          >
-            强制退出
-          </button>
-        ) : null}
+          {slashInteractiveMode ? (
+            <button
+              type="button"
+              onClick={() => {
+                exitSlashInteraction()
+              }}
+              className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
+            >
+              强制退出
+            </button>
+          ) : null}
+        </div>
       </div>
       {alternateScreen ? (
         <div className="mx-auto mt-2 max-w-3xl rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5">

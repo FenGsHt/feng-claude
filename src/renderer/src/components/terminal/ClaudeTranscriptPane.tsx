@@ -377,9 +377,8 @@ function EntryBlock({
   if (e.kind === 'thinking') {
     return (
       <div className="flex w-full justify-start">
-        {/* [2026-05-06] 默认展开；仍可点击标题收起 */}
+        {/* [2026-05-06] 默认折叠；点击标题展开 */}
         <details
-          open
           className="group w-full max-w-3xl rounded-xl border border-[var(--theme-thinking-border)] bg-[var(--theme-thinking-bg)] px-3 py-2 ring-1 ring-[var(--theme-thinking-border)]"
         >
           <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-thinking-text)] [&::-webkit-details-marker]:hidden">

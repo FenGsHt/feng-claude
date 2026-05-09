@@ -96,6 +96,33 @@ export function registerIpcHandlers(
     clipboard.writeText(text)
   })
 
+  /** [2026-05-10] 渲染进程传入 base64 图片数据，主进程存临时文件返回路径 */
+  ipcMain.handle(IPC.CLIPBOARD_SAVE_IMAGE, async (_event, base64Data: string, workdir?: string) => {
+    const { writeFileSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    // 优先存到工作目录的 .feng-temp 子目录，避免 Temp 目录路径含转义字符
+    const saveDir = workdir ? join(workdir, '.feng-temp') : await import('os').then(o => o.tmpdir())
+    if (workdir) {
+      try { mkdirSync(saveDir, { recursive: true }) } catch { /* ignore */ }
+    }
+    const name = `feng-clipboard-${Date.now()}.png`
+    const tmpPath = join(saveDir, name)
+    const buf = Buffer.from(base64Data, 'base64')
+    writeFileSync(tmpPath, buf)
+    return { success: true, path: tmpPath }
+  })
+
+  /** [2026-05-10] 删除指定路径的文件（静默失败，仅用于清理临时附件） */
+  ipcMain.handle(IPC.FS_DELETE_FILE, async (_event, filePath: string) => {
+    try {
+      const { existsSync, unlinkSync } = await import('fs')
+      if (existsSync(filePath)) unlinkSync(filePath)
+      return { success: true }
+    } catch {
+      return { success: false }
+    }
+  })
+
   // ── Shell 检测 [2026-05-06] ────────────────────────────────────
   ipcMain.handle(IPC.SHELL_DETECT, async () => {
     const { spawnSync: spSync } = await import('child_process')

@@ -64,6 +64,10 @@ export const IPC = {
   CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync',
   /** 主进程写剪贴板，供终端 Ctrl+Shift+C 复制 */
   CLIPBOARD_WRITE_TEXT: 'clipboard:writeText',
+  /** [2026-05-10] 渲染进程传入 base64 图片数据，主进程存临时文件返回路径 */
+  CLIPBOARD_SAVE_IMAGE: 'clipboard:saveImage',
+  /** [2026-05-10] 删除临时文件（如图片附件发送后清理） */
+  FS_DELETE_FILE: 'fs:deleteFile',
 
   PLUGIN_LIST: 'plugin:list',
   PLUGIN_SET_ENABLED: 'plugin:setEnabled',
