@@ -646,7 +646,7 @@ html[data-theme='fallout'] [class*='rounded-full'] {
 
 /* ── 瓶盖 Toast ──────────────────────────────────────────────── */
 
-/* [2026-05-09] steps() 模拟低帧率，贴合 CRT/Fallout 复古感 */
+/* [2026-05-09] steps(duration×24) = 24fps 跳帧，贴合 CRT/Fallout 复古感 */
 @keyframes fo-toast-slide {
   0%   { opacity: 0; transform: translateX(64px); }
   12%  { opacity: 1; transform: translateX(-4px); }
@@ -656,7 +656,6 @@ html[data-theme='fallout'] [class*='rounded-full'] {
 }
 
 @keyframes fo-cap-spin {
-  /* steps(8) = 8 格跳帧，像老式动画胶片 */
   0%   { transform: rotateY(0deg); }
   100% { transform: rotateY(720deg); }
 }
@@ -675,16 +674,16 @@ html[data-theme='fallout'] [class*='rounded-full'] {
     0 0 24px rgba(42, 255, 77, 0.28),
     inset 0 0 12px rgba(42, 255, 77, 0.05);
   padding: 11px 18px;
-  /* steps(12)：整体入场/退场做跳帧处理 */
-  animation: fo-toast-slide 3.2s steps(12, end) forwards;
+  /* 3.2s × 24fps = 77 steps */
+  animation: fo-toast-slide 3.2s steps(77, end) forwards;
   pointer-events: none;
   font-family: 'VT323', monospace;
   user-select: none;
 }
 
 .fo-bottle-cap-svg {
-  /* steps(8) 旋转：像翻页动画 */
-  animation: fo-cap-spin 0.8s steps(8, end) 1;
+  /* 0.8s × 24fps = 19 steps */
+  animation: fo-cap-spin 0.8s steps(19, end) 1;
   filter: drop-shadow(0 0 7px rgba(170, 255, 68, 0.75));
   flex-shrink: 0;
 }
@@ -723,8 +722,8 @@ html[data-theme='fallout'] [class*='rounded-full'] {
   z-index: 9999;
   text-align: center;
   pointer-events: none;
-  /* steps(10)：横幅展开/消失做跳帧，更有 Pip-Boy 终端感 */
-  animation: fo-levelup-in 3.2s steps(10, end) forwards;
+  /* 3.2s × 24fps = 77 steps */
+  animation: fo-levelup-in 3.2s steps(77, end) forwards;
   font-family: 'VT323', monospace;
   user-select: none;
   /* 背景底：深绿半透明框 + 边框 + 内外辉光 */
