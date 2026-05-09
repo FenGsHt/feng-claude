@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, createPortal } from 'react'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../../store/embedInterruptSuppressStore'
@@ -10,6 +10,130 @@ import { formatLatencyMs, formatTokenCount } from '../../lib/formatTokens'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 import { useThemeStore } from '../../store/themeStore'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
+
+/* ══════════════════════════════════════════════════════════════
+ * [2026-05-09] Fallout 彩蛋动效组件集
+ * 仅在 themeMode === 'fallout' 时挂载，用 createPortal 渲染到 document.body
+ * ══════════════════════════════════════════════════════════════ */
+
+/** 每次应用启动最多显示一次 RobCo 启动画面 */
+let _falloutBootDoneThisLaunch = false
+
+const BOOT_LINES: [number, string, string?][] = [
+  [0,    'ROBCO INDUSTRIES (TM) UNIFIED OPERATING SYSTEM'],
+  [600,  'COPYRIGHT 2075-2077 ROBCO INDUSTRIES'],
+  [1050, '-Server 1-  -Loaded-'],
+  [1400, ''],
+  [1600, 'INITIALIZING CLAUDE AI INTERFACE........'],
+  [2100, 'NEURAL LINK ESTABLISHED    [OK]'],
+  [2500, 'WELCOME, OVERSEER.', 'accent'],
+]
+
+function FalloutBootOverlay({ onDone }: { onDone: () => void }): React.ReactElement {
+  const [lines, setLines] = useState<Array<{ text: string; accent?: boolean }>>([])
+  const [fading, setFading] = useState(false)
+  const doneRef = useRef(onDone)
+  doneRef.current = onDone
+
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (const [delay, text, style] of BOOT_LINES) {
+      timers.push(setTimeout(() => setLines((p) => [...p, { text, accent: style === 'accent' }]), delay))
+    }
+    timers.push(setTimeout(() => setFading(true), 2950))
+    timers.push(setTimeout(() => doneRef.current(), 3450))
+    return () => timers.forEach(clearTimeout)
+  }, [])
+
+  return createPortal(
+    <div
+      className={`fo-boot-overlay${fading ? ' fo-boot-fading' : ''}`}
+      onClick={() => { setFading(true); setTimeout(() => doneRef.current(), 450) }}
+    >
+      {lines.map((l, i) =>
+        l.text === '' ? (
+          <br key={i} />
+        ) : (
+          <div
+            key={i}
+            className="fo-boot-line"
+            style={{
+              animationDelay: `${i * 0.02}s`,
+              color: l.accent ? '#aaff44' : '#2aff4d',
+              fontSize: l.accent ? 22 : undefined,
+              letterSpacing: l.accent ? 4 : undefined,
+            }}
+          >
+            {l.text}
+          </div>
+        )
+      )}
+      {lines.length > 0 && <span className="fo-boot-cursor" aria-hidden />}
+      <div className="fo-boot-skip">[ CLICK TO SKIP ]</div>
+    </div>,
+    document.body
+  )
+}
+
+function BottleCapSvg({ size = 46 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden>
+      {Array.from({ length: 12 }, (_, i) => {
+        const a = ((i * 30 - 90) * Math.PI) / 180
+        return <circle key={i} cx={24 + 21 * Math.cos(a)} cy={24 + 21 * Math.sin(a)} r="3.6" fill="#aaff44" />
+      })}
+      <circle cx="24" cy="24" r="17" fill="#010601" stroke="#aaff44" strokeWidth="2.5" />
+      <circle cx="24" cy="24" r="13.5" fill="none" stroke="#2aff4d" strokeWidth="0.7" strokeDasharray="2.8 2" />
+      <text x="24" y="22" textAnchor="middle" fill="#aaff44" fontSize="5.5" fontFamily="VT323, monospace" fontWeight="bold">NUKA</text>
+      <text x="24" y="29" textAnchor="middle" fill="#aaff44" fontSize="5.5" fontFamily="VT323, monospace" fontWeight="bold">COLA</text>
+    </svg>
+  )
+}
+
+function FalloutBottleCapToast({ caps, onDone }: { caps: number; onDone: () => void }): React.ReactElement {
+  const doneRef = useRef(onDone)
+  doneRef.current = onDone
+  useEffect(() => {
+    const t = setTimeout(() => doneRef.current(), 3200)
+    return () => clearTimeout(t)
+  }, [])
+  return createPortal(
+    <div className="fo-bottle-cap-toast" aria-hidden>
+      <div className="fo-bottle-cap-svg"><BottleCapSvg size={46} /></div>
+      <div>
+        <div className="fo-bottle-cap-title">DATA RECEIVED</div>
+        <div className="fo-bottle-cap-sub">+{caps} CAPS</div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function FalloutLevelUpBanner({ level, onDone }: { level: number; onDone: () => void }): React.ReactElement {
+  const doneRef = useRef(onDone)
+  doneRef.current = onDone
+  useEffect(() => {
+    const t = setTimeout(() => doneRef.current(), 3200)
+    return () => clearTimeout(t)
+  }, [])
+  return createPortal(
+    <div className="fo-levelup-banner" aria-hidden>
+      <div className="fo-levelup-line1">↑ LEVEL UP ↑</div>
+      <div className="fo-levelup-line2">INTELLIGENCE LVL {level}</div>
+    </div>,
+    document.body
+  )
+}
+
+/** Pip-Boy 风格 AP 充能条，替换工作栏 spinner */
+function FalloutApBar(): React.ReactElement {
+  return (
+    <div className="fo-ap-bar" aria-hidden>
+      {Array.from({ length: 5 }, (_, i) => <div key={i} className="fo-ap-seg" />)}
+      <span className="fo-ap-label">AP</span>
+    </div>
+  )
+}
 
 interface Props {
   sessionId: string
@@ -36,7 +160,7 @@ function entryMatchesQuery(e: DisplayEntry, query: string): boolean {
 }
 
 /** [2026-05-06] 底部固定条：会话 running 或已发送待响应时持续显示 loading，覆盖思考/工具/输出阶段 */
-function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): React.ReactElement | null {
+function EmbedAiWorkingBar({ label, open, isFallout }: { label: string; open: boolean; isFallout?: boolean }): React.ReactElement | null {
   if (!open) return null
   return (
     <div
@@ -45,10 +169,14 @@ function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): R
       aria-live="polite"
     >
       <div className="fo-working-bar-inner mx-auto flex max-w-3xl items-center gap-2.5 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] px-3 py-2.5 shadow-[0_-12px_40px_var(--theme-shadow)] backdrop-blur-md">
-        <span
-          className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-accent-bg-strong)] border-t-[var(--theme-accent-muted)]"
-          aria-hidden
-        />
+        {isFallout ? (
+          <FalloutApBar />
+        ) : (
+          <span
+            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-accent-bg-strong)] border-t-[var(--theme-accent-muted)]"
+            aria-hidden
+          />
+        )}
         <p className="min-w-0 flex-1 text-[11px] font-medium leading-snug text-[var(--theme-accent-text)]">{label}</p>
       </div>
     </div>
@@ -586,11 +714,23 @@ function lastTranscriptEntryForWorkingBar(
 
 export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): React.ReactElement {
   const themeMode = useThemeStore((s) => s.theme)
+  const isFallout = themeMode === 'fallout'
   const entries = useTranscriptStore((s) => s.bySession[sessionId] ?? [])
   const visibleEntries = useMemo(() => filterNoiseTranscriptEntries(entries), [entries])
   const [search, setSearch] = useState('')
   const [searchCursor, setSearchCursor] = useState(0)
   const [focusPulse, setFocusPulse] = useState<{ messageId?: string; toolName?: string } | null>(null)
+
+  /* [2026-05-09] Fallout 彩蛋：启动画面 / 瓶盖 Toast / LEVEL UP */
+  const [showBootOverlay, setShowBootOverlay] = useState(() => {
+    if (!isFallout || _falloutBootDoneThisLaunch) return false
+    _falloutBootDoneThisLaunch = true
+    return true
+  })
+  const [bottleCapCount, setBottleCapCount] = useState<number | null>(null)
+  const [levelUpNum, setLevelUpNum] = useState<number | null>(null)
+  const prevShowBarRef = useRef(false)
+  const assistantReplyCountRef = useRef(0)
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
   const interruptSuppress = useEmbedInterruptSuppressStore(
     (s) => s.suppressWorkingBarBySession[sessionId] === true
@@ -823,6 +963,23 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     assistantStreaming
   ])
 
+  /* [2026-05-09] Fallout 彩蛋：工作状态条 true→false 时触发瓶盖 Toast + LEVEL UP */
+  useEffect(() => {
+    const wasShowing = prevShowBarRef.current
+    prevShowBarRef.current = showAiWorkingBar
+    if (!isFallout) return
+    if (!wasShowing || showAiWorkingBar) return       // 只在 true→false 时触发
+    if (lastMeaningfulEntry?.kind !== 'assistant') return  // 只在助手回复完成时
+    const caps = Math.max(8, Math.min(99, Math.floor((lastMeaningfulEntry.text.length || 0) / 60)))
+    setBottleCapCount(caps)
+    assistantReplyCountRef.current += 1
+    const n = assistantReplyCountRef.current
+    if (n % 3 === 0) {
+      const level = Math.floor(n / 3) + 1
+      setTimeout(() => setLevelUpNum(level), 1400)   // 瓶盖出现后稍延迟
+    }
+  }, [showAiWorkingBar, isFallout, lastMeaningfulEntry])
+
   /* [2026-05-08] Fallout 复古光标：仅当底部「处理中」条显示且转录尾部为助手块（流式追加中） */
   const falloutAssistantStreamCaret =
     themeMode === 'fallout' &&
@@ -929,6 +1086,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const hasOlderAbove = query.length === 0 && historyStartIndex > 0
 
   return (
+    <>
     <div
       className={`claude-transcript-root flex min-h-0 flex-col overflow-hidden bg-[var(--theme-panel-bg)] ${className}`}
       aria-label="Claude transcript"
@@ -1061,7 +1219,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
             <div className="h-px shrink-0" aria-hidden />
           </div>
         </div>
-        <EmbedAiWorkingBar open={showAiWorkingBar} label={aiWorkingLabel} />
+        <EmbedAiWorkingBar open={showAiWorkingBar} label={aiWorkingLabel} isFallout={isFallout} />
         {visibleEntries.length > 0 && !nearBottom ? (
           <button
             type="button"
@@ -1077,5 +1235,16 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
         ) : null}
       </div>
     </div>
+    {/* [2026-05-09] Fallout 彩蛋：通过 createPortal 挂到 body，不受面板 overflow 裁剪 */}
+    {isFallout && showBootOverlay && (
+      <FalloutBootOverlay onDone={() => setShowBootOverlay(false)} />
+    )}
+    {isFallout && bottleCapCount !== null && (
+      <FalloutBottleCapToast caps={bottleCapCount} onDone={() => setBottleCapCount(null)} />
+    )}
+    {isFallout && levelUpNum !== null && (
+      <FalloutLevelUpBanner level={levelUpNum} onDone={() => setLevelUpNum(null)} />
+    )}
+    </>
   )
 }
