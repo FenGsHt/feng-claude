@@ -48,6 +48,11 @@ html[data-theme='fallout'] {
   --theme-field-bg: #020502;
   --theme-kbd-bg: rgba(42, 255, 77, 0.06);
   --theme-kbd-border: rgba(42, 255, 77, 0.2);
+  /* [2026-05-09] 统一磷光三角光标：高亮区/terminal 标题栏显式使用，避免 inherit 链在 Electron 下回退成黑箭头看不见 */
+  --fo-cursor-pipboy:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23aaff44' stroke='%23020502' stroke-width='0.7' stroke-linejoin='miter' d='M0.2 0.2L15 8.1L5 15.7Z'/%3E%3C/svg%3E")
+      0 0,
+    pointer;
 }
 
 html[data-theme='fallout'] body,
@@ -64,10 +69,17 @@ html[data-theme='fallout'] * {
 }
 
 html[data-theme='fallout'] body {
-  cursor:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23aaff44' stroke='%23020502' stroke-width='0.7' stroke-linejoin='miter' d='M0.2 0.2L15 8.1L5 15.7Z'/%3E%3C/svg%3E")
-      0 0,
-    auto !important;
+  cursor: var(--fo-cursor-pipboy) !important;
+}
+
+/* [2026-05-09] Tailwind cursor-default 在深色条上易呈黑箭头；Fallout 下改回磷光三角 */
+html[data-theme='fallout'] .cursor-default {
+  cursor: var(--fo-cursor-pipboy) !important;
+}
+
+/* [2026-05-09] cursor-pointer 同理（外嵌 tools/summary、可点行等） */
+html[data-theme='fallout'] .cursor-pointer {
+  cursor: var(--fo-cursor-pipboy) !important;
 }
 
 html[data-theme='fallout'] textarea,
@@ -193,6 +205,20 @@ html[data-theme='fallout'] .sidebar-tab-icon:focus-visible {
     0 0 32px rgba(42, 255, 77, 0.2) !important;
   text-shadow: none !important;
   -webkit-font-smoothing: antialiased;
+  cursor: var(--fo-cursor-pipboy) !important;
+}
+
+/* [2026-05-09] 外嵌 details/summary（工具折叠、思考折叠）：global summary:hover 带 -webkit-text-fill:#000，
+ * 转录里 details>summary 又用 !important 锁 color，webkit-fill 仍黑 → 透明底上像全灭。此处拉高亮字色并加淡绿底。 */
+html[data-theme='fallout'] .claude-transcript-root details > summary:hover,
+html[data-theme='fallout'] .claude-transcript-root details > summary:focus,
+html[data-theme='fallout'] .claude-transcript-root details > summary:focus-visible {
+  background: rgba(42, 255, 77, 0.16) !important;
+  color: #d4ffe6 !important;
+  -webkit-text-fill-color: #d4ffe6 !important;
+  font-weight: 600 !important;
+  border: none !important;
+  box-shadow: 0 0 0 1px rgba(42, 255, 77, 0.35) !important;
 }
 
 html[data-theme='fallout'] a:focus,
@@ -211,6 +237,7 @@ html[data-theme='fallout'] a:focus-visible {
     0 0 32px rgba(42, 255, 77, 0.2) !important;
   text-shadow: none !important;
   -webkit-font-smoothing: antialiased;
+  cursor: var(--fo-cursor-pipboy) !important;
 }
 
 /* Tailwind 红框危险钮：悬浮/焦点与边框同色实心（如「中断」） */
@@ -237,6 +264,7 @@ html[data-theme='fallout'] a[class*='border-red']:focus-visible {
     0 0 32px rgba(239, 68, 68, 0.28) !important;
   text-shadow: none !important;
   -webkit-font-smoothing: antialiased;
+  cursor: var(--fo-cursor-pipboy) !important;
 }
 
 /* [2026-05-09] 勿对 svg 强设 fill:currentColor：会继承到仅描边的 path，整块涂黑（如 worktree 六边形）。
@@ -529,6 +557,21 @@ html[data-theme='fallout'] textarea {
   html[data-theme='fallout'] textarea {
     caret-shape: block;
   }
+}
+
+/* [2026-05-09] 外嵌 composer：原 20px+700 只放大占位/正文，插入符仍细；改回小号字（贴近组件 text-[12px]），避免占屏。
+ * 仍继承上方 textarea 的 VT323、caret-color、caret-shape:block。 */
+html[data-theme='fallout'] textarea.fo-embed-composer-textarea {
+  /* 原尝试加粗加字号撑宽插入符，效果差且字过大：
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0.6px !important;
+  */
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  letter-spacing: 0.45px !important;
 }
 
 /* [2026-05-09] 侧栏搜索等：仅磷光色 + block 插入符 */
