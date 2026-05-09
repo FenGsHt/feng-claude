@@ -429,6 +429,24 @@ export function SettingsPanel(): React.ReactElement {
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-claude-muted">
           {t.settings.telegramPresetListTitle}
         </div>
+        {/* 同 token 重复警告：同一 bot token 不能同时在多个会话长轮询 */}
+        {(() => {
+          const presets = telegramChannel.botPresets ?? []
+          const tokenCount = new Map<string, number>()
+          presets.forEach(p => {
+            const tok = p.botToken?.trim()
+            if (tok) tokenCount.set(tok, (tokenCount.get(tok) ?? 0) + 1)
+          })
+          const hasDup = [...tokenCount.values()].some(n => n > 1)
+          if (!hasDup) return null
+          return (
+            <div className="mb-2 rounded border border-red-500/40 bg-red-950/30 px-2.5 py-2 text-[10px] leading-relaxed text-red-300">
+              ⚠️ {lang === 'zh'
+                ? '存在重复 Bot Token！同一 token 只能在一个窗口/会话中运行，重复会导致互相中断。请为每个窗口使用不同的 Bot Token。'
+                : 'Duplicate Bot Token detected! The same token can only run in one window/session at a time — duplicates cause mutual interruptions. Use a different Bot Token per window.'}
+            </div>
+          )
+        })()}
         <div className="mb-2 max-h-96 space-y-2 overflow-y-auto">
           {(telegramChannel.botPresets ?? []).map((pr, idx) => (
             <div
