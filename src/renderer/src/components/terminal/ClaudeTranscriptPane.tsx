@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, createPortal } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../../store/embedInterruptSuppressStore'
