@@ -322,29 +322,84 @@ function telegramStateDir(id: string): string {
   return join(homedir(), '.claude', 'channels', sanitizeTelegramStateId(id))
 }
 
+/** [2026-05-09] 非 Telegram 会话隔离目录：避免插件回落默认 channels/telegram 抢占长轮询 */
+function nonChannelTelegramStateDir(sessionId: string): string {
+  return telegramStateDir(`_feng_nonchannel_${sessionId}`)
+}
+
+/** [2026-05-09] 非 Telegram 会话显式去 token 化：确保插件拿不到历史 .env / bot.pid */
+function ensureTokenlessTelegramStateDir(absDir: string): void {
+  try {
+    mkdirSync(absDir, { recursive: true })
+    try { unlinkSync(join(absDir, '.env')) } catch { /* may not exist */ }
+    try { unlinkSync(join(absDir, 'bot.pid')) } catch { /* may not exist */ }
+  } catch (e) {
+    console.warn('[telegram-channel] failed to prepare tokenless dir:', absDir, e)
+  }
+}
+
 function prepareTelegramChannel(
   sessionId: string,
   settings: ClaudeSettings,
   requested?: TelegramChannelSessionConfig,
   shellOnly?: boolean
 ): PreparedTelegramChannel {
-  if (shellOnly) return { config: requested, launchEnabled: false }
+  const isolatedDir = nonChannelTelegramStateDir(sessionId)
+  if (shellOnly) {
+    ensureTokenlessTelegramStateDir(isolatedDir)
+    return {
+      config: requested,
+      env: { TELEGRAM_STATE_DIR: isolatedDir },
+      launchEnabled: false,
+      stateDirAbs: isolatedDir
+    }
+  }
   const global = settings.telegramChannel
   /* [2026-05-08] 原 enableForNewSessions + 首条预设：改为 enabled + defaultTelegramFromGlobal */
   const config = requested ?? (global ? defaultTelegramFromGlobal(global) : undefined)
-  if (!config) return { launchEnabled: false }
-  if (!config.enabled) return { config, launchEnabled: false }
+  if (!config) {
+    ensureTokenlessTelegramStateDir(isolatedDir)
+    return {
+      env: { TELEGRAM_STATE_DIR: isolatedDir },
+      launchEnabled: false,
+      stateDirAbs: isolatedDir
+    }
+  }
+  if (!config.enabled) {
+    ensureTokenlessTelegramStateDir(isolatedDir)
+    return {
+      config,
+      env: { TELEGRAM_STATE_DIR: isolatedDir },
+      launchEnabled: false,
+      stateDirAbs: isolatedDir
+    }
+  }
   const legacyGlobal = (config as TelegramChannelSessionConfig).useGlobalDefault === true
   const token = (legacyGlobal ? global?.defaultBotToken : config.botToken)?.trim()
-  /* [2026-05-08] 原 || session-${sessionId}：未填时落到 feng 专用子目录名；未填时默认 telegram 与 ~/.claude/channels/telegram 约定一致。 */
-  const stateDirId = config.stateDirId?.trim() || 'telegram'
+  /*
+   * [2026-05-09] 原 || 'telegram'：两个不同 bot token 若都未填 stateDirId，共享同一目录；
+   * bot2 会用自己的 token 覆盖 .env 并删除 bot.pid，导致 bot1 长轮询断开。
+   * 改为以 token 末 8 位哈希自动生成唯一目录，不同 token 互不干扰。
+   * 显式填写 stateDirId 的场景继续沿用用户配置，向后兼容。
+   */
+  const stateDirId =
+    config.stateDirId?.trim() ||
+    (token
+      ? `telegram-${createHash('md5').update(token).digest('hex').slice(0, 8)}`
+      : 'telegram')
   const effectiveConfig: TelegramChannelSessionConfig = {
     ...config,
     stateDirId
   }
   if (!token) {
     console.warn('[telegram-channel] enabled but bot token is empty; channel launch skipped')
-    return { config: effectiveConfig, launchEnabled: false }
+    ensureTokenlessTelegramStateDir(isolatedDir)
+    return {
+      config: effectiveConfig,
+      env: { TELEGRAM_STATE_DIR: isolatedDir },
+      launchEnabled: false,
+      stateDirAbs: isolatedDir
+    }
   }
   const dir = telegramStateDir(stateDirId)
   console.log('[telegram-channel] prepare', {
@@ -363,8 +418,24 @@ function prepareTelegramChannel(
     try { unlinkSync(join(dir, 'bot.pid')) } catch { /* may not exist */ }
   } catch (e) {
     console.warn('[telegram-channel] failed to prepare state dir:', e)
-    return { config: effectiveConfig, launchEnabled: false }
+    ensureTokenlessTelegramStateDir(isolatedDir)
+    return {
+      config: effectiveConfig,
+      env: { TELEGRAM_STATE_DIR: isolatedDir },
+      launchEnabled: false,
+      stateDirAbs: isolatedDir
+    }
   }
+  /* [2026-05-09] 旧逻辑仅在 launchEnabled 时设置 TELEGRAM_STATE_DIR，导致其它会话回落到 channels/telegram 干扰 bot1/bot2。 */
+  // return {
+  //   config: effectiveConfig,
+  //   env: {
+  //     TELEGRAM_STATE_DIR: dir,
+  //     TELEGRAM_BOT_TOKEN: token
+  //   },
+  //   launchEnabled: true,
+  //   stateDirAbs: dir
+  // }
   return {
     config: effectiveConfig,
     env: {
