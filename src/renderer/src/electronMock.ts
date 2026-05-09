@@ -103,6 +103,10 @@ export function injectMockElectronAPI(): void {
       appMaximize: noop,
       appClose: noop,
       getVersion: async () => '0.0.0',
+      whatsNew: {
+        shouldShow: async () => ({ show: false, version: '0.0.0' }),
+        markSeen: async () => ({ success: true })
+      },
       openDevTools: noop,
       showNotification: (_title: string, _body: string) => {},
       tokenData: {

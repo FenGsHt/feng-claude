@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useRef, useState, useEffect, useMemo } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import type { Session } from '../../types/session'
 import type { ClaudeSettings, ApiProfile, TelegramBotPreset, TelegramChannelSessionConfig } from '../../types/settings'
@@ -255,10 +255,23 @@ export function TabBar(): React.ReactElement {
     sessionId: string
     rect: { top: number; right: number }
   } | null>(null)
-  /** [2026-05-08] 安装/配对说明弹窗（不含 Token 输入） */
+  /** [2026-05-08] 安装/配对说明弹窗；[2026-05-09] 记录打开时标签 id 以填入 stateDir */
   const [showTelegramSetupGuide, setShowTelegramSetupGuide] = useState(false)
+  const [telegramGuideSessionId, setTelegramGuideSessionId] = useState<string | null>(null)
   const badgeRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const telegramBadgeRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+
+  /* [2026-05-09] 安装说明灰框路径：优先会话 stateDirId；[2026-05-08] 不再要求 tc.enabled，否则退回 <STATE_DIR> 模板时 Claude 常仍读默认 telegram */
+  const telegramGuideResolvedDir = useMemo((): string | null => {
+    if (!telegramGuideSessionId) return null
+    const sess = sessions.find((s) => s.id === telegramGuideSessionId)
+    const fromSession = sess?.telegramChannel?.stateDirId?.trim()
+    if (fromSession) return fromSession
+    const g = settings?.telegramChannel
+    const fromGlobal =
+      g?.defaultStateDirId?.trim() || telegramPresets[0]?.stateDirId?.trim() || ''
+    return fromGlobal || 'telegram'
+  }, [telegramGuideSessionId, sessions, settings?.telegramChannel, telegramPresets])
 
   // Load settings to get profiles — re-fetch on broadcast changes
   useEffect(() => {
@@ -516,7 +529,11 @@ export function TabBar(): React.ReactElement {
           sessionTelegram={sessions.find((s) => s.id === telegramDropdownAnchor.sessionId)?.telegramChannel}
           onSelectNone={() => handleTelegramClear(telegramDropdownAnchor.sessionId)}
           onSelectPreset={(presetId) => handleTelegramPresetSwitch(telegramDropdownAnchor.sessionId, presetId)}
-          onSetupGuide={() => setShowTelegramSetupGuide(true)}
+          onSetupGuide={() => {
+            const sid = telegramDropdownAnchor?.sessionId ?? activeSessionId ?? null
+            setTelegramGuideSessionId(sid)
+            setShowTelegramSetupGuide(true)
+          }}
           onClose={() => setTelegramDropdownAnchor(null)}
           anchorRect={telegramDropdownAnchor.rect}
           labels={{
@@ -528,7 +545,14 @@ export function TabBar(): React.ReactElement {
         />
       )}
 
-      <TelegramSetupGuideDialog open={showTelegramSetupGuide} onClose={() => setShowTelegramSetupGuide(false)} />
+      <TelegramSetupGuideDialog
+        open={showTelegramSetupGuide}
+        onClose={() => {
+          setShowTelegramSetupGuide(false)
+          setTelegramGuideSessionId(null)
+        }}
+        resolvedStateDirId={telegramGuideResolvedDir}
+      />
     </div>
   )
 }

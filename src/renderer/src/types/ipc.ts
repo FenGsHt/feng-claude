@@ -32,6 +32,10 @@ export const IPC = {
   APP_MAXIMIZE: 'app:maximize',
   APP_CLOSE: 'app:close',
   APP_GET_VERSION: 'app:getVersion',
+  /** [2026-05-08] 当前安装版本是否尚未展示过「新版本介绍」 */
+  APP_WHATS_NEW_SHOULD_SHOW: 'app:whatsNewShouldShow',
+  /** [2026-05-08] 用户关闭介绍后记下版本号 */
+  APP_WHATS_NEW_MARK_SEEN: 'app:whatsNewMarkSeen',
 
   /** [2026-04-29] 打开 Chrome DevTools（开发者模式用） */
   APP_OPEN_DEVTOOLS: 'app:openDevTools',
@@ -137,6 +141,12 @@ export interface TelegramChannelCheckResult {
   channelsFlag: boolean
   telegramPluginInstalled: boolean
   error?: string
+}
+
+/** [2026-05-08] 主进程：当前安装版本是否尚未展示过「新版本介绍」 */
+export interface WhatsNewShouldShowResult {
+  show: boolean
+  version: string
 }
 
 export interface SkillEntry {

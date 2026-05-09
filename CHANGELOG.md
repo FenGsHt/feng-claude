@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.9] - 2026-05-08
+
+### 新功能 | New Features
+- **新版本介绍弹窗**：安装或升级后首次启动时展示当前版本要点（可读后一键关闭，按版本号仅提示一次）
+- **Telegram 配对说明**：安装说明弹窗内灰框改为面向用户的简短步骤；配对路径在未启用会话 Telegram 时仍可从全局预设解析，减少误读默认 `telegram` 目录
+
+### 修复 | Bug Fixes
+- **Windows PTY 子进程残留**：关闭标签或退出应用时对 PTY 根进程执行 `taskkill /T /F`，尽量结束 Bun / Claude 等子进程树
+
+---
+
 ## [0.6.7] - 2026-05-06
 
 ### 新功能 | New Features

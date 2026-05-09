@@ -187,9 +187,44 @@ function scrollbackDir(): string {
   return join(getConfigDir(), 'scrollback')
 }
 
+/** [2026-05-08] Windows：仅 pty.kill() 时 Bun/Node 等孙进程常残留；对 PTY 根 PID 做 /T 整树结束。 */
+function killWindowsPtyProcessTree(pid: number): void {
+  if (!Number.isFinite(pid) || pid <= 0) return
+  try {
+    spawnSync('taskkill', ['/PID', String(Math.floor(pid)), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+      timeout: 20_000
+    })
+  } catch {
+    /* 进程已退出或权限不足时忽略 */
+  }
+}
+
 function scrollbackPath(workdir: string): string {
   const hash = createHash('md5').update(workdir.replace(/\\/g, '/').toLowerCase()).digest('hex')
   return join(scrollbackDir(), `${hash}.log`)
+}
+
+/**
+ * [2026-05-09] 仅注入路径，不含 Token。用户反馈：外嵌/插件侧 Read 仍落到 `channels\\telegram\\access.json`，
+ * 因 Bun/工具子进程未继承 PTY 的 TELEGRAM_STATE_DIR；在启动行再写一遍，与 PTY env 双保险。
+ */
+function shellTelegramStateDirPrefix(absDir: string, isWindows: boolean, shell: string): string {
+  const t = absDir.trim()
+  if (!t) return ''
+  const lower = shell.toLowerCase()
+  const useUnixStyle = !isWindows || lower.includes('bash') || lower.includes('sh.exe') || lower.includes('msys')
+  if (useUnixStyle) {
+    const sh = t.replace(/'/g, `'\\''`)
+    return `TELEGRAM_STATE_DIR='${sh}' `
+  }
+  if (lower.includes('pwsh') || lower.includes('powershell')) {
+    const lit = t.replace(/'/g, "''")
+    return `$env:TELEGRAM_STATE_DIR='${lit}'; `
+  }
+  const cmdEscaped = t.replace(/"/g, '""')
+  return `set "TELEGRAM_STATE_DIR=${cmdEscaped}"&& `
 }
 
 /** [2026-04-23] 原固定 `claude\\r`；现按设置附加 --permission-mode（Claude Code 官方 CLI）
@@ -197,7 +232,14 @@ function scrollbackPath(workdir: string): string {
 function claudeLaunchLine(
   settings: ClaudeSettings,
   isWindows: boolean,
-  opts?: { continueSession?: boolean; telegramChannelEnabled?: boolean }
+  opts?: {
+    continueSession?: boolean
+    telegramChannelEnabled?: boolean
+    /** [2026-05-09] ~/.claude/channels/<id> 绝对路径，与 telegramChannelEnabled 同时为真时写入启动行前缀 */
+    telegramStateDirAbs?: string
+    /** [2026-05-09] PTY 使用的 shell，用于 Windows 下 cmd / PowerShell / Git Bash 语法分支 */
+    ptyShell?: string
+  }
 ): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
   let line = `claude --permission-mode ${mode}`
@@ -212,7 +254,11 @@ function claudeLaunchLine(
   if (addDir) {
     line += ` --add-dir ${quoteAddDirPath(addDir, isWindows)}`
   }
-  return `${line}\r`
+  const prefix =
+    opts?.telegramChannelEnabled && opts.telegramStateDirAbs
+      ? shellTelegramStateDirPrefix(opts.telegramStateDirAbs, isWindows, opts.ptyShell ?? (isWindows ? 'cmd.exe' : ''))
+      : ''
+  return `${prefix}${line}\r`
 }
 
 interface PtySession {
@@ -229,6 +275,10 @@ interface PtySession {
   continueFallbackDone: boolean
   /** [2026-05-08] 与会话创建时 prepareTelegramChannel.launchEnabled 一致；shell 误判或 Claude 退出后的自动重跑须沿用，否则会丢掉 --channels */
   telegramChannelLaunchEnabled: boolean
+  /** [2026-05-09] 供 claude 启动行再次注入 TELEGRAM_STATE_DIR（子进程未继承 PTY env 时仍指向正确 channels 子目录） */
+  telegramStateDirAbs?: string
+  /** [2026-05-09] 创建 PTY 时使用的 shell 路径，重跑 claude 时与首启语法一致 */
+  ptyShell: string
   /** [2026-05-06] daemon mode: socket connection instead of direct PTY */
   daemonSocket?: net.Socket
   daemonStatePath?: string
@@ -238,6 +288,8 @@ interface PreparedTelegramChannel {
   config?: TelegramChannelSessionConfig
   env?: Record<string, string>
   launchEnabled: boolean
+  /** [2026-05-09] 与 env.TELEGRAM_STATE_DIR 相同；仅 launchEnabled 时存在 */
+  stateDirAbs?: string
 }
 
 function sanitizeTelegramStateId(value: string): string {
@@ -319,7 +371,8 @@ function prepareTelegramChannel(
       TELEGRAM_STATE_DIR: dir,
       TELEGRAM_BOT_TOKEN: token
     },
-    launchEnabled: true
+    launchEnabled: true,
+    stateDirAbs: dir
   }
 }
 
@@ -460,7 +513,9 @@ export class PtyManager {
       scrollbackSize: 0,
       usedContinue: !!resume,
       continueFallbackDone: false,
-      telegramChannelLaunchEnabled: preparedTelegram.launchEnabled
+      telegramChannelLaunchEnabled: preparedTelegram.launchEnabled,
+      telegramStateDirAbs: preparedTelegram.stateDirAbs,
+      ptyShell: shell
     }
 
     // [2026-05-06] Shell-only 会话不自动启动 Claude Code，直接保持 shell 状态
@@ -469,7 +524,9 @@ export class PtyManager {
         session.firstAutoLaunchAt = Date.now()
         ptyProcess.write(claudeLaunchLine(s, isWindows, {
           continueSession: !!resume,
-          telegramChannelEnabled: session.telegramChannelLaunchEnabled
+          telegramChannelEnabled: session.telegramChannelLaunchEnabled,
+          telegramStateDirAbs: session.telegramStateDirAbs,
+          ptyShell: session.ptyShell
         }))
         session.claudeRunning = true
       }, 300)
@@ -525,7 +582,9 @@ export class PtyManager {
             session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
             ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
-              telegramChannelEnabled: session.telegramChannelLaunchEnabled
+              telegramChannelEnabled: session.telegramChannelLaunchEnabled,
+              telegramStateDirAbs: session.telegramStateDirAbs,
+              ptyShell: session.ptyShell
             }))
           }
         }, 300)
@@ -556,7 +615,9 @@ export class PtyManager {
              * 首次启动若很快出现类似 cmd 提示符的输出，会误判「已回 shell」并在 ~500ms 再写一行 claude，
              * 该行丢失 --channels，用户误以为 Telegram Channel 从未启用。 */
             ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
-              telegramChannelEnabled: session.telegramChannelLaunchEnabled
+              telegramChannelEnabled: session.telegramChannelLaunchEnabled,
+              telegramStateDirAbs: session.telegramStateDirAbs,
+              ptyShell: session.ptyShell
             }))
           }
         }, 500)
@@ -606,6 +667,7 @@ export class PtyManager {
       usedContinue: false,
       continueFallbackDone: false,
       telegramChannelLaunchEnabled: false,
+      ptyShell: shell,
       daemonStatePath: statePath
     }
     this.sessions.set(sessionId, session)
@@ -739,7 +801,16 @@ export class PtyManager {
         try { session.daemonSocket.destroy() } catch { /* ignore */ }
       } else {
         this.flushScrollback(session)
-        try { session.ptyProcess?.kill() } catch { /* already dead */ }
+        const proc = session.ptyProcess
+        if (proc) {
+          if (process.platform === 'win32') {
+            /* [2026-05-08] 先整树 taskkill 再 kill PTY：先 kill PTY 时 shell 已死，/T 可能对已孤儿化的 Bun 无效 */
+            killWindowsPtyProcessTree(proc.pid)
+            try { proc.kill() } catch { /* already dead */ }
+          } else {
+            try { proc.kill() } catch { /* already dead */ }
+          }
+        }
       }
       this.sessions.delete(sessionId)
     }

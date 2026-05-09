@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings, ApiProfile, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult, WhatsNewShouldShowResult } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -262,6 +262,12 @@ const electronAPI = {
   appMaximize: (): void => ipcRenderer.send(IPC.APP_MAXIMIZE),
   appClose: (): void => ipcRenderer.send(IPC.APP_CLOSE),
   getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_GET_VERSION),
+
+  whatsNew: {
+    shouldShow: (): Promise<WhatsNewShouldShowResult> => ipcRenderer.invoke(IPC.APP_WHATS_NEW_SHOULD_SHOW),
+    markSeen: (version?: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.APP_WHATS_NEW_MARK_SEEN, { version })
+  },
 
   openDevTools: (): void => ipcRenderer.send(IPC.APP_OPEN_DEVTOOLS),
 

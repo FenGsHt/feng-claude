@@ -17,11 +17,12 @@ import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginMana
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
 import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
-import type { McpServerConfig, SessionCreatePayload } from '../renderer/src/types/ipc'
+import type { McpServerConfig, SessionCreatePayload, WhatsNewShouldShowResult } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
 import { startApiProxy, stopApiProxy, isApiProxyRunning } from './apiProxyServer'
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 import { PetLogStore } from './petLogStore'
+import { getLastSeenWhatsNewVersion, setLastSeenWhatsNewVersion } from './appMetaStore'
 
 const petLogStore = new PetLogStore()
 
@@ -427,6 +428,18 @@ export function registerIpcHandlers(
   })
   ipcMain.handle(IPC.APP_GET_VERSION, async () => {
     return app.getVersion()
+  })
+
+  ipcMain.handle(IPC.APP_WHATS_NEW_SHOULD_SHOW, (): WhatsNewShouldShowResult => {
+    const version = app.getVersion()
+    const last = getLastSeenWhatsNewVersion()
+    return { show: last !== version, version }
+  })
+
+  ipcMain.handle(IPC.APP_WHATS_NEW_MARK_SEEN, (_e, payload?: { version?: string }) => {
+    const v = (payload?.version ?? app.getVersion()).trim()
+    if (v) setLastSeenWhatsNewVersion(v)
+    return { success: true as const }
   })
 
   // ── Developer Mode ──────────────────────────────────────────

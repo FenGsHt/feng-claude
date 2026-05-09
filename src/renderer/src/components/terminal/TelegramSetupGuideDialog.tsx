@@ -1,15 +1,29 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useI18n } from '../../i18n'
 import { navigateToSettingsTab } from '../sidebar/Sidebar'
+import { buildTelegramMultiBotPairPrompt } from '../../lib/telegramPairPrompt'
 
 /** [2026-05-08] 仅展示 Bun / 插件 / 配对说明；Bot Token 须在设置页配置 */
 interface Props {
   open: boolean
   onClose: () => void
+  /** [2026-05-09] 当前标签会话解析出的 stateDirId；有值时 buildTelegramMultiBotPairPrompt 预填路径（无 <STATE_DIR>） */
+  resolvedStateDirId?: string | null
 }
 
-export function TelegramSetupGuideDialog({ open, onClose }: Props): React.ReactElement | null {
+export function TelegramSetupGuideDialog({
+  open,
+  onClose,
+  resolvedStateDirId
+}: Props): React.ReactElement | null {
   const { t, lang } = useI18n()
+
+  const pairBody = useMemo(() => {
+    const id = resolvedStateDirId?.trim()
+    if (id) return buildTelegramMultiBotPairPrompt(lang, id)
+    return lang === 'zh' ? t.settings.telegramMultiBotPairPromptZh : t.settings.telegramMultiBotPairPromptEn
+  }, [resolvedStateDirId, lang, t.settings])
+
   if (!open) return null
 
   return (
@@ -51,10 +65,12 @@ export function TelegramSetupGuideDialog({ open, onClose }: Props): React.ReactE
             </pre>
           </section>
 
+          {/* [2026-05-10] 原 ③ /telegram:access + ④ 合并：首绑与多 Bot 均用同一段复制给 Claude */}
+          {/* [2026-05-08] 配对：不再单独展示灰字 intro，说明合并进下方可复制块 */}
           <section className="space-y-2 border-t border-claude-border/50 pt-3">
-            <h3 className="text-[11px] font-semibold leading-snug text-claude-text">{t.settings.telegramStepPairTitle}</h3>
-            <pre className="mt-0 mb-0 overflow-x-auto rounded-md border border-claude-border/80 bg-black/40 px-2.5 py-2 font-mono text-[10px] leading-snug text-amber-100/95 select-all">
-              {t.settings.telegramStepPairCmd}
+            <h3 className="text-[11px] font-semibold leading-snug text-claude-text">{t.settings.telegramStepPairUnifiedTitle}</h3>
+            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-claude-border/80 bg-black/40 px-2.5 py-2 font-mono text-[9px] leading-snug text-amber-100/95 select-all">
+              {pairBody}
             </pre>
           </section>
         </div>

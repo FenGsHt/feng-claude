@@ -175,8 +175,23 @@ export const zh = {
       '默认装在「用户文件夹\\.bun\\bin」时，Feng 会自动把它加入内嵌终端 PATH。若装在别的路径，请把对应的 bin 目录加入系统环境变量 PATH，并重启 Feng。',
     telegramStepPluginTitle: '② 安装 Telegram 插件 — 在本窗口终端出现提示符后执行：',
     telegramStepPluginCmd: '/plugin install telegram@claude-plugins-official',
-    telegramStepPairTitle: '③ 配对 Telegram Bot — 启动 Claude 后：先在 Telegram 里给 Bot 发一条消息，再在终端输入（把尖括号里的配对码换成 Bot 回复给你的）：',
-    telegramStepPairCmd: '/telegram:access pair <配对码>',
+    /** [2026-05-10] 原分 ③ /telegram:access 与 ④ 多目录手动配对；合并为统一「复制给 Claude」流程（含首次 telegram 目录） */
+    telegramStepPairUnifiedTitle: '③ 配对 Telegram Bot',
+    /** [2026-05-08] 弹窗内不再展示；保留键以兼容旧引用 */
+    telegramStepPairUnifiedIntro: '',
+    /** [2026-05-08] 无 stateDir 兜底：末尾接六位码；路径手改 <STATE_DIR> */
+    telegramMultiBotPairPromptZh: `在 Telegram 向 Bot 发消息取得六位码。复制本框全部内容，在末尾紧接六位码（勿加引号），一并发给 Claude 完成配对；勿在终端执行 /telegram:access。
+（若路径中仍是 <STATE_DIR>，先改成设置里的「状态目录」再复制。）
+
+本 Bot 状态目录：
+Windows：%USERPROFILE%\\.claude\\channels\\<STATE_DIR>
+macOS/Linux：$HOME/.claude/channels/<STATE_DIR>`,
+    telegramMultiBotPairPromptEn: `Get the 6-character code from your bot in Telegram. Copy everything in this box, append the code right at the end (no quotes), and send it all to Claude to finish pairing. Do not run /telegram:access in the terminal.
+(Replace <STATE_DIR> in paths with your preset state-dir id if needed.)
+
+State dir for this bot:
+Windows: %USERPROFILE%\\.claude\\channels\\<STATE_DIR>
+macOS/Linux: $HOME/.claude/channels/<STATE_DIR>`,
     telegramPresetSectionTitle: 'Bot 预设',
     telegramPresetPlaceholder: '快捷：切换 Bot 预设',
     telegramPresetSaveAs: '将当前表单保存为预设',
@@ -188,7 +203,7 @@ export const zh = {
     telegramPresetColName: '名称',
     telegramPresetColStateDir: 'State Dir',
     telegramPresetRemove: '删除',
-    /** [2026-05-08] 设置页：开关 + 多条预设；弹窗仍用 telegramStep* / telegramBunHint */
+    /** [2026-05-08] 设置页：开关 + 多条预设；弹窗内配对见 telegramStepPairUnified* */
     telegramSimpleEnable: '启用 Telegram Channel',
     telegramSimpleTokenPlaceholder: 'TELEGRAM_BOT_TOKEN',
     telegramSimpleStateDirPlaceholder: 'State Dir（默认 telegram）',
@@ -196,7 +211,7 @@ export const zh = {
     telegramPresetAddNamePh: '预设名称',
     telegramPresetAddBtn: '添加预设',
     telegramPresetsMultiHint:
-      '保存设置后生效。可配置多组 Bot：列表第一条为新建会话默认；下方可继续添加。标签栏药丸可切换到任一条。状态目录按预设名称自动生成（~/.claude/channels/<id>），改名会对应新目录；同名冲突会自动加 -2、-3。插件依赖 Bun。同一 Bot Token 请勿在多窗口同时复用。'
+      '保存设置后生效。可配置多组 Bot：列表第一条为新建会话默认；下方可继续添加。标签栏药丸可切换到任一条。状态目录按预设名称自动生成（~/.claude/channels/<id>），改名会对应新目录；同名冲突会自动加 -2、-3。插件依赖 Bun。同一 Bot Token 请勿在多窗口同时复用。配对：从标签栏药丸打开「安装与配对说明」第③节，复制灰框全文后在末尾紧接六位码发给 Claude 即可。'
   },
   // Guide panel
   guide: {

@@ -167,9 +167,22 @@ export const en: Translations = {
       'If Bun lands in ~/.bun/bin, Feng adds it to the embedded terminal PATH automatically. If you installed elsewhere, add that bin folder to your system PATH and restart Feng.',
     telegramStepPluginTitle: '② Install the Telegram plugin — run in this pane after you see the shell prompt:',
     telegramStepPluginCmd: '/plugin install telegram@claude-plugins-official',
-    telegramStepPairTitle:
-      '③ Pair your Telegram bot — after Claude starts: send any message to your bot in Telegram, then run in the terminal (replace the pairing code with what the bot sends you):',
-    telegramStepPairCmd: '/telegram:access pair <pairing-code>',
+    /** [2026-05-10] Merged old step ③ /telegram:access + step ④ into one copy-paste flow (includes first-time telegram dir) */
+    telegramStepPairUnifiedTitle: '③ Pair your Telegram bot',
+    telegramStepPairUnifiedIntro: '',
+    telegramMultiBotPairPromptZh: `在 Telegram 向 Bot 发消息取得六位码。复制本框全部内容，在末尾紧接六位码（勿加引号），一并发给 Claude 完成配对；勿在终端执行 /telegram:access。
+（若路径中仍是 <STATE_DIR>，先改成设置里的「状态目录」再复制。）
+
+本 Bot 状态目录：
+Windows：%USERPROFILE%\\.claude\\channels\\<STATE_DIR>
+macOS/Linux：$HOME/.claude/channels/<STATE_DIR>`,
+    /** [2026-05-08] Fallback EN grey box */
+    telegramMultiBotPairPromptEn: `Get the 6-character code from your bot in Telegram. Copy everything in this box, append the code right at the end (no quotes), and send it all to Claude to finish pairing. Do not run /telegram:access in the terminal.
+(Replace <STATE_DIR> in paths with your preset state-dir id if needed.)
+
+State dir for this bot:
+Windows: %USERPROFILE%\\.claude\\channels\\<STATE_DIR>
+macOS/Linux: $HOME/.claude/channels/<STATE_DIR>`,
     telegramPresetSectionTitle: 'Bot presets',
     telegramPresetPlaceholder: 'Quick: switch bot preset',
     telegramPresetSaveAs: 'Save current form as preset',
@@ -181,7 +194,7 @@ export const en: Translations = {
     telegramPresetColName: 'Name',
     telegramPresetColStateDir: 'State Dir',
     telegramPresetRemove: 'Remove',
-    /** [2026-05-08] Settings: toggle + multiple presets; guide dialog still uses telegramStep* */
+    /** [2026-05-08] Settings: toggle + multiple presets; pairing copy-paste: telegramStepPairUnified* */
     telegramSimpleEnable: 'Enable Telegram Channel',
     telegramSimpleTokenPlaceholder: 'TELEGRAM_BOT_TOKEN',
     telegramSimpleStateDirPlaceholder: 'State Dir (default: telegram)',
@@ -189,7 +202,7 @@ export const en: Translations = {
     telegramPresetAddNamePh: 'Preset name',
     telegramPresetAddBtn: 'Add preset',
     telegramPresetsMultiHint:
-      'Save settings to apply. You can add multiple bots: the first row is the default for new sessions; add more below. Use the tab-bar pill to pick a preset. State dir under ~/.claude/channels/<id> is derived from the preset name (rename → new dir; duplicates get -2, -3). Requires Bun. Do not reuse the same bot token across multiple running panes.'
+      'Save settings to apply. You can add multiple bots: the first row is the default for new sessions; add more below. Use the tab-bar pill to pick a preset. State dir under ~/.claude/channels/<id> is derived from the preset name (rename → new dir; duplicates get -2, -3). Requires Bun. Do not reuse the same bot token across multiple running panes. Pairing: open the setup guide from the tab pill (step ③), copy the gray box, then append the 6-character code at the end and send to Claude.'
   },
   guide: {
     searchPlaceholder: 'Search tips...',

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { AppShell } from './components/layout/AppShell'
 import { UpdateNotification } from './components/sidebar/UpdateNotification'
 import { OnboardingOverlay, isOnboardingComplete } from './components/onboarding/OnboardingOverlay'
+import { WhatsNewDialog } from './components/layout/WhatsNewDialog'
 import { navigateToSettingsTab } from './components/sidebar/Sidebar'
 import { usePty } from './hooks/usePty'
 import { useWorkspacePersistence } from './hooks/useWorkspacePersistence'
@@ -9,6 +10,7 @@ import { useTheme } from './hooks/useTheme'
 import { useSessionStore } from './store/sessionStore'
 import { parsePersistedWorkspace } from './lib/workspaceSerialize'
 import { loadPersistedWorkspace } from './lib/workspaceIpc'
+import { fallbackWhatsNewCopy, getWhatsNewCopy } from './lib/whatsNewCatalog'
 
 export default function App(): React.ReactElement {
   useTheme()
@@ -17,6 +19,8 @@ export default function App(): React.ReactElement {
   const [bootstrapped, setBootstrapped] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingReady, setOnboardingReady] = useState(false)
+  /** [2026-05-08] 非 null 时展示新版本介绍弹窗 */
+  const [whatsNewVersion, setWhatsNewVersion] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -70,12 +74,38 @@ export default function App(): React.ReactElement {
     }
   }, [])
 
+  /* [2026-05-08] 首次进入新版本：引导结束后再查，避免与首次配置遮罩叠在一起 */
+  useEffect(() => {
+    if (!bootstrapped || !onboardingReady || showOnboarding) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await window.electronAPI.whatsNew.shouldShow()
+        if (cancelled || !r?.show) return
+        setWhatsNewVersion(r.version)
+      } catch (e) {
+        console.warn('[App] whatsNew.shouldShow failed', e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrapped, onboardingReady, showOnboarding])
+
   useWorkspacePersistence(bootstrapped)
 
   const handleOnboardingComplete = (provider: 'anthropic' | 'third-party') => {
     setShowOnboarding(false)
     // Navigate to settings tab after onboarding
     setTimeout(() => navigateToSettingsTab(), 100)
+  }
+
+  const handleWhatsNewDismiss = (): void => {
+    const v = whatsNewVersion
+    if (!v) return
+    void window.electronAPI.whatsNew.markSeen(v).finally(() => {
+      setWhatsNewVersion(null)
+    })
   }
 
   if (!bootstrapped) {
@@ -88,6 +118,14 @@ export default function App(): React.ReactElement {
       <UpdateNotification />
       {showOnboarding && onboardingReady && (
         <OnboardingOverlay onComplete={handleOnboardingComplete} />
+      )}
+      {whatsNewVersion !== null && (
+        <WhatsNewDialog
+          open
+          version={whatsNewVersion}
+          copy={getWhatsNewCopy(whatsNewVersion) ?? fallbackWhatsNewCopy(whatsNewVersion)}
+          onDismiss={handleWhatsNewDismiss}
+        />
       )}
     </>
   )
