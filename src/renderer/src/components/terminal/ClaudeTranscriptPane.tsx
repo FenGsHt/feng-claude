@@ -894,7 +894,11 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     if (!isFallout) return
     if (!wasShowing || showAiWorkingBar) return       // 只在 true→false 时触发
     if (lastMeaningfulEntry?.kind !== 'assistant') return  // 只在助手回复完成时
-    const caps = Math.max(8, Math.min(99, Math.floor((lastMeaningfulEntry.text.length || 0) / 60)))
+    // output token 数 ÷ 10 作为瓶盖数；无 usage 时回退到文本长度估算
+    const outputTokens = lastMeaningfulEntry.usage?.output ?? 0
+    const caps = outputTokens > 0
+      ? Math.max(5, Math.min(999, Math.floor(outputTokens / 10)))
+      : Math.max(5, Math.min(99, Math.floor((lastMeaningfulEntry.text.length || 0) / 60)))
     setBottleCapCount(caps)
     assistantReplyCountRef.current += 1
     const n = assistantReplyCountRef.current
