@@ -55,6 +55,58 @@ html[data-theme='fallout'] #root {
   font-family: 'VT323', ui-monospace, monospace;
 }
 
+/*
+ * [2026-05-10] Pip-Boy 鼠标：左上指向磷光三角（SVG data-uri）；子元素 inherit，文本区/拖拽等单独例外。
+ * [2026-05-10] 三角略加宽底边，尖端热点仍为 (0,0)。
+ */
+html[data-theme='fallout'] * {
+  cursor: inherit !important;
+}
+
+html[data-theme='fallout'] body {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23aaff44' stroke='%23020502' stroke-width='0.7' stroke-linejoin='miter' d='M0.2 0.2L15 8.1L5 15.7Z'/%3E%3C/svg%3E")
+      0 0,
+    auto !important;
+}
+
+html[data-theme='fallout'] textarea,
+html[data-theme='fallout'] input[type='text'],
+html[data-theme='fallout'] input[type='search'],
+html[data-theme='fallout'] input[type='password'],
+html[data-theme='fallout'] input[type='email'],
+html[data-theme='fallout'] input[type='url'],
+html[data-theme='fallout'] input[type='tel'],
+html[data-theme='fallout'] input[type='number'],
+html[data-theme='fallout'] input:not([type]),
+html[data-theme='fallout'] [contenteditable='true'] {
+  cursor: text !important;
+}
+
+html[data-theme='fallout'] .cursor-col-resize {
+  cursor: col-resize !important;
+}
+
+html[data-theme='fallout'] .cursor-grab {
+  cursor: grab !important;
+}
+
+html[data-theme='fallout'] .cursor-grabbing,
+html[data-theme='fallout'] .active\:cursor-grabbing:active {
+  cursor: grabbing !important;
+}
+
+html[data-theme='fallout'] .cursor-not-allowed,
+html[data-theme='fallout'] :disabled {
+  cursor: not-allowed !important;
+}
+
+/* xterm 自行设置 canvas 光标；全局 inherit 会盖掉 I-beam/块光标 */
+html[data-theme='fallout'] .xterm,
+html[data-theme='fallout'] .xterm * {
+  cursor: revert !important;
+}
+
 html[data-theme='fallout'] ::selection {
   background: rgba(42, 255, 77, 0.28);
   color: inherit;
@@ -63,6 +115,168 @@ html[data-theme='fallout'] ::selection {
 html[data-theme='fallout'] :focus-visible {
   outline: 1.5px solid rgba(42, 255, 77, 0.55);
   outline-offset: 1px;
+}
+
+/* [2026-05-09] 外嵌/搜索等输入框不要焦点环与反色条，保持终端感（用户反馈） */
+html[data-theme='fallout'] textarea:focus,
+html[data-theme='fallout'] textarea:focus-visible,
+html[data-theme='fallout'] input[type='text']:focus,
+html[data-theme='fallout'] input[type='text']:focus-visible,
+html[data-theme='fallout'] input[type='search']:focus,
+html[data-theme='fallout'] input[type='search']:focus-visible {
+  outline: none !important;
+}
+
+html[data-theme='fallout'] textarea:focus,
+html[data-theme='fallout'] textarea:focus-visible {
+  box-shadow:
+    inset 0 0 10px rgba(42, 255, 77, 0.06),
+    0 0 0 1px rgba(42, 255, 77, 0.32) !important;
+}
+
+/* [2026-05-09] Pip-Boy 实心高亮：悬浮与焦点一致；链级 a 仅 :focus 避免正文链接整块泛绿。
+ * 红框钮（class 含 border-red）见下条，用红实心覆盖绿。 */
+html[data-theme='fallout'] button:hover:not(:disabled),
+html[data-theme='fallout'] button:focus:not(:disabled),
+html[data-theme='fallout'] button:focus-visible:not(:disabled),
+html[data-theme='fallout'] summary:hover,
+html[data-theme='fallout'] summary:focus,
+html[data-theme='fallout'] summary:focus-visible,
+html[data-theme='fallout'] select:hover:not(:disabled),
+html[data-theme='fallout'] select:focus:not(:disabled),
+html[data-theme='fallout'] select:focus-visible:not(:disabled),
+html[data-theme='fallout'] [role='tab']:hover,
+html[data-theme='fallout'] [role='tab']:focus,
+html[data-theme='fallout'] [role='tab']:focus-visible,
+html[data-theme='fallout'] [role='menuitem']:hover,
+html[data-theme='fallout'] [role='menuitem']:focus,
+html[data-theme='fallout'] [role='menuitem']:focus-visible,
+html[data-theme='fallout'] [role='option']:hover,
+html[data-theme='fallout'] [role='option']:focus,
+html[data-theme='fallout'] [role='option']:focus-visible,
+html[data-theme='fallout'] [role='switch']:hover,
+html[data-theme='fallout'] [role='switch']:focus,
+html[data-theme='fallout'] [role='switch']:focus-visible,
+html[data-theme='fallout'] [role='button']:hover,
+html[data-theme='fallout'] [role='button']:focus,
+html[data-theme='fallout'] [role='button']:focus-visible,
+html[data-theme='fallout'] .tab-item:hover,
+html[data-theme='fallout'] .tab-item:focus,
+html[data-theme='fallout'] .tab-item:focus-visible,
+html[data-theme='fallout'] .sidebar-tab-icon:hover,
+html[data-theme='fallout'] .sidebar-tab-icon:focus,
+html[data-theme='fallout'] .sidebar-tab-icon:focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  /* 原：半透明渐变 + inset 深色「内框」导致中间不亮
+  background: linear-gradient(
+    180deg,
+    rgba(42, 255, 77, 0.55) 0%,
+    rgba(42, 255, 77, 0.4) 50%,
+    rgba(42, 255, 77, 0.32) 100%
+  ) !important;
+  border-color: rgba(42, 255, 77, 0.58) !important;
+  box-shadow:
+    inset 0 0 0 2px rgba(2, 5, 2, 0.88),
+    0 0 18px rgba(42, 255, 77, 0.42),
+    0 0 44px rgba(42, 255, 77, 0.22) !important;
+  */
+  background: rgb(42, 255, 77) !important;
+  background-image: none !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+  -webkit-text-fill-color: #000 !important;
+  border-color: rgb(42, 255, 77) !important;
+  box-shadow:
+    0 0 14px rgba(42, 255, 77, 0.42),
+    0 0 32px rgba(42, 255, 77, 0.2) !important;
+  text-shadow: none !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme='fallout'] a:focus,
+html[data-theme='fallout'] a:focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  background: rgb(42, 255, 77) !important;
+  background-image: none !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+  -webkit-text-fill-color: #000 !important;
+  border-color: rgb(42, 255, 77) !important;
+  box-shadow:
+    0 0 14px rgba(42, 255, 77, 0.42),
+    0 0 32px rgba(42, 255, 77, 0.2) !important;
+  text-shadow: none !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tailwind 红框危险钮：悬浮/焦点与边框同色实心（如「中断」） */
+html[data-theme='fallout'] button[class*='border-red']:hover:not(:disabled),
+html[data-theme='fallout'] button[class*='border-red']:focus:not(:disabled),
+html[data-theme='fallout'] button[class*='border-red']:focus-visible:not(:disabled),
+html[data-theme='fallout'] [role='button'][class*='border-red']:hover,
+html[data-theme='fallout'] [role='button'][class*='border-red']:focus,
+html[data-theme='fallout'] [role='button'][class*='border-red']:focus-visible,
+html[data-theme='fallout'] a[class*='border-red']:hover,
+html[data-theme='fallout'] a[class*='border-red']:focus,
+html[data-theme='fallout'] a[class*='border-red']:focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  background: rgb(239, 68, 68) !important;
+  background-image: none !important;
+  color: #0a0202 !important;
+  font-weight: 700 !important;
+  -webkit-text-fill-color: #0a0202 !important;
+  border-color: rgb(239, 68, 68) !important;
+  box-shadow:
+    0 0 14px rgba(239, 68, 68, 0.5),
+    0 0 32px rgba(239, 68, 68, 0.28) !important;
+  text-shadow: none !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* [2026-05-09] 勿对 svg 强设 fill:currentColor：会继承到仅描边的 path，整块涂黑（如 worktree 六边形）。
+ * 父级 button 已有 color:#000，子节点上的 stroke/fill=currentColor 自然为描边/点色。 */
+html[data-theme='fallout'] button:hover:not(:disabled) svg,
+html[data-theme='fallout'] button:focus:not(:disabled) svg,
+html[data-theme='fallout'] button:focus-visible:not(:disabled) svg,
+html[data-theme='fallout'] a:focus svg,
+html[data-theme='fallout'] a:focus-visible svg,
+html[data-theme='fallout'] [role='menuitem']:hover svg,
+html[data-theme='fallout'] [role='menuitem']:focus svg,
+html[data-theme='fallout'] [role='menuitem']:focus-visible svg,
+html[data-theme='fallout'] [role='option']:hover svg,
+html[data-theme='fallout'] [role='option']:focus svg,
+html[data-theme='fallout'] [role='option']:focus-visible svg,
+html[data-theme='fallout'] [role='tab']:hover svg,
+html[data-theme='fallout'] [role='tab']:focus svg,
+html[data-theme='fallout'] [role='tab']:focus-visible svg,
+html[data-theme='fallout'] [role='switch']:hover svg,
+html[data-theme='fallout'] [role='switch']:focus svg,
+html[data-theme='fallout'] [role='switch']:focus-visible svg,
+html[data-theme='fallout'] [role='button']:hover svg,
+html[data-theme='fallout'] [role='button']:focus svg,
+html[data-theme='fallout'] [role='button']:focus-visible svg,
+html[data-theme='fallout'] .sidebar-tab-icon:hover svg,
+html[data-theme='fallout'] .sidebar-tab-icon:focus svg,
+html[data-theme='fallout'] .sidebar-tab-icon:focus-visible svg {
+  opacity: 1 !important;
+}
+
+html[data-theme='fallout'] button[class*='border-red']:hover:not(:disabled) svg,
+html[data-theme='fallout'] button[class*='border-red']:focus:not(:disabled) svg,
+html[data-theme='fallout'] button[class*='border-red']:focus-visible:not(:disabled) svg,
+html[data-theme='fallout'] [role='button'][class*='border-red']:hover svg,
+html[data-theme='fallout'] [role='button'][class*='border-red']:focus svg,
+html[data-theme='fallout'] [role='button'][class*='border-red']:focus-visible svg,
+html[data-theme='fallout'] a[class*='border-red']:hover svg,
+html[data-theme='fallout'] a[class*='border-red']:focus svg,
+html[data-theme='fallout'] a[class*='border-red']:focus-visible svg {
+  opacity: 1 !important;
 }
 
 /* CRT：滚动亮带 — [2026-05-08] 减轻波纹：亮度降至 0.04/0.06，周期拉长到 11s */
@@ -296,13 +510,14 @@ html[data-theme='fallout'] .xterm-theme-fallout::after {
   );
 }
 
-/* ── Fallout 输入框（EmbedSessionComposer textarea）────────────── */
+/* ── Fallout 输入框：composer 用全量 CRT 样式；单行 input 仅插入符，避免 18px/VT323 破坏侧栏布局 ─ */
 
 html[data-theme='fallout'] textarea {
   font-family: 'VT323', 'Courier New', Courier, monospace !important;
   font-size: 18px !important;
   letter-spacing: 0.8px;
   /* [2026-05-08] 复古磷光标颜色；caret-shape 在支持的浏览器下用块状插入点，更接终端感 */
+  /* [2026-05-09] block 在 Chromium 下占字格宽，比默认细竖线粗 */
   caret-color: #aaff44;
   /* 内嵌 CRT 泛光 */
   box-shadow:
@@ -312,6 +527,19 @@ html[data-theme='fallout'] textarea {
 
 @supports (caret-shape: block) {
   html[data-theme='fallout'] textarea {
+    caret-shape: block;
+  }
+}
+
+/* [2026-05-09] 侧栏搜索等：仅磷光色 + block 插入符 */
+html[data-theme='fallout'] input[type='text'],
+html[data-theme='fallout'] input[type='search'] {
+  caret-color: #aaff44;
+}
+
+@supports (caret-shape: block) {
+  html[data-theme='fallout'] input[type='text'],
+  html[data-theme='fallout'] input[type='search'] {
     caret-shape: block;
   }
 }
@@ -330,12 +558,14 @@ html[data-theme='fallout'] textarea {
 
 html[data-theme='fallout'] .fo-ai-stream-caret {
   display: inline-block;
-  width: 0.42em;
+  /* [2026-05-09] 原 0.42em 偏细；加粗竖条与 xterm bar 光标视觉一致 */
+  width: 0.62em;
+  min-width: 5px;
   min-height: 1.05em;
   margin-left: 2px;
   vertical-align: -0.12em;
   background: #aaff44;
-  box-shadow: 0 0 8px rgba(170, 255, 68, 0.55);
+  box-shadow: 0 0 10px rgba(170, 255, 68, 0.65);
   animation: fo-retro-caret-blink 1.05s steps(1, end) infinite;
 }
 

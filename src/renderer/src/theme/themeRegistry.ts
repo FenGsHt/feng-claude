@@ -110,6 +110,7 @@ export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {
     terminal: FALLOUT_TERMINAL_THEME,
     // [2026-05-06] Fallout 专属：复古点阵字体 VT323，稍大字号强化磷光屏感
     // [2026-05-08] 原 block 填满单元格；改为粗竖条 bar + cursorWidth，更接近老式终端 “|” 光标
+    // [2026-05-09] Fallout：加粗竖条光标（与 fallout-port .fo-ai-stream-caret 对齐）
     terminalOptions: {
       fontFamily: '"VT323", "Courier New", Courier, monospace',
       fontSize: 16,
@@ -117,7 +118,7 @@ export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {
       letterSpacing: 1.5,
       cursorBlink: true,
       cursorStyle: 'bar',
-      cursorWidth: 11
+      cursorWidth: 16
     }
   }
 }

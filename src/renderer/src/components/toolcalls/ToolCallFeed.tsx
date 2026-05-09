@@ -46,7 +46,8 @@ function relTime(ts: number): string {
 
 export function ToolCallFeed(): React.ReactElement {
   const calls = useToolCallStore((s) => s.calls)
-  const { sessions, activeSessionId } = useSessionStore()
+  const selectToolCall = useToolCallStore((s) => s.select)
+  const { sessions, activeSessionId, setActiveSession } = useSessionStore()
   const [selected, setSelected] = useState<ToolCallEntry | null>(null)
   const [filterSession, setFilterSession] = useState(true)
 
@@ -84,7 +85,11 @@ export function ToolCallFeed(): React.ReactElement {
             return (
               <div
                 key={`${call.id}-${call.timestamp}`}
-                onClick={() => clickable && setSelected(call)}
+                onClick={() => {
+                  if (call.sessionId !== activeSessionId) setActiveSession(call.sessionId)
+                  selectToolCall(call)
+                  if (clickable) setSelected(call)
+                }}
                 className={`flex items-start gap-2 px-3 py-2 border-b border-claude-border/50 group ${clickable ? 'cursor-pointer hover:bg-claude-surface/60' : ''}`}
               >
                 <span className={`mt-0.5 shrink-0 ${meta.color}`}>{meta.icon}</span>

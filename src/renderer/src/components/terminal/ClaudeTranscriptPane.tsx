@@ -9,6 +9,7 @@ import type { ClaudeTranscriptEntry, ClaudeTurnTokenUsage } from '../../types/ip
 import { formatLatencyMs, formatTokenCount } from '../../lib/formatTokens'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 import { useThemeStore } from '../../store/themeStore'
+import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 
 interface Props {
   sessionId: string
@@ -25,6 +26,14 @@ interface ToolGroupEntry {
 }
 
 type DisplayEntry = ClaudeTranscriptEntry | ToolGroupEntry
+
+function entryMatchesQuery(e: DisplayEntry, query: string): boolean {
+  if (!query) return false
+  if (e.kind === 'toolGroup') {
+    return `${e.text}\n${e.tools.join(' ')}`.toLowerCase().includes(query)
+  }
+  return `${e.text}\n${e.toolName ?? ''}`.toLowerCase().includes(query)
+}
 
 /** [2026-05-06] 底部固定条：会话 running 或已发送待响应时持续显示 loading，覆盖思考/工具/输出阶段 */
 function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): React.ReactElement | null {
@@ -52,19 +61,20 @@ function deriveAiWorkingLabel(args: {
   lastKind: ClaudeTranscriptEntry['kind'] | undefined
   latestToolName?: string
   toolFresh: boolean
+  /** [2026-05-09] JSONL 已流式输出但 PTY_STATUS 仍为 idle 滞后时，仍显示「正在输出」而非「等待中」 */
+  assistantStreaming: boolean
 }): string {
-  const { sessionBusy, pendingReply, lastKind, latestToolName, toolFresh } = args
+  const { sessionBusy, pendingReply, lastKind, latestToolName, toolFresh, assistantStreaming } = args
   if (latestToolName && toolFresh) {
     /* [2026-05-07] 原仅 sessionBusy 时显示工具名；PTY 状态短暂 idle 时也应提示工具仍在运行。 */
     return `运行工具 · ${latestToolName}`
   }
+  if (lastKind === 'thinking') return '思考中…'
+  if (lastKind === 'tool') return '运行工具…'
+  if (lastKind === 'assistant' && assistantStreaming) return '正在输出回复…'
   if (pendingReply && !sessionBusy) return '已发送，等待 Claude 响应…'
   if (!sessionBusy) return '等待中…'
   switch (lastKind) {
-    case 'thinking':
-      return '思考中…'
-    case 'tool':
-      return '运行工具…'
     case 'assistant':
       return '正在输出回复…'
     default:
@@ -112,6 +122,90 @@ function AssistantReplyMeta({
           </span>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function quoteTextForComposer(text: string): string {
+  const body = text
+    .trim()
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n')
+  return `${body}\n\n`
+}
+
+function BubbleActions({
+  sessionId,
+  text
+}: {
+  sessionId: string
+  text: string
+}): React.ReactElement {
+  /* [2026-05-09] 原用气泡下方浮层「已复制到剪贴板」；改为按钮框高亮 + 勾，更贴近操作点、不挡正文 */
+  const [copied, setCopied] = useState(false)
+  const hideCopiedRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (hideCopiedRef.current) clearTimeout(hideCopiedRef.current)
+    }
+  }, [])
+
+  const flashCopied = (): void => {
+    setCopied(true)
+    if (hideCopiedRef.current) clearTimeout(hideCopiedRef.current)
+    hideCopiedRef.current = setTimeout(() => {
+      setCopied(false)
+      hideCopiedRef.current = null
+    }, 2000)
+  }
+
+  return (
+    <div
+      className={`absolute right-2 top-2 z-[2] flex items-center gap-1 transition-opacity ${
+        copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+      }`}
+    >
+      <button
+        type="button"
+        className={
+          copied
+            ? 'flex items-center gap-0.5 rounded border-2 border-[var(--theme-success-text)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--theme-success-text)] shadow-[0_0_12px_-3px_var(--theme-success-text)] transition-colors duration-200'
+            : 'rounded border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] text-claude-muted transition-colors duration-200 hover:text-claude-text'
+        }
+        onClick={(ev) => {
+          ev.stopPropagation()
+          window.electronAPI.writeClipboardText(text)
+          flashCopied()
+        }}
+        aria-label={copied ? '已复制到剪贴板' : '复制到剪贴板'}
+      >
+        {copied ? (
+          <>
+            <svg className="h-3 w-3 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>已复制</span>
+          </>
+        ) : (
+          '复制'
+        )}
+      </button>
+      <button
+        type="button"
+        className="rounded border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] text-claude-muted hover:text-claude-text"
+        onClick={(ev) => {
+          ev.stopPropagation()
+          injectEmbedDraft(sessionId, quoteTextForComposer(text))
+        }}
+      >
+        引用
+      </button>
     </div>
   )
 }
@@ -246,7 +340,8 @@ function EntryBlock({
   if (e.kind === 'user') {
     return (
       <div className="flex w-full justify-end">
-        <div className="fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
+        <div className="group relative fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
+          <BubbleActions sessionId={sessionId} text={e.text} />
           <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--theme-accent-muted)]">你</div>
           <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-claude-text">{e.text}</pre>
         </div>
@@ -271,7 +366,8 @@ function EntryBlock({
   if (e.kind === 'assistant') {
     return (
       <div className="flex w-full justify-start">
-        <div className="fo-assistant-bubble max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
+        <div className="group relative fo-assistant-bubble max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
+          <BubbleActions sessionId={sessionId} text={e.text} />
           <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-claude-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--theme-success-text)]" aria-hidden />
             Claude
@@ -492,15 +588,21 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const themeMode = useThemeStore((s) => s.theme)
   const entries = useTranscriptStore((s) => s.bySession[sessionId] ?? [])
   const visibleEntries = useMemo(() => filterNoiseTranscriptEntries(entries), [entries])
+  const [search, setSearch] = useState('')
+  const [searchCursor, setSearchCursor] = useState(0)
+  const [focusPulse, setFocusPulse] = useState<{ messageId?: string; toolName?: string } | null>(null)
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
   const interruptSuppress = useEmbedInterruptSuppressStore(
     (s) => s.suppressWorkingBarBySession[sessionId] === true
   )
   const sessionStatus =
     useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status ?? 'idle')
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const sessionBusy = sessionStatus === 'running'
   const latestTool = useToolCallStore((s) => s.calls.find((c) => c.sessionId === sessionId))
+  const focusedToolCall = useToolCallStore((s) => s.selected)
   const scrollRootRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const stickToBottomRef = useRef(true)
   const [nearBottom, setNearBottom] = useState(true)
   /** [2026-05-06] 仅渲染 visibleEntries[startIndex..]；上滑加载更早消息 */
@@ -511,10 +613,81 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const historySessionRef = useRef<string | null>(null)
   const visibleLenRef = useRef(0)
 
-  const displayedEntries = useMemo(
-    () => aggregateToolEntries(visibleEntries.slice(historyStartIndex)),
-    [visibleEntries, historyStartIndex]
+  const query = search.trim().toLowerCase()
+  const displayedEntries = useMemo(() => {
+    const base = query
+      ? aggregateToolEntries(visibleEntries)
+      : aggregateToolEntries(visibleEntries.slice(historyStartIndex))
+    if (!query) return base
+    return base.filter((e) => entryMatchesQuery(e, query))
+  }, [visibleEntries, historyStartIndex, query])
+  const matchedCount = useMemo(
+    () => (query ? displayedEntries.filter((e) => entryMatchesQuery(e, query)).length : 0),
+    [displayedEntries, query]
   )
+  const activeMatchIndex =
+    matchedCount > 0 ? ((searchCursor % matchedCount) + matchedCount) % matchedCount : 0
+
+  useEffect(() => {
+    if (!focusedToolCall || focusedToolCall.sessionId !== sessionId) return
+    const root = scrollRootRef.current
+    if (!root) return
+    const escapedId = focusedToolCall.id.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    const byId = root.querySelector<HTMLElement>(`[data-transcript-msg="${escapedId}"]`)
+    if (byId) {
+      byId.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      const matchedMessage = byId.getAttribute('data-transcript-msg') ?? undefined
+      setFocusPulse({ messageId: matchedMessage, toolName: focusedToolCall.name.toLowerCase() })
+      window.setTimeout(
+        () =>
+          setFocusPulse((prev) =>
+            prev?.toolName === focusedToolCall.name.toLowerCase() ? null : prev
+          ),
+        1800
+      )
+      return
+    }
+    const byToolName = root.querySelector<HTMLElement>(
+      `[data-transcript-tool~="${focusedToolCall.name.toLowerCase()}"]`
+    )
+    byToolName?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setFocusPulse({ toolName: focusedToolCall.name.toLowerCase() })
+    window.setTimeout(
+      () => setFocusPulse((prev) => (prev?.toolName === focusedToolCall.name.toLowerCase() ? null : prev)),
+      1800
+    )
+  }, [focusedToolCall, sessionId, displayedEntries])
+
+  useEffect(() => {
+    if (!query || matchedCount === 0) return
+    const root = scrollRootRef.current
+    if (!root) return
+    const nodes = root.querySelectorAll<HTMLElement>('[data-transcript-match="1"]')
+    if (nodes.length === 0) return
+    const idx = Math.min(activeMatchIndex, nodes.length - 1)
+    const target = nodes[idx]
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [query, matchedCount, activeMatchIndex])
+
+  useEffect(() => {
+    if (matchedCount <= 0) {
+      setSearchCursor(0)
+      return
+    }
+    setSearchCursor((n) => ((n % matchedCount) + matchedCount) % matchedCount)
+  }, [matchedCount])
+
+  useEffect(() => {
+    if (activeSessionId !== sessionId) return
+    const onKey = (ev: KeyboardEvent): void => {
+      if (!(ev.ctrlKey || ev.metaKey) || ev.key.toLowerCase() !== 'f') return
+      ev.preventDefault()
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeSessionId, sessionId])
 
   const updateStickFromScroll = useCallback((): void => {
     const el = scrollRootRef.current
@@ -602,8 +775,14 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
 
   void workingTick
   const userWaitingFallbackActive = lastUserWaitingUntil > 0 && Date.now() < lastUserWaitingUntil
-  const activeTranscriptTail =
-    lastMeaningfulEntry?.kind === 'thinking' || lastMeaningfulEntry?.kind === 'tool'
+  /* [2026-05-09] 原把 sessionStore 的 running 等同「Claude 在干活」；createSession 初始即为 running，
+   * 且 claudeSessionWatcher 在从未出现 JSONL usage 前不会发 idle，导致空会话底部条永久「处理中」。 */
+  const assistantStreaming =
+    lastMeaningfulEntry?.kind === 'assistant' && !assistantTailQuiet
+  const transcriptSignalsActiveWork =
+    lastMeaningfulEntry?.kind === 'thinking' ||
+    lastMeaningfulEntry?.kind === 'tool' ||
+    assistantStreaming
 
   const showAiWorkingBar =
     /* [2026-05-08] 用户已 Ctrl+C：在 PTY 仍为 running 时也收起处理中条，避免假 loading */
@@ -611,11 +790,10 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     /* [2026-05-07] 原只看 sessionBusy/pending；工具调用期间 token 暂停会让 loading 短暂消失。 */
     /* [2026-05-07] 若转录尾部已是 thinking/tool，说明 Claude 仍在处理中，即使 status 暂为 idle 也显示 loading。 */
     Boolean(
-      sessionBusy ||
-        pendingReply ||
+      pendingReply ||
         latestToolFresh ||
         userWaitingFallbackActive ||
-        activeTranscriptTail
+        transcriptSignalsActiveWork
     ) &&
     !suppressBarAfterAssistantDone
 
@@ -631,7 +809,8 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       pendingReply: pendingReply || userWaitingFallbackActive,
       lastKind: lastMeaningfulEntry?.kind,
       latestToolName: latestTool?.name,
-      toolFresh: latestToolFresh
+      toolFresh: latestToolFresh,
+      assistantStreaming
     })
   }, [
     workingTick,
@@ -640,14 +819,15 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     userWaitingFallbackActive,
     lastMeaningfulEntry?.kind,
     latestTool?.name,
-    latestToolFresh
+    latestToolFresh,
+    assistantStreaming
   ])
 
   /* [2026-05-08] Fallout 复古光标：仅当底部「处理中」条显示且转录尾部为助手块（流式追加中） */
   const falloutAssistantStreamCaret =
     themeMode === 'fallout' &&
     showAiWorkingBar &&
-    lastMeaningfulEntry?.kind === 'assistant'
+    assistantStreaming
 
   /* [2026-05-06] 会话切换或历史条数突变：默认只保留末尾 INITIAL_HISTORY_TAIL 条，减轻 DOM */
   useLayoutEffect(() => {
@@ -746,7 +926,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     setHistoryStartIndex((s) => Math.max(0, s - HISTORY_LOAD_CHUNK))
   }, [historyStartIndex, updateStickFromScroll])
 
-  const hasOlderAbove = historyStartIndex > 0
+  const hasOlderAbove = query.length === 0 && historyStartIndex > 0
 
   return (
     <div
@@ -764,9 +944,44 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
               <div className="text-[9px] text-claude-muted">思考块 · 工具 · 每条助手气泡底部 token · 底部为会话累计</div>
             </div>
           </div>
-          <span className="rounded-full border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-claude-muted">
-            Beta
-          </span>
+          <div className="flex items-center gap-2">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索会话…"
+              className="h-7 w-40 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-2 text-[10px] text-claude-text outline-none placeholder:text-claude-muted focus:border-[var(--theme-accent-border)]"
+            />
+            {query ? (
+              <div className="inline-flex items-center gap-1 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-1.5 py-0.5 text-[9px] text-claude-muted">
+                <button
+                  type="button"
+                  className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
+                  title="上一个匹配"
+                  onClick={() => setSearchCursor((n) => n - 1)}
+                  disabled={matchedCount === 0}
+                >
+                  ↑
+                </button>
+                <span className="min-w-[52px] text-center tabular-nums">
+                  {matchedCount === 0 ? '0 / 0' : `${activeMatchIndex + 1} / ${matchedCount}`}
+                </span>
+                <button
+                  type="button"
+                  className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
+                  title="下一个匹配"
+                  onClick={() => setSearchCursor((n) => n + 1)}
+                  disabled={matchedCount === 0}
+                >
+                  ↓
+                </button>
+              </div>
+            ) : null}
+            <span className="rounded-full border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-claude-muted">
+              Beta
+            </span>
+          </div>
         </div>
       </header>
 
@@ -789,23 +1004,59 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
                   ，助手回复随会话文件同步追加。
                 </p>
               </div>
+            ) : query && displayedEntries.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-4 py-6 text-center text-[11px] text-claude-muted">
+                未匹配到“{search.trim()}”相关内容
+              </div>
             ) : (
-              displayedEntries.map((e, i) => {
-                const globalIdx = historyStartIndex + i
+              (() => {
+                let runningMatchIndex = -1
+                return displayedEntries.map((e, i) => {
+                const globalIdx = query ? i : historyStartIndex + i
                 const showAssistantStreamingCursor =
                   falloutAssistantStreamCaret &&
                   e.kind === 'assistant' &&
                   lastMeaningfulEntry?.kind === 'assistant' &&
                   e === lastMeaningfulEntry
+                const messageId = e.messageId
+                const toolTokens =
+                  e.kind === 'toolGroup'
+                    ? e.tools.map((t) => t.toLowerCase())
+                    : e.kind === 'tool'
+                      ? [(e.toolName ?? e.text).trim().toLowerCase()]
+                      : []
+                const isMatched = query.length > 0 && entryMatchesQuery(e, query)
+                if (isMatched) runningMatchIndex += 1
+                const isActiveMatch = isMatched && runningMatchIndex === activeMatchIndex
+                const pulseByMsg =
+                  Boolean(focusPulse?.messageId) &&
+                  Boolean(messageId) &&
+                  focusPulse?.messageId === messageId
+                const pulseToolName = focusPulse?.toolName
+                const pulseByTool = Boolean(pulseToolName) && toolTokens.includes(pulseToolName)
                 return (
-                  <EntryBlock
+                  <div
                     key={`${e.kind}-${e.messageId ?? 'noid'}-${globalIdx}-${e.text.slice(0, 24)}`}
-                    e={e}
-                    sessionId={sessionId}
-                    showAssistantStreamingCursor={showAssistantStreamingCursor}
-                  />
+                    data-transcript-msg={messageId}
+                    data-transcript-tool={toolTokens.join(' ')}
+                    data-transcript-match={isMatched ? '1' : '0'}
+                    className={
+                      isActiveMatch
+                        ? 'rounded-lg ring-1 ring-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)]/20'
+                        : pulseByMsg || pulseByTool
+                          ? 'rounded-lg ring-1 ring-amber-400/70 bg-amber-500/10 transition'
+                          : ''
+                    }
+                  >
+                    <EntryBlock
+                      e={e}
+                      sessionId={sessionId}
+                      showAssistantStreamingCursor={showAssistantStreamingCursor}
+                    />
+                  </div>
                 )
-              })
+                })
+              })()
             )}
             <div className="h-px shrink-0" aria-hidden />
           </div>
