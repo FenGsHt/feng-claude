@@ -66,15 +66,6 @@ function FalloutLevelUpBanner({ level, onDone }: { level: number; onDone: () => 
   )
 }
 
-/** Pip-Boy 风格 AP 充能条，替换工作栏 spinner */
-function FalloutApBar(): React.ReactElement {
-  return (
-    <div className="fo-ap-bar" aria-hidden>
-      {Array.from({ length: 5 }, (_, i) => <div key={i} className="fo-ap-seg" />)}
-      <span className="fo-ap-label">AP</span>
-    </div>
-  )
-}
 
 interface Props {
   sessionId: string
@@ -101,7 +92,7 @@ function entryMatchesQuery(e: DisplayEntry, query: string): boolean {
 }
 
 /** [2026-05-06] 底部固定条：会话 running 或已发送待响应时持续显示 loading，覆盖思考/工具/输出阶段 */
-function EmbedAiWorkingBar({ label, open, isFallout }: { label: string; open: boolean; isFallout?: boolean }): React.ReactElement | null {
+function EmbedAiWorkingBar({ label, open }: { label: string; open: boolean }): React.ReactElement | null {
   if (!open) return null
   return (
     <div
@@ -110,14 +101,10 @@ function EmbedAiWorkingBar({ label, open, isFallout }: { label: string; open: bo
       aria-live="polite"
     >
       <div className="fo-working-bar-inner mx-auto flex max-w-3xl items-center gap-2.5 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] px-3 py-2.5 shadow-[0_-12px_40px_var(--theme-shadow)] backdrop-blur-md">
-        {isFallout ? (
-          <FalloutApBar />
-        ) : (
-          <span
-            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-accent-bg-strong)] border-t-[var(--theme-accent-muted)]"
-            aria-hidden
-          />
-        )}
+        <span
+          className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-accent-bg-strong)] border-t-[var(--theme-accent-muted)]"
+          aria-hidden
+        />
         <p className="min-w-0 flex-1 text-[11px] font-medium leading-snug text-[var(--theme-accent-text)]">{label}</p>
       </div>
     </div>
@@ -1155,7 +1142,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
             <div className="h-px shrink-0" aria-hidden />
           </div>
         </div>
-        <EmbedAiWorkingBar open={showAiWorkingBar} label={aiWorkingLabel} isFallout={isFallout} />
+        <EmbedAiWorkingBar open={showAiWorkingBar} label={aiWorkingLabel} />
         {visibleEntries.length > 0 && !nearBottom ? (
           <button
             type="button"
