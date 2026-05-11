@@ -76,8 +76,8 @@ export function PaneLeafShell({
                 <EmbedSessionComposer sessionId={sessionId} nativeTerminalOverlayVisible={nativeTerminalOpen} />
               </div>
             </TerminalDropZone>
-            {/* [2026-05-10] 仅当真正需要终端交互时才显示浮窗按钮，避免外嵌打开时右下角常驻占空间 */}
-            {!nativeTerminalOpen && nativeTerminalNeeded ? (
+            {/* [2026-05-11] 浮窗未打开时始终显示打开按钮（用户要求常驻） */}
+            {!nativeTerminalOpen ? (
               <div
                 className={`absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-xl px-3 py-2 shadow-xl shadow-[color:var(--theme-shadow)] ring-1 ${
                   nativeTerminalNeeded
