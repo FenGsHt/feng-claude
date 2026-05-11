@@ -1019,55 +1019,41 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       className={`claude-transcript-root flex min-h-0 flex-col overflow-hidden bg-[var(--theme-panel-bg)] ${className}`}
       aria-label="Claude transcript"
     >
-      <header className="shrink-0 border-b border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-2 backdrop-blur-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--theme-accent-bg)] text-sm text-[var(--theme-accent-muted)] ring-1 ring-[var(--theme-accent-border)]">
-              ◈
-            </span>
-            <div>
-              <div className="text-[11px] font-semibold tracking-tight text-claude-text">会话</div>
-              <div className="text-[9px] text-claude-muted">思考块 · 工具 · 每条助手气泡底部 token · 底部为会话累计</div>
+      <header className="shrink-0 border-b border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-1.5 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索会话…"
+            className="h-7 w-44 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-2 text-[10px] text-claude-text outline-none placeholder:text-claude-muted focus:border-[var(--theme-accent-border)]"
+          />
+          {query ? (
+            <div className="inline-flex items-center gap-1 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-1.5 py-0.5 text-[9px] text-claude-muted">
+              <button
+                type="button"
+                className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
+                title="上一个匹配"
+                onClick={() => setSearchCursor((n) => n - 1)}
+                disabled={matchedCount === 0}
+              >
+                ↑
+              </button>
+              <span className="min-w-[52px] text-center tabular-nums">
+                {matchedCount === 0 ? '0 / 0' : `${activeMatchIndex + 1} / ${matchedCount}`}
+              </span>
+              <button
+                type="button"
+                className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
+                title="下一个匹配"
+                onClick={() => setSearchCursor((n) => n + 1)}
+                disabled={matchedCount === 0}
+              >
+                ↓
+              </button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索会话…"
-              className="h-7 w-40 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-2 text-[10px] text-claude-text outline-none placeholder:text-claude-muted focus:border-[var(--theme-accent-border)]"
-            />
-            {query ? (
-              <div className="inline-flex items-center gap-1 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-1.5 py-0.5 text-[9px] text-claude-muted">
-                <button
-                  type="button"
-                  className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
-                  title="上一个匹配"
-                  onClick={() => setSearchCursor((n) => n - 1)}
-                  disabled={matchedCount === 0}
-                >
-                  ↑
-                </button>
-                <span className="min-w-[52px] text-center tabular-nums">
-                  {matchedCount === 0 ? '0 / 0' : `${activeMatchIndex + 1} / ${matchedCount}`}
-                </span>
-                <button
-                  type="button"
-                  className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
-                  title="下一个匹配"
-                  onClick={() => setSearchCursor((n) => n + 1)}
-                  disabled={matchedCount === 0}
-                >
-                  ↓
-                </button>
-              </div>
-            ) : null}
-            <span className="rounded-full border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-claude-muted">
-              Beta
-            </span>
-          </div>
+          ) : null}
         </div>
       </header>
 
