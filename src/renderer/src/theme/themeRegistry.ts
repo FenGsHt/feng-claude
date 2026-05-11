@@ -90,6 +90,30 @@ export const FALLOUT_TERMINAL_THEME: ITheme = {
   brightWhite: '#e8ffe8'
 }
 
+export const CLAUDE_CODE_TERMINAL_THEME: ITheme = {
+  background: '#191919',
+  foreground: '#ede8e0',
+  cursor: '#e87a35',
+  cursorAccent: '#191919',
+  selectionBackground: 'rgba(232, 122, 53, 0.22)',
+  black: '#191919',
+  brightBlack: '#6b6560',
+  red: '#e55b5b',
+  brightRed: '#f09090',
+  green: '#6bbd6b',
+  brightGreen: '#9fd89f',
+  yellow: '#e8a838',
+  brightYellow: '#f0c060',
+  blue: '#6a9fd8',
+  brightBlue: '#90bfe8',
+  magenta: '#c888d0',
+  brightMagenta: '#ddb8e0',
+  cyan: '#5bbfbf',
+  brightCyan: '#88d8d8',
+  white: '#d8d2ca',
+  brightWhite: '#f0ece6'
+}
+
 export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {
   dark: {
     id: 'dark',
@@ -112,7 +136,7 @@ export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {
     // [2026-05-08] 原 block 填满单元格；改为粗竖条 bar + cursorWidth，更接近老式终端 “|” 光标
     // [2026-05-09] Fallout：加粗竖条光标（与 fallout-port .fo-ai-stream-caret 对齐）
     terminalOptions: {
-      fontFamily: '"VT323", "Courier New", Courier, monospace',
+      fontFamily: '”VT323”, “Courier New”, Courier, monospace',
       fontSize: 16,
       lineHeight: 1.25,
       letterSpacing: 1.5,
@@ -120,6 +144,12 @@ export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {
       cursorStyle: 'bar',
       cursorWidth: 16
     }
+  },
+  'claude-code': {
+    id: 'claude-code',
+    label: { zh: 'Claude Code', en: 'Claude Code' },
+    dataTheme: 'claude-code',
+    terminal: CLAUDE_CODE_TERMINAL_THEME
   }
 }
 
@@ -130,11 +160,12 @@ export const selectableThemes: Array<{
   { id: 'dark', label: themeDefinitions.dark.label },
   { id: 'light', label: themeDefinitions.light.label },
   { id: 'auto', label: { zh: '自动', en: 'Auto' } },
-  { id: 'fallout', label: themeDefinitions.fallout.label }
+  { id: 'fallout', label: themeDefinitions.fallout.label },
+  { id: 'claude-code', label: themeDefinitions['claude-code'].label }
 ]
 
 export function isThemeMode(value: unknown): value is ThemeMode {
-  return value === 'dark' || value === 'light' || value === 'auto' || value === 'fallout'
+  return value === 'dark' || value === 'light' || value === 'auto' || value === 'fallout' || value === 'claude-code'
 }
 
 export function resolveThemeMode(
