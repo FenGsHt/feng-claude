@@ -78,35 +78,17 @@ export function PaneLeafShell({
             </TerminalDropZone>
             {/* [2026-05-11] 浮窗未打开时始终显示打开按钮（用户要求常驻） */}
             {!nativeTerminalOpen ? (
-              <div
-                className={`absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-xl px-3 py-2 shadow-xl shadow-[color:var(--theme-shadow)] ring-1 ${
+              <button
+                type="button"
+                className={`absolute bottom-3 right-3 z-20 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold shadow-lg shadow-[color:var(--theme-shadow)] transition ${
                   nativeTerminalNeeded
-                    ? 'border border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] ring-[var(--theme-accent-border)]'
-                    : 'border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] ring-[var(--theme-panel-border)]'
+                    ? 'border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-bg-strong)]'
+                    : 'border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] text-claude-muted hover:text-claude-text hover:bg-[var(--theme-accent-bg)]'
                 }`}
+                onClick={() => openNativeTerminal(sessionId, nativeTerminalRequest?.reason ?? '手动打开')}
               >
-                <div className="min-w-0">
-                  {/* [2026-05-07] 原只在检测到 TUI 时显示按钮；现在无检测时也给用户手动查看原生终端的入口。 */}
-                  {/* <div className="text-[10px] font-semibold text-amber-100">检测到终端交互</div> */}
-                  <div className={`text-[10px] font-semibold ${nativeTerminalNeeded ? 'text-[var(--theme-accent-text)]' : 'text-claude-text'}`}>
-                    {nativeTerminalNeeded ? '检测到终端交互' : '原生终端'}
-                  </div>
-                  <div className="max-w-[240px] truncate text-[9px] text-claude-muted">
-                    {nativeTerminalRequest?.reason ?? '可手动打开查看当前 Claude Code 状态'}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition ${
-                    nativeTerminalNeeded
-                      ? 'border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-bg-strong)]'
-                      : 'border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] text-claude-text hover:bg-[var(--theme-accent-bg)]'
-                  }`}
-                  onClick={() => openNativeTerminal(sessionId, nativeTerminalRequest?.reason ?? '手动打开')}
-                >
-                  {nativeTerminalNeeded ? '打开终端' : '显示终端'}
-                </button>
-              </div>
+                {nativeTerminalNeeded ? '打开终端' : '显示终端'}
+              </button>
             ) : null}
             {nativeTerminalOpen ? (
               <div className="absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(560px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]">
