@@ -92,7 +92,7 @@ export interface ApiProfile {
 }
 
 /** [2026-05-06] fallout：indeed-flow-git RobCo 磷光绿（见 styles/FALLOUT_THEME_REFERENCE.md） */
-export type ThemeMode = 'dark' | 'light' | 'auto' | 'fallout'
+export type ThemeMode = 'dark' | 'light' | 'auto' | 'fallout' | 'claude-code'
 
 /** [2026-05-08] 每条预设自带 Token + State Dir，无「全局默认」概念 */
 export interface TelegramBotPreset {
