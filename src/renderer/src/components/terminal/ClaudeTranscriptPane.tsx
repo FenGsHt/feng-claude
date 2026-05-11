@@ -1654,7 +1654,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {/* 搜索框：右上角浮层 */}
         <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
-          <div className="flex items-center gap-1.5 rounded-full border border-white/8 bg-black/40 px-2.5 py-1 shadow-lg backdrop-blur-md transition-all focus-within:border-[var(--theme-accent-border)]/60 focus-within:bg-black/55">
+          <div className="flex items-center gap-1.5 rounded-full border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)]/80 px-2.5 py-1 shadow-lg backdrop-blur-md transition-all focus-within:border-[var(--theme-accent-border)]/60 focus-within:bg-[var(--theme-panel-bg)]/90">
             <svg className="h-3 w-3 shrink-0 text-claude-muted/50" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="6.5" cy="6.5" r="4.5" />
               <line x1="10.5" y1="10.5" x2="14" y2="14" />
@@ -1665,14 +1665,14 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索…"
-              className="w-20 bg-transparent text-[10px] text-claude-text outline-none placeholder:text-claude-muted/40 focus:w-32 transition-all"
+              className="w-20 bg-transparent text-[10px] text-claude-text outline-none placeholder:text-claude-muted/60 focus:w-32 transition-all"
             />
             {query ? (
               <>
                 <span className="text-[9px] tabular-nums text-claude-muted/60 px-0.5">{matchedCount === 0 ? '0/0' : `${activeMatchIndex + 1}/${matchedCount}`}</span>
                 <button
                   type="button"
-                  className="flex h-4 w-4 items-center justify-center rounded text-claude-muted/70 transition-colors hover:bg-white/10 hover:text-claude-text disabled:opacity-30"
+                  className="flex h-4 w-4 items-center justify-center rounded text-claude-muted/70 transition-colors hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text disabled:opacity-30"
                   title="上一个"
                   onClick={() => setSearchCursor((n) => n - 1)}
                   disabled={matchedCount === 0}
@@ -1681,7 +1681,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
                 </button>
                 <button
                   type="button"
-                  className="flex h-4 w-4 items-center justify-center rounded text-claude-muted/70 transition-colors hover:bg-white/10 hover:text-claude-text disabled:opacity-30"
+                  className="flex h-4 w-4 items-center justify-center rounded text-claude-muted/70 transition-colors hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text disabled:opacity-30"
                   title="下一个"
                   onClick={() => setSearchCursor((n) => n + 1)}
                   disabled={matchedCount === 0}

@@ -32,7 +32,7 @@ export function MarkdownRenderer({ content }: Props): React.ReactElement {
             </SyntaxHighlighter>
           ) : (
             <code
-              className="bg-claude-border px-1 py-0.5 rounded text-amber-300 text-sm font-mono"
+              className="bg-claude-border px-1 py-0.5 rounded text-sm font-mono text-[var(--theme-accent-muted)]"
               {...props}
             >
               {children}

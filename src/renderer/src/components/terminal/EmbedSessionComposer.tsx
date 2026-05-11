@@ -983,7 +983,7 @@ export function EmbedSessionComposer({
             type="button"
             onClick={() => send()}
             disabled={alternateScreen || slashInteractiveMode}
-            className="rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-1.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-1.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             发送
           </button>
