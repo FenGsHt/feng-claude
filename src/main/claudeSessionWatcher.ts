@@ -518,6 +518,7 @@ function parseTranscriptEntries(line: string): ClaudeTranscriptEntry[] {
             text: toolName,
             messageId,
             toolName,
+            toolId: typeof block.id === 'string' ? block.id : undefined,
             requiresNativeTerminal: toolName === 'AskUserQuestion'
           })
           continue

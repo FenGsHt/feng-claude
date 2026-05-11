@@ -31,21 +31,34 @@ function dropOnePendingTokenDelta(sessionId: string): void {
   takeNextPendingTokenDelta(sessionId)
 }
 
-/** [2026-05-06] 全量 replace 时磁盘 JSONL 可能尚未含刚发送的用户行；保留未被磁盘条目覆盖的 clientEcho user */
+/** [2026-05-06] 全量 replace 时磁盘 JSONL 可能尚未含刚发送的用户行；保留未被磁盘条目覆盖的 clientEcho user
+ *  [2026-05-11] 同理保留尚未落盘的 assistant 条目（messageId 不在磁盘集合中），
+ *  避免 replaceSession 在流式动画期间把最后一条助手回复清掉，导致消失 + 重开重播。 */
 function mergeTranscriptReplace(
   prev: ClaudeTranscriptEntry[],
   disk: ClaudeTranscriptEntry[]
 ): ClaudeTranscriptEntry[] {
+  const diskMessageIds = new Set(
+    disk.filter((e) => e.messageId != null).map((e) => e.messageId!)
+  )
   const diskUserTexts = new Set(
     disk.filter((e) => e.kind === 'user').map((e) => e.text.trim()).filter(Boolean)
   )
-  const orphans = prev.filter(
+  const orphanUsers = prev.filter(
     (e) =>
       e.kind === 'user' &&
       e.clientEcho === true &&
       e.text.trim().length > 0 &&
       !diskUserTexts.has(e.text.trim())
   )
+  // 保留尚未落盘的助手条目（有 messageId 且磁盘中不存在）
+  const orphanAssistant = prev.filter(
+    (e) =>
+      e.kind === 'assistant' &&
+      e.messageId != null &&
+      !diskMessageIds.has(e.messageId)
+  )
+  const orphans = [...orphanUsers, ...orphanAssistant]
   if (orphans.length === 0) return disk
   return [...disk, ...orphans]
 }

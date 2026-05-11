@@ -10,6 +10,7 @@ import { enqueueTranscriptTokenDelta, useTranscriptStore } from '../store/transc
 import { useNativeTerminalRequestStore } from '../store/nativeTerminalRequestStore'
 import { useEmbedAwaitingReplyStore } from '../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../store/embedInterruptSuppressStore'
+import { useClaudeRuntimeStatusStore } from '../store/claudeRuntimeStatusStore'
 import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive
@@ -28,9 +29,62 @@ import { stripAnsi } from '../lib/stripAnsi'
 // This prevents premature notifications between multi-step tool calls
 const NOTIFY_DEBOUNCE_MS = 30_000
 const lastTokenTime = new Map<string, number>()
+const runtimeStatusTailBySession = new Map<string, string>()
+const runtimeStatusTouchAtBySession = new Map<string, number>()
 const DEBUG_EMBED_MCP = true
 const TERMINAL_INTERACTION_HINT_RE =
   /Enter to select|(?:↑|↓|\^|\x1b\[A|\x1b\[B).*to navigate|Esc to cancel|Space to cycle|Search skills|Do you want to proceed|Would you like to|Allow this action|Press Enter to confirm|yes\/no|Y\/n\)?[\s]*$/im
+// [2026-05-11] 有 spinner 字符时接受任意大写开头的词（Sprouting 等未知词）；无 spinner 时保守白名单
+const CLAUDE_RUNTIME_STATUS_SPINNER_RE =
+  /^\s*[✱✻✳*•·]\s+([A-Z][^()\r\n]*?)(?:\s*\(([^)]*)\))?\s*$/
+const CLAUDE_RUNTIME_STATUS_WORD_RE =
+  /^\s*((?:Deliberating|Building|Creating|Editing|Writing|Reading|Searching|Planning|Running)[^()\r\n]*?)(?:\s*\(([^)]*)\))?\s*$/i
+
+function extractClaudeRuntimeStatus(text: string): { label: string; detail?: string } | null {
+  const lines = text
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-20)
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]
+    const m = line.match(CLAUDE_RUNTIME_STATUS_SPINNER_RE) ?? line.match(CLAUDE_RUNTIME_STATUS_WORD_RE)
+    if (!m) continue
+    const label = m[1]?.trim()
+    if (!label) continue
+    const detail = m[2]?.trim()
+    return detail ? { label, detail } : { label }
+  }
+  return null
+}
+
+function appendRuntimeStatusTail(sessionId: string, text: string): string {
+  const prev = runtimeStatusTailBySession.get(sessionId) ?? ''
+  const next = `${prev}\n${text}`.slice(-2000)
+  runtimeStatusTailBySession.set(sessionId, next)
+  return next
+}
+
+function touchRuntimeStatusThrottled(sessionId: string): void {
+  const now = Date.now()
+  const last = runtimeStatusTouchAtBySession.get(sessionId) ?? 0
+  if (now - last < 500) return
+  runtimeStatusTouchAtBySession.set(sessionId, now)
+  useClaudeRuntimeStatusStore.getState().touchRuntimeStatus(sessionId)
+}
+
+function setRuntimeStatusThrottled(
+  sessionId: string,
+  status: { label: string; detail?: string }
+): void {
+  const now = Date.now()
+  const current = useClaudeRuntimeStatusStore.getState().bySession[sessionId]
+  const same = current?.label === status.label && current?.detail === status.detail
+  const last = runtimeStatusTouchAtBySession.get(sessionId) ?? 0
+  if (same && now - last < 500) return
+  runtimeStatusTouchAtBySession.set(sessionId, now)
+  useClaudeRuntimeStatusStore.getState().setRuntimeStatus(sessionId, status)
+}
 
 function shouldKeepEmbedLoadingForTranscript(
   entries: Array<{ kind: string; text: string }>
@@ -84,6 +138,9 @@ export function usePty(): void {
     const unsubIntr = window.electronAPI.onPtyIntrSent((payload) => {
       useEmbedAwaitingReplyStore.getState().clearPending(payload.sessionId)
       useEmbedInterruptSuppressStore.getState().setInterrupted(payload.sessionId)
+      useClaudeRuntimeStatusStore.getState().clearRuntimeStatus(payload.sessionId)
+      runtimeStatusTailBySession.delete(payload.sessionId)
+      runtimeStatusTouchAtBySession.delete(payload.sessionId)
     })
 
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
@@ -98,8 +155,18 @@ export function usePty(): void {
           hasAltExit: /\x1b\[\?(1049|1047)l/.test(data)
         })
       }
+      const plain = stripAnsi(data)
+      const tail = appendRuntimeStatusTail(sessionId, plain)
+      const runtimeStatus = extractClaudeRuntimeStatus(tail)
+      if (runtimeStatus) {
+        setRuntimeStatusThrottled(sessionId, runtimeStatus)
+      } else if (plain.trim().length > 0) {
+        /* [2026-05-11] Claude Code 状态行常用 \r/局部刷新，单个 chunk 不一定完整命中；
+         * 一旦本轮捕获过状态，只要 PTY 仍在输出非空内容，就刷新 updatedAt 续命。 */
+        touchRuntimeStatusThrottled(sessionId)
+      }
       /* [2026-05-07] 剥离 ANSI 后再检测：权限提示字符间夹有转义码会导致原始 data 匹配失败 */
-      if (TERMINAL_INTERACTION_HINT_RE.test(stripAnsi(data))) {
+      if (TERMINAL_INTERACTION_HINT_RE.test(plain)) {
         useNativeTerminalRequestStore.getState().requestNativeTerminal(sessionId, '检测到终端交互')
       }
       writeToTerminal(sessionId, data)
@@ -122,6 +189,9 @@ export function usePty(): void {
       const { sessionId, status } = payload
       if (status === 'idle') {
         notifyTaskDone(sessionId)
+        useClaudeRuntimeStatusStore.getState().clearRuntimeStatus(sessionId)
+        runtimeStatusTailBySession.delete(sessionId)
+        runtimeStatusTouchAtBySession.delete(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
       }

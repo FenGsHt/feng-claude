@@ -218,11 +218,15 @@ export function listPlugins(newPluginNames?: Set<string>): PluginEntry[] {
   } catch { /* ignore */ }
 
   // Add enabled plugins that aren't in any marketplace (e.g. claude-hud from extra marketplace)
+  // Deduplicate by name too: same plugin can appear under different marketplace IDs
+  const seenNames = new Set(plugins.map((p) => p.name))
   for (const [id, isEn] of Object.entries(enabled)) {
     if (!isEn || seenIds.has(id)) continue
-    seenIds.add(id)
     const atIdx = id.lastIndexOf('@')
     const name = atIdx > 0 ? id.slice(0, atIdx) : id
+    if (seenNames.has(name)) continue  // same plugin already listed from marketplace scan
+    seenIds.add(id)
+    seenNames.add(name)
     const marketplace = atIdx > 0 ? id.slice(atIdx + 1) : 'custom'
     plugins.push({
       id,

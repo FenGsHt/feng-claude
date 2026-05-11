@@ -47,6 +47,44 @@ export function bufferUserInput(sessionId: string, data: string): void {
 
 /** 合并同一帧内多次 fit 请求，减轻 xterm 内部 requestIdleCallback 队列积压 */
 const pendingFitRafBySession = new Map<string, number>()
+/** [2026-05-11] 浮窗打开时 fit/ResizeObserver 会连续重算 viewport；滚到底需延后几帧稳定执行 */
+const pendingBottomRafsBySession = new Map<string, number[]>()
+
+function clearPendingBottomScroll(sessionId: string): void {
+  const rafs = pendingBottomRafsBySession.get(sessionId)
+  if (!rafs) return
+  rafs.forEach((id) => cancelAnimationFrame(id))
+  pendingBottomRafsBySession.delete(sessionId)
+}
+
+function scheduleScrollToBottom(sessionId: string, options?: { focus?: boolean; frames?: number }): void {
+  clearPendingBottomScroll(sessionId)
+  const frames = options?.frames ?? 3
+  const rafs: number[] = []
+  const run = (remaining: number): void => {
+    const id = requestAnimationFrame(() => {
+      const entry = terminals.get(sessionId)
+      if (!entry) {
+        pendingBottomRafsBySession.delete(sessionId)
+        return
+      }
+      entry.term.scrollToBottom()
+      /* [2026-05-11] xterm 内部 scroll index 到底不一定同步 DOM .xterm-viewport.scrollTop；
+       * 浮窗重挂载后首次滚轮会用旧 DOM scrollTop，从顶部开始滚。同步真实 viewport。 */
+      const viewport = entry.term.element?.querySelector<HTMLElement>('.xterm-viewport')
+      if (viewport) viewport.scrollTop = viewport.scrollHeight
+      if (options?.focus && remaining <= 1) entry.term.focus()
+      if (remaining > 1) {
+        run(remaining - 1)
+      } else {
+        pendingBottomRafsBySession.delete(sessionId)
+      }
+    })
+    rafs.push(id)
+    pendingBottomRafsBySession.set(sessionId, rafs)
+  }
+  run(frames)
+}
 
 function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: FitAddon } {
   if (terminals.has(sessionId)) return terminals.get(sessionId)!
@@ -77,6 +115,7 @@ export function destroyTerminal(sessionId: string): void {
     cancelAnimationFrame(raf)
     pendingFitRafBySession.delete(sessionId)
   }
+  clearPendingBottomScroll(sessionId)
   terminalLineBuffers.delete(sessionId)
   userInputBuffers.delete(sessionId)
   useUserPromptStore.getState().clearSession(sessionId)
@@ -111,8 +150,7 @@ export function wakeTerminal(sessionId: string): void {
   } catch {
     // refresh is best-effort
   }
-  entry.term.scrollToBottom()
-  entry.term.focus()
+  scheduleScrollToBottom(sessionId, { focus: true, frames: 4 })
 }
 
 /** 恢复历史 scrollback：创建（或复用）terminal 实例并写入 base64 编码的原始终端数据 */
@@ -272,6 +310,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     } else {
       container.appendChild(term.element)
     }
+    scheduleScrollToBottom(sessionId, { frames: 3 })
 
     const dataSub = term.onData((data) => {
       window.electronAPI?.sendInput(sessionId, data)
@@ -441,6 +480,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       cleanupTerminalCopy?.()
       ro.disconnect()
       if (fitTimer) clearTimeout(fitTimer)
+      clearPendingBottomScroll(sessionId)
     }
   }, [sessionId, scheduleFit])
 
@@ -460,7 +500,7 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
           window.electronAPI?.resizePty(sessionId, cols, rows)
         }
       } catch {}
-      entry.term.scrollToBottom()
+      scheduleScrollToBottom(sessionId, { frames: 4 })
     }, 200)
     return () => clearTimeout(t)
   }, [active, sessionId])

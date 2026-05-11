@@ -45,8 +45,10 @@ export function PaneLeafShell({
     if (!nativeTerminalOpen) return
     const wake = (): void => wakeTerminal(sessionId)
     const raf = requestAnimationFrame(wake)
-    const t1 = window.setTimeout(wake, 80)
-    const t2 = window.setTimeout(wake, 220)
+    /* [2026-05-11] 浮窗挂载后 ResizeObserver / fit 仍会重算 viewport；
+     * 最后一次稍晚执行，避免用户滚轮向下时 xterm 又从顶部开始。 */
+    const t1 = window.setTimeout(wake, 120)
+    const t2 = window.setTimeout(wake, 360)
     return () => {
       cancelAnimationFrame(raf)
       clearTimeout(t1)

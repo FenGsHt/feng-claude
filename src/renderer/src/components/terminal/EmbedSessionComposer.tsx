@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
 import { registerEmbedDraftInjector } from '../../lib/embedDraftBridge'
 import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
@@ -73,12 +73,6 @@ export function EmbedSessionComposer({
   /* [2026-05-08] interruptSuppress 只用于收起底部「处理中」条；若绑在按钮上，中断一次后 suppress 恒真直至 idle，按钮会长期不出现，也无法二次中断 */
   const sessionStatus = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status)
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
-  const showInterrupt =
-    !alternateScreen &&
-    !slashInteractiveMode &&
-    (sessionStatus === 'running' ||
-      sessionStatus === 'waiting_input' ||
-      pendingReply)
   /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
   // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
   const clearNativeTerminal = useNativeTerminalRequestStore((s) => s.clearNativeTerminal)
@@ -86,6 +80,26 @@ export function EmbedSessionComposer({
   const nativeTerminalRequest = useNativeTerminalRequestStore((s) => s.bySession[sessionId])
   const nativeTerminalOpen = nativeTerminalRequest?.open === true
   const nativeTerminalNeeded = nativeTerminalRequest?.needed === true
+  const nativeTerminalInteractionActive = nativeTerminalNeeded
+  // [2026-05-11] 长工具调用（如 Agent）期间 PTY 可能短暂 idle，但转录尾部仍为 thinking/tool；需保留中断按钮
+  const transcriptSignalsWork = useTranscriptStore((s) => {
+    const entries = s.bySession[sessionId] ?? []
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]
+      if (e.kind === 'event' && e.ptyEcho === true) continue
+      return e.kind === 'thinking' || e.kind === 'tool'
+    }
+    return false
+  })
+  const showInterrupt =
+    !alternateScreen &&
+    !slashInteractiveMode &&
+    !nativeTerminalInteractionActive &&
+    /* [2026-05-11] 原把 sessionStatus=running 当作“Claude 正在干活”，但它也表示 Claude Code 进程正常待命。
+     * 空输入时点「中断」会发送双 Ctrl+C，可能直接退出 Claude Code 并触发重启，造成双实例。 */
+    (sessionStatus === 'waiting_input' ||
+      pendingReply ||
+      transcriptSignalsWork)
   /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
   // useEmbedPtyResize(sessionId, true)
   useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible)
@@ -159,6 +173,8 @@ export function EmbedSessionComposer({
           if (ta) {
             ta.focus()
             ta.setSelectionRange(pos, pos)
+            ta.style.height = 'auto'
+            ta.style.height = `${ta.scrollHeight}px`
           }
           setCursor(pos)
         })
@@ -247,6 +263,26 @@ export function EmbedSessionComposer({
     setCursor(el.selectionStart ?? 0)
   }, [])
 
+  const autoResize = useCallback((): void => {
+    const el = taRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [])
+
+  // 草稿为空时，用占位符文字临时填入测量 scrollHeight，使输入框高度能容纳完整提示词
+  useLayoutEffect(() => {
+    const el = taRef.current
+    if (!el || draft.length > 0) return
+    const placeholder = el.placeholder
+    if (!placeholder) return
+    el.value = placeholder
+    el.style.height = 'auto'
+    const h = el.scrollHeight
+    el.value = ''
+    el.style.height = `${h}px`
+  }, [draft])
+
   const applySlashItem = useCallback(
     (item: ClaudeSlashItem): void => {
       const domCur = taRef.current?.selectionStart
@@ -292,8 +328,22 @@ export function EmbedSessionComposer({
   )
 
   const interruptGeneration = useCallback((): void => {
+    const shouldInterrupt =
+      !alternateScreen &&
+      !slashInteractiveMode &&
+      !nativeTerminalInteractionActive &&
+      (sessionStatus === 'waiting_input' || pendingReply || transcriptSignalsWork)
+    if (!shouldInterrupt) return
     sendPtyInterruptSignal(sessionId)
-  }, [sessionId])
+  }, [
+    alternateScreen,
+    nativeTerminalInteractionActive,
+    pendingReply,
+    sessionId,
+    sessionStatus,
+    slashInteractiveMode,
+    transcriptSignalsWork
+  ])
 
   /* [2026-05-10] 将 blob 转 base64 发给主进程存临时文件 */
   const saveImageBlob = useCallback(async (blob: Blob): Promise<string | null> => {
@@ -430,6 +480,9 @@ export function EmbedSessionComposer({
     draftBeforeHistoryRef.current = ''
     setDraft('')
     setCursor(0)
+    requestAnimationFrame(() => {
+      if (taRef.current) taRef.current.style.height = 'auto'
+    })
 
     // [2026-05-11] 附件图片 → @path 引用：
     // - 去掉 [图片N] 标签（会破坏 Claude Code 的 @ 解析器边界识别）
@@ -878,6 +931,7 @@ export function EmbedSessionComposer({
               draftMirrorRef.current = e.target.value
               setDraft(e.target.value)
               setCursor(e.target.selectionStart ?? 0)
+              autoResize()
             }}
             onSelect={syncCursorFromDom}
             onClick={syncCursorFromDom}
@@ -895,7 +949,7 @@ export function EmbedSessionComposer({
                   ? '斜杠命令交互中：请在上方内嵌终端直接输入；Ctrl+Enter 强制退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
-            className={`fo-embed-composer-textarea min-h-[36px] w-full resize-y rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-[color:var(--theme-shadow)] placeholder:text-claude-muted/55 focus:border-[var(--theme-accent-border)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
+            className={`fo-embed-composer-textarea min-h-[36px] w-full overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow shadow-black/25 placeholder:text-claude-muted/70 focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
               alternateScreen ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}
@@ -904,8 +958,8 @@ export function EmbedSessionComposer({
           />
         </div>
 
-        {/* 按钮列：与 textarea 同行，贴底对齐 */}
-        <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+        {/* 按钮行：与 textarea 同行，贴底对齐 */}
+        <div className="flex shrink-0 flex-row items-end gap-1.5">
           {showInterrupt ? (
             <button
               type="button"

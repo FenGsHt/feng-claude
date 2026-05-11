@@ -425,6 +425,97 @@ html[data-theme='fallout'] .claude-transcript-root .fo-tool-pill {
   color: #1bcc3a !important;
 }
 
+/* ── WorkGroupBlock 椭圆遮罩终极修复 ────────────────────────────────────
+ * GPU 合成层在 animation-fill-mode:both 结束后保留 transform:translateY(0)
+ * 和 opacity < 1 的中间态，导致 Chrome 用祖先 border-radius 裁剪出椭圆。
+ * Fallout 终端风格不需要入场动画，直接禁用所有转录区动画是最可靠的方案。
+ * ──────────────────────────────────────────────────────────────────── */
+
+/* 禁用转录区内所有入场动画：消除 GPU 合成层及其椭圆裁剪 */
+html[data-theme='fallout'] .claude-transcript-root .fo-bubble-appear,
+html[data-theme='fallout'] .claude-transcript-root .fo-fade-in {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* 大框外层：去掉 overflow-hidden / 背景 / 圆角 */
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block {
+  overflow: visible !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  border-color: rgba(42, 255, 77, 0.22) !important;
+  animation: none !important;
+  transform: none !important;
+}
+
+/* [2026-05-11] 原为彻底规避椭圆裁剪，直接 display:none，导致舒缓展开/折叠消失：
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-expand {
+  display: block !important;
+  grid-template-rows: none !important;
+  opacity: 1 !important;
+  transition: none !important;
+  overflow: visible !important;
+  transform: none !important;
+}
+
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-expand.fo-wg-closed {
+  display: none !important;
+}
+ * 改为只动画 grid-template-rows，不动画 opacity；内层仅负责高度裁剪，且无圆角/transform。 */
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-expand {
+  display: grid !important;
+  opacity: 1 !important;
+  transition: grid-template-rows 220ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: visible !important;
+  transform: none !important;
+}
+
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-expand.fo-wg-open {
+  grid-template-rows: 1fr !important;
+}
+
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-expand.fo-wg-closed {
+  grid-template-rows: 0fr !important;
+}
+
+/* [2026-05-11] fo-wg-inner：为折叠高度裁剪保留 overflow:hidden，但禁止圆角/transform，避免椭圆裁剪层 */
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-inner {
+  overflow: hidden !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+
+/* 滚动容器：恢复高度限制与纵向滚动；外层无 border-radius 故不会触发椭圆遮罩 */
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-wg-scroll {
+  overflow-y: auto !important;
+  max-height: 400px !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+
+/* 思考块头/体：去掉深色背景与边框 */
+html[data-theme='fallout'] .claude-transcript-root .fo-thinking-header,
+html[data-theme='fallout'] .claude-transcript-root .fo-thinking-body {
+  background: transparent !important;
+  border-color: rgba(42, 255, 77, 0.18) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 工具条目 / InlineToolDiff：去掉所有背景与圆角裁剪 */
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-tool-diff {
+  background: transparent !important;
+  border-color: rgba(42, 255, 77, 0.15) !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+html[data-theme='fallout'] .claude-transcript-root .fo-work-group-block .fo-tool-diff * {
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
 /* 思考块容器：完全透明，无边框 */
 html[data-theme='fallout'] .claude-transcript-root details {
   background: transparent !important;

@@ -286,17 +286,17 @@ export function SettingsPanel(): React.ReactElement {
           {t.settings.language}
         </span>
         <div className="flex rounded overflow-hidden border border-claude-border text-[10px]">
-          {(['zh', 'en'] as const).map((lang) => (
+          {(['zh', 'en'] as const).map((l) => (
             <button
-              key={lang}
-              onClick={() => handleChange('language', lang)}
+              key={l}
+              onClick={() => handleChange('language', l)}
               className={`px-2 py-0.5 transition-colors ${
-                form.language === lang
+                lang === l
                   ? 'bg-amber-500 text-black font-medium'
                   : 'text-claude-muted hover:text-claude-text'
               }`}
             >
-              {lang === 'zh' ? t.settings.languageZh : t.settings.languageEn}
+              {l === 'zh' ? t.settings.languageZh : t.settings.languageEn}
             </button>
           ))}
         </div>

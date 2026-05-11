@@ -63,6 +63,20 @@ export function MarkdownRenderer({ content }: Props): React.ReactElement {
         },
         h3({ children }) {
           return <h3 className="text-sm font-bold mb-1 text-claude-text">{children}</h3>
+        },
+        a({ href, children }) {
+          return (
+            <a
+              href={href}
+              className="text-amber-400 underline underline-offset-2 decoration-amber-400/50 hover:text-amber-300 hover:decoration-amber-300 transition-colors cursor-pointer"
+              onClick={(e) => {
+                e.preventDefault()
+                if (href) window.open(href)
+              }}
+            >
+              {children}
+            </a>
+          )
         }
       }}
     >

@@ -34,18 +34,23 @@ export const useNativeTerminalRequestStore = create<NativeTerminalRequestState>(
       }
     })),
   openNativeTerminal: (sessionId, reason) =>
-    set((s) => ({
-      bySession: {
-        ...s.bySession,
-        [sessionId]: {
-          open: true,
-          needed: true,
-          reason,
-          updatedAt: Date.now(),
-          dismissedAt: s.bySession[sessionId]?.dismissedAt
+    set((s) => {
+      const prev = s.bySession[sessionId]
+      return {
+        bySession: {
+          ...s.bySession,
+          [sessionId]: {
+            open: true,
+            /* [2026-05-11] 原手动“打开终端”也设置 needed=true，导致外嵌误判为等待用户交互并隐藏 loading。
+             * 只有 requestNativeTerminal 检测到 AskUserQuestion/权限确认等才置 needed；手动查看终端保留已有 needed 状态。 */
+            needed: prev?.needed === true,
+            reason: reason ?? prev?.reason,
+            updatedAt: Date.now(),
+            dismissedAt: prev?.dismissedAt
+          }
         }
       }
-    })),
+    }),
   dismissNativeTerminal: (sessionId) =>
     set((s) => {
       const prev = s.bySession[sessionId]

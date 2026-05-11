@@ -322,6 +322,8 @@ export interface ClaudeTranscriptEntry {
   /** [2026-05-07] 外嵌无法完整承载的交互工具（如 AskUserQuestion），需切回原生终端处理 */
   requiresNativeTerminal?: boolean
   toolName?: string
+  /** [2026-05-11] tool_use 块的 Claude API ID，用于在外嵌界面关联 ToolCallStore 获取 input */
+  toolId?: string
 }
 
 export interface ClaudeTranscriptPayload {
