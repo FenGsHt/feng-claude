@@ -82,6 +82,10 @@ export function EmbedSessionComposer({
   /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
   // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
   const clearNativeTerminal = useNativeTerminalRequestStore((s) => s.clearNativeTerminal)
+  const openNativeTerminal = useNativeTerminalRequestStore((s) => s.openNativeTerminal)
+  const nativeTerminalRequest = useNativeTerminalRequestStore((s) => s.bySession[sessionId])
+  const nativeTerminalOpen = nativeTerminalRequest?.open === true
+  const nativeTerminalNeeded = nativeTerminalRequest?.needed === true
   /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
   // useEmbedPtyResize(sessionId, true)
   useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible)
@@ -773,7 +777,7 @@ export function EmbedSessionComposer({
           </p>
         </details>
       )}
-      <div className="mx-auto flex max-w-3xl min-h-0 flex-col gap-2">
+      <div className="mx-auto flex max-w-3xl min-h-0 items-end gap-2">
         <div className="relative min-h-0 flex-1">
           {/* [2026-05-10] 附件图片预览：显示在输入框上方 */}
           {attachedImages.length > 0 && (
@@ -900,35 +904,46 @@ export function EmbedSessionComposer({
           />
         </div>
 
-        <div className="flex items-end gap-2.5">
-          <div className="min-w-0 flex-1" />
+        {/* 按钮列：与 textarea 同行，贴底对齐 */}
+        <div className="flex shrink-0 flex-col items-stretch gap-1.5">
           {showInterrupt ? (
             <button
               type="button"
-              title="向 PTY 发送 Ctrl+C；若在经典终端按 Ctrl+C，上次普通提问也会回到输入框。"
+              title="向 PTY 发送 Ctrl+C"
               onClick={interruptGeneration}
-              className="shrink-0 rounded-xl border border-red-500/55 bg-red-500/12 px-3 py-2.5 text-[11px] font-semibold text-red-400 shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-red-500/20"
+              className="rounded-lg border border-red-500/55 bg-red-500/12 px-3 py-1.5 text-[11px] font-semibold text-red-400 transition hover:bg-red-500/20"
             >
               中断
+            </button>
+          ) : null}
+          {slashInteractiveMode ? (
+            <button
+              type="button"
+              onClick={exitSlashInteraction}
+              className="rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
+            >
+              强制退出
             </button>
           ) : null}
           <button
             type="button"
             onClick={() => send()}
             disabled={alternateScreen || slashInteractiveMode}
-            className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-1.5 text-[11px] font-semibold text-[var(--theme-accent-text)] shadow-md shadow-[color:var(--theme-shadow)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             发送
           </button>
-          {slashInteractiveMode ? (
+          {!nativeTerminalOpen ? (
             <button
               type="button"
-              onClick={() => {
-                exitSlashInteraction()
-              }}
-              className="shrink-0 rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
+              onClick={() => openNativeTerminal(sessionId, nativeTerminalRequest?.reason ?? '手动打开')}
+              className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ${
+                nativeTerminalNeeded
+                  ? 'border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-bg-strong)]'
+                  : 'border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] text-claude-muted hover:text-claude-text hover:bg-[var(--theme-accent-bg)]'
+              }`}
             >
-              强制退出
+              {nativeTerminalNeeded ? '打开终端' : '显示终端'}
             </button>
           ) : null}
         </div>

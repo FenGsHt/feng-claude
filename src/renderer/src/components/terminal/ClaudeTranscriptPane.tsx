@@ -1021,6 +1021,24 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     >
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
+        {/* 搜索框：右上角浮层 */}
+        <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索…"
+            className="h-6 w-32 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)]/90 px-2 text-[10px] text-claude-text outline-none placeholder:text-claude-muted/60 backdrop-blur-sm focus:border-[var(--theme-accent-border)] focus:w-44 transition-all"
+          />
+          {query ? (
+            <div className="inline-flex items-center gap-0.5 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)]/90 px-1 py-0.5 text-[9px] text-claude-muted backdrop-blur-sm">
+              <button type="button" className="rounded px-0.5 hover:text-claude-text" title="上一个" onClick={() => setSearchCursor((n) => n - 1)} disabled={matchedCount === 0}>↑</button>
+              <span className="min-w-[40px] text-center tabular-nums">{matchedCount === 0 ? '0/0' : `${activeMatchIndex + 1}/${matchedCount}`}</span>
+              <button type="button" className="rounded px-0.5 hover:text-claude-text" title="下一个" onClick={() => setSearchCursor((n) => n + 1)} disabled={matchedCount === 0}>↓</button>
+            </div>
+          ) : null}
+        </div>
         <div
           ref={scrollRootRef}
           onScroll={handleScrollPane}

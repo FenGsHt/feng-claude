@@ -76,20 +76,7 @@ export function PaneLeafShell({
                 <EmbedSessionComposer sessionId={sessionId} nativeTerminalOverlayVisible={nativeTerminalOpen} />
               </div>
             </TerminalDropZone>
-            {/* [2026-05-11] 浮窗未打开时始终显示打开按钮（用户要求常驻） */}
-            {!nativeTerminalOpen ? (
-              <button
-                type="button"
-                className={`absolute bottom-3 right-3 z-20 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold shadow-lg shadow-[color:var(--theme-shadow)] transition ${
-                  nativeTerminalNeeded
-                    ? 'border-[var(--theme-accent-border)] bg-[var(--theme-card-bg)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-bg-strong)]'
-                    : 'border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] text-claude-muted hover:text-claude-text hover:bg-[var(--theme-accent-bg)]'
-                }`}
-                onClick={() => openNativeTerminal(sessionId, nativeTerminalRequest?.reason ?? '手动打开')}
-              >
-                {nativeTerminalNeeded ? '打开终端' : '显示终端'}
-              </button>
-            ) : null}
+            {/* 「显示终端」按钮已移入 EmbedSessionComposer 按钮列，此处不再渲染 */}
             {nativeTerminalOpen ? (
               <div className="absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(560px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]">
                 <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-header)] px-2.5">
