@@ -427,11 +427,18 @@ export function EmbedSessionComposer({
     setDraft('')
     setCursor(0)
 
-    // 将附件图片的 @路径 追加到发送内容 — 加 [图片N] 标记让 AI 知道顺序，整行发送避免多行输入问题
+    // [2026-05-11] 附件图片 → @path 引用：
+    // - 去掉 [图片N] 标签（会破坏 Claude Code 的 @ 解析器边界识别）
+    // - 路径优先用相对于 workdir 的形式（@D:/abs 在 Claude Code 里可能走驱动器解析失败）
+    const wd = workdir.replace(/\\/g, '/')
     const imageRefs = attachedImages
-      .map((img, idx) => {
+      .map((img) => {
         const abs = img.filePath.replace(/\\/g, '/')
-        return `[图片${idx + 1}] @${abs}`
+        const rel =
+          wd && abs.toLowerCase().startsWith(wd.toLowerCase())
+            ? abs.slice(wd.length).replace(/^\/+/, '')
+            : abs
+        return `@${rel}`
       })
       .join(' ')
     const finalText = `${t}${imageRefs ? ' ' + imageRefs : ''}`.trim()

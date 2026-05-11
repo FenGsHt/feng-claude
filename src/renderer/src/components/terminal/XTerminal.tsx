@@ -341,7 +341,13 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
           try {
             const result = await window.electronAPI.saveClipboardImage(base64, wd)
             if (result.success) {
-              const ref = `@${result.path.replace(/\\/g, '/')}`
+              const abs = result.path.replace(/\\/g, '/')
+              const wdFwd = wd.replace(/\\/g, '/')
+              const rel =
+                wdFwd && abs.toLowerCase().startsWith(wdFwd.toLowerCase())
+                  ? abs.slice(wdFwd.length).replace(/^\/+/, '')
+                  : abs
+              const ref = `@${rel}`
               bufferUserInput(sessionId, ref)
               term.paste(`${ref} `)
             }
