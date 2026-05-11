@@ -717,6 +717,62 @@ export function EmbedSessionComposer({
 
   return (
     <div className="shrink-0 border-t border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-3 py-3">
+      {/* [2026-05-11] 提示区挪到输入框上方，输入框贴底 */}
+      {alternateScreen ? (
+        <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5">
+          <p className="text-[10px] leading-relaxed text-[var(--theme-accent-text)]">
+            已检测到终端备用缓冲区（全屏 TUI，如 Ink 的{' '}
+            <kbd className="rounded border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-px font-mono text-[9px]">
+              /help
+            </kbd>
+            ）。外嵌按行输入与此类界面不兼容，已自动暂停；请用顶栏切换到「经典终端」逐键操作，或点击下方向 PTY 发送常用退出键。退出备用缓冲区后此处会自动恢复。
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              title="发送 Ctrl+C 到 PTY"
+              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
+              onClick={() => sendRawPtyInput(sessionId, '\x03')}
+            >
+              Ctrl+C
+            </button>
+            <button
+              type="button"
+              title="发送 Esc 到 PTY"
+              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
+              onClick={() => sendRawPtyInput(sessionId, '\x1b')}
+            >
+              Esc
+            </button>
+            <button
+              type="button"
+              title="发送 q 并换行"
+              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
+              onClick={() => {
+                const nl =
+                  typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent) ? '\r' : '\n'
+                sendRawPtyInput(sessionId, `q${nl}`)
+              }}
+            >
+              q ↵
+            </button>
+          </div>
+        </div>
+      ) : (
+        <details className="mx-auto mb-2 max-w-3xl">
+          <summary className="cursor-pointer select-none text-center text-[9px] text-claude-muted/50 transition-colors hover:text-claude-muted/80">
+            快捷键说明
+          </summary>
+          <p className="mt-1 text-center text-[9px] leading-relaxed text-claude-muted/75">
+            <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
+            发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
+            换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
+            命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
+            <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
+            填入/历史 · running / 等待确认时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
+          </p>
+        </details>
+      )}
       <div className="mx-auto flex max-w-3xl min-h-0 flex-col gap-2">
         <div className="relative min-h-0 flex-1">
           {/* [2026-05-10] 附件图片预览：显示在输入框上方 */}
@@ -877,64 +933,6 @@ export function EmbedSessionComposer({
           ) : null}
         </div>
       </div>
-      {alternateScreen ? (
-        <div className="mx-auto mt-2 max-w-3xl rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5">
-          <p className="text-[10px] leading-relaxed text-[var(--theme-accent-text)]">
-            已检测到终端备用缓冲区（全屏 TUI，如 Ink 的{' '}
-            <kbd className="rounded border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-px font-mono text-[9px]">
-              /help
-            </kbd>
-            ）。外嵌按行输入与此类界面不兼容，已自动暂停；请用顶栏切换到「经典终端」逐键操作，或点击下方向 PTY 发送常用退出键。退出备用缓冲区后此处会自动恢复。
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              title="发送 Ctrl+C 到 PTY"
-              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
-              onClick={() => sendRawPtyInput(sessionId, '\x03')}
-            >
-              Ctrl+C
-            </button>
-            <button
-              type="button"
-              title="发送 Esc 到 PTY"
-              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
-              onClick={() => sendRawPtyInput(sessionId, '\x1b')}
-            >
-              Esc
-            </button>
-            <button
-              type="button"
-              title="发送 q 并换行"
-              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
-              onClick={() => {
-                const nl =
-                  typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent) ? '\r' : '\n'
-                sendRawPtyInput(sessionId, `q${nl}`)
-              }}
-            >
-              q ↵
-            </button>
-          </div>
-        </div>
-      ) : (
-        <p className="mx-auto mt-2 max-w-3xl text-[9px] leading-relaxed text-claude-muted/70">
-          若程序进入全屏 TUI 的备用缓冲区，下方按行输入会自动暂停直至程序发出退出信号。也可随时用顶栏切到经典终端。
-        </p>
-      )}
-      <details className="mx-auto mt-1 max-w-3xl">
-        <summary className="cursor-pointer select-none text-center text-[9px] text-claude-muted/50 transition-colors hover:text-claude-muted/80">
-          快捷键说明
-        </summary>
-        <p className="mt-1 text-center text-[9px] leading-relaxed text-claude-muted/75">
-          <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
-          发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
-          换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
-          命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
-          <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
-          填入/历史 · running / 等待确认时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
-        </p>
-      </details>
     </div>
   )
 }
