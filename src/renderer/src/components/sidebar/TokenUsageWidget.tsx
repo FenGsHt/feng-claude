@@ -169,16 +169,14 @@ export function TokenUsageWidget(): React.ReactElement {
   // [2026-04-28] Compute costs using each profile's own pricing.
   // Also adds unattributed remainder (tokens ingested before per-profile tracking) at singlePricing.
   function computePerProfileCost(totals: Record<string, TokenTotals>, globalRef?: TokenTotals): number {
-    if (!settings) return 0
     let cost = 0
     let sumInput = 0, sumOutput = 0, sumCC = 0, sumCR = 0
     for (const [profileId, t] of Object.entries(totals)) {
-      const profile = settings.profiles.find(p => p.id === profileId)
-      const p = profile?.pricing ?? globalPricing ?? DEFAULT_PRICING
+      const profile = settings?.profiles.find(p => p.id === profileId)
+      const p = profile?.pricing ?? globalPricing ?? singlePricing ?? DEFAULT_PRICING
       cost += computeCost(t, p)
       sumInput += t.input; sumOutput += t.output; sumCC += t.cacheCreate; sumCR += t.cacheRead
     }
-    // Add unattributed tokens (present in global aggregate but not in any profile bucket)
     if (globalRef) {
       const unattributed: TokenTotals = {
         input: Math.max(0, globalRef.input - sumInput),
