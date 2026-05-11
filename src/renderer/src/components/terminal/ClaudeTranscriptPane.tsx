@@ -733,6 +733,17 @@ function getToolBashCmd(call: import('../../store/toolCallStore').ToolCallEntry)
   return (call.input.command as string) ?? ''
 }
 
+/** [2026-05-11] 提取 Agent 工具调用的展示信息 */
+function getToolAgentInfo(call: import('../../store/toolCallStore').ToolCallEntry): { type?: string; description?: string; promptSnippet?: string } | null {
+  if (call.name !== 'Agent') return null
+  const input = call.input as Record<string, unknown>
+  const subagentType = (input.subagent_type as string) || undefined
+  const description = (input.description as string) || undefined
+  const prompt = (input.prompt as string) || ''
+  const promptSnippet = prompt.length > 120 ? prompt.slice(0, 120) + '…' : prompt || undefined
+  return { type: subagentType, description, promptSnippet }
+}
+
 function toolShortName(fullPath: string): string {
   const parts = fullPath.replace(/\\/g, '/').split('/')
   return parts.slice(-2).join('/') || fullPath
@@ -765,19 +776,33 @@ function ToolGroupBlock({ tools, toolIds, sessionId }: { tools: string[]; toolId
             const call = id ? allCalls.find((c) => c.id === id) : undefined
             const canView = DIFF_TOOL_NAMES.has(name)
             const isBash = name === 'Bash'
+            const isAgent = name === 'Agent'
             const filePath = call ? getToolFilePath(call) : ''
             const bashCmd = call && isBash ? getToolBashCmd(call) : ''
+            const agentInfo = call && isAgent ? getToolAgentInfo(call) : null
             const subtitle = isBash ? bashCmd : filePath
             return (
               <div key={i} className="fo-bubble-appear">
                 <div className="flex items-center gap-2 px-2 py-1">
                   <ToolLineIcon name={name} />
                   <span className={`shrink-0 text-[10px] font-semibold ${toolColor(name)}`}>{name}</span>
-                  {subtitle && (
+                  {isAgent && agentInfo && (
+                    <span className="min-w-0 truncate text-[10px] text-claude-muted">
+                      {agentInfo.type && <span className="font-mono text-purple-400/80">{agentInfo.type}</span>}
+                      {agentInfo.type && agentInfo.description && <span className="mx-1">·</span>}
+                      {agentInfo.description && <span>{agentInfo.description}</span>}
+                    </span>
+                  )}
+                  {!isAgent && subtitle && (
                     <code className="min-w-0 truncate font-mono text-[10px] text-claude-muted">{toolShortName(subtitle)}</code>
                   )}
                 </div>
                 {canView && call && <InlineToolDiff call={call} />}
+                {isAgent && agentInfo?.promptSnippet && (
+                  <pre className="mt-1 max-h-[120px] overflow-auto rounded-lg bg-[#0d0d0d] px-3 py-2 font-mono text-[10px] leading-relaxed text-purple-300 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]">
+                    {agentInfo.promptSnippet}
+                  </pre>
+                )}
               </div>
             )
           })}
@@ -791,6 +816,7 @@ function toolColor(name: string): string {
   if (name === 'Edit' || name === 'str_replace_based_edit_tool' || name === 'MultiEdit') return 'text-blue-400'
   if (name === 'Write' || name === 'create_file') return 'text-green-400'
   if (name === 'Bash') return 'text-amber-400'
+  if (name === 'Agent') return 'text-purple-400'
   return 'text-claude-muted'
 }
 
@@ -810,6 +836,12 @@ function ToolLineIcon({ name }: { name: string }): React.ReactElement {
   if (name === 'Edit' || name === 'str_replace_based_edit_tool' || name === 'MultiEdit') return (
     <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="shrink-0 text-blue-400">
       <path d="M8.5 1.5l2 2L4 10H2V8L8.5 1.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+    </svg>
+  )
+  if (name === 'Agent') return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="shrink-0 text-purple-400">
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.1"/>
+      <circle cx="6" cy="6" r="1.5" fill="currentColor"/>
     </svg>
   )
   return (
