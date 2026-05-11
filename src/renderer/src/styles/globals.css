@@ -1,5 +1,5 @@
-/* ── Google Fonts: Inter (UI) — must be first ──────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+/* ── Google Fonts: DM Sans (UI, closest free to Aeonik) — must be first ── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 /* [2026-05-06] Fallout 变量与 CRT（html[data-theme="fallout"]）；须在自定义规则之前 */
 @import './fallout-port.css';
 
@@ -147,6 +147,137 @@
   --theme-kbd-border: rgba(0, 0, 0, 0.09);
 }
 
+/* ── Claude Code 外嵌转录面板：极简纯文本风格，无框体 ────────── */
+[data-theme="claude-code"] .claude-transcript-root {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* 助手气泡：去框体，纯文本 */
+[data-theme="claude-code"] .claude-transcript-root .fo-assistant-bubble {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* 用户气泡：去框体，纯文本 */
+[data-theme="claude-code"] .claude-transcript-root .fo-user-bubble {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* 工具 pill：去装饰，只留文本 */
+[data-theme="claude-code"] .claude-transcript-root .fo-tool-pill {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* 禁用入场动画 */
+[data-theme="claude-code"] .claude-transcript-root .fo-bubble-appear,
+[data-theme="claude-code"] .claude-transcript-root .fo-fade-in {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* WorkGroupBlock 大框：去背景/圆角/overflow-hidden */
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block {
+  overflow: visible !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  animation: none !important;
+  transform: none !important;
+}
+
+/* WorkGroupBlock 展开/折叠容器 */
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block .fo-wg-expand {
+  display: grid !important;
+  opacity: 1 !important;
+  transition: grid-template-rows 220ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: visible !important;
+  transform: none !important;
+}
+
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block .fo-wg-expand.fo-wg-open {
+  grid-template-rows: 1fr !important;
+}
+
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block .fo-wg-expand.fo-wg-closed {
+  grid-template-rows: 0fr !important;
+}
+
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block .fo-wg-inner {
+  overflow: hidden !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block .fo-wg-scroll {
+  overflow-y: auto !important;
+  max-height: 400px !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+
+/* WorkGroupBlock 折叠按钮：◇ → ▸/▾ */
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block > button::before {
+  content: "▸ ";
+  color: var(--claude-muted);
+  font-size: 10px;
+}
+
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block:has(.fo-wg-open) > button::before {
+  content: "▾ ";
+}
+
+/* 隐藏原有 ◇ 和 ↓ 图标 */
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block > button > span:first-of-type,
+[data-theme="claude-code"] .claude-transcript-root .fo-work-group-block > button > span:last-of-type {
+  display: none !important;
+}
+
+/* 思考块：去框体 */
+[data-theme="claude-code"] .claude-transcript-root .fo-thinking-header,
+[data-theme="claude-code"] .claude-transcript-root .fo-thinking-body {
+  background: transparent !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 工具 diff 块：去边框圆角 */
+[data-theme="claude-code"] .claude-transcript-root .fo-tool-diff {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  border-radius: 0 !important;
+}
+
+/* ToolGroupBlock details：去框体 */
+[data-theme="claude-code"] .claude-transcript-root details {
+  background: transparent !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 底部处理中条：去框体 */
+[data-theme="claude-code"] .fo-working-bar-inner {
+  background: var(--claude-surface) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* AssistantReplyMeta 分隔线：更轻 */
+[data-theme="claude-code"] .claude-transcript-root .fo-assistant-bubble [class*="border-t"] {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -160,7 +291,7 @@ body,
   background: var(--claude-bg);
   color: var(--claude-text);
   accent-color: var(--claude-accent);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
