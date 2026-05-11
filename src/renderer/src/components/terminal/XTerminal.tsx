@@ -296,23 +296,60 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       bufferUserInput(sessionId, data)
     })
 
-    /** 资源管理器「复制文件」后 Ctrl+V：Electron clipboard 的 File 带 path，转成 @ 引用注入 PTY */
+    /** 资源管理器「复制文件」后 Ctrl+V：Electron clipboard 的 File 带 path，转成 @ 引用注入 PTY
+     * [2026-05-11] 同时处理剪贴板截图（无 .path 的图片 blob）：存临时文件后插入 @path */
     const onPasteFiles = (ev: ClipboardEvent): void => {
+      const items = ev.clipboardData?.items
       const files = ev.clipboardData?.files
-      if (!files || files.length === 0) return
-      const first = files[0] as File & { path?: string }
-      if (!first.path) return
+
+      // 检测剪贴板图片（截图 / 复制图片，无本地 path）
+      const imgItem = items
+        ? Array.from(items).find((it) => it.type?.startsWith('image/'))
+        : undefined
+
+      // 检测有本地路径的文件（资源管理器复制）
+      const hasFileWithPath =
+        files && files.length > 0 && !!(files[0] as File & { path?: string }).path
+
+      if (!imgItem && !hasFileWithPath) return
+
       ev.preventDefault()
       ev.stopPropagation()
+
       const wd =
         useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir ?? ''
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i] as File & { path?: string }
-        if (!f.path) continue
-        const ref = formatFileRefForClaudeCode(f.path, wd, false)
-        // [2026-04-28] 同时缓冲用户输入
-        bufferUserInput(sessionId, ref)
-        window.electronAPI?.sendInput(sessionId, `${ref} `)
+
+      // 本地文件（有 path）→ 直接格式化 @引用，发到 PTY（原有行为）
+      if (hasFileWithPath && files) {
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i] as File & { path?: string }
+          if (!f.path) continue
+          const ref = formatFileRefForClaudeCode(f.path, wd, false)
+          bufferUserInput(sessionId, ref)
+          window.electronAPI?.sendInput(sessionId, `${ref} `)
+        }
+      }
+
+      // 剪贴板图片（截图 / 复制图片）→ 存临时文件 → term.paste(@path)
+      if (imgItem) {
+        const blob = imgItem.getAsFile()
+        if (!blob) return
+        const reader = new FileReader()
+        reader.onloadend = async (): Promise<void> => {
+          const base64 = (reader.result as string).split(',')[1]
+          if (!base64) return
+          try {
+            const result = await window.electronAPI.saveClipboardImage(base64, wd)
+            if (result.success) {
+              const ref = `@${result.path.replace(/\\/g, '/')}`
+              bufferUserInput(sessionId, ref)
+              term.paste(`${ref} `)
+            }
+          } catch {
+            // 失败静默处理，不打断终端正常使用
+          }
+        }
+        reader.readAsDataURL(blob)
       }
     }
     term.textarea.addEventListener('paste', onPasteFiles, true)
