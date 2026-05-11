@@ -8,7 +8,6 @@ import { TerminalDropZone } from './TerminalDropZone'
 import { TerminalPaneHeader } from './TerminalPaneHeader'
 import { ClaudeTranscriptPane } from './ClaudeTranscriptPane'
 import { EmbedSessionComposer } from './EmbedSessionComposer'
-import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 /* [2026-05-07] 浮窗 × 不再强制退出 PTY，移除关闭路径中的输入/echo 清理依赖。 */
 // import { sendRawPtyInput, wakeTerminal } from './XTerminal'
@@ -27,8 +26,11 @@ export function PaneLeafShell({
   focused,
   setActiveSession
 }: PaneLeafProps): React.ReactElement {
-  /* [2026-05-06] embedClaudeOutputBeta：自建对话区 + 输入框，不再挂载 xterm（PTY 仍后台运行） */
-  const embedBeta = useEmbedClaudeOutputBeta()
+  /* [2026-05-11] 每个 session 独立控制外嵌/终端模式 */
+  const embedBeta = useSessionStore((s) => {
+    const sess = s.sessions.find((x) => x.id === sessionId)
+    return sess?.embedMode ?? false
+  })
   const nativeTerminalRequest = useNativeTerminalRequestStore((s) => s.bySession[sessionId])
   const openNativeTerminal = useNativeTerminalRequestStore((s) => s.openNativeTerminal)
   const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)

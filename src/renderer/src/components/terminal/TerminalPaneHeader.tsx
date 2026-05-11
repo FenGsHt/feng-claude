@@ -8,7 +8,6 @@ import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
-import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 
 interface WorktreeInfo {
   path: string
@@ -112,7 +111,10 @@ function MicIcon({ active }: { active: boolean }): React.ReactElement {
 }
 
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
-  const embedClaudeOutputBeta = useEmbedClaudeOutputBeta()
+  const embedBeta = useSessionStore((s) => {
+    const sess = s.sessions.find((x) => x.id === sessionId)
+    return sess?.embedMode ?? false
+  })
   const sess = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
   const createSession = useSessionStore((s) => s.createSession)
   const closeSession = useSessionStore((s) => s.closeSession)
@@ -143,18 +145,12 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     [history, sessions]
   )
 
-  /* [2026-05-06] 顶栏一键切换「外嵌会话」与「原版 Claude Code xterm」（读写 embedClaudeOutputBeta） */
-  const toggleEmbedVersusTerminal = useCallback(async () => {
-    try {
-      const s = await window.electronAPI.settings.get()
-      await window.electronAPI.settings.set({
-        ...s,
-        embedClaudeOutputBeta: !(s.embedClaudeOutputBeta === true)
-      })
-    } catch (e) {
-      console.warn('[TerminalPaneHeader] toggle embed / terminal failed', e)
-    }
-  }, [])
+  /* [2026-05-11] 顶栏一键切换当前 session 的外嵌/终端模式（每 session 独立） */
+  const toggleEmbedVersusTerminal = useCallback(() => {
+    const s = useSessionStore.getState()
+    const current = s.sessions.find((x) => x.id === sessionId)?.embedMode ?? false
+    s.updateSessionEmbedMode(sessionId, !current)
+  }, [sessionId])
 
   // 检查是否是 git 仓库以及 worktree 状态
   const checkGitStatus = useCallback(async () => {
@@ -389,14 +385,14 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
           <HeaderBtn
             title={
-              embedClaudeOutputBeta
+              embedBeta
                 ? '切换到传统 Claude Code 终端 (xterm)'
                 : '切换到外嵌会话视图 (结构化对话)'
             }
-            onClick={() => void toggleEmbedVersusTerminal()}
-            accent={embedClaudeOutputBeta}
+            onClick={toggleEmbedVersusTerminal}
+            accent={embedBeta}
           >
-            {embedClaudeOutputBeta ? <TerminalClassicIcon /> : <TranscriptEmbedIcon />}
+            {embedBeta ? <TerminalClassicIcon /> : <TranscriptEmbedIcon />}
           </HeaderBtn>
           {/* [2026-05-08] Telegram 配置已迁至标签栏「模型」药丸旁的频道按钮 */}
           {/* 合并提醒 */}

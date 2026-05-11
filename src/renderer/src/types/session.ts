@@ -38,6 +38,8 @@ export interface Session {
   shellOnly?: boolean
   /** [2026-05-08] 官方 Telegram Channel：每会话独立 token/stateDir */
   telegramChannel?: TelegramChannelSessionConfig
+  /** [2026-05-11] 该 session 的外嵌模式（独立于全局设置，false = 终端模式，true = 外嵌模式）*/
+  embedMode?: boolean
 }
 
 export interface HistoryRecord {

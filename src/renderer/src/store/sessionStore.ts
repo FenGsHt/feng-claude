@@ -185,6 +185,7 @@ interface SessionStore {
   updateSessionProfileId: (sessionId: string, profileId: string) => void
   /** [2026-05-08] 更新会话的 Telegram Channel 配置；重启后生效 */
   updateSessionTelegramChannel: (sessionId: string, telegramChannel?: TelegramChannelSessionConfig) => void
+  updateSessionEmbedMode: (sessionId: string, embedMode: boolean) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -218,6 +219,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const resolvedWorkdir = result.workdir ?? workdir
     // [2026-04-28] Always use returned profileId (IPC returns active profile if not specified)
     const sessionProfileId = result.profileId
+    // [2026-05-11] 新 session 默认 embedMode 从全局设置继承
+    const defaultEmbedMode = await window.electronAPI.settings.get().then((s) => s.embedClaudeOutputBeta === true).catch(() => false)
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -229,7 +232,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ptyPid: result.pid,
       profileId: sessionProfileId ?? undefined,
       shellOnly: shellOnly || undefined,
-      telegramChannel: result.telegramChannel ?? telegramChannel
+      telegramChannel: result.telegramChannel ?? telegramChannel,
+      embedMode: defaultEmbedMode || undefined
     }
 
     set((s) => {
@@ -559,6 +563,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((s) => ({
       sessions: s.sessions.map((sess) =>
         sess.id === sessionId ? { ...sess, telegramChannel } : sess
+      )
+    }))
+  },
+
+  updateSessionEmbedMode: (sessionId: string, embedMode: boolean) => {
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, embedMode } : sess
       )
     }))
   }
