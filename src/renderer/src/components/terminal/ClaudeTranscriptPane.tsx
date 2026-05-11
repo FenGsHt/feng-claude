@@ -1019,43 +1019,6 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       className={`claude-transcript-root flex min-h-0 flex-col overflow-hidden bg-[var(--theme-panel-bg)] ${className}`}
       aria-label="Claude transcript"
     >
-      <header className="shrink-0 border-b border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-1.5 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索会话…"
-            className="h-7 w-44 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-2 text-[10px] text-claude-text outline-none placeholder:text-claude-muted focus:border-[var(--theme-accent-border)]"
-          />
-          {query ? (
-            <div className="inline-flex items-center gap-1 rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-1.5 py-0.5 text-[9px] text-claude-muted">
-              <button
-                type="button"
-                className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
-                title="上一个匹配"
-                onClick={() => setSearchCursor((n) => n - 1)}
-                disabled={matchedCount === 0}
-              >
-                ↑
-              </button>
-              <span className="min-w-[52px] text-center tabular-nums">
-                {matchedCount === 0 ? '0 / 0' : `${activeMatchIndex + 1} / ${matchedCount}`}
-              </span>
-              <button
-                type="button"
-                className="rounded px-1 hover:bg-[var(--theme-panel-bg-soft)] hover:text-claude-text"
-                title="下一个匹配"
-                onClick={() => setSearchCursor((n) => n + 1)}
-                disabled={matchedCount === 0}
-              >
-                ↓
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </header>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <div
