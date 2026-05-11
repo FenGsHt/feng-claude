@@ -91,27 +91,27 @@ export const FALLOUT_TERMINAL_THEME: ITheme = {
 }
 
 export const CLAUDE_CODE_TERMINAL_THEME: ITheme = {
-  background: '#191919',
-  foreground: '#ede8e0',
-  cursor: '#e87a35',
-  cursorAccent: '#191919',
-  selectionBackground: 'rgba(232, 122, 53, 0.22)',
-  black: '#191919',
-  brightBlack: '#6b6560',
-  red: '#e55b5b',
-  brightRed: '#f09090',
-  green: '#6bbd6b',
-  brightGreen: '#9fd89f',
-  yellow: '#e8a838',
-  brightYellow: '#f0c060',
-  blue: '#6a9fd8',
-  brightBlue: '#90bfe8',
-  magenta: '#c888d0',
-  brightMagenta: '#ddb8e0',
-  cyan: '#5bbfbf',
-  brightCyan: '#88d8d8',
-  white: '#d8d2ca',
-  brightWhite: '#f0ece6'
+  background: '#fafaf8',
+  foreground: '#333330',
+  cursor: '#d97757',
+  cursorAccent: '#fafaf8',
+  selectionBackground: 'rgba(217, 119, 87, 0.18)',
+  black: '#333330',
+  brightBlack: '#7c7a76',
+  red: '#c0443a',
+  brightRed: '#d8665d',
+  green: '#3d8048',
+  brightGreen: '#5a9d65',
+  yellow: '#b87820',
+  brightYellow: '#d49630',
+  blue: '#3d6da8',
+  brightBlue: '#5a8cc2',
+  magenta: '#7c4890',
+  brightMagenta: '#9d68b0',
+  cyan: '#2d8080',
+  brightCyan: '#4a9e9e',
+  white: '#555550',
+  brightWhite: '#42413d'
 }
 
 export const themeDefinitions: Record<ResolvedThemeId, ThemeDefinition> = {

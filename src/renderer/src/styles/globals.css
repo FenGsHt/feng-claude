@@ -100,51 +100,51 @@
   --theme-kbd-border: rgba(0, 0, 0, 0.12);
 }
 
-/* [2026-05-11] Claude Code 主题：仿 Claude 官方配色，暖调深色 + 桃橙强调 */
+/* [2026-05-11] Claude Code 主题：仿 Claude 官方亮色 UI，暖白底 + 陶土橙强调 */
 [data-theme="claude-code"] {
-  --claude-bg: #191919;
-  --claude-surface: #202020;
-  --claude-surface2: #262626;
-  --claude-border: #303030;
-  --claude-border-subtle: rgba(48, 48, 48, 0.35);
-  --claude-text: #ede8e0;
-  --claude-muted: #8a8478;
-  --claude-accent: #e87a35;
-  --scrollbar-thumb: #3a3a3a;
-  --scrollbar-thumb-hover: #555555;
-  --separator-bg: #2a2a2a;
-  --field-bg: #141414;
-  --field-border: #303030;
-  --field-placeholder: #6a6460;
-  --overlay-bg: #1e1e1e;
-  --theme-focus-ring: rgba(232, 122, 53, 0.5);
-  --theme-panel-bg: #141414;
-  --theme-panel-bg-soft: rgba(255, 255, 255, 0.03);
-  --theme-panel-border: rgba(255, 255, 255, 0.08);
-  --theme-card-bg: #1e1e1e;
-  --theme-card-border: rgba(255, 255, 255, 0.08);
-  --theme-accent-bg: rgba(232, 122, 53, 0.13);
-  --theme-accent-bg-strong: rgba(232, 122, 53, 0.22);
-  --theme-accent-border: rgba(232, 122, 53, 0.35);
-  --theme-accent-text: #fde8d8;
-  --theme-accent-muted: rgba(240, 160, 100, 0.9);
-  --theme-user-bg: rgba(232, 122, 53, 0.16);
-  --theme-user-border: rgba(232, 122, 53, 0.32);
-  --theme-tool-bg: rgba(232, 122, 53, 0.07);
-  --theme-tool-border: rgba(232, 122, 53, 0.22);
-  --theme-thinking-bg: rgba(168, 130, 200, 0.18);
-  --theme-thinking-border: rgba(168, 130, 200, 0.28);
-  --theme-thinking-text: rgba(220, 210, 235, 0.92);
-  --theme-success-text: rgba(107, 189, 107, 0.9);
-  --theme-danger-bg: rgba(229, 91, 91, 0.2);
-  --theme-danger-border: rgba(240, 144, 144, 0.6);
-  --theme-danger-text: #fde8e8;
-  --theme-shadow: rgba(0, 0, 0, 0.5);
-  --theme-terminal-overlay-bg: rgba(16, 16, 16, 0.98);
-  --theme-terminal-overlay-header: rgba(0, 0, 0, 0.4);
-  --theme-field-bg: #1a1a1a;
-  --theme-kbd-bg: rgba(255, 255, 255, 0.05);
-  --theme-kbd-border: rgba(255, 255, 255, 0.1);
+  --claude-bg: #fafaf8;
+  --claude-surface: #f3f1ec;
+  --claude-surface2: #ebe8e2;
+  --claude-border: #dad8d3;
+  --claude-border-subtle: rgba(180, 175, 165, 0.3);
+  --claude-text: #333330;
+  --claude-muted: #7c7a76;
+  --claude-accent: #d97757;
+  --scrollbar-thumb: #d5d2cb;
+  --scrollbar-thumb-hover: #b5b0a5;
+  --separator-bg: #e8e4dd;
+  --field-bg: #ffffff;
+  --field-border: #dad8d3;
+  --field-placeholder: #7c7a76;
+  --overlay-bg: #f6f4ef;
+  --theme-focus-ring: rgba(217, 119, 87, 0.35);
+  --theme-panel-bg: #ffffff;
+  --theme-panel-bg-soft: rgba(0, 0, 0, 0.02);
+  --theme-panel-border: rgba(0, 0, 0, 0.06);
+  --theme-card-bg: #ffffff;
+  --theme-card-border: rgba(0, 0, 0, 0.06);
+  --theme-accent-bg: rgba(217, 119, 87, 0.08);
+  --theme-accent-bg-strong: rgba(217, 119, 87, 0.15);
+  --theme-accent-border: rgba(217, 119, 87, 0.28);
+  --theme-accent-text: #7a3a20;
+  --theme-accent-muted: rgba(170, 80, 40, 0.9);
+  --theme-user-bg: rgba(217, 119, 87, 0.07);
+  --theme-user-border: rgba(217, 119, 87, 0.22);
+  --theme-tool-bg: rgba(217, 119, 87, 0.05);
+  --theme-tool-border: rgba(217, 119, 87, 0.18);
+  --theme-thinking-bg: rgba(120, 70, 170, 0.07);
+  --theme-thinking-border: rgba(120, 70, 170, 0.18);
+  --theme-thinking-text: rgba(65, 25, 110, 0.88);
+  --theme-success-text: rgba(5, 120, 85, 0.95);
+  --theme-danger-bg: rgba(200, 40, 40, 0.09);
+  --theme-danger-border: rgba(200, 40, 40, 0.35);
+  --theme-danger-text: #7a1a1a;
+  --theme-shadow: rgba(0, 0, 0, 0.05);
+  --theme-terminal-overlay-bg: rgba(255, 255, 255, 0.98);
+  --theme-terminal-overlay-header: rgba(248, 245, 240, 0.9);
+  --theme-field-bg: #ffffff;
+  --theme-kbd-bg: rgba(0, 0, 0, 0.035);
+  --theme-kbd-border: rgba(0, 0, 0, 0.09);
 }
 
 * {
