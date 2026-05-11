@@ -460,11 +460,11 @@ export function EmbedSessionComposer({
       prev.forEach((img) => URL.revokeObjectURL(img.blobUrl))
       return []
     })
-    // 延迟删除临时文件（给 Claude Code 留出读取时间）
+    // [2026-05-11] 延迟删除临时文件：5s 太短，Claude Code 思考 + 工具调用可能超过 10s 才读文件
     toCleanup.forEach((img) => {
       setTimeout(() => {
         window.electronAPI.deleteFile(img.filePath)
-      }, 5000)
+      }, 120_000) // 2 分钟，足够覆盖绝大多数响应耗时
     })
 
     queueMicrotask(() => {
