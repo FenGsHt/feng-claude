@@ -883,7 +883,7 @@ export function EmbedSessionComposer({
             onKeyUp={syncCursorFromDom}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            rows={3}
+            rows={1}
             placeholder={
               alternateScreen
                 ? '全屏终端界面进行中，输入已暂停…'
@@ -891,7 +891,7 @@ export function EmbedSessionComposer({
                   ? '斜杠命令交互中：请在上方内嵌终端直接输入；Ctrl+Enter 强制退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
-            className={`fo-embed-composer-textarea min-h-[80px] w-full resize-y rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-field-bg)] px-3 py-2.5 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-[color:var(--theme-shadow)] placeholder:text-claude-muted/55 focus:border-[var(--theme-accent-border)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
+            className={`fo-embed-composer-textarea min-h-[36px] w-full resize-y rounded-xl border border-[var(--theme-panel-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow-inner shadow-[color:var(--theme-shadow)] placeholder:text-claude-muted/55 focus:border-[var(--theme-accent-border)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
               alternateScreen ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}
