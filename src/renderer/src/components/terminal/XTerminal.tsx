@@ -211,16 +211,20 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   //   lines.length === 1
   //     ? `${lines[0]!}${win ? '\r' : '\n'}`
   //     : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
-  let payload =
-    lines.length === 1
-      ? `${lines[0]!}${win ? '\r' : '\n'}`
-      : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
+  let payload: string
+  const lineEnding = win ? '\r' : '\n'
+  const textPart = lines.length === 1 ? lines[0]! : lines.join(win ? '\r\n' : '\n')
   if (!isSlashCommand) {
-    /* [2026-05-08] 原用前置换行把视觉输入挪到新行；中断后 PTY 当前行若残留「在吗」，换行会先提交旧 buffer，导致外嵌显示「在吗123」但实际发送「在吗」。 */
-    // const freshLine = win ? '\r\n' : '\n'
-    // payload = `${freshLine}${payload}`
-    /* [2026-05-08] Ctrl+U 清空当前输入行，再提交外嵌最新正文；避免旧 xterm 行内容参与本次发送。 */
-    payload = `\x15${payload}`
+    /* [2026-05-11] 文本含 @ 时 Claude Code 的 @ 自动补全会弹出，\r 被补全消费导致不提交。
+     * 在 @path 后追加空格再 Enter：Claude Code 的 @ 补全正则 @(\S*)$ 只在行末匹配，
+     * 有空格时补全不触发，Enter 正常提交。 */
+    if (textPart.includes('@')) {
+      payload = `\x15${textPart} ${lineEnding}`
+    } else {
+      payload = `\x15${textPart}${lineEnding}`
+    }
+  } else {
+    payload = `${textPart}${lineEnding}`
   }
   window.electronAPI.sendInput(sessionId, payload)
   if (isSlashCommand) {
