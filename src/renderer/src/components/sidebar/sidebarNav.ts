@@ -3,6 +3,8 @@
  * Extracted to avoid circular dependency between Sidebar and FileTree.
  */
 
+import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
+
 type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog' | 'office'
 
 let setActiveTab: ((tab: Tab) => void) | null = null
@@ -17,8 +19,7 @@ export function navigateToDevLogTab(): void { setActiveTab?.('devlog') }
 export function navigateToFilesTab(): void { setActiveTab?.('files') }
 export function navigateToOfficeTab(): void { setActiveTab?.('office') }
 
-/** [2026-05-12] Office 预览改为右侧面板，不再切 tab。直接调用全局 open 函数。 */
+/** [2026-05-12] Office 预览右侧面板。直接通过 store 打开。 */
 export function openOfficePreview(filePath: string): void {
-  const fn = (window as any).__officePreviewOpen
-  if (typeof fn === 'function') fn(filePath)
+  useOfficePreviewPanelStore.getState().open(filePath)
 }
