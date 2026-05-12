@@ -12,7 +12,8 @@ export const zh = {
     guide: '指南',
     settings: '设置',
     test: '测试',
-    devlog: '日志'
+    devlog: '日志',
+    office: 'Office'
   },
   // Common actions
   common: {

@@ -13,7 +13,8 @@ export const en: Translations = {
     guide: 'Guide',
     settings: 'Settings',
     test: 'Test',
-    devlog: 'Logs'
+    devlog: 'Logs',
+    office: 'Office'
   },
   common: {
     save: 'Save',
