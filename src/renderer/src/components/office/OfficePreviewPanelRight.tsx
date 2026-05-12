@@ -9,6 +9,7 @@ import { parseXlsx } from './xlsxParser'
 import { parsePptx } from './pptxParser'
 import { getElementSelectorScript } from './elementSelector'
 import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
+import { useSessionStore } from '../../store/sessionStore'
 
 interface PreviewState {
   fileName: string
@@ -27,6 +28,8 @@ export function OfficePreviewPanel(): React.ReactElement | null {
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
+  const [pickMode, setPickMode] = useState(false)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
 
   useEffect(() => {
     if (!visible || !filePath) return
@@ -100,11 +103,29 @@ export function OfficePreviewPanel(): React.ReactElement | null {
     document.addEventListener('mouseup', onUp)
   }, [width, setWidth])
 
-  // Expose for file tree double-click
+  // Listen for cell/element selection from iframe
   useEffect(() => {
-    ;(window as any).__officePreviewOpen = openFile
-    return () => { delete (window as any).__officePreviewOpen }
-  }, [openFile])
+    if (!visible || !filePath) return
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'office-element-selected' && e.data.path && activeSessionId) {
+        const ref = `@${filePath}#${e.data.path} `
+        window.electronAPI.sendInput(activeSessionId, ref)
+        setPickMode(false)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [visible, filePath, activeSessionId])
+
+  const togglePickMode = useCallback(() => {
+    setPickMode((prev) => {
+      const next = !prev
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'toggle-pick-mode' }, '*')
+      }
+      return next
+    })
+  }, [])
 
   const injectScript = useCallback((html: string): string => {
     const script = getElementSelectorScript()
@@ -147,6 +168,17 @@ export function OfficePreviewPanel(): React.ReactElement | null {
           <span className="flex-1 truncate text-[11px] font-medium" title={state?.fileName}>
             {state?.fileName || 'Office Preview'}
           </span>
+          <button
+            onClick={togglePickMode}
+            className={`flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold transition-colors ${
+              pickMode
+                ? 'bg-amber-500/30 text-amber-400 ring-1 ring-amber-500/50'
+                : 'text-claude-muted hover:text-claude-text hover:bg-white/10'
+            }`}
+            title={pickMode ? 'Click a cell to reference' : 'Pick cell'}
+          >
+            @
+          </button>
           <button
             onClick={close}
             className="flex h-5 w-5 items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-white/10 transition-colors"

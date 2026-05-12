@@ -11,19 +11,17 @@ import { McpPanel } from '../mcp/McpPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { PetWidget } from './PetWidget'
 import { PetPanel } from './PetPanel'
-import { TestPanel } from './TestPanel'
 import { DevLogPanel } from './DevLogPanel'
-import { OfficePreviewPanel } from '../office/OfficePreviewPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 import { registerSidebarTabSwitcher } from './sidebarNav'
-import { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToOfficeTab, navigateToFilesTab } from './sidebarNav'
+import { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToFilesTab } from './sidebarNav'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog' | 'office'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog'
 
 // Re-export nav helpers for external callers
-export { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToOfficeTab, navigateToFilesTab }
+export { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToFilesTab }
 
 interface TabConfig {
   id: Tab
@@ -139,29 +137,11 @@ function IconPet(): React.ReactElement {
   )
 }
 
-function IconTest(): React.ReactElement {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-      <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
-      <path d="M5 7.5l1.5 1.5L10 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
-
 function IconDevLog(): React.ReactElement {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="2" y="2" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.1"/>
       <path d="M5 5.5l2 2M7 5.5l-2 2M9.5 9.5h-4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-    </svg>
-  )
-}
-
-function OfficeIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
     </svg>
   )
 }
@@ -202,9 +182,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'skills', label: t.sidebar.skills, icon: <IconSkills /> },
     { id: 'mcp', label: t.sidebar.mcp, icon: <IconMcp /> },
     { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
-    { id: 'test', label: t.sidebar.test, icon: <IconTest /> },
     ...(devMode ? [{ id: 'devlog' as Tab, label: t.sidebar.devlog, icon: <IconDevLog /> }] : []),
-    { id: 'office', label: t.sidebar.office, icon: <OfficeIcon /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -282,12 +260,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <McpPanel />
           ) : activeTab === 'pet' ? (
             <PetPanel />
-          ) : activeTab === 'test' ? (
-            <TestPanel />
           ) : activeTab === 'devlog' ? (
             <DevLogPanel />
-          ) : activeTab === 'office' ? (
-            <OfficePreviewPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (
