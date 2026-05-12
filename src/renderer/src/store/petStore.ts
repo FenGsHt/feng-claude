@@ -133,6 +133,15 @@ interface PetStore {
 
   growth: PetGrowth
 
+  /** [2026-05-12] 21 点游戏币（来自消耗的 token 费用换算） */
+  gameCoins: number
+  /** 上次同步的 token 费用基线，避免重复计算 */
+  lastCoinSyncCost: number
+  /** 累计游戏盈亏（跨面板开关持久化） */
+  sessionPnl: number
+  /** 当前局游戏决策记录（非持久化，每局独立） */
+  gameDecisions: string[]
+
   setConfig: (c: Partial<PetConfig>) => void
   setMood: (m: PetMood) => void
   setSpeech: (s: string) => void
@@ -147,6 +156,19 @@ interface PetStore {
   applyAffectionDecay: (amount: number) => void
   upgradeSkill: (skillId: string) => boolean
   resetGrowth: () => void
+
+  /** [2026-05-12] 将新增的 token 费用换算为游戏币并累加 */
+  syncGameCoins: (totalCost: number) => void
+  /** 设置游戏币（直接覆盖）*/
+  setGameCoins: (coins: number) => void
+  /** 增减游戏币 */
+  addGameCoins: (amount: number) => void
+  /** 设置累计游戏盈亏 */
+  setSessionPnl: (pnl: number) => void
+  /** 记录一局游戏中的玩家决策 */
+  recordGameDecision: (decision: string) => void
+  /** 获取并清空当前局的游戏决策记录 */
+  takeGameDecisions: () => string[]
 }
 
 export const usePetStore = create<PetStore>()(
@@ -166,6 +188,10 @@ export const usePetStore = create<PetStore>()(
       lastPetAt: 0,
       history: [],
       growth: defaultGrowth(),
+      gameCoins: 1000,
+      lastCoinSyncCost: 0,
+      sessionPnl: 0,
+      gameDecisions: [],
 
       setConfig: (c) => set((s) => ({ config: { ...s.config, ...c } })),
       setMood: (m) => set({ mood: m }),
@@ -245,6 +271,25 @@ export const usePetStore = create<PetStore>()(
       },
 
       resetGrowth: () => set({ growth: defaultGrowth() }),
+
+      syncGameCoins: (totalCost) => set((s) => {
+        const delta = totalCost - s.lastCoinSyncCost
+        if (delta <= 0) return {}
+        const coins = delta // $1 → 1 游戏币（支持小数）
+        return { gameCoins: s.gameCoins + coins, lastCoinSyncCost: totalCost }
+      }),
+
+      setGameCoins: (coins) => set({ gameCoins: coins }),
+
+      addGameCoins: (amount) => set((s) => ({ gameCoins: s.gameCoins + amount })),
+      setSessionPnl: (pnl) => set({ sessionPnl: pnl }),
+      recordGameDecision: (decision) => set((s) => ({
+        gameDecisions: [...s.gameDecisions, decision],
+      })),
+      takeGameDecisions: () => set((s) => {
+        const decisions = [...s.gameDecisions]
+        return { gameDecisions: [] }
+      }),
     }),
     {
       name: 'pet-store',
@@ -254,6 +299,8 @@ export const usePetStore = create<PetStore>()(
         speech: s.speech,
         history: s.history,
         growth: s.growth,
+        gameCoins: s.gameCoins,
+        sessionPnl: s.sessionPnl,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>

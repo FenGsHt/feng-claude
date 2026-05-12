@@ -97,6 +97,8 @@ export const IPC = {
 
   /** 宠物 Agent：调用 Anthropic API 返回建议 */
   PET_ASK: 'pet:ask',
+  /** 宠物游戏点评：调用 API 对玩家游戏决策生成点评 */
+  PET_GAME_COMMENT: 'pet:gameComment',
   PET_LOG_LIST: 'pet:logList',
   PET_LOG_CLEAR: 'pet:logClear',
 
@@ -378,6 +380,18 @@ export interface PetAskResult {
     cacheCreate: number
     cacheRead: number
   }
+}
+
+export interface PetGameCommentPayload {
+  petConfig: { name: string; personality: string; type?: string }
+  growth?: {
+    level: number
+    affection: number
+    skills: Array<{ id: string; level: number }>
+  }
+  decisions: string[]
+  outcome: 'win' | 'lose' | 'push'
+  pnlDelta: number
 }
 
 export type ContentCategory = 'chitchat' | 'joke' | 'news' | 'tip'

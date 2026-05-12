@@ -13,10 +13,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { usePetStore, type PetType, getAffectionTier, calculateActualTriggerProbability } from '../../store/petStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
-import { useGlobalTokenStore } from '../../store/globalTokenStore'
+import { useGlobalTokenStore, computeCost } from '../../store/globalTokenStore'
 import { useContentBankStore } from '../../store/contentBankStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
 import { navigateToPetTab } from './Sidebar'
+import { BlackjackGame } from './BlackjackGame'
 
 // ── ASCII 帧库 ────────────────────────────────────────────────────
 type Activity =
@@ -404,9 +405,9 @@ function randomPick<T>(arr: T[]): T {
 }
 
 export function PetWidget(): React.ReactElement {
-  const { config, speech, history, lastAutoAt, lastPetAt, growth,
+  const { config, speech, history, lastAutoAt, lastPetAt, growth, gameCoins,
           setSpeech, pushHistory, setLastAutoAt, setLastPetAt,
-          addXp, addAffection } = usePetStore()
+          addXp, addAffection, syncGameCoins } = usePetStore()
   const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
   // output token 计数是最准确的"Claude Code 完成了一轮回答"的信号
   const outputTokens = useTokenUsageStore((s) =>
@@ -425,6 +426,14 @@ export function PetWidget(): React.ReactElement {
   const [celebrating, setCelebrating] = useState(false)
   // XP 条可见性
   const [showXpBar, setShowXpBar] = useState(false)
+  // 21 点游戏
+  const [showBlackjack, setShowBlackjack] = useState(false)
+  const [blackjackMinimized, setBlackjackMinimized] = useState(false)
+  const [blackjackSessionKey, setBlackjackSessionKey] = useState(0)
+  // Track whether game is open to pause coin sync during gameplay
+  const gameIsOpenRef = useRef(false)
+  // Expose ref for BlackjackGame to reset on close
+  ;(window as any).__gameIsOpenRef = gameIsOpenRef
 
   const idleCycleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleStateRef = useRef<IdleState>({ lastActivity: 'look', cooldowns: new Map() })
@@ -432,6 +441,27 @@ export function PetWidget(): React.ReactElement {
   const walkAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // 上次看到的 output token 数，用于检测新增
   const lastOutputRef = useRef(0)
+
+  // [2026-05-12] 游戏币变化浮窗提示
+  const [coinTip, setCoinTip] = useState('')
+  const prevCoinsRef = useRef(gameCoins)
+  useEffect(() => {
+    const delta = gameCoins - prevCoinsRef.current
+    if (delta > 0) {
+      setCoinTip(Math.floor(delta).toString())
+      setTimeout(() => setCoinTip(''), 1500)
+    }
+    prevCoinsRef.current = gameCoins
+  }, [gameCoins])
+
+  // [2026-05-12] 全局 token 变化时自动同步游戏币（游戏打开时暂停，避免干扰结算）
+  const gTotals = useGlobalTokenStore(s => s.total)
+  const gPricing = useGlobalTokenStore(s => s.pricing)
+  useEffect(() => {
+    if (gameIsOpenRef.current) return
+    const cost = computeCost(gTotals, gPricing)
+    syncGameCoins(cost)
+  }, [gTotals, gPricing]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
@@ -781,7 +811,18 @@ export function PetWidget(): React.ReactElement {
   const walkIndicator = activity === 'walk' ? (walkDirection === 'right' ? '→' : '←') : ''
 
   return (
-    <div className="shrink-0 border-t border-claude-border bg-claude-surface/50 overflow-hidden">
+    <div className="shrink-0 border-t border-claude-border bg-claude-surface/50">
+      {/* 21 点游戏面板（内嵌在宠物栏上方，最小化时 CSS 隐藏但组件不卸载）*/}
+      {showBlackjack && (
+        <div style={{ display: blackjackMinimized ? 'none' : undefined }}>
+          <BlackjackGame
+            onClose={() => { setShowBlackjack(false); setBlackjackMinimized(false); setBlackjackSessionKey(0); }}
+            onMinimize={() => { setBlackjackMinimized(true) }}
+            sessionKey={blackjackSessionKey}
+          />
+        </div>
+      )}
+
       <div
         className={`flex items-center gap-2 px-2 py-1.5 transition-all duration-300 ${idleMode ? 'justify-center' : ''}`}
       >
@@ -844,6 +885,39 @@ export function PetWidget(): React.ReactElement {
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
           </svg>
         </button>
+
+        {/* [2026-05-12] 21 点游戏入口 — 游戏币图标 + 游戏币数（游戏未打开或已最小化时显示）*/}
+        {(!showBlackjack || blackjackMinimized) && (
+          <div className="relative flex flex-row items-center shrink-0 overflow-visible">
+          {/* 浮窗提示 — 游戏币增加时上浮消失 */}
+          {coinTip && (
+            <span
+              className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full text-[10px] font-bold text-[#2ecc71] pointer-events-none"
+              style={{ fontFamily: 'VT323, monospace', animation: 'coinTipUp 1.5s ease-out forwards' }}
+            >
+              +{coinTip}
+            </span>
+          )}
+          <button
+            className="flex flex-row items-center gap-1 rounded px-1.5 py-1 text-claude-muted transition hover:text-[#f5c542] hover:bg-claude-surface"
+            onClick={() => {
+              gameIsOpenRef.current = true
+              setBlackjackMinimized(false)
+              setBlackjackSessionKey(k => k + 1)
+              setShowBlackjack(true)
+            }}
+            title="21 点 Blackjack"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M14.5 9a2.5 2.5 0 0 0-5 0c0 2.5 5 2 5 4.5a2.5 2.5 0 0 1-5 0" />
+            </svg>
+            <span className="text-[10px] tabular-nums leading-none" style={{ color: '#2ecc71' }}>
+              {Math.floor(gameCoins).toLocaleString()}
+            </span>
+          </button>
+        </div>
+        )}
       </div>
     </div>
   )

@@ -717,6 +717,151 @@ export function registerIpcHandlers(
     }
   })
 
+  // ── Pet Game Comment ──────────────────────────────────────────
+  ipcMain.handle(IPC.PET_GAME_COMMENT, async (_e, payload) => {
+    const { petConfig, growth, decisions, outcome, pnlDelta } = payload as {
+      petConfig: { name: string; personality: string; type?: string }
+      growth?: { level: number; affection: number; skills: Array<{ id: string; level: number }> }
+      decisions: string[]
+      outcome: 'win' | 'lose' | 'push'
+      pnlDelta: number
+    }
+
+    const settings = settingsStore.get()
+    const petApi = settings.petApi
+    const activeProfile = settingsStore.getActiveProfile()
+
+    const apiKey = petApi?.authToken?.trim() || activeProfile.authToken
+    const rawBase = petApi?.baseUrl?.trim() || activeProfile.baseUrl?.trim() || 'https://api.anthropic.com'
+    const baseUrl = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase
+    const petModel = petApi?.model?.trim() || activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
+    const forceFormat = petApi?.format
+
+    if (!apiKey) {
+      return { error: 'No API key configured' }
+    }
+
+    // Build game-specific system prompt
+    const systemParts: string[] = []
+    systemParts.push(petConfig.personality)
+    systemParts.push(`你的名字是 ${petConfig.name}。`)
+    systemParts.push('你现在在观看主人玩21点 Blackjack 游戏，请对主人的游戏表现做出简短点评。')
+
+    if (growth) {
+      if (growth.level >= 20) {
+        systemParts.push('你是一只非常有经验的老宠物，拥有深刻的技术洞察力。')
+      } else if (growth.level >= 10) {
+        systemParts.push('你正在成长中，开始有了自己的见解。')
+      } else if (growth.level >= 5) {
+        systemParts.push('你是一只年轻的宠物，保持好奇心。')
+      }
+
+      if (growth.affection >= 80) {
+        systemParts.push('你和用户关系极其亲密，会主动表达关心。')
+      } else if (growth.affection >= 60) {
+        systemParts.push('你和用户关系很好，回答热情。')
+      } else if (growth.affection >= 40) {
+        systemParts.push('你对用户比较友好。')
+      } else if (growth.affection < 20) {
+        systemParts.push('你和用户关系冷淡，回答简短且偶尔带刺。')
+      }
+
+      const activeSkills = growth.skills
+        .map(sk => ({ ...sk, def: SKILL_DEFINITIONS.find(d => d.id === sk.id) }))
+        .filter((s): s is typeof s & { def: NonNullable<typeof s.def> } => !!s.def && s.level > 0)
+        .sort((a, b) => b.level - a.level)
+        .slice(0, 3)
+      for (const skill of activeSkills) {
+        const boostIdx = Math.min(skill.level, skill.def.systemPromptBoost.length) - 1
+        if (boostIdx >= 0) systemParts.push(skill.def.systemPromptBoost[boostIdx])
+      }
+    }
+
+    systemParts.push('回答必须简短（1到2句），具体可执行，绝不废话。可以适当引用主人的游戏决策。')
+    const systemPrompt = systemParts.join(' ')
+
+    const decisionStr = decisions.length > 0 ? `主人的游戏决策：${decisions.join(' → ')}` : '没有记录到具体决策'
+    const outcomeStr = outcome === 'win' ? `赢了 ${Math.floor(pnlDelta)} 游戏币` : outcome === 'lose' ? `输了 ${Math.floor(Math.abs(pnlDelta))} 游戏币` : '平局'
+    const userMessage = `主人刚结束一局21点游戏，结果：${outcomeStr}。${decisionStr}。请点评。`
+
+    try {
+      let body: string
+      let endpoint: string
+      let headers: Record<string, string>
+
+      const endsWithMessages = baseUrl.endsWith('/v1/messages')
+      const endsWithCompletions = baseUrl.endsWith('/chat/completions') || baseUrl.endsWith('/v1/chat/completions')
+      const isAnthropicDomain = baseUrl.includes('anthropic.com') || baseUrl.includes('api.anthropic')
+      let isAnthropic: boolean
+      if (forceFormat === 'anthropic') isAnthropic = true
+      else if (forceFormat === 'anthropic-bearer') isAnthropic = true
+      else if (forceFormat === 'openai') isAnthropic = false
+      else isAnthropic = endsWithMessages || (!endsWithCompletions && isAnthropicDomain)
+
+      if (isAnthropic) {
+        endpoint = endsWithMessages ? baseUrl : `${baseUrl}/v1/messages`
+        body = JSON.stringify({
+          model: petModel, max_tokens: 200, system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        })
+        headers = { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)) }
+        if (forceFormat === 'anthropic-bearer') {
+          headers['Authorization'] = `Bearer ${apiKey}`
+        } else {
+          headers['x-api-key'] = apiKey
+          headers['anthropic-version'] = '2023-06-01'
+        }
+      } else {
+        endpoint = endsWithCompletions ? baseUrl : `${baseUrl}/v1/chat/completions`
+        body = JSON.stringify({
+          model: petModel, max_tokens: 200, stream: false,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+        })
+        headers = { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)), 'Authorization': `Bearer ${apiKey}` }
+      }
+
+      const url = new URL(endpoint)
+      const isHttps = url.protocol === 'https:'
+      const { request } = isHttps ? await import('https') : await import('http')
+
+      const text = await new Promise<string>((resolve, reject) => {
+        const req = request(
+          { hostname: url.hostname, port: url.port || (isHttps ? 443 : 80), path: url.pathname + url.search, method: 'POST', headers, timeout: 15_000 },
+          (res) => { let data = ''; res.on('data', (chunk: Buffer) => { data += chunk.toString() }); res.on('end', () => resolve(data)) }
+        )
+        req.on('error', reject)
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')) })
+        req.write(body)
+        req.end()
+      })
+
+      if (!text.trim()) return { error: 'API 返回空响应' }
+      let json: any
+      try { json = JSON.parse(text) } catch { return { error: `响应解析失败: ${text.slice(0, 120)}` } }
+      if (json.error) return { error: typeof json.error === 'object' ? json.error.message : String(json.error) }
+
+      const replyText = json.content?.[0]?.text?.trim() || json.choices?.[0]?.message?.content?.trim() || ''
+      if (!replyText) return { error: `API 响应为空 (model: ${petModel})` }
+
+      // Save to pet logs
+      petLogStore.add({
+        id: uuidv4(), timestamp: Date.now(),
+        userMessage: `[21点游戏] ${userMessage}`,
+        assistantMessage: replyText,
+        petName: petConfig.name, petType: petConfig.type ?? 'cat',
+        triggerType: 'game',
+      })
+
+      return { text: replyText }
+    } catch (e) {
+      console.error('[pet:gameComment] error:', e)
+      return { error: String(e) }
+    }
+  })
+
   // ── Pet Logs ──────────────────────────────────────────────────
   ipcMain.handle(IPC.PET_LOG_LIST, async (_e, { limit }: { limit?: number }) => {
     return petLogStore.list(limit ?? 100)
