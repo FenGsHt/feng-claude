@@ -402,6 +402,24 @@ export function EmbedSessionComposer({
     el.style.height = `${h}px`
   }, [draft])
 
+  // [2026-05-12] 分屏时 react-resizable-panels 布局未稳定就测量 scrollHeight，
+  // textarea 宽度可能为 0 / 过窄，导致 scrollHeight 异常大 → 输入框撑爆。
+  // 用 ResizeObserver 监听宽度变化后重新测量，确保高度正确。
+  useEffect(() => {
+    const el = taRef.current
+    if (!el) return
+    let prevWidth = el.clientWidth
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth
+      if (w !== prevWidth && w > 0) {
+        prevWidth = w
+        autoResize()
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [autoResize])
+
   const applySlashItem = useCallback(
     (item: ClaudeSlashItem): void => {
       const domCur = taRef.current?.selectionStart
@@ -1080,7 +1098,7 @@ export function EmbedSessionComposer({
                   ? '斜杠命令交互中：请在上方内嵌终端操作；点「中断」退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
-            className={`fo-embed-composer-textarea min-h-[36px] w-full overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow shadow-black/25 placeholder:text-claude-muted/70 focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
+            className={`fo-embed-composer-textarea min-h-[36px] max-h-[200px] w-full overflow-auto rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow shadow-black/25 placeholder:text-claude-muted/70 focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
               alternateScreen || isProcessDead ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}

@@ -1097,6 +1097,9 @@ const EntryBlock = React.memo(function EntryBlock({
 const SCROLL_BOTTOM_THRESHOLD_PX = 80
 /** 默认只渲染列表末尾条数；滚到顶部附近再向上扩展 */
 const INITIAL_HISTORY_TAIL = 80
+// [2026-05-12] 分屏时 PaneLeafShell 会 unmount+remount，本地 state 丢失。
+// 用模块级 Map 缓存每个 session 的 historyStartIndex，remount 后恢复。
+const historyStartIndexCache = new Map<string, number>()
 const HISTORY_LOAD_CHUNK = 60
 const RAW_HISTORY_SCAN_TAIL = 260
 const TOP_LOAD_SCROLL_THRESHOLD_PX = 140
@@ -1371,7 +1374,9 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
    * 改为用 undefined 表示“尚未手动加载更早历史”，首帧直接从尾部窗口开始。
    * const [historyStartIndex, setHistoryStartIndex] = useState(0)
    */
-  const [historyStartIndex, setHistoryStartIndex] = useState<number | undefined>(undefined)
+  const [historyStartIndex, setHistoryStartIndex] = useState<number | undefined>(() =>
+    historyStartIndexCache.get(sessionId)
+  )
   const scrollRestoreAnchorRef = useRef<{ prevScrollHeight: number; prevScrollTop: number } | null>(
     null
   )
@@ -1726,9 +1731,15 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
 
     if (historySessionRef.current !== sessionId) {
       historySessionRef.current = sessionId
-      setHistoryStartIndex(
-        n <= INITIAL_HISTORY_TAIL ? 0 : Math.max(0, n - INITIAL_HISTORY_TAIL)
-      )
+      // [2026-05-12] 分屏 remount 时优先恢复缓存的 historyStartIndex，避免内容丢失
+      const cached = historyStartIndexCache.get(sessionId)
+      if (cached !== undefined && cached <= n) {
+        setHistoryStartIndex(cached)
+      } else {
+        setHistoryStartIndex(
+          n <= INITIAL_HISTORY_TAIL ? 0 : Math.max(0, n - INITIAL_HISTORY_TAIL)
+        )
+      }
       return
     }
 
@@ -1749,6 +1760,13 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
 
     setHistoryStartIndex((old) => Math.min(old ?? effectiveHistoryStartIndex, Math.max(0, n - 1)))
   }, [sessionId, visibleEntries.length, effectiveHistoryStartIndex])
+
+  // [2026-05-12] 同步 historyStartIndex 到模块缓存，分屏 remount 后可恢复
+  useEffect(() => {
+    if (historyStartIndex !== undefined) {
+      historyStartIndexCache.set(sessionId, historyStartIndex)
+    }
+  }, [sessionId, historyStartIndex])
 
   /* [2026-05-06] 向上加载更早消息后恢复视口锚点，避免跳动 */
   useLayoutEffect(() => {
