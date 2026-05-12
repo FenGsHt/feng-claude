@@ -15,6 +15,7 @@ export function navigateToSettingsTab(): void { setActiveTab?.('settings') }
 export function navigateToPetTab(): void { setActiveTab?.('pet') }
 export function navigateToDevLogTab(): void { setActiveTab?.('devlog') }
 export function navigateToFilesTab(): void { setActiveTab?.('files') }
+export function navigateToOfficeTab(): void { setActiveTab?.('office') }
 
 /** [2026-05-12] Office 预览改为右侧面板，不再切 tab。直接调用全局 open 函数。 */
 export function openOfficePreview(filePath: string): void {
