@@ -7,6 +7,7 @@ import {
 } from '../../lib/claudeRef'
 import { CC_SLASH_DRAG_MIME, CC_SLASH_PLAIN_PREFIX } from '../../lib/ccSlashDrag'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
+import { isOfficeFile } from '../office/officeFileDetector'
 import { focusTerminal } from './XTerminal'
 
 /** 包住 xterm：从文件树拖入时往当前 Claude 会话注入 @path 引用（经 PTY 发送） */
@@ -152,6 +153,13 @@ export function TerminalDropZone({
 
     const osPaths = pathsFromOsDrop(e)
     if (osPaths.length > 0) {
+      if (osPaths.length === 1 && isOfficeFile(osPaths[0])) {
+        const openPreview = (window as any).__officePreviewOpen
+        if (openPreview) {
+          openPreview(osPaths[0])
+          return
+        }
+      }
       const blob = osPaths
         .map((p) => `${formatFileRefForClaudeCode(p, workdir, false)} `)
         .join('')
@@ -167,6 +175,14 @@ export function TerminalDropZone({
 
     const payload = parsePayload(e)
     if (!payload) return
+
+    if (payload.kind === 'file' && isOfficeFile(payload.path)) {
+      const openPreview = (window as any).__officePreviewOpen
+      if (openPreview) {
+        openPreview(payload.path)
+        return
+      }
+    }
 
     const ref = formatFileRefForClaudeCode(payload.path, workdir, payload.kind === 'directory')
     if (tryEmbedDraft(`${ref} `)) return
