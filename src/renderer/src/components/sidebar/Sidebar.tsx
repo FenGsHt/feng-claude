@@ -13,11 +13,12 @@ import { PetWidget } from './PetWidget'
 import { PetPanel } from './PetPanel'
 import { TestPanel } from './TestPanel'
 import { DevLogPanel } from './DevLogPanel'
+import { OfficePreviewPanel } from '../office/OfficePreviewPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog' | 'office'
 
 // Global state for external tab control
 let setActiveTabExternal: ((tab: Tab) => void) | null = null
@@ -172,6 +173,15 @@ function IconDevLog(): React.ReactElement {
   )
 }
 
+function OfficeIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+    </svg>
+  )
+}
+
 export function Sidebar({ width }: { width: number }): React.ReactElement {
   const [activeTab, setActiveTab] = useState<Tab>('files')
   const { tree, loading, currentPath, loadTree, loadChildren, refresh, openDirDialog } = useFileTree()
@@ -210,6 +220,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
     { id: 'pet', label: lang === 'zh' ? '宠物' : 'Pet', icon: <IconPet /> },
     { id: 'test', label: t.sidebar.test, icon: <IconTest /> },
     ...(devMode ? [{ id: 'devlog' as Tab, label: t.sidebar.devlog, icon: <IconDevLog /> }] : []),
+    { id: 'office', label: t.sidebar.office, icon: <OfficeIcon /> },
     { id: 'guide', label: t.sidebar.guide, icon: <IconGuide /> },
     { id: 'settings', label: t.sidebar.settings, icon: <IconSettings /> },
   ]
@@ -291,6 +302,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             <TestPanel />
           ) : activeTab === 'devlog' ? (
             <DevLogPanel />
+          ) : activeTab === 'office' ? (
+            <OfficePreviewPanel />
           ) : activeTab === 'guide' ? (
             <GuidePanel />
           ) : (
