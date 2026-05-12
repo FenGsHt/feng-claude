@@ -922,7 +922,7 @@ export class PtyManager {
     if (session.daemonSocket) {
       session.daemonSocket.write(JSON.stringify({ t: 'r', c: cols, r: rows }) + '\n')
     } else {
-      session.ptyProcess?.resize(cols, rows)
+      try { session.ptyProcess?.resize(cols, rows) } catch { /* ignore if process already exited */ }
     }
   }
 

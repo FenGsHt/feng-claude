@@ -17,29 +17,13 @@ import { OfficePreviewPanel } from '../office/OfficePreviewPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
+import { registerSidebarTabSwitcher } from './sidebarNav'
+import { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToOfficeTab, navigateToFilesTab } from './sidebarNav'
 
 type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'test' | 'devlog' | 'office'
 
-// Global state for external tab control
-let setActiveTabExternal: ((tab: Tab) => void) | null = null
-
-export function navigateToSettingsTab(): void {
-  if (setActiveTabExternal) {
-    setActiveTabExternal('settings')
-  }
-}
-
-export function navigateToPetTab(): void {
-  if (setActiveTabExternal) {
-    setActiveTabExternal('pet')
-  }
-}
-
-export function navigateToDevLogTab(): void {
-  if (setActiveTabExternal) {
-    setActiveTabExternal('devlog')
-  }
-}
+// Re-export nav helpers for external callers
+export { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToOfficeTab, navigateToFilesTab }
 
 interface TabConfig {
   id: Tab
@@ -205,8 +189,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
 
   // Register external tab control callback
   useEffect(() => {
-    setActiveTabExternal = setActiveTab
-    return () => { setActiveTabExternal = null }
+    registerSidebarTabSwitcher(setActiveTab)
+    return () => { registerSidebarTabSwitcher(() => {}) }
   }, [setActiveTab])
 
   const TABS: TabConfig[] = [

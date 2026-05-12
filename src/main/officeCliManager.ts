@@ -165,15 +165,20 @@ function downloadFile(
             try { chmodSync(tmpPath, 0o755) } catch { /* ignore */ }
           }
           // Atomic replace
-          try { if (existsSync(destPath)) unlinkSync(destPath) } catch { /* ignore */ }
           try {
             renameSync(tmpPath, destPath)
           } catch {
-            // Fallback if rename fails (e.g. cross-device)
-            writeFileSync(destPath, readFileSync(tmpPath))
-            try { unlinkSync(tmpPath) } catch { /* ignore */ }
-            if (process.platform !== 'win32') {
-              try { chmodSync(destPath, 0o755) } catch { /* ignore */ }
+            // Fallback if rename fails (e.g. cross-device). May fail if binary is in use (EBUSY on Windows).
+            try {
+              if (existsSync(destPath)) unlinkSync(destPath)
+              writeFileSync(destPath, readFileSync(tmpPath))
+              try { unlinkSync(tmpPath) } catch { /* ignore */ }
+              if (process.platform !== 'win32') {
+                try { chmodSync(destPath, 0o755) } catch { /* ignore */ }
+              }
+            } catch {
+              // Binary is locked (e.g. running). Leave tmp file for next launch retry.
+              console.log('[OfficeCLI] cannot replace locked binary, tmp file kept for retry')
             }
           }
           resolve()
@@ -201,9 +206,9 @@ function registerMcp(): void {
 }
 
 /** 检查并下载更新；返回是否有更新安装 */
-export async function checkAndUpdateOfficeCLI(): Promise<boolean> {
+export async function checkAndUpdateOfficeCLI(silent = false): Promise<boolean> {
   if (!getPlatformAsset()) {
-    emitStatus({ checking: false, error: 'Unsupported platform' })
+    if (!silent) emitStatus({ checking: false, error: 'Unsupported platform' })
     return false
   }
 
@@ -211,7 +216,7 @@ export async function checkAndUpdateOfficeCLI(): Promise<boolean> {
 
   const release = await fetchLatestRelease()
   if (!release) {
-    emitStatus({ checking: false, error: 'Failed to fetch release info' })
+    if (!silent) emitStatus({ checking: false, error: 'Failed to fetch release info' })
     return false
   }
 
@@ -239,7 +244,7 @@ export async function checkAndUpdateOfficeCLI(): Promise<boolean> {
     return true
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    emitStatus({ downloading: false, error: `Download failed: ${msg}` })
+    if (!silent) emitStatus({ downloading: false, error: `Download failed: ${msg}` })
     console.error('[OfficeCLI] download failed:', e)
     return false
   }
@@ -266,9 +271,9 @@ export function ensureOfficeCliMcpRegistered(win: BrowserWindow): void {
   // If binary exists, register immediately (don't wait for update check)
   if (installed) registerMcp()
 
-  // Background update check (non-blocking)
+  // Background update check (non-blocking, silent)
   setTimeout(() => {
-    checkAndUpdateOfficeCLI().catch((e) => {
+    checkAndUpdateOfficeCLI(true).catch((e) => {
       console.error('[OfficeCLI] background update check failed:', e)
     })
   }, 5000)

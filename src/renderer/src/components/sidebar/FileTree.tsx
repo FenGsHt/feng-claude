@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n'
 import { useSessionStore } from '../../store/sessionStore'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 import { isOfficeFile } from '../office/officeFileDetector'
+import { openOfficePreview } from './sidebarNav'
 
 function setFileDragData(e: React.DragEvent, node: FileTreeNode): void {
   const payload: FileDragPayload = {
@@ -181,11 +182,8 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
 
   const handleDoubleClick = useCallback((): void => {
     if (isOfficeFile(node.name)) {
-      const openPreview = (window as any).__officePreviewOpen
-      if (openPreview) {
-        openPreview(node.path)
-        return
-      }
+      openOfficePreview(node.path)
+      return
     }
     insertRef(node.path, node.type === 'directory')
   }, [node.path, node.name, node.type, insertRef])
