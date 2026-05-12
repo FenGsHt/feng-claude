@@ -68,6 +68,8 @@ export const IPC = {
   CLIPBOARD_SAVE_IMAGE: 'clipboard:saveImage',
   /** [2026-05-10] 删除临时文件（如图片附件发送后清理） */
   FS_DELETE_FILE: 'fs:deleteFile',
+  /** [2026-05-12] 在系统文件管理器中打开文件/目录 */
+  FS_REVEAL_FILE: 'fs:revealFile',
 
   PLUGIN_LIST: 'plugin:list',
   PLUGIN_SET_ENABLED: 'plugin:setEnabled',
@@ -107,6 +109,7 @@ export const IPC = {
   GIT_BRANCH_DELETE: 'git:branchDelete',
   GIT_IS_REPO: 'git:isRepo',
   GIT_MERGE_BRANCH: 'git:mergeBranch',
+  GIT_UPDATE_WORKTREE: 'git:updateWorktree',
   GIT_UNMERGED_COMMITS: 'git:unmergedCommits',
 
   /** 自动更新状态 */
@@ -127,6 +130,11 @@ export const IPC = {
   SHELL_DETECT: 'shell:detect',
   /** [2026-05-08] 检测 Claude Code Telegram Channel 可用性 */
   TELEGRAM_CHANNEL_CHECK: 'telegram:channelCheck',
+
+  /** [2026-05-12] OfficeCLI 内置 MCP：状态推送 / 查询 / 触发更新 */
+  OFFICE_CLI_STATUS: 'officeCli:status',
+  OFFICE_CLI_GET_STATUS: 'officeCli:getStatus',
+  OFFICE_CLI_CHECK_UPDATE: 'officeCli:checkUpdate',
 } as const
 
 export interface ShellOption {
@@ -324,6 +332,8 @@ export interface ClaudeTranscriptEntry {
   toolName?: string
   /** [2026-05-11] tool_use 块的 Claude API ID，用于在外嵌界面关联 ToolCallStore 获取 input */
   toolId?: string
+  /** [2026-05-11] tool_use 块的 input 数据，直接随 transcript 条目携带，避免依赖 toolCallStore 历史查找 */
+  toolInput?: Record<string, unknown>
 }
 
 export interface ClaudeTranscriptPayload {
@@ -420,6 +430,16 @@ export interface GitMergeBranchPayload {
 }
 
 export interface GitMergeBranchResult {
+  success: boolean
+  error?: string
+}
+
+export interface GitUpdateWorktreePayload {
+  worktreePath: string  // worktree 目录路径
+  sourceBranch: string  // 从哪个分支拉取更新（当前分支）
+}
+
+export interface GitUpdateWorktreeResult {
   success: boolean
   error?: string
 }
@@ -539,4 +559,15 @@ export interface TestResultItem {
   error?: string
   file?: string
   line?: number
+}
+
+
+export interface OfficeCLIStatus {
+  installed: boolean
+  version: string | null
+  latestVersion: string | null
+  checking: boolean
+  downloading: boolean
+  progress: number
+  error: string | null
 }

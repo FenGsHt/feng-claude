@@ -83,6 +83,7 @@ interface ToolGroupEntry {
   text: string
   tools: string[]
   toolIds: string[]
+  toolInputs: (Record<string, unknown> | undefined)[]
   messageId?: string
 }
 
@@ -97,16 +98,35 @@ function entryMatchesQuery(e: DisplayEntry, query: string): boolean {
 }
 
 /** [2026-05-06] 底部固定条：会话 running 或已发送待响应时持续显示 loading，覆盖思考/工具/输出阶段 */
-function EmbedAiWorkingBar({
-  label, open, elapsedSec, outTokens
+/** [2026-05-12] 自管理计时器，避免父组件 workingTick 导致整棵树重渲染 */
+const EmbedAiWorkingBar = React.memo(function EmbedAiWorkingBar({
+  label, open, outTokensStart, sessionId
 }: {
   label: string
   open: boolean
-  elapsedSec: number
-  outTokens: number
+  outTokensStart: number
+  sessionId: string
 }): React.ReactElement | null {
+  const [tick, setTick] = useState(0)
+  const startRef = useRef(Date.now())
+
+  useEffect(() => {
+    if (!open) return
+    startRef.current = Date.now()
+    setTick(0)
+    const id = window.setInterval(() => setTick((n) => n + 1), 900)
+    return () => clearInterval(id)
+  }, [open])
+
   if (!open) return null
-  const hasMeta = elapsedSec > 0 || outTokens > 0
+  const elapsedSec = Math.floor((Date.now() - startRef.current) / 1000)
+  const sessionTokens = useTokenUsageStore.getState().bySession[sessionId]
+  const currentOut = open ? (sessionTokens?.output ?? 0) : 0
+  void tick // referenced to trigger re-render
+  const outTokens = Math.max(0, currentOut - outTokensStart)
+  const ctxUsed = sessionTokens?.contextTokensUsed
+  const ctxTotal = sessionTokens?.contextTokensTotal
+  const hasMeta = elapsedSec > 0 || outTokens > 0 || (ctxTotal !== undefined && ctxTotal > 0)
   return (
     <div
       className="fo-working-bar pointer-events-none absolute bottom-0 left-0 right-0 z-[12] px-3 pb-3 pt-6"
@@ -124,12 +144,20 @@ function EmbedAiWorkingBar({
             {elapsedSec > 0 && <span>{elapsedSec}s</span>}
             {elapsedSec > 0 && outTokens > 0 && <span className="mx-1 opacity-40">·</span>}
             {outTokens > 0 && <span>↓ {formatTokenCount(outTokens)}</span>}
+            {ctxTotal !== undefined && ctxTotal > 0 && (
+              <>
+                {(elapsedSec > 0 || outTokens > 0) && <span className="mx-1 opacity-40">·</span>}
+                <span title={`上下文窗口 ${formatTokenCount(ctxUsed ?? 0)} / ${formatTokenCount(ctxTotal)}`}>
+                  {formatTokenCount(ctxUsed ?? 0)}/{formatTokenCount(ctxTotal)}
+                </span>
+              </>
+            )}
           </span>
         )}
       </div>
     </div>
   )
-}
+})
 
 function deriveAiWorkingLabel(args: {
   sessionBusy: boolean
@@ -265,7 +293,7 @@ function BubbleActions({
 
   return (
     <div
-      className={`absolute right-2 top-2 z-[2] flex items-center gap-1 transition-opacity ${
+      className={`flex flex-col gap-1 shrink-0 transition-opacity ${
         copied ? 'opacity-100' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
       }`}
     >
@@ -273,8 +301,8 @@ function BubbleActions({
         type="button"
         className={
           copied
-            ? 'flex items-center gap-0.5 rounded border-2 border-[var(--theme-success-text)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--theme-success-text)] shadow-[0_0_12px_-3px_var(--theme-success-text)] transition-colors duration-200'
-            : 'rounded border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] text-claude-muted transition-colors duration-200 hover:text-claude-text'
+            ? 'flex items-center gap-0.5 rounded border-2 border-[var(--theme-success-text)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--theme-success-text)] shadow-[0_0_12px_-3px_var(--theme-success-text)] transition-colors duration-200 whitespace-nowrap'
+            : 'rounded border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] text-claude-muted transition-colors duration-200 hover:text-claude-text whitespace-nowrap'
         }
         onClick={(ev) => {
           ev.stopPropagation()
@@ -300,7 +328,7 @@ function BubbleActions({
       </button>
       <button
         type="button"
-        className="rounded border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] text-claude-muted hover:text-claude-text"
+        className="rounded border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-1.5 py-0.5 text-[9px] text-claude-muted hover:text-claude-text whitespace-nowrap"
         onClick={(ev) => {
           ev.stopPropagation()
           injectEmbedDraft(sessionId, quoteTextForComposer(text))
@@ -579,7 +607,7 @@ function groupIntoSegments(
         group.push(entries[i])
         i++
       }
-      const isComplete = i < entries.length && entries[i].kind === 'assistant'
+      const isComplete = i < entries.length
       result.push({ type: 'workGroup', entries: group, isComplete, firstGlobalIdx })
     } else {
       result.push({ type: 'entry', entry: e, globalIdx: startIdx + i })
@@ -640,7 +668,7 @@ function WorkGroupBlock({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-claude-muted transition-colors hover:text-claude-text"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-claude-muted transition-colors hover:text-claude-text whitespace-nowrap"
       >
         <span className="text-[var(--theme-accent-muted)]">◇</span>
         <span className="font-medium">{label}</span>
@@ -675,7 +703,7 @@ function WorkGroupBlock({
                 <EntryBlock
                   e={e}
                   sessionId={sessionId}
-                  isThinkingComplete={isComplete}
+                  isThinkingComplete={isComplete || i < entries.length - 1}
                 />
               </div>
             ))}
@@ -737,10 +765,10 @@ function getToolBashCmd(call: import('../../store/toolCallStore').ToolCallEntry)
 function getToolAgentInfo(call: import('../../store/toolCallStore').ToolCallEntry): { type?: string; description?: string; promptSnippet?: string } | null {
   if (call.name !== 'Agent') return null
   const input = call.input as Record<string, unknown>
-  const subagentType = (input.subagent_type as string) || undefined
+  const subagentType = (input.subagent_type as string) || (input.subAgentType as string) || undefined
   const description = (input.description as string) || undefined
   const prompt = (input.prompt as string) || ''
-  const promptSnippet = prompt.length > 120 ? prompt.slice(0, 120) + '…' : prompt || undefined
+  const promptSnippet = prompt.length > 600 ? prompt.slice(0, 600) + '…' : prompt || undefined
   return { type: subagentType, description, promptSnippet }
 }
 
@@ -751,7 +779,10 @@ function toolShortName(fullPath: string): string {
 
 const DIFF_TOOL_NAMES = new Set(['Edit', 'str_replace_based_edit_tool', 'Write', 'create_file', 'MultiEdit', 'Bash'])
 
-function ToolGroupBlock({ tools, toolIds, sessionId }: { tools: string[]; toolIds: string[]; sessionId: string }): React.ReactElement {
+const SCROLL_CLS = '[scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]'
+const CODE_BOX_BASE = `mt-1 overflow-auto rounded-lg px-3 py-2 font-mono text-[10px] leading-relaxed border ${SCROLL_CLS}`
+
+function ToolGroupBlock({ tools, toolIds, toolInputs, sessionId }: { tools: string[]; toolIds: string[]; toolInputs: (Record<string, unknown> | undefined)[]; sessionId: string }): React.ReactElement {
   const allCalls = useToolCallStore((s) => s.calls.filter((c) => c.sessionId === sessionId))
 
   const counts = new Map<string, number>()
@@ -773,33 +804,46 @@ function ToolGroupBlock({ tools, toolIds, sessionId }: { tools: string[]; toolId
         <div className="mt-2 flex flex-col gap-2 border-t border-[var(--theme-tool-border)] pt-2">
           {tools.map((name, i) => {
             const id = toolIds[i]
-            const call = id ? allCalls.find((c) => c.id === id) : undefined
+            const inlineInput = toolInputs[i]
             const canView = DIFF_TOOL_NAMES.has(name)
             const isBash = name === 'Bash'
             const isAgent = name === 'Agent'
-            const filePath = call ? getToolFilePath(call) : ''
-            const bashCmd = call && isBash ? getToolBashCmd(call) : ''
-            const agentInfo = call && isAgent ? getToolAgentInfo(call) : null
+            // Primary: use inline input from transcript entry (works for both live and historical calls)
+            // Fallback: look up in toolCallStore for live calls that may arrive slightly later
+            const callInput: Record<string, unknown> | undefined = inlineInput
+              ?? (id ? allCalls.find((c) => c.id === id)?.input : undefined)
+              ?? (isAgent ? allCalls.findLast((c) => c.name === 'Agent')?.input : undefined)
+            const filePath = callInput ? ((callInput.path ?? callInput.file_path ?? '') as string) : ''
+            const bashCmd = callInput && isBash ? ((callInput.command as string) ?? '') : ''
+            const agentInfo = callInput && isAgent ? getToolAgentInfo({ name, input: callInput } as import('../../store/toolCallStore').ToolCallEntry) : null
             const subtitle = isBash ? bashCmd : filePath
             return (
               <div key={i} className="fo-bubble-appear">
                 <div className="flex items-center gap-2 px-2 py-1">
                   <ToolLineIcon name={name} />
                   <span className={`shrink-0 text-[10px] font-semibold ${toolColor(name)}`}>{name}</span>
-                  {isAgent && agentInfo && (
+                  {isAgent && (
                     <span className="min-w-0 truncate text-[10px] text-claude-muted">
-                      {agentInfo.type && <span className="font-mono text-purple-400/80">{agentInfo.type}</span>}
-                      {agentInfo.type && agentInfo.description && <span className="mx-1">·</span>}
-                      {agentInfo.description && <span>{agentInfo.description}</span>}
+                      {agentInfo ? (
+                        <>
+                          {agentInfo.type && <span className="font-mono text-purple-400/80">{agentInfo.type}</span>}
+                          {agentInfo.type && agentInfo.description && <span className="mx-1">·</span>}
+                          {agentInfo.description && <span>{agentInfo.description}</span>}
+                        </>
+                      ) : callInput ? (
+                        <span className="text-yellow-400/80" title={JSON.stringify(callInput).slice(0, 200)}>
+                          keys: {Object.keys(callInput).join(', ')}
+                        </span>
+                      ) : null}
                     </span>
                   )}
                   {!isAgent && subtitle && (
                     <code className="min-w-0 truncate font-mono text-[10px] text-claude-muted">{toolShortName(subtitle)}</code>
                   )}
                 </div>
-                {canView && call && <InlineToolDiff call={call} />}
+                {canView && callInput && <InlineToolDiff name={name} input={callInput} />}
                 {isAgent && agentInfo?.promptSnippet && (
-                  <pre className="mt-1 max-h-[120px] overflow-auto rounded-lg bg-[#0d0d0d] px-3 py-2 font-mono text-[10px] leading-relaxed text-purple-300 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]">
+                  <pre className={`${CODE_BOX_BASE} max-h-[200px] whitespace-pre-wrap break-words bg-[var(--theme-thinking-bg)] border-[var(--theme-thinking-border)] text-[var(--theme-thinking-text)]`}>
                     {agentInfo.promptSnippet}
                   </pre>
                 )}
@@ -851,24 +895,25 @@ function ToolLineIcon({ name }: { name: string }): React.ReactElement {
   )
 }
 
-function InlineToolDiff({ call }: { call: import('../../store/toolCallStore').ToolCallEntry }): React.ReactElement {
-  if (call.name === 'Bash') {
+function InlineToolDiff({ name, input }: { name: string; input: Record<string, unknown> }): React.ReactElement {
+  if (name === 'Bash') {
     return (
-      <pre className="mt-1 max-h-[180px] overflow-auto rounded-lg bg-[#0d0d0d] px-3 py-2 font-mono text-[10px] leading-relaxed text-amber-300 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]">
-        {call.input.command as string}
+      <pre className={`${CODE_BOX_BASE} max-h-[180px] whitespace-pre-wrap break-words bg-[var(--theme-tool-bg)] border-[var(--theme-tool-border)] text-[var(--theme-accent-muted)]`}>
+        {input.command as string}
       </pre>
     )
   }
-  const diff = getToolDiffContent(call)
+  const fakeCall = { name, input } as import('../../store/toolCallStore').ToolCallEntry
+  const diff = getToolDiffContent(fakeCall)
   if (!diff) {
     return (
-      <pre className="mt-1 max-h-[180px] overflow-auto rounded-lg bg-[#0d0d0d] px-3 py-2 font-mono text-[10px] leading-relaxed text-claude-text [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]">
-        {JSON.stringify(call.input, null, 2)}
+      <pre className={`${CODE_BOX_BASE} max-h-[180px] whitespace-pre-wrap break-words bg-[var(--theme-panel-bg-soft)] border-[var(--theme-panel-border)] text-claude-text`}>
+        {JSON.stringify(input, null, 2)}
       </pre>
     )
   }
   const lines = lineDiff(diff.old, diff.new)
-  const filePath = getToolFilePath(call)
+  const filePath = (input.path ?? input.file_path ?? '') as string
   return (
     <div className="fo-tool-diff mt-1 overflow-hidden rounded-lg border border-[var(--theme-panel-border)]">
       {filePath && (
@@ -876,7 +921,7 @@ function InlineToolDiff({ call }: { call: import('../../store/toolCallStore').To
           {filePath}
         </div>
       )}
-      <div className="max-h-[200px] overflow-auto font-mono text-[10px] leading-5 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]">
+      <div className={`max-h-[200px] overflow-auto font-mono text-[10px] leading-5 ${SCROLL_CLS}`}>
         {lines.map((line, i) => (
           <div
             key={i}
@@ -897,7 +942,7 @@ function InlineToolDiff({ call }: { call: import('../../store/toolCallStore').To
   )
 }
 
-function EntryBlock({
+const EntryBlock = React.memo(function EntryBlock({
   e,
   sessionId,
   showAssistantStreamingCursor = false,
@@ -909,9 +954,9 @@ function EntryBlock({
   showAssistantStreamingCursor?: boolean
   isThinkingComplete?: boolean
   sessionTotalUsage?: ClaudeTurnTokenUsage
-}): React.ReactElement {
+}}): React.ReactElement {
   if (e.kind === 'toolGroup') {
-    return <ToolGroupBlock tools={e.tools} toolIds={e.toolIds} sessionId={sessionId} />
+    return <ToolGroupBlock tools={e.tools} toolIds={e.toolIds} toolInputs={e.toolInputs} sessionId={sessionId} />
   }
   if (e.kind === 'history') {
     return (
@@ -948,9 +993,9 @@ function EntryBlock({
   }
   if (e.kind === 'user') {
     return (
-      <div className="flex w-full justify-end">
-        <div className="group relative fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
-          <BubbleActions sessionId={sessionId} text={e.text} />
+      <div className="flex w-full justify-end items-start gap-1 group">
+        <BubbleActions sessionId={sessionId} text={e.text} />
+	        <div className="relative fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
           <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--theme-accent-muted)]">你</div>
           <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-claude-text">{e.text}</pre>
         </div>
@@ -975,9 +1020,8 @@ function EntryBlock({
   if (e.kind === 'assistant') {
     const msgId = e.messageId
     return (
-      <div className="flex w-full justify-start fo-bubble-appear">
-        <div className="group relative fo-assistant-bubble max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
-          <BubbleActions sessionId={sessionId} text={e.text} />
+      <div className="flex w-full justify-start items-start gap-1 group fo-bubble-appear">
+        <div className="relative fo-assistant-bubble max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-[var(--theme-card-border)] bg-[var(--theme-card-bg)] px-3.5 py-2.5 shadow-lg shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-panel-border)]">
           <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-claude-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--theme-success-text)]" aria-hidden />
             Claude
@@ -1001,6 +1045,7 @@ function EntryBlock({
           </div>
           <AssistantReplyMeta usage={e.usage} latencyMs={e.latencyMs} sessionTotal={sessionTotalUsage} />
         </div>
+	        <BubbleActions sessionId={sessionId} text={e.text} />
       </div>
     )
   }
@@ -1009,7 +1054,7 @@ function EntryBlock({
       未知条目：{e.kind}
     </div>
   )
-}
+})
 
 /* [2026-05-06] 原 TranscriptEmbedStatusFooter（进行中 / 累计 token）按产品要求不再展示 */
 
@@ -1024,10 +1069,21 @@ function isRejectedAskUserQuestionEcho(e: ClaudeTranscriptEntry): boolean {
   if (e.kind !== 'user') return false
   const text = e.text.trim()
   return (
-    /* [2026-05-07] 原 AskUserQuestion 被拒绝后的工具回执会被解析成“你”的气泡，展示上很突兀；这里只在外嵌转录层隐藏。 */
-    text.includes("The user doesn't want to proceed with this tool use") &&
+    /* [2026-05-07] 原 AskUserQuestion 被拒绝后的工具回执会被解析成”你”的气泡，展示上很突兀；这里只在外嵌转录层隐藏。 */
+    text.includes(“The user doesn't want to proceed with this tool use”) &&
     text.includes('The tool use was rejected') &&
     text.includes('Questions asked and answers provided')
+  )
+}
+
+/** [2026-05-12] Claude Code 上下文压缩续接消息：长对话后自动生成的会话摘要，非用户真实输入 */
+function isContextContinuationSummary(e: ClaudeTranscriptEntry): boolean {
+  if (e.kind !== 'user') return false
+  const text = e.text.trim()
+  return (
+    text.startsWith('This session is being continued from a previous conversation that ran out of context') ||
+    text.startsWith('This session is being continued from a previous conversation') ||
+    text.includes('The summary below covers the earlier portion of the conversation')
   )
 }
 
@@ -1152,6 +1208,7 @@ function aggregateToolEntries(entries: ClaudeTranscriptEntry[]): DisplayEntry[] 
   const out: DisplayEntry[] = []
   let pendingTools: string[] = []
   let pendingToolIds: string[] = []
+  let pendingToolInputs: (Record<string, unknown> | undefined)[] = []
   let pendingMessageId: string | undefined
 
   const flushTools = (): void => {
@@ -1161,10 +1218,12 @@ function aggregateToolEntries(entries: ClaudeTranscriptEntry[]): DisplayEntry[] 
       text: pendingTools.join('\n'),
       tools: pendingTools,
       toolIds: pendingToolIds,
+      toolInputs: pendingToolInputs,
       messageId: pendingMessageId
     })
     pendingTools = []
     pendingToolIds = []
+    pendingToolInputs = []
     pendingMessageId = undefined
   }
 
@@ -1174,6 +1233,7 @@ function aggregateToolEntries(entries: ClaudeTranscriptEntry[]): DisplayEntry[] 
       pendingMessageId ??= e.messageId
       pendingTools.push((e.toolName ?? e.text).trim())
       pendingToolIds.push(e.toolId ?? '')
+      pendingToolInputs.push(e.toolInput)
       continue
     }
     flushTools()
@@ -1190,6 +1250,7 @@ function filterNoiseTranscriptEntries(entries: ClaudeTranscriptEntry[]): ClaudeT
     // return e.kind !== 'event' || e.ptyEcho === true
     if (e.kind === 'user' && e.text.trimStart().startsWith('/')) return false
     if (isRejectedAskUserQuestionEcho(e)) return false
+    if (isContextContinuationSummary(e)) return false
     if (isToolResultEcho(e)) return false
     if (isReadToolResultEcho(e, entries, index)) return false
     if (isOtherToolResultEcho(e, entries, index)) return false
@@ -1438,8 +1499,6 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     }
   }, [suppressBarAfterAssistantDone, sessionId])
 
-  const [workingTick, setWorkingTick] = useState(0)
-  const workingStartRef = useRef<number | null>(null)
   const tokenStartRef = useRef<number>(0)
   const [lastUserWaitingUntil, setLastUserWaitingUntil] = useState(0)
   const lastUserWaitingFingerprint = useMemo(() => {
@@ -1457,7 +1516,6 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     setLastUserWaitingUntil(Date.now() + USER_WAITING_FALLBACK_MS)
   }, [lastUserWaitingFingerprint])
 
-  void workingTick
   const userWaitingFallbackActive = lastUserWaitingUntil > 0 && Date.now() < lastUserWaitingUntil
   /* [2026-05-09] 原把 sessionStore 的 running 等同「Claude 在干活」；createSession 初始即为 running，
    * 且 claudeSessionWatcher 在从未出现 JSONL usage 前不会发 idle，导致空会话底部条永久「处理中」。 */
@@ -1494,17 +1552,13 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     !suppressBarAfterAssistantDone
 
   useEffect(() => {
-    if (!showAiWorkingBar) {
-      workingStartRef.current = null
-      return
-    }
-    if (workingStartRef.current === null) {
-      workingStartRef.current = Date.now()
+    if (showAiWorkingBar && tokenStartRef.current === 0) {
       // [2026-05-11] 每轮工作开始时记录基线 token，loading 栏显示本轮增量而非累计值
       tokenStartRef.current = useTokenUsageStore.getState().bySession[sessionId]?.output ?? 0
     }
-    const id = window.setInterval(() => setWorkingTick((n) => n + 1), 900)
-    return () => clearInterval(id)
+    if (!showAiWorkingBar) {
+      tokenStartRef.current = 0
+    }
   }, [showAiWorkingBar, sessionId])
 
   const aiWorkingLabel = useMemo(() => {
@@ -1522,7 +1576,6 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       assistantStreaming
     })
   }, [
-    workingTick,
     sessionBusy,
     pendingReply,
     runtimeStatus,
@@ -1785,7 +1838,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
                         <EntryBlock
                           e={e}
                           sessionId={sessionId}
-                          isThinkingComplete={displayedEntries.slice(i + 1).some((x) => x.kind === 'assistant')}
+                          isThinkingComplete={i < displayedEntries.length - 1}
                         />
                       </div>
                     )
@@ -1851,8 +1904,8 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
         <EmbedAiWorkingBar
           open={showAiWorkingBar}
           label={aiWorkingLabel}
-          elapsedSec={workingStartRef.current !== null ? Math.floor((Date.now() - workingStartRef.current) / 1000) : 0}
-          outTokens={Math.max(0, (useTokenUsageStore.getState().bySession[sessionId]?.output ?? 0) - tokenStartRef.current)}
+          outTokensStart={tokenStartRef.current}
+          sessionId={sessionId}
         />
         {visibleEntries.length > 0 && !nearBottom ? (
           <button

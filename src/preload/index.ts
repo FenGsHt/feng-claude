@@ -5,7 +5,7 @@ import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings, ApiProfile, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
-import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult, WhatsNewShouldShowResult } from '../renderer/src/types/ipc'
+import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult, WhatsNewShouldShowResult, OfficeCLIStatus } from '../renderer/src/types/ipc'
 
 const electronAPI = {
   readClipboardTextSync: (): string => {
@@ -23,6 +23,10 @@ const electronAPI = {
 
   deleteFile: (path: string): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke(IPC.FS_DELETE_FILE, path)
+  },
+
+  revealFile: (path: string): Promise<{ success: boolean }> => {
+    return ipcRenderer.invoke(IPC.FS_REVEAL_FILE, path)
   },
 
   // Session
@@ -185,6 +189,16 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.MCP_UPDATE, { name, cfg })
   },
 
+  officeCli: {
+    getStatus: (): Promise<OfficeCLIStatus> => ipcRenderer.invoke(IPC.OFFICE_CLI_GET_STATUS),
+    checkUpdate: (): Promise<{ started: boolean }> => ipcRenderer.invoke(IPC.OFFICE_CLI_CHECK_UPDATE),
+    onStatus: (callback: (status: OfficeCLIStatus) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, status: OfficeCLIStatus): void => callback(status)
+      ipcRenderer.on(IPC.OFFICE_CLI_STATUS, handler)
+      return () => ipcRenderer.removeListener(IPC.OFFICE_CLI_STATUS, handler)
+    },
+  },
+
   skills: {
     list: (): Promise<SkillEntry[]> => ipcRenderer.invoke(IPC.SKILLS_LIST),
     get: (name: string, source?: string): Promise<string> => ipcRenderer.invoke(IPC.SKILLS_GET, { name, source }),
@@ -261,6 +275,8 @@ const electronAPI = {
       ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, payload),
     mergeBranch: (payload: GitMergeBranchPayload): Promise<GitMergeBranchResult> =>
       ipcRenderer.invoke(IPC.GIT_MERGE_BRANCH, payload),
+    updateWorktree: (payload: GitUpdateWorktreePayload): Promise<GitUpdateWorktreeResult> =>
+      ipcRenderer.invoke(IPC.GIT_UPDATE_WORKTREE, payload),
     unmergedCommits: (payload: GitUnmergedCommitsPayload): Promise<GitUnmergedCommitsResult> =>
       ipcRenderer.invoke(IPC.GIT_UNMERGED_COMMITS, payload),
   },

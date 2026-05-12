@@ -1,4 +1,4 @@
-import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow } from 'electron'
+import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow, shell } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { resolve, join } from 'path'
 import { homedir } from 'os'
@@ -16,6 +16,7 @@ import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from '
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
+import { getOfficeCLICurrentStatus, checkAndUpdateOfficeCLI } from './officeCliManager'
 import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
 import type { McpServerConfig, SessionCreatePayload, WhatsNewShouldShowResult } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
@@ -121,6 +122,12 @@ export function registerIpcHandlers(
     } catch {
       return { success: false }
     }
+  })
+
+  /** [2026-05-12] 在系统文件管理器中显示文件/目录 */
+  ipcMain.handle(IPC.FS_REVEAL_FILE, async (_event, filePath: string) => {
+    shell.openPath(resolve(filePath))
+    return { success: true }
   })
 
   // ── Shell 检测 [2026-05-06] ────────────────────────────────────
@@ -422,6 +429,13 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.MCP_UPDATE, async (_e, { name, cfg }: { name: string; cfg: McpServerConfig }) => {
     updateMcpServer(name, cfg)
     return { success: true }
+  })
+
+  // ── OfficeCLI ─────────────────────────────────────────────────
+  ipcMain.handle(IPC.OFFICE_CLI_GET_STATUS, async () => getOfficeCLICurrentStatus())
+  ipcMain.handle(IPC.OFFICE_CLI_CHECK_UPDATE, async () => {
+    checkAndUpdateOfficeCLI().catch(() => { /* errors emitted via status event */ })
+    return { started: true }
   })
 
   // ── Skills ────────────────────────────────────────────────────
@@ -999,6 +1013,18 @@ export function registerIpcHandlers(
       return { success: true, output, error: undefined }
     } catch (e) {
       // 合并可能有冲突，返回错误信息
+      return { success: false, error: String(e) }
+    }
+  })
+
+  /* [2026-05-11] 更新 worktree 分支：进入 worktree 目录，从 sourceBranch 拉取最新代码 */
+  ipcMain.handle(IPC.GIT_UPDATE_WORKTREE, async (_e, payload) => {
+    const { worktreePath, sourceBranch } = payload as { worktreePath: string; sourceBranch: string }
+    try {
+      const { execSync } = await import('child_process')
+      execSync(`git pull origin "${sourceBranch}"`, { cwd: worktreePath, encoding: 'utf-8' })
+      return { success: true, error: undefined }
+    } catch (e) {
       return { success: false, error: String(e) }
     }
   })

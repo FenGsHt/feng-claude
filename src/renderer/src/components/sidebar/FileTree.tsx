@@ -1,7 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { FileTreeNode } from '../../types/fs'
-import { FILE_DRAG_MIME, type FileDragPayload } from '../../lib/claudeRef'
+import { FILE_DRAG_MIME, type FileDragPayload, formatFileRefForClaudeCode } from '../../lib/claudeRef'
 import { useI18n } from '../../i18n'
+import { useSessionStore } from '../../store/sessionStore'
+import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 
 function setFileDragData(e: React.DragEvent, node: FileTreeNode): void {
   const payload: FileDragPayload = {
@@ -117,6 +120,10 @@ interface NodeProps {
 
 function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps): React.ReactElement {
   const [expanded, setExpanded] = useState(depth < 1)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: FileTreeNode } | null>(null)
+  const ctxMenuDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const sessions = useSessionStore((s) => s.sessions)
 
   // Lazy load children when expanding a directory with no children
   useEffect(() => {
@@ -125,60 +132,150 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
     }
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 搜索过滤：检查当前节点或子节点是否匹配
+  // Close context menu on any click outside (next tick)
+  useEffect(() => {
+    if (!ctxMenu) return
+    const id = setTimeout(() => {
+      const handler = (): void => setCtxMenu(null)
+      document.addEventListener('click', handler, { once: true })
+    }, 0)
+    ctxMenuDismissRef.current = id
+    return () => clearTimeout(id)
+  }, [ctxMenu])
+
+  // Search filter
   const matchesSearch = useMemo(() => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
-    // 当前节点名匹配
     if (node.name.toLowerCase().includes(q)) return true
-    // 子节点中有匹配的
     if (node.children?.some(child => child.name.toLowerCase().includes(q))) return true
     return false
   }, [node.name, node.children, searchQuery])
 
+  const computeRelPath = useCallback((absPath: string): string => {
+    const activeSess = sessions.find((s) => s.id === activeSessionId)
+    const wd = (activeSess?.workdir ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+    const ap = absPath.replace(/\\/g, '/')
+    if (!wd) return ap
+    if (ap.toLowerCase() === wd.toLowerCase()) return '.'
+    if (ap.toLowerCase().startsWith(wd.toLowerCase() + '/')) return ap.slice(wd.length + 1)
+    return ap
+  }, [activeSessionId, sessions])
+
+  const insertRef = useCallback((absPath: string, isDir: boolean): void => {
+    const sid = activeSessionId
+    if (!sid) return
+    const activeSess = sessions.find((s) => s.id === sid)
+    const wd = activeSess?.workdir ?? ''
+    const ref = formatFileRefForClaudeCode(absPath, wd, isDir) + ' '
+    if (injectEmbedDraft(sid, ref)) return
+    window.electronAPI.sendInput(sid, ref)
+  }, [activeSessionId, sessions])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ x: e.clientX, y: e.clientY, node })
+  }, [node])
+
+  const handleDoubleClick = useCallback((): void => {
+    insertRef(node.path, node.type === 'directory')
+  }, [node.path, node.type, insertRef])
+
   if (!matchesSearch) return <></>
 
-  if (node.type === 'directory') {
+  const isDir = node.type === 'directory'
+
+  const ctxMenuPortal = ctxMenu && createPortal(
+    <div
+      className="fixed z-[9999] min-w-[160px] rounded-lg border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] py-1 shadow-2xl backdrop-blur-md"
+      style={{ left: ctxMenu.x, top: ctxMenu.y }}
+      role="menu"
+    >
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-claude-text hover:bg-[var(--theme-panel-bg-soft)] transition-colors"
+        onClick={() => { window.electronAPI.writeClipboardText(ctxMenu.node.path); setCtxMenu(null) }}
+      >
+        复制绝对路径
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-claude-text hover:bg-[var(--theme-panel-bg-soft)] transition-colors"
+        onClick={() => { window.electronAPI.writeClipboardText(computeRelPath(ctxMenu.node.path)); setCtxMenu(null) }}
+      >
+        复制相对路径
+      </button>
+      <div className="my-1 border-t border-[var(--theme-panel-border)]" />
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-claude-text hover:bg-[var(--theme-panel-bg-soft)] transition-colors"
+        onClick={() => { window.electronAPI.revealFile(ctxMenu.node.path); setCtxMenu(null) }}
+      >
+        在文件管理器中打开
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-claude-text hover:bg-[var(--theme-panel-bg-soft)] transition-colors"
+        onClick={() => { insertRef(ctxMenu.node.path, ctxMenu.node.type === 'directory'); setCtxMenu(null) }}
+      >
+        @ 引用到终端
+      </button>
+    </div>,
+    document.body
+  )
+
+  if (isDir) {
     const hasChildren = node.children && node.children.length > 0
     return (
-      <div>
-        <button
-          type="button"
-          draggable
-          onDragStart={(e) => setFileDragData(e, node)}
-          onClick={() => setExpanded((v) => !v)}
-          className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
-          title={`${node.path} — drag to Claude terminal as @ reference`}
-        >
-          <span className="text-[10px] text-claude-muted/60 shrink-0 w-[10px]">{expanded ? '▾' : '▸'}</span>
-          {getFileIcon(node.name, true)}
-          <span className="truncate">{node.name}</span>
-        </button>
-        {expanded && hasChildren && (
-          <div>
-            {node.children!.map((child) => (
-              <FileTreeNodeItem key={child.path} node={child} depth={depth + 1} searchQuery={searchQuery} loadChildren={loadChildren} />
-            ))}
-          </div>
-        )}
-      </div>
+      <>
+        <div>
+          <button
+            type="button"
+            draggable
+            onDragStart={(e) => setFileDragData(e, node)}
+            onClick={() => setExpanded((v) => !v)}
+            onDoubleClick={handleDoubleClick}
+            onContextMenu={handleContextMenu}
+            className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+            style={{ paddingLeft: `${8 + depth * 14}px` }}
+            title={`${node.path} — drag to Claude terminal as @ reference`}
+          >
+            <span className="text-[10px] text-claude-muted/60 shrink-0 w-[10px]">{expanded ? '▾' : '▸'}</span>
+            {getFileIcon(node.name, true)}
+            <span className="truncate">{node.name}</span>
+          </button>
+          {expanded && hasChildren && (
+            <div>
+              {node.children!.map((child) => (
+                <FileTreeNodeItem key={child.path} node={child} depth={depth + 1} searchQuery={searchQuery} loadChildren={loadChildren} />
+              ))}
+            </div>
+          )}
+        </div>
+        {ctxMenuPortal}
+      </>
     )
   }
 
   return (
-    <button
-      type="button"
-      draggable
-      onDragStart={(e) => setFileDragData(e, node)}
-      className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
-      style={{ paddingLeft: `${8 + depth * 14}px` }}
-      title={`${node.path} — drag to Claude terminal as @ reference`}
-    >
-      <span className="text-[10px] opacity-0 shrink-0 w-[10px]">▸</span>
-      {getFileIcon(node.name, false)}
-      <span className="truncate">{node.name}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        draggable
+        onDragStart={(e) => setFileDragData(e, node)}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
+        className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
+        title={`${node.path} — drag to Claude terminal as @ reference`}
+      >
+        <span className="text-[10px] opacity-0 shrink-0 w-[10px]">▸</span>
+        {getFileIcon(node.name, false)}
+        <span className="truncate">{node.name}</span>
+      </button>
+      {ctxMenuPortal}
+    </>
   )
 }
 

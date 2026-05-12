@@ -16,6 +16,7 @@ export function injectMockElectronAPI(): void {
       writeClipboardText: (_text: string) => {},
       saveClipboardImage: async (_base64: string) => ({ success: false, path: '' }),
       deleteFile: async (_path: string) => ({ success: true }),
+      revealFile: async (_path: string) => ({ success: true }),
       createSession: async (workdir: string, _resume?: boolean, profileId?: string, _shellOnly?: boolean, telegramChannel?: import('./types/settings').TelegramChannelSessionConfig) => ({
         ok: true as const,
         sessionId: 'mock-session-' + Math.random().toString(36).slice(2),
@@ -114,6 +115,14 @@ export function injectMockElectronAPI(): void {
       tokenData: {
         get: async () => null,
         set: async () => {}
+      },
+      officeCli: {
+        getStatus: async () => ({
+          installed: false, version: null, latestVersion: null,
+          checking: false, downloading: false, progress: 0, error: null
+        }),
+        checkUpdate: async () => ({ started: false }),
+        onStatus: () => () => {}
       },
       skills: {
         list: async () => [],

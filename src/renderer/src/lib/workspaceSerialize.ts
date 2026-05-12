@@ -48,6 +48,8 @@ export function workspaceToPersisted(
   const shellOnlySlots = sessions.map((s) => !!s.shellOnly)
   // [2026-05-08] Persist per-pane Telegram Channel config so each window keeps its own pairing state.
   const telegramChannelSlots = sessions.map((s) => s.telegramChannel)
+  // [2026-05-11] Persist per-pane embed mode so it survives restarts.
+  const embedModeSlots = sessions.map((s) => s.embedMode === true)
 
   return {
     version: WORKSPACE_VERSION,
@@ -57,6 +59,8 @@ export function workspaceToPersisted(
     // Only include shellOnlySlots if at least one session is shell-only
     shellOnlySlots: shellOnlySlots.some(Boolean) ? shellOnlySlots : undefined,
     telegramChannelSlots: telegramChannelSlots.some(Boolean) ? telegramChannelSlots : undefined,
+    // Only include embedModeSlots if at least one session has embedMode on
+    embedModeSlots: embedModeSlots.some(Boolean) ? embedModeSlots : undefined,
     layoutRoot: layoutPersisted,
     activeSlotIndex
   }
@@ -122,6 +126,11 @@ export function parsePersistedWorkspace(raw: unknown): PersistedWorkspace | null
       if (c.botToken !== undefined && typeof c.botToken !== 'string') return null
       if (c.stateDirId !== undefined && typeof c.stateDirId !== 'string') return null
     }
+  }
+  // [2026-05-11] Validate embedModeSlots if present
+  if (o.embedModeSlots !== undefined && Array.isArray(o.embedModeSlots)) {
+    if (o.embedModeSlots.length !== o.sessionWorkdirs.length) return null
+    if (o.embedModeSlots.some((v) => typeof v !== 'boolean')) return null
   }
   return o as PersistedWorkspace
 }

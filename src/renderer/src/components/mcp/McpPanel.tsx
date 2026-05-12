@@ -1,6 +1,130 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import type { McpEntry, McpServerConfig, McpServerType } from '../../types/ipc'
+import type { McpEntry, McpServerConfig, McpServerType, OfficeCLIStatus } from '../../types/ipc'
 import { useI18n } from '../../i18n'
+
+// ── OfficeCLI 内置 MCP 状态卡片 ──────────────────────────────────────────────
+
+function OfficeCLICard(): React.ReactElement {
+  const [status, setStatus] = useState<OfficeCLIStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    window.electronAPI.officeCli.getStatus().then(setStatus).catch(() => {})
+    const unsub = window.electronAPI.officeCli.onStatus((s) => setStatus(s))
+    return unsub
+  }, [])
+
+  const handleCheckUpdate = async (): Promise<void> => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await window.electronAPI.officeCli.checkUpdate()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const isDownloading = status?.downloading ?? false
+  const isChecking = status?.checking ?? false
+  const installed = status?.installed ?? false
+  const hasUpdate = status?.latestVersion && status.version && status.latestVersion !== status.version
+
+  return (
+    <div className="mx-3 my-2 rounded-lg border border-claude-border bg-claude-bg/30 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-claude-border/60">
+        {/* Office icon */}
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-blue-400">
+          <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.1"/>
+          <path d="M4 5.5h2M4 7.5h6M4 9.5h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+          <path d="M8 5.5h2" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+        </svg>
+        <span className="text-[11px] font-semibold text-claude-text">OfficeCLI</span>
+        <span className="text-[9px] text-claude-muted">· docx · xlsx · pptx</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {/* Status badge */}
+          {status === null ? (
+            <span className="text-[9px] text-claude-muted">…</span>
+          ) : installed ? (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 font-mono">
+              {hasUpdate ? '有更新' : '已安装'}
+            </span>
+          ) : (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              未安装
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-3 py-2 space-y-1.5">
+        {/* Version row */}
+        <div className="flex items-center gap-3 text-[10px]">
+          <span className="text-claude-muted w-12 shrink-0">当前版本</span>
+          <span className="font-mono text-claude-text">
+            {status?.version ?? (installed ? '—' : '—')}
+          </span>
+          {status?.latestVersion && (
+            <>
+              <span className="text-claude-muted">→</span>
+              <span className={`font-mono ${hasUpdate ? 'text-amber-400' : 'text-claude-muted'}`}>
+                {status.latestVersion}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Progress bar (downloading) */}
+        {isDownloading && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[9px] text-claude-muted">
+              <span>正在下载…</span>
+              <span className="font-mono">{status?.progress ?? 0}%</span>
+            </div>
+            <div className="h-1 rounded-full bg-claude-border overflow-hidden">
+              <div
+                className="h-full rounded-full bg-amber-400 transition-all duration-300"
+                style={{ width: `${status?.progress ?? 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {status?.error && (
+          <p className="text-[9px] text-red-400 break-words">{status.error}</p>
+        )}
+
+        {/* Action button */}
+        {!isDownloading && (
+          <div className="flex items-center justify-between pt-0.5">
+            <span className="text-[9px] text-claude-muted/70">
+              {isChecking ? '检查中…' : installed ? 'MCP 已注册，Claude 可直接使用' : '首次使用将自动下载'}
+            </span>
+            <button
+              onClick={() => void handleCheckUpdate()}
+              disabled={busy || isChecking || isDownloading}
+              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {isChecking ? (
+                <svg className="animate-spin" width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <path d="M4.5 1.5A3 3 0 1 1 1.5 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <path d="M1 4.5A3.5 3.5 0 0 1 7.5 2.5M8 4.5A3.5 3.5 0 0 1 1.5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                  <path d="M6 1l1.5 1.5L6 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+              {installed ? '检查更新' : '立即安装'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ── Add / Edit form ──────────────────────────────────────────────────────────
 
@@ -425,6 +549,9 @@ export function McpPanel(): React.ReactElement {
           onCancel={() => setEditing(null)}
         />
       )}
+
+      {/* OfficeCLI 内置卡片 */}
+      <OfficeCLICard />
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">

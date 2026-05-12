@@ -10,6 +10,10 @@ export interface SessionTokenTotals {
   cacheCreate: number
   /** Cache-read input tokens (read from cache, billed at 0.1×) */
   cacheRead: number
+  /** [2026-05-12] 当前上下文窗口已用 token 数（来自状态栏 N/M 解析） */
+  contextTokensUsed?: number
+  /** [2026-05-12] 上下文窗口总量 token 数 */
+  contextTokensTotal?: number
 }
 
 export type TokenIngestMode = 'set' | 'add' | 'override'
@@ -29,7 +33,7 @@ interface TokenUsageStore {
     input: number,
     output: number,
     mode: TokenIngestMode,
-    extra?: { cacheCreate?: number; cacheRead?: number }
+    extra?: { cacheCreate?: number; cacheRead?: number; contextTokensUsed?: number; contextTokensTotal?: number }
   ) => void
 
   clearSession: (sessionId: string) => void
@@ -49,6 +53,8 @@ export const useTokenUsageStore = create<TokenUsageStore>((set) => ({
       const safeOutput = Number.isFinite(output) ? output : 0
       const cacheCreate = Number.isFinite(extra?.cacheCreate) ? extra?.cacheCreate ?? 0 : 0
       const cacheRead = Number.isFinite(extra?.cacheRead) ? extra?.cacheRead ?? 0 : 0
+      const contextTokensUsed = Number.isFinite(extra?.contextTokensUsed) ? extra!.contextTokensUsed! : undefined
+      const contextTokensTotal = Number.isFinite(extra?.contextTokensTotal) ? extra!.contextTokensTotal! : undefined
       let next: SessionTokenTotals
 
       if (mode === 'override') {
@@ -69,6 +75,10 @@ export const useTokenUsageStore = create<TokenUsageStore>((set) => ({
           cacheRead: Math.max(cur.cacheRead, cacheRead)
         }
       }
+
+      // context window numbers are always "latest value wins" (not accumulated)
+      if (contextTokensUsed !== undefined) next.contextTokensUsed = contextTokensUsed
+      if (contextTokensTotal !== undefined) next.contextTokensTotal = contextTokensTotal
 
       return { bySession: { ...s.bySession, [sessionId]: next } }
     }),

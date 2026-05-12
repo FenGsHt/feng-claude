@@ -149,8 +149,19 @@
 
 /* ── Claude Code 外嵌转录面板：极简纯文本风格，无框体 ────────── */
 [data-theme="claude-code"] .claude-transcript-root {
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 14px !important;
+  line-height: 1.25 !important;
+}
+/* 覆盖 Tailwind 工具类的 font-size */
+[data-theme="claude-code"] .claude-transcript-root .whitespace-pre-wrap,
+[data-theme="claude-code"] .claude-transcript-root [class*="text-[1"],
+[data-theme="claude-code"] .claude-transcript-root .prose {
+  font-size: 14px !important;
+}
+/* 助手/用户消息正文增大 */
+[data-theme="claude-code"] .claude-transcript-root .fo-assistant-bubble *,
+[data-theme="claude-code"] .claude-transcript-root .fo-user-bubble * {
+  font-size: 14px !important;
 }
 
 /* 助手气泡：去框体，纯文本 */
@@ -162,12 +173,19 @@
   padding-left: 0 !important;
 }
 
-/* 用户气泡：去框体，纯文本 */
+/* 用户气泡：浅蓝 SMS 风格 */
 [data-theme="claude-code"] .claude-transcript-root .fo-user-bubble {
-  background: transparent !important;
+  background: #eaf4ff !important;
   border: none !important;
   box-shadow: none !important;
-  border-radius: 0 !important;
+  border-radius: 1rem !important;
+}
+[data-theme="claude-code"] .claude-transcript-root .fo-user-bubble pre {
+  color: #0b5ec7 !important;
+}
+/* 隐藏 "你" 标签（现在是第一个直系 div）*/
+[data-theme="claude-code"] .claude-transcript-root .fo-user-bubble > div:first-child {
+  display: none !important;
 }
 
 /* 工具 pill：去装饰，只留文本 */
@@ -243,13 +261,20 @@
   display: none !important;
 }
 
-/* 思考块：去框体 */
+/* 思考块：去框体 + 缩小字体/行间距 */
 [data-theme="claude-code"] .claude-transcript-root .fo-thinking-header,
 [data-theme="claude-code"] .claude-transcript-root .fo-thinking-body {
   background: transparent !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+}
+[data-theme="claude-code"] .claude-transcript-root .fo-thinking-body *,
+[data-theme="claude-code"] .claude-transcript-root .fo-thinking-body pre {
+  font-size: 13px !important;
+  line-height: 1.2 !important;
 }
 
 /* 工具 diff 块：去边框圆角 */
@@ -276,6 +301,27 @@
 /* AssistantReplyMeta 分隔线：更轻 */
 [data-theme="claude-code"] .claude-transcript-root .fo-assistant-bubble [class*="border-t"] {
   border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* 默认暗色 / 亮色主题外嵌界面字体 */
+html:not([data-theme="claude-code"]) .claude-transcript-root,
+[data-theme="light"] .claude-transcript-root {
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+html:not([data-theme="claude-code"]) .claude-transcript-root .whitespace-pre-wrap,
+html:not([data-theme="claude-code"]) .claude-transcript-root [class*="text-[1"],
+html:not([data-theme="claude-code"]) .claude-transcript-root .prose,
+[data-theme="light"] .claude-transcript-root .whitespace-pre-wrap,
+[data-theme="light"] .claude-transcript-root [class*="text-[1"],
+[data-theme="light"] .claude-transcript-root .prose {
+  font-size: 13px !important;
+}
+html:not([data-theme="claude-code"]) .claude-transcript-root .fo-assistant-bubble *,
+html:not([data-theme="claude-code"]) .claude-transcript-root .fo-user-bubble *,
+[data-theme="light"] .claude-transcript-root .fo-assistant-bubble *,
+[data-theme="light"] .claude-transcript-root .fo-user-bubble * {
+  font-size: 13px !important;
 }
 
 * {

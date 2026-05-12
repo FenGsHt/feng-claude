@@ -262,13 +262,16 @@ export class ClaudeSessionWatcher {
       for (const line of lines) {
         // Emit tool calls for any tool_use blocks in this line
         for (const tc of parseToolCalls(line)) {
-          this.emitToolCall({
-            sessionId: sw.sessionId,
-            toolId: tc.id,
-            name: tc.name,
-            input: tc.input,
-            timestamp: Date.now()
-          })
+          /* [2026-05-12] 同一 projectDir 多 session 各自收到独立 tool call 更新 */
+          for (const sid of sw.linkedSessionIds) {
+            this.emitToolCall({
+              sessionId: sid,
+              toolId: tc.id,
+              name: tc.name,
+              input: tc.input,
+              timestamp: Date.now()
+            })
+          }
         }
 
         // Parse assistant message and emit usage directly
@@ -279,15 +282,17 @@ export class ClaudeSessionWatcher {
             sw.runningNotified = true
           }
           sw.lastTokenTime = Date.now()
-          console.log('[Token] emit — input:', usage.input, 'output:', usage.output)
-          this.emit({
-            sessionId: sw.sessionId,
-            input: usage.input,
-            output: usage.output,
-            cacheCreate: usage.cacheCreate,
-            cacheRead: usage.cacheRead,
-            reset: false
-          })
+          /* [2026-05-12] 同一 projectDir 多 session 各自收到独立 token 更新 */
+          for (const sid of sw.linkedSessionIds) {
+            this.emit({
+              sessionId: sid,
+              input: usage.input,
+              output: usage.output,
+              cacheCreate: usage.cacheCreate,
+              cacheRead: usage.cacheRead,
+              reset: false
+            })
+          }
         }
 
         /* [2026-05-06] 仅 Beta 开启时解析 JSONL 对话行并 IPC；与全量回填同一套解析 + 未识别行 fallback */
@@ -519,6 +524,7 @@ function parseTranscriptEntries(line: string): ClaudeTranscriptEntry[] {
             messageId,
             toolName,
             toolId: typeof block.id === 'string' ? block.id : undefined,
+            toolInput: block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : undefined,
             requiresNativeTerminal: toolName === 'AskUserQuestion'
           })
           continue

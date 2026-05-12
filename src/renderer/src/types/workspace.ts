@@ -27,6 +27,8 @@ export interface PersistedWorkspace {
   shellOnlySlots?: boolean[]
   /** [2026-05-08] 每个 slot 的官方 Telegram Channel 配置 */
   telegramChannelSlots?: Array<TelegramChannelSessionConfig | undefined>
+  /** [2026-05-11] 每个 slot 的外嵌模式（终端 vs 外嵌 UI） */
+  embedModeSlots?: boolean[]
   layoutRoot: PersistedPaneNode | null
   /** 上次激活的会话在 sessionWorkdirs 中的下标 */
   activeSlotIndex: number

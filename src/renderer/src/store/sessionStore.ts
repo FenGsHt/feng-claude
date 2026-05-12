@@ -518,7 +518,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           ptyPid: result.pid,
           profileId: result.profileId ?? profileId,
           shellOnly: shellOnly || undefined,
-          telegramChannel: result.telegramChannel ?? telegramChannel
+          telegramChannel: result.telegramChannel ?? telegramChannel,
+          embedMode: pw.embedModeSlots?.[i] ?? undefined
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently

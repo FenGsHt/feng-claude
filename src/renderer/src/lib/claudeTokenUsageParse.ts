@@ -90,7 +90,42 @@ function ingestLatestStatusArrowSnapshot(
       }
     }
   }
-  if (pick) ingest(sessionId, pick.input, pick.output, 'override')
+  /* [2026-05-12] 用 set 而非 override：JSONL watcher 数据更精确，override 会将其覆盖为状态栏四舍五入值 */
+  if (pick) ingest(sessionId, pick.input, pick.output, 'set')
+}
+
+/** 状态栏上下文窗口用量：22K/200K tokens 或 22K/200K */
+function ingestContextWindowSnapshot(
+  sessionId: string,
+  strippedSlice: string,
+  ingest: (
+    sid: string,
+    input: number,
+    output: number,
+    mode: 'set' | 'add' | 'override',
+    extra?: { cacheCreate?: number; cacheRead?: number; contextTokensUsed?: number; contextTokensTotal?: number }
+  ) => void
+): void {
+  const tail = strippedSlice.slice(-STATUS_ARROW_TAIL)
+  // 匹配: 22K/200K tokens, 22K/200K, 22K / 200K
+  const re = /([\d,.]+[kKmM]?)\s*\/\s*([\d,.]+[kKmM]?)\s*(?:tokens?|context)/gi
+  let bestIdx = -1
+  let bestUsed = 0
+  let bestTotal = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(tail)) !== null) {
+    const used = parseTokenAmount(m[1])
+    const total = parseTokenAmount(m[2])
+    // 合理的上下文：used <= total，total > 0
+    if (total > 0 && used <= total && m.index > bestIdx) {
+      bestIdx = m.index
+      bestUsed = used
+      bestTotal = total
+    }
+  }
+  if (bestIdx >= 0 && bestTotal > 0) {
+    ingest(sessionId, 0, 0, 'set', { contextTokensUsed: bestUsed, contextTokensTotal: bestTotal })
+  }
 }
 
 /** 内置右侧「61200 tokens」类单行总计（无 in/out 分拆时仅填 input） */
@@ -189,6 +224,7 @@ export function feedPtyChunkForTokenUsage(sessionId: string, chunk: string): voi
   /* 先拾取内置「N tokens」，再由 ↑↓ 覆盖（避免仅有总计时标题空白） */
   ingestBuiltinTotalTokensLine(sessionId, slice, ingest)
   ingestLatestStatusArrowSnapshot(sessionId, slice, ingest)
+  ingestContextWindowSnapshot(sessionId, slice, ingest)
 }
 
 export function clearTokenUsageBuffer(sessionId: string): void {

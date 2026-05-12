@@ -25,6 +25,7 @@ import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
 import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView, startElementPicker, startCdpProxy } from './browserViewManager'
 import { ensureBrowserToolsMcpRegistered, ensureVisualAgentMcpRegistered } from './mcpManager'
+import { ensureOfficeCliMcpRegistered } from './officeCliManager'
 import { startApiProxy, stopApiProxy } from './apiProxyServer'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
@@ -119,6 +120,9 @@ function createWindow(): BrowserWindow {
   // [2026-05-01] 自动注册视觉代理 MCP（需要配置 API 才能工作）
   ensureVisualAgentMcpRegistered()
 
+  // [2026-05-12] 自动注册 OfficeCLI MCP（处理 docx/xlsx/pptx），后台静默更新
+  ensureOfficeCliMcpRegistered(win)
+
   // [2026-04-30] API 容灾代理：开启时启动本地转发服务
   if (settingsStore.get().enableApiProxy) {
     startApiProxy()
@@ -129,9 +133,12 @@ function createWindow(): BrowserWindow {
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    win.webContents.openDevTools({ mode: 'detach' })
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+  // [2026-05-11] dev 模式下始终打开 DevTools
+  if (is.dev) {
+    win.webContents.openDevTools({ mode: 'detach' })
   }
 
   // ── Embedded browser for debugging ──────────────────────────────

@@ -72,6 +72,7 @@ export function EmbedSessionComposer({
   const workdir = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.workdir ?? '')
   /* [2026-05-08] interruptSuppress 只用于收起底部「处理中」条；若绑在按钮上，中断一次后 suppress 恒真直至 idle，按钮会长期不出现，也无法二次中断 */
   const sessionStatus = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status)
+  const isProcessDead = sessionStatus === 'exited' || sessionStatus === 'error'
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
   /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
   // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
@@ -775,6 +776,22 @@ export function EmbedSessionComposer({
   return (
     <div className="shrink-0 border-t border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-3 py-3">
       {/* [2026-05-11] 提示区挪到输入框上方，输入框贴底 */}
+      {isProcessDead && (
+        <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+          <p className="text-[10px] leading-relaxed text-red-400">
+            {sessionStatus === 'error' ? '进程异常退出' : '进程已退出'}——外嵌终端无法发送消息。可重启 Claude Code 进程以继续对话。
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-red-500/40 bg-[var(--theme-panel-bg-soft)] px-2.5 py-1 text-[9px] font-medium text-red-400 transition hover:bg-red-500/15"
+              onClick={() => useSessionStore.getState().restartSession(sessionId)}
+            >
+              重启 Claude
+            </button>
+          </div>
+        </div>
+      )}
       {alternateScreen ? (
         <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5">
           <p className="text-[10px] leading-relaxed text-[var(--theme-accent-text)]">
@@ -923,7 +940,7 @@ export function EmbedSessionComposer({
           <textarea
             ref={taRef}
             value={draft}
-            disabled={alternateScreen}
+            disabled={alternateScreen || isProcessDead}
             readOnly={slashInteractiveMode}
             onChange={(e) => {
               historyCursorRef.current = null
@@ -943,14 +960,16 @@ export function EmbedSessionComposer({
             onPaste={onPaste}
             rows={1}
             placeholder={
-              alternateScreen
+              isProcessDead
+                ? '进程已退出，请点击上方"重启 Claude"…'
+                : alternateScreen
                 ? '全屏终端界面进行中，输入已暂停…'
                 : slashInteractiveMode
                   ? '斜杠命令交互中：请在上方内嵌终端直接输入；Ctrl+Enter 强制退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
             className={`fo-embed-composer-textarea min-h-[36px] w-full overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow shadow-black/25 placeholder:text-claude-muted/70 focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
-              alternateScreen ? 'cursor-not-allowed opacity-45' : ''
+              alternateScreen || isProcessDead ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}
             aria-expanded={slashMenuOpen || atMenuOpen}

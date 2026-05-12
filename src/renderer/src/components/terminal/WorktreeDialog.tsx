@@ -19,6 +19,7 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [mergeLoading, setMergeLoading] = useState<string | null>(null)
+  const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string } | null>(null)
 
@@ -141,6 +142,26 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
     setMergeLoading(null)
   }
 
+  /* [2026-05-11] 更新 worktree：从当前分支拉取最新代码 */
+  const handleUpdate = async (worktreePath: string, branch: string): Promise<void> => {
+    setUpdateLoading(branch)
+    setError('')
+    try {
+      const result = await window.electronAPI.git.updateWorktree({
+        worktreePath,
+        sourceBranch: currentBranch,
+      })
+      if (!result.success) {
+        setError(`更新 ${branch} 失败: ${result.error}`)
+      } else {
+        await loadData()
+      }
+    } catch (e) {
+      setError(String(e))
+    }
+    setUpdateLoading(null)
+  }
+
   const handleDelete = (worktreePath: string, branch: string): void => {
     setConfirmDelete({ path: worktreePath, branch })
   }
@@ -218,6 +239,17 @@ export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): Re
                         className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30"
                       >
                         打开
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void handleUpdate(wt.path, wt.branch) }}
+                        disabled={updateLoading === wt.branch}
+                        className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                          unmergedCounts[wt.branch] > 0
+                            ? 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30'
+                            : 'bg-slate-700/30 text-slate-400 hover:bg-slate-700/50'
+                        } disabled:opacity-50`}
+                      >
+                        {updateLoading === wt.branch ? '更新中...' : '更新'}
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleMerge(wt.branch) }}
