@@ -227,7 +227,7 @@ function AssistantReplyMeta({
             </>
           ) : null}
           <span className="text-claude-muted/40">·</span>
-          {/* [2026-05-12] 原：font-semibold + --theme-success-text；参考外嵌截图「Σ 32.1k」为 GitHub 系深绿 #1a7f37、字重正常，与 in/out/cache 段区分仅靠颜色 */}
+          {/* Sigma total: GitHub-like green #1a7f37, normal weight (2026-05-12). */}
           {/* <span className="font-semibold text-[var(--theme-success-text)]" title="本条回复合计">
             Σ {formatTokenCount(sum)}
           </span> */}
@@ -254,7 +254,7 @@ function AssistantReplyMeta({
             </>
           ) : null}
           <span className="text-claude-muted/30">·</span>
-          {/* [2026-05-12] 原：font-semibold + theme-success /60；与上条合计同一套 Σ 色标，仅透明度区分层级 */}
+          {/* Session total row: same Sigma palette, lower opacity (2026-05-12). */}
           {/* <span className="font-semibold text-[var(--theme-success-text)]/60" title="session 合计">
             Σ {formatTokenCount(sessionSum)}
           </span> */}
@@ -986,17 +986,9 @@ const EntryBlock = React.memo(function EntryBlock({
     )
   }
   if (e.kind === 'event') {
-    /* [2026-05-06] 仅渲染 PTY 外嵌 echo；会话记录类 event 已在列表层过滤 */
+    /* ptyEcho events: filtered here; rendering is native terminal overlay (2026-05-07). */
     const te: ClaudeTranscriptEntry = e
     if (te.ptyEcho !== true) return null
-    /* [2026-05-06] 外嵌 PTY 仅用于斜杠命令（/help、/mcp）；专用样式避免与助手 Markdown 气泡混淆 */
-    /* [2026-05-07] 原用 <pre> 展示 headless xterm 文本快照；/mcp 二级菜单会丢光标语义，改为真实内嵌 xterm。 */
-    // return (
-    //   <pre className="max-h-[min(420px,52vh)] overflow-auto whitespace-pre-wrap rounded-lg bg-black/35 px-2 py-2 font-mono text-[10px] leading-[1.55] text-emerald-50/85 [scrollbar-width:thin]">
-    //     {e.text}
-    //   </pre>
-    // )
-    /* [2026-05-07] slash/TUI 统一使用悬浮原生终端；旧 ptyEcho 事件不再占用外嵌消息流。 */
     return null
   }
   if (e.kind === 'thinking') {
@@ -1071,7 +1063,7 @@ const EntryBlock = React.memo(function EntryBlock({
   )
 })
 
-/* [2026-05-06] 原 TranscriptEmbedStatusFooter（进行中 / 累计 token）按产品要求不再展示 */
+/* TranscriptEmbedStatusFooter removed by product (2026-05-06). */
 
 const SCROLL_BOTTOM_THRESHOLD_PX = 80
 /** 默认只渲染列表末尾条数；滚到顶部附近再向上扩展 */

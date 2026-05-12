@@ -1,7 +1,7 @@
 {
   "name": "feng-claude",
   "productName": "Feng Claude",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "A third-party GUI wrapper for Claude Code CLI",
   "main": "./out/main/index.js",
   "scripts": {

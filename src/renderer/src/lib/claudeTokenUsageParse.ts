@@ -168,6 +168,7 @@ function ingestContextWindowPercent(
   const re = /(\d{1,3}(?:\.\d+)?)\s*%\s*context\b/gi
   let bestEnd = -1
   let bestPct = -1
+  let m: RegExpExecArray | null
   while ((m = re.exec(tail)) !== null) {
     const v = parseFloat(m[1])
     const end = m.index + m[0].length

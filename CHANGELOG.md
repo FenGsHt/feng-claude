@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.5] - 2026-05-13
+
+### 修复 | Bug Fixes
+- **外嵌卡住（生产版）**：安装版正式包 preload 在 minify 模式下产生 `m is not defined` 错误，导致每次 PTY 输出事件回调抛异常，外嵌界面收不到任何数据而卡死；preload 已切换 `minify: false`，本版正式生效
+- **斜杠命令误判**：`/**` 开头的 JSDoc 注释不再被视为斜杠命令，发送路径正确走普通消息流
+- **多行提交稳定性**：多行文本延迟 80 ms 分帧发送 `\r`，避免 TUI 将 Enter 与正文粘在同一 write 内无法提交
+- **首行 `/` 转义**：首行以 `/` 开头但非斜杠命令（如路径、注释）时，自动前置空格规避 CLI 误解析
+- **Bracketed Paste 模式**：检测 xterm 的 BP 模式（`\x1b[?2004h/l`），发送时用 BP 序列包裹，彻底防止 `/` 触发 slash 弹窗
+
+### 改进 | Improvements
+- 移除调试日志：`[submitEmbed]`、`[submitEmbed:payload]`、`[pty-input-ack]`、`[bp]`、`[embed-mcp]` 等日志不再打印到控制台
+
+---
+
 ## [0.7.4] - 2026-05-13
 
 ### 改进 | Improvements

@@ -148,10 +148,6 @@ export function TokenUsageWidget(): React.ReactElement {
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
   const setHideDetailedTokens = useGlobalTokenStore((s) => s.setHideDetailedTokens)
 
-  // [2026-04-29] Debug: log what the widget reads from the store
-  useEffect(() => {
-    console.log('[Token] widget render — today:', today, 'total:', total, 'perProfile:', perProfile, 'todayDate:', todayDate, 'dailyPerProfile today:', dailyHistoryPerProfile[todayDate])
-  })
 
   // [2026-04-28] Get profile pricing map — re-fetch on broadcast changes
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)

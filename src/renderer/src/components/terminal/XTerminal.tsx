@@ -186,13 +186,6 @@ export function commitUserPrompt(sessionId: string): void {
   userInputBuffers.set(sessionId, [])
 }
 
-function visualizePayloadForLog(payload: string): string {
-  return payload
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n')
-    .replace(/\x15/g, '\\x15')
-}
-
 /**
  * [2026-05-06] 外嵌 Beta：无 xterm 时通过前端输入框发往 PTY（与 onData 路径一致的缓冲与历史一行）
  */
@@ -209,7 +202,6 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   // [2026-05-12] 优先读 xterm 内部 modes（会话建立时就同步），自有 Map 兜底
   const xtermBp = getOrCreateTerminal(sessionId).term.modes.bracketedPasteMode
   const bp = xtermBp || isBracketedPasteModeActive(sessionId)
-  console.log('[submitEmbed] firstLine:', JSON.stringify(firstLine), 'isSlash:', isSlashCommand, 'bp(xterm):', xtermBp, 'bp(map):', isBracketedPasteModeActive(sessionId), 'lines:', raw.split('\n').length)
   /* [2026-05-06] 仅斜杠命令需要把 PTY 原文写入转录（/mcp 等）；普通对话仍以 JSONL 为准避免重复 */
   /* [2026-05-06] 每条新斜杠命令先 flush 并重置缓冲，否则多次 /mcp 在同一会话里会把整屏输出重复堆叠 */
   if (isSlashCommand) {
@@ -276,25 +268,9 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
     payload = `${textPart}${lineEnding}`
   }
   const traceId = `embed-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  // [2026-05-12] 原仅 sendInput(sessionId, payload)；为定位“ACK 成功但终端未按预期处理”，补 traceId + 可见转义日志。
-  // window.electronAPI.sendInput(sessionId, payload)
-  console.log('[submitEmbed:payload]', {
-    traceId,
-    sessionId,
-    escapedLeadingSlash,
-    submitMode,
-    bytes: new TextEncoder().encode(payload).length,
-    payloadPreview: visualizePayloadForLog(payload).slice(0, 240)
-  })
   window.electronAPI.sendInput(sessionId, payload, traceId)
   if (splitMultilineSubmit) {
     window.setTimeout(() => {
-      console.log('[submitEmbed:delayedSubmit]', {
-        traceId,
-        sessionId,
-        delayMs: 80,
-        payloadPreview: '\\r'
-      })
       window.electronAPI.sendInput(sessionId, '\r')
     }, 80)
   }

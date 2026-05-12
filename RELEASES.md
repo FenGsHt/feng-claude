@@ -5,6 +5,20 @@
 
 ---
 
+## v0.7.5 (2026-05-13)
+
+### 修复 | Bug Fixes
+- **外嵌卡住（生产版）**：安装版 preload 在 minify 模式下每次 PTY 输出都抛 `m is not defined`，外嵌收不到数据卡死；本版 preload `minify: false` 正式生效，问题消除
+- **`/**` 注释无法发送**：JSDoc 开头文本不再被误判为斜杠命令，走普通消息通道正常提交
+- **多行块提交**：正文与最终 Enter 分两帧（80 ms 延迟）发送，TUI 能正确识别提交意图
+- **路径首 `/` 转义**：非斜杠命令但首字符为 `/` 时自动补空格，防 CLI 解析歧义
+- **Bracketed Paste 防弹窗**：检测 xterm BP 模式并用 `\x1b[200~...\x1b[201~` 包裹，彻底杜绝 `/` 触发补全弹窗
+
+### 改进 | Improvements
+- 清理所有调试 `console.log`（`[submitEmbed]`、`[pty-input-ack]`、`[bp]`、`[embed-mcp]` 等），生产包无噪声日志
+
+---
+
 ## v0.7.4 (2026-05-13)
 
 ### 改进 | Improvements
