@@ -393,6 +393,7 @@ function NativeTerminalRequiredCard({
  * 内存 + localStorage 双层持久：重开 app 不重播旧消息
  * ══════════════════════════════════════════════════════════════ */
 const streamRevealedMap = new Map<string, Set<string>>()
+const REVEALED_STORAGE_LIMIT = 2000
 
 function getRevealedSet(sessionId: string): Set<string> {
   if (!streamRevealedMap.has(sessionId)) {
@@ -408,13 +409,41 @@ function getRevealedSet(sessionId: string): Set<string> {
   return streamRevealedMap.get(sessionId)!
 }
 
+function persistRevealedSet(sessionId: string, set: Set<string>): void {
+  try {
+    const ids = [...set].slice(-REVEALED_STORAGE_LIMIT)
+    localStorage.setItem(`sr:${sessionId}`, JSON.stringify(ids))
+  } catch { /* quota 满时忽略 */ }
+}
+
 function markRevealed(sessionId: string, messageId: string): void {
   const set = getRevealedSet(sessionId)
   if (set.has(messageId)) return
   set.add(messageId)
-  try {
-    localStorage.setItem(`sr:${sessionId}`, JSON.stringify([...set]))
-  } catch { /* quota 满时忽略 */ }
+  persistRevealedSet(sessionId, set)
+}
+
+function markManyRevealed(sessionId: string, messageIds: string[]): void {
+  if (messageIds.length === 0) return
+  const startedAt = performance.now()
+  const set = getRevealedSet(sessionId)
+  let changed = false
+  for (const id of messageIds) {
+    if (set.has(id)) continue
+    set.add(id)
+    changed = true
+  }
+  if (changed) persistRevealedSet(sessionId, set)
+  const elapsedMs = Math.round(performance.now() - startedAt)
+  if (elapsedMs > 20 || messageIds.length > 500) {
+    console.log('[transcript-pane:pre-reveal]', {
+      sessionId,
+      ids: messageIds.length,
+      stored: Math.min(set.size, REVEALED_STORAGE_LIMIT),
+      changed,
+      elapsedMs
+    })
+  }
 }
 
 const STREAM_CHARS_PER_SEC = 100
@@ -1069,6 +1098,7 @@ const SCROLL_BOTTOM_THRESHOLD_PX = 80
 /** 默认只渲染列表末尾条数；滚到顶部附近再向上扩展 */
 const INITIAL_HISTORY_TAIL = 80
 const HISTORY_LOAD_CHUNK = 60
+const RAW_HISTORY_SCAN_TAIL = 260
 const TOP_LOAD_SCROLL_THRESHOLD_PX = 140
 const USER_WAITING_FALLBACK_MS = 12_000
 
@@ -1281,8 +1311,35 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const themeMode = useThemeStore((s) => s.theme)
   const isFallout = themeMode === 'fallout'
   const entries = useTranscriptStore((s) => s.bySession[sessionId] ?? [])
-  const visibleEntries = useMemo(() => filterNoiseTranscriptEntries(entries), [entries])
   const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  /*
+   * [2026-05-12] 原先直接 filterNoiseTranscriptEntries(entries)。大项目历史很多时，切外嵌首帧需要全量过滤；
+   * 保留原行为的计算范围，但增加耗时日志，配合下方首帧只聚合尾部，定位/缓解卡死。
+   * const visibleEntries = useMemo(() => filterNoiseTranscriptEntries(entries), [entries])
+   */
+  const rawFilterStartIndex =
+    query
+      ? 0
+      : Math.max(0, entries.length - Math.max(RAW_HISTORY_SCAN_TAIL, INITIAL_HISTORY_TAIL + HISTORY_LOAD_CHUNK * 2))
+  const visibleEntries = useMemo(() => {
+    const startedAt = performance.now()
+    const source = query ? entries : entries.slice(rawFilterStartIndex)
+    const next = filterNoiseTranscriptEntries(source)
+    const elapsedMs = Math.round(performance.now() - startedAt)
+    if (elapsedMs > 30 || entries.length > 500 || rawFilterStartIndex > 0) {
+      console.log('[transcript-pane:filter]', {
+        sessionId,
+        entries: entries.length,
+        source: source.length,
+        rawStartIndex: rawFilterStartIndex,
+        visible: next.length,
+        query: Boolean(query),
+        elapsedMs
+      })
+    }
+    return next
+  }, [entries, rawFilterStartIndex, query, sessionId])
   const [searchCursor, setSearchCursor] = useState(0)
   const [focusPulse, setFocusPulse] = useState<{ messageId?: string; toolName?: string } | null>(null)
 
@@ -1309,7 +1366,12 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const stickToBottomRef = useRef(true)
   const [nearBottom, setNearBottom] = useState(true)
   /** [2026-05-06] 仅渲染 visibleEntries[startIndex..]；上滑加载更早消息 */
-  const [historyStartIndex, setHistoryStartIndex] = useState(0)
+  /*
+   * [2026-05-12] 原初始值 0 会导致首次切外嵌时 aggregate/render 全部历史，长项目可能卡死；
+   * 改为用 undefined 表示“尚未手动加载更早历史”，首帧直接从尾部窗口开始。
+   * const [historyStartIndex, setHistoryStartIndex] = useState(0)
+   */
+  const [historyStartIndex, setHistoryStartIndex] = useState<number | undefined>(undefined)
   const scrollRestoreAnchorRef = useRef<{ prevScrollHeight: number; prevScrollTop: number } | null>(
     null
   )
@@ -1320,11 +1382,22 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const preRevealDoneRef = useRef(false)
   if (!preRevealDoneRef.current && entries.length > 0) {
     preRevealDoneRef.current = true
+    /*
+     * [2026-05-12] 原逻辑每条历史都调用 markRevealed，内部每次都会 JSON.stringify + localStorage.setItem；
+     * 大项目（数千条转录）切外嵌时会同步写几千次 localStorage，正式包容易卡死。
+     * for (const e of entries) {
+     *   if (!e.messageId) continue
+     *   if (e.kind === 'assistant') markRevealed(sessionId, e.messageId)
+     *   else if (e.kind === 'thinking') markRevealed(sessionId, `thinking:${e.messageId}`)
+     * }
+     */
+    const preRevealIds: string[] = []
     for (const e of entries) {
       if (!e.messageId) continue
-      if (e.kind === 'assistant') markRevealed(sessionId, e.messageId)
-      else if (e.kind === 'thinking') markRevealed(sessionId, `thinking:${e.messageId}`)
+      if (e.kind === 'assistant') preRevealIds.push(e.messageId)
+      else if (e.kind === 'thinking') preRevealIds.push(`thinking:${e.messageId}`)
     }
+    markManyRevealed(sessionId, preRevealIds)
   }
 
   // 重启后「历史 + PTY running」不应触发 loading bar：记录首次加载时的条目数
@@ -1336,14 +1409,37 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const hadHistoryOnMount = startupEntryCountRef.current > 0
   const hasNewEntriesSinceMount = !hadHistoryOnMount || entries.length > startupEntryCountRef.current
 
-  const query = search.trim().toLowerCase()
+  const effectiveHistoryStartIndex =
+    historyStartIndex ??
+    (visibleEntries.length <= INITIAL_HISTORY_TAIL
+      ? 0
+      : Math.max(0, visibleEntries.length - INITIAL_HISTORY_TAIL))
   const displayedEntries = useMemo(() => {
-    const base = query
-      ? aggregateToolEntries(visibleEntries)
-      : aggregateToolEntries(visibleEntries.slice(historyStartIndex))
+    /*
+     * [2026-05-12] 原先无搜索时使用 historyStartIndex（初始 0）聚合全量 visibleEntries；
+     * 大历史项目点击外嵌会在首帧卡住。改为 effectiveHistoryStartIndex，首次只聚合尾部窗口。
+     * const base = query
+     *   ? aggregateToolEntries(visibleEntries)
+     *   : aggregateToolEntries(visibleEntries.slice(historyStartIndex))
+     */
+    const startedAt = performance.now()
+    const aggregateInput = query ? visibleEntries : visibleEntries.slice(effectiveHistoryStartIndex)
+    const base = aggregateToolEntries(aggregateInput)
+    const elapsedMs = Math.round(performance.now() - startedAt)
+    if (elapsedMs > 30 || visibleEntries.length > 500) {
+      console.log('[transcript-pane:aggregate]', {
+        sessionId,
+        query: Boolean(query),
+        visible: visibleEntries.length,
+        startIndex: effectiveHistoryStartIndex,
+        aggregateInput: aggregateInput.length,
+        displayed: base.length,
+        elapsedMs
+      })
+    }
     if (!query) return base
     return base.filter((e) => entryMatchesQuery(e, query))
-  }, [visibleEntries, historyStartIndex, query])
+  }, [visibleEntries, effectiveHistoryStartIndex, query, sessionId])
   const matchedCount = useMemo(
     () => (query ? displayedEntries.filter((e) => entryMatchesQuery(e, query)).length : 0),
     [displayedEntries, query]
@@ -1644,15 +1740,15 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     if (n < prevLen) {
       setHistoryStartIndex((old) =>
         Math.min(
-          old,
+          old ?? effectiveHistoryStartIndex,
           n <= INITIAL_HISTORY_TAIL ? 0 : Math.max(0, n - INITIAL_HISTORY_TAIL)
         )
       )
       return
     }
 
-    setHistoryStartIndex((old) => Math.min(old, Math.max(0, n - 1)))
-  }, [sessionId, visibleEntries.length])
+    setHistoryStartIndex((old) => Math.min(old ?? effectiveHistoryStartIndex, Math.max(0, n - 1)))
+  }, [sessionId, visibleEntries.length, effectiveHistoryStartIndex])
 
   /* [2026-05-06] 向上加载更早消息后恢复视口锚点，避免跳动 */
   useLayoutEffect(() => {
@@ -1722,7 +1818,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     updateStickFromScroll()
     if (scrollRestoreAnchorRef.current) return
     const el = scrollRootRef.current
-    if (!el || historyStartIndex <= 0) return
+    if (!el || effectiveHistoryStartIndex <= 0) return
     // [2026-05-11] 内容不超出视口时（如短对话或终端打开后面板变高），scrollTop 恒为 0
     // 不代表用户在历史顶部，不应触发历史加载
     if (el.scrollHeight <= el.clientHeight) return
@@ -1731,10 +1827,10 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       prevScrollHeight: el.scrollHeight,
       prevScrollTop: el.scrollTop
     }
-    setHistoryStartIndex((s) => Math.max(0, s - HISTORY_LOAD_CHUNK))
-  }, [historyStartIndex, updateStickFromScroll])
+    setHistoryStartIndex((s) => Math.max(0, (s ?? effectiveHistoryStartIndex) - HISTORY_LOAD_CHUNK))
+  }, [effectiveHistoryStartIndex, updateStickFromScroll])
 
-  const hasOlderAbove = query.length === 0 && historyStartIndex > 0
+  const hasOlderAbove = query.length === 0 && effectiveHistoryStartIndex > 0
 
   return (
     <>
@@ -1792,7 +1888,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
           <div className="mx-auto flex max-w-3xl flex-col gap-3">
             {hasOlderAbove ? (
               <div className="rounded-lg border border-dashed border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-3 py-2 text-center text-[10px] text-claude-muted">
-                已在顶部附近 · 继续上滑加载更早的 {Math.min(HISTORY_LOAD_CHUNK, historyStartIndex)} 条…
+                已在顶部附近 · 继续上滑加载更早的 {Math.min(HISTORY_LOAD_CHUNK, effectiveHistoryStartIndex)} 条…
               </div>
             ) : null}
             {visibleEntries.length === 0 ? (
@@ -1853,7 +1949,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
                 }
 
                 // 正常模式：将连续 thinking/toolGroup 分组进 WorkGroupBlock
-                const segments = groupIntoSegments(displayedEntries, historyStartIndex)
+                const segments = groupIntoSegments(displayedEntries, effectiveHistoryStartIndex)
                 return segments.map((seg) => {
                   if (seg.type === 'workGroup') {
                     return (

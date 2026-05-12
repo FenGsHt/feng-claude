@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.7] - 2026-05-12
+
+### 修复 | Bug Fixes
+- **大历史项目外嵌卡死**：外嵌转录面板首次挂载时不再全量过滤/聚合数千条历史，默认只扫描尾部窗口，搜索时才进入全量范围；避免含大量 JSONL 历史的项目点击外嵌后 UI 线程卡死
+- **历史流式标记卡顿**：历史 assistant/thinking 的“已播放”标记改为批量写入 localStorage，并限制持久化数量，避免首次挂载时同步写入数千次
+
+### 诊断 | Diagnostics
+- **外嵌性能日志**：新增 `[embed-toggle]`、`[transcript:hydrate]`、`[transcript-store:replace]`、`[transcript-pane:filter]`、`[transcript-pane:aggregate]`、`[transcript-pane:pre-reveal]` 日志，用于定位项目级历史规模导致的卡顿
+
+---
+
 ## [0.7.6] - 2026-05-12
 
 ### 修复 | Bug Fixes

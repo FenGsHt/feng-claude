@@ -5,6 +5,17 @@
 
 ---
 
+## v0.7.7 (2026-05-12)
+
+### 修复 | Bug Fixes
+- **大历史项目外嵌卡死**：外嵌转录面板首次打开时默认只扫描尾部窗口，不再全量过滤/聚合数千条历史；搜索时才进入全量范围
+- **历史标记写入优化**：assistant/thinking 的“已播放”状态改为批量写一次 localStorage，并限制持久化数量，避免首帧同步写入过多导致卡死
+
+### 诊断 | Diagnostics
+- 增加外嵌性能日志：`[embed-toggle]`、`[transcript:hydrate]`、`[transcript-store:replace]`、`[transcript-pane:filter]`、`[transcript-pane:aggregate]`、`[transcript-pane:pre-reveal]`
+
+---
+
 ## v0.7.6 (2026-05-12)
 
 ### 修复 | Bug Fixes

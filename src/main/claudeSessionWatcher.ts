@@ -596,6 +596,7 @@ function readFullTranscriptEntriesFromDisk(
   projectDir: string,
   scrollbackBase64: string | null | undefined
 ): ClaudeTranscriptEntry[] {
+  const startedAt = Date.now()
   const entries: ClaudeTranscriptEntry[] = []
   if (scrollbackBase64) {
     try {
@@ -609,7 +610,10 @@ function readFullTranscriptEntriesFromDisk(
     }
   }
 
-  if (!existsSync(projectDir)) return entries
+  if (!existsSync(projectDir)) {
+    console.log('[transcript:hydrate] project dir missing', { projectDir, elapsedMs: Date.now() - startedAt })
+    return entries
+  }
 
   const paths = collectJsonlFilesFromProjectDir(projectDir).sort((a, b) => {
     try {
@@ -619,18 +623,30 @@ function readFullTranscriptEntriesFromDisk(
     }
   })
 
+  let totalBytes = 0
+  let lineCount = 0
   for (const filePath of paths) {
     let raw: string
     try {
+      totalBytes += statSync(filePath).size
       raw = readFileSync(filePath, 'utf-8')
     } catch {
       continue
     }
     for (const line of raw.split(/\r?\n/)) {
       if (!line.trim()) continue
+      lineCount += 1
       entries.push(...parseTranscriptLineForTranscript(line))
     }
   }
+  console.log('[transcript:hydrate]', {
+    projectDir,
+    files: paths.length,
+    bytes: totalBytes,
+    lines: lineCount,
+    entries: entries.length,
+    elapsedMs: Date.now() - startedAt
+  })
   return entries
 }
 

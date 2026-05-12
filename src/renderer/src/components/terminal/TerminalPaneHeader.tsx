@@ -148,7 +148,14 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   /* [2026-05-11] 顶栏一键切换当前 session 的外嵌/终端模式（每 session 独立） */
   const toggleEmbedVersusTerminal = useCallback(() => {
     const s = useSessionStore.getState()
-    const current = s.sessions.find((x) => x.id === sessionId)?.embedMode ?? false
+    const sessForLog = s.sessions.find((x) => x.id === sessionId)
+    const current = sessForLog?.embedMode ?? false
+    console.log('[embed-toggle]', {
+      sessionId,
+      next: !current,
+      workdir: sessForLog?.workdir,
+      sessionCount: s.sessions.length
+    })
     s.updateSessionEmbedMode(sessionId, !current)
   }, [sessionId])
 

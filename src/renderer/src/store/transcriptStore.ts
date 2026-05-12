@@ -279,9 +279,20 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
   },
   replaceSession: (sessionId, entries) =>
     set((s) => {
+      const startedAt = performance.now()
       pendingTokenDeltaBySession.delete(sessionId)
       const prev = s.bySession[sessionId] ?? []
       const merged = mergeTranscriptReplace(prev, entries)
+      const elapsedMs = Math.round(performance.now() - startedAt)
+      if (elapsedMs > 30 || entries.length > 500) {
+        console.log('[transcript-store:replace]', {
+          sessionId,
+          prev: prev.length,
+          incoming: entries.length,
+          merged: merged.length,
+          elapsedMs
+        })
+      }
       return { bySession: { ...s.bySession, [sessionId]: merged } }
     }),
   clearSession: (sessionId) =>

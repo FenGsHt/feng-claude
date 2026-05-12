@@ -8,6 +8,20 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.7': {
+    titleZh: 'Feng Claude 0.7.7 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.7",
+    bulletsZh: [
+      '修复大历史项目点击外嵌界面卡死：首帧只扫描尾部窗口，搜索时才全量扫描',
+      '历史消息“已播放”标记改为批量写入 localStorage，避免数千次同步写入卡顿',
+      '新增外嵌性能日志，便于继续定位项目级历史规模问题'
+    ],
+    bulletsEn: [
+      'Fix embed freeze on projects with large transcript history: initial render scans only the tail window',
+      'Batch localStorage writes for revealed historical messages to avoid thousands of synchronous writes',
+      'Add embed performance diagnostics for project-specific history issues'
+    ]
+  },
   '0.7.4': {
     titleZh: 'Feng Claude 0.7.4 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.4",
