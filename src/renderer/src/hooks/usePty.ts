@@ -11,6 +11,7 @@ import { useNativeTerminalRequestStore } from '../store/nativeTerminalRequestSto
 import { useEmbedAwaitingReplyStore } from '../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../store/embedInterruptSuppressStore'
 import { useClaudeRuntimeStatusStore } from '../store/claudeRuntimeStatusStore'
+import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
 import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive
@@ -161,6 +162,8 @@ export function usePty(): void {
         useNativeTerminalRequestStore.getState().requestNativeTerminal(sessionId, '检测到终端交互')
       }
       writeToTerminal(sessionId, data)
+      /* [2026-05-12] 解析上下文窗口用量等 token 信息 */
+      feedPtyChunkForTokenUsage(sessionId, data)
       /* [2026-05-06] 原顺序为先 ingestEmbedPtyEcho 再 feedPtyAlternateScreenFromOutput；
        * 导致同一 TCP chunk 末尾的 ?1049h 尚未入账时仍整段写入转录，全屏 TUI 帧污染外嵌区。
        * 改为先 feed 更新备用屏，再按状态决定是否 ingest（备用屏内丢弃除「进入前的包内前缀」外的字节）。 */

@@ -56,6 +56,15 @@ function looksLikeTokenPair(
   return true
 }
 
+/** 状态栏里 `45k/200k` 与版本号、菜单比例等区分：体量须像真实 context window */
+function looksLikeContextWindowPair(used: number, total: number, rawA: string, rawB: string): boolean {
+  if (total <= 0 || used < 0 || used > total) return false
+  if (/[kKmM]/.test(rawA) || /[kKmM]/.test(rawB)) return true
+  if (total >= 8192) return true
+  if (total >= 4000 && used >= 200) return true
+  return false
+}
+
 function ingestLatestStatusArrowSnapshot(
   sessionId: string,
   strippedSlice: string,
@@ -94,7 +103,11 @@ function ingestLatestStatusArrowSnapshot(
   if (pick) ingest(sessionId, pick.input, pick.output, 'set')
 }
 
-/** 状态栏上下文窗口用量：22K/200K tokens 或 22K/200K */
+/*
+ * [2026-05-12] 原 ingestContextWindowSnapshot 仅用「行尾 $」或 tokens/context 后缀匹配；
+ * 官方 statusline 常为单行多段（↑↓、路径、git、`12% context`、`45k/200k` 同列），N/M 夹在中间时永远匹配不到。
+ * 改为在尾部扫描 `a/b`（含 Unicode ∕），用 looksLikeContextWindowPair 过滤误匹配。
+ */
 function ingestContextWindowSnapshot(
   sessionId: string,
   strippedSlice: string,
@@ -103,21 +116,26 @@ function ingestContextWindowSnapshot(
     input: number,
     output: number,
     mode: 'set' | 'add' | 'override',
-    extra?: { cacheCreate?: number; cacheRead?: number; contextTokensUsed?: number; contextTokensTotal?: number }
+    extra?: {
+      cacheCreate?: number
+      cacheRead?: number
+      contextTokensUsed?: number
+      contextTokensTotal?: number
+      contextWindowPercent?: number
+    }
   ) => void
 ): void {
   const tail = strippedSlice.slice(-STATUS_ARROW_TAIL)
-  // 匹配: 22K/200K tokens, 22K/200K, 22K / 200K
-  const re = /([\d,.]+[kKmM]?)\s*\/\s*([\d,.]+[kKmM]?)\s*(?:tokens?|context)/gi
+  const slashRe = /([\d,.]+[kKmM]?)\s*[\u2215/]\s*([\d,.]+[kKmM]?)/g
   let bestIdx = -1
   let bestUsed = 0
   let bestTotal = 0
   let m: RegExpExecArray | null
-  while ((m = re.exec(tail)) !== null) {
+  while ((m = slashRe.exec(tail)) !== null) {
     const used = parseTokenAmount(m[1])
     const total = parseTokenAmount(m[2])
-    // 合理的上下文：used <= total，total > 0
-    if (total > 0 && used <= total && m.index > bestIdx) {
+    if (!looksLikeContextWindowPair(used, total, m[1], m[2])) continue
+    if (m.index >= bestIdx) {
       bestIdx = m.index
       bestUsed = used
       bestTotal = total
@@ -125,6 +143,79 @@ function ingestContextWindowSnapshot(
   }
   if (bestIdx >= 0 && bestTotal > 0) {
     ingest(sessionId, 0, 0, 'set', { contextTokensUsed: bestUsed, contextTokensTotal: bestTotal })
+  }
+}
+
+/** [2026-05-12] 官方文档常见 statusline：`jq … "\\(.context_window.used_percentage)% context"'` */
+function ingestContextWindowPercent(
+  sessionId: string,
+  strippedSlice: string,
+  ingest: (
+    sid: string,
+    input: number,
+    output: number,
+    mode: 'set' | 'add' | 'override',
+    extra?: {
+      cacheCreate?: number
+      cacheRead?: number
+      contextTokensUsed?: number
+      contextTokensTotal?: number
+      contextWindowPercent?: number
+    }
+  ) => void
+): void {
+  const tail = strippedSlice.slice(-STATUS_ARROW_TAIL)
+  const re = /(\d{1,3}(?:\.\d+)?)\s*%\s*context\b/gi
+  let bestEnd = -1
+  let bestPct = -1
+  while ((m = re.exec(tail)) !== null) {
+    const v = parseFloat(m[1])
+    const end = m.index + m[0].length
+    if (!Number.isFinite(v) || v < 0 || v > 100) continue
+    if (end > bestEnd) {
+      bestEnd = end
+      bestPct = v
+    }
+  }
+  if (bestPct >= 0) {
+    ingest(sessionId, 0, 0, 'set', { contextWindowPercent: bestPct })
+  }
+}
+
+/** [2026-05-12] 从 assistant bubble 的 "cache +N / M" 格式提取上下文窗口总量 */
+function ingestContextWindowFromCacheLine(
+  sessionId: string,
+  strippedSlice: string,
+  ingest: (
+    sid: string,
+    input: number,
+    output: number,
+    mode: 'set' | 'add' | 'override',
+    extra?: {
+      cacheCreate?: number
+      cacheRead?: number
+      contextTokensUsed?: number
+      contextTokensTotal?: number
+      contextWindowPercent?: number
+    }
+  ) => void
+): void {
+  const tail = strippedSlice.slice(-STATUS_ARROW_TAIL)
+  // 匹配: cache +1.23k / 265.5k
+  const re = /cache[^\d]{0,10}\+([\d,.]+[kKmM]?)\s*\/\s*([\d,.]+[kKmM]?)/gi
+  let bestIdx = -1
+  let bestTotal = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(tail)) !== null) {
+    const total = parseTokenAmount(m[2])
+    if (total > 0 && m.index > bestIdx) {
+      bestIdx = m.index
+      bestTotal = total
+    }
+  }
+  if (bestIdx >= 0 && bestTotal > 0) {
+    // context window 始终取最新值（set），不累加
+    ingest(sessionId, 0, 0, 'set', { contextTokensTotal: bestTotal })
   }
 }
 
@@ -224,7 +315,11 @@ export function feedPtyChunkForTokenUsage(sessionId: string, chunk: string): voi
   /* 先拾取内置「N tokens」，再由 ↑↓ 覆盖（避免仅有总计时标题空白） */
   ingestBuiltinTotalTokensLine(sessionId, slice, ingest)
   ingestLatestStatusArrowSnapshot(sessionId, slice, ingest)
+  /* 先百分比再 N/M：同一缓冲区内 N/M 覆盖百分比（store 内会清掉 percent） */
+  ingestContextWindowPercent(sessionId, slice, ingest)
   ingestContextWindowSnapshot(sessionId, slice, ingest)
+  /* [2026-05-12] 从 "cache +N / M" 格式提取上下文窗口总量（assistant bubble） */
+  ingestContextWindowFromCacheLine(sessionId, slice, ingest)
 }
 
 export function clearTokenUsageBuffer(sessionId: string): void {

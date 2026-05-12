@@ -227,7 +227,14 @@ function AssistantReplyMeta({
             </>
           ) : null}
           <span className="text-claude-muted/40">·</span>
-          <span className="font-semibold text-[var(--theme-success-text)]" title="本条回复合计">
+          {/* [2026-05-12] 原：font-semibold + --theme-success-text；参考外嵌截图「Σ 32.1k」为 GitHub 系深绿 #1a7f37、字重正常，与 in/out/cache 段区分仅靠颜色 */}
+          {/* <span className="font-semibold text-[var(--theme-success-text)]" title="本条回复合计">
+            Σ {formatTokenCount(sum)}
+          </span> */}
+          <span
+            className="font-normal text-[#1a7f37] dark:text-[#3fb950]"
+            title="本条回复合计"
+          >
             Σ {formatTokenCount(sum)}
           </span>
         </div>
@@ -247,7 +254,14 @@ function AssistantReplyMeta({
             </>
           ) : null}
           <span className="text-claude-muted/30">·</span>
-          <span className="font-semibold text-[var(--theme-success-text)]/60" title="session 合计">
+          {/* [2026-05-12] 原：font-semibold + theme-success /60；与上条合计同一套 Σ 色标，仅透明度区分层级 */}
+          {/* <span className="font-semibold text-[var(--theme-success-text)]/60" title="session 合计">
+            Σ {formatTokenCount(sessionSum)}
+          </span> */}
+          <span
+            className="font-normal text-[#1a7f37]/55 dark:text-[#3fb950]/55"
+            title="session 合计"
+          >
             Σ {formatTokenCount(sessionSum)}
           </span>
         </div>
@@ -375,7 +389,7 @@ function NativeTerminalRequiredCard({
 }
 
 /* ══════════════════════════════════════════════════════════════
- * 假流式：按 messageId 追踪"已完成动画"的助手消息
+ * 假流式：按 messageId 追踪「已完成动画」的助手消息
  * 内存 + localStorage 双层持久：重开 app 不重播旧消息
  * ══════════════════════════════════════════════════════════════ */
 const streamRevealedMap = new Map<string, Set<string>>()
@@ -954,7 +968,7 @@ const EntryBlock = React.memo(function EntryBlock({
   showAssistantStreamingCursor?: boolean
   isThinkingComplete?: boolean
   sessionTotalUsage?: ClaudeTurnTokenUsage
-}}): React.ReactElement {
+}): React.ReactElement {
   if (e.kind === 'toolGroup') {
     return <ToolGroupBlock tools={e.tools} toolIds={e.toolIds} toolInputs={e.toolInputs} sessionId={sessionId} />
   }
@@ -973,7 +987,8 @@ const EntryBlock = React.memo(function EntryBlock({
   }
   if (e.kind === 'event') {
     /* [2026-05-06] 仅渲染 PTY 外嵌 echo；会话记录类 event 已在列表层过滤 */
-    if (e.ptyEcho !== true) return null
+    const te: ClaudeTranscriptEntry = e
+    if (te.ptyEcho !== true) return null
     /* [2026-05-06] 外嵌 PTY 仅用于斜杠命令（/help、/mcp）；专用样式避免与助手 Markdown 气泡混淆 */
     /* [2026-05-07] 原用 <pre> 展示 headless xterm 文本快照；/mcp 二级菜单会丢光标语义，改为真实内嵌 xterm。 */
     // return (
@@ -995,7 +1010,7 @@ const EntryBlock = React.memo(function EntryBlock({
     return (
       <div className="flex w-full justify-end items-start gap-1 group">
         <BubbleActions sessionId={sessionId} text={e.text} />
-	        <div className="relative fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
+        <div className="relative fo-user-bubble max-w-[min(100%,28rem)] rounded-2xl rounded-br-md border border-[var(--theme-user-border)] bg-[var(--theme-user-bg)] px-3.5 py-2.5 shadow-md shadow-[color:var(--theme-shadow)]">
           <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--theme-accent-muted)]">你</div>
           <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-claude-text">{e.text}</pre>
         </div>
@@ -1045,7 +1060,7 @@ const EntryBlock = React.memo(function EntryBlock({
           </div>
           <AssistantReplyMeta usage={e.usage} latencyMs={e.latencyMs} sessionTotal={sessionTotalUsage} />
         </div>
-	        <BubbleActions sessionId={sessionId} text={e.text} />
+        <BubbleActions sessionId={sessionId} text={e.text} />
       </div>
     )
   }
@@ -1069,8 +1084,8 @@ function isRejectedAskUserQuestionEcho(e: ClaudeTranscriptEntry): boolean {
   if (e.kind !== 'user') return false
   const text = e.text.trim()
   return (
-    /* [2026-05-07] 原 AskUserQuestion 被拒绝后的工具回执会被解析成”你”的气泡，展示上很突兀；这里只在外嵌转录层隐藏。 */
-    text.includes(“The user doesn't want to proceed with this tool use”) &&
+    /* [2026-05-07] 原 AskUserQuestion 被拒绝后的工具回执会被解析成「你」的气泡，展示上很突兀；这里只在外嵌转录层隐藏。 */
+    text.includes("The user doesn't want to proceed with this tool use") &&
     text.includes('The tool use was rejected') &&
     text.includes('Questions asked and answers provided')
   )
@@ -1091,7 +1106,7 @@ function isToolResultEcho(e: ClaudeTranscriptEntry): boolean {
   if (e.kind !== 'user') return false
   const text = e.text.trim()
   return (
-    /* [2026-05-07] 原 Write/Edit 等工具结果会被 Claude Code 写成 user role，外嵌里误显示成”你”的气泡；展示层隐藏这类机器回执。 */
+    /* [2026-05-07] 原 Write/Edit 等工具结果会被 Claude Code 写成 user role，外嵌里误显示成「你」的气泡；展示层隐藏这类机器回执。 */
     /^File (created|updated) successfully at:/i.test(text) ||
     /^The file .+ has been (updated|created) successfully/i.test(text) ||
     /^Tool use was successful/i.test(text) ||
@@ -1246,7 +1261,7 @@ function aggregateToolEntries(entries: ClaudeTranscriptEntry[]): DisplayEntry[] 
 /** [2026-05-06] 去掉所有 JSONL 兜底「会话记录」；仅保留 ptyEcho 的终端外嵌块 */
 function filterNoiseTranscriptEntries(entries: ClaudeTranscriptEntry[]): ClaudeTranscriptEntry[] {
   return entries.filter((e, index) => {
-    /* [2026-05-07] 原 JSONL/乐观 echo 会把 /mcp、/skills 等控制命令渲染成“你”的历史气泡；slash 命令交给终端块展示。 */
+    /* [2026-05-07] 原 JSONL/乐观 echo 会把 /mcp、/skills 等控制命令渲染成「你」的历史气泡；slash 命令交给终端块展示。 */
     // return e.kind !== 'event' || e.ptyEcho === true
     if (e.kind === 'user' && e.text.trimStart().startsWith('/')) return false
     if (isRejectedAskUserQuestionEcho(e)) return false
@@ -1797,7 +1812,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
               </div>
             ) : query && displayedEntries.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-4 py-6 text-center text-[11px] text-claude-muted">
-                未匹配到“{search.trim()}”相关内容
+                未匹配到「{search.trim()}」相关内容
               </div>
             ) : (
               (() => {

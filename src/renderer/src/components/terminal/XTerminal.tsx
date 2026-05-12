@@ -213,13 +213,21 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   //     : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
   let payload: string
   const lineEnding = win ? '\r' : '\n'
-  const textPart = lines.length === 1 ? lines[0]! : lines.join(win ? '\r\n' : '\n')
+  /* [2026-05-12] 多行文本在 PTY 中用 \n 换行即可（Claude Code readline 自行处理），
+   * 只在末尾用 \r 提交。
+   * [2026-05-12] Windows 上 conpty/cmd.exe 中 ^ 是行继续符：
+   * 若任意行以 ^ 结尾，^ 会吞掉后面的 \r 或 \n（行继续）。需要额外的 \r 来触发实际提交。 */
+  const textPart = lines.length === 1 ? lines[0]! : lines.join('\n')
+  const hasCaretAtLineEnd = win && textPart.split('\n').some(line => line.trimEnd().endsWith('^'))
   if (!isSlashCommand) {
     /* [2026-05-11] 文本含 @ 时 Claude Code 的 @ 自动补全会弹出，\r 被补全消费导致不提交。
      * 在 @path 后追加空格再 Enter：Claude Code 的 @ 补全正则 @(\S*)$ 只在行末匹配，
      * 有空格时补全不触发，Enter 正常提交。 */
     if (textPart.includes('@')) {
       payload = `\x15${textPart} ${lineEnding}`
+    } else if (hasCaretAtLineEnd) {
+      // Windows ^ 行继续符会吞 \r；额外追加一个 \r 确保提交
+      payload = `\x15${textPart}${lineEnding}${lineEnding}`
     } else {
       payload = `\x15${textPart}${lineEnding}`
     }

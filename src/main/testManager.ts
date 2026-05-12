@@ -5,6 +5,7 @@
  * 支持检测 vitest、jest、playwright、mocha 等框架。
  */
 import * as pty from 'node-pty'
+import { getWindowsPtySpawnExtras } from './winPtySpawnExtras'
 import * as fs from 'fs'
 import * as path from 'path'
 import type { BrowserWindow } from 'electron'
@@ -160,7 +161,8 @@ export class TestManager {
           FORCE_COLOR: '0',
           NO_COLOR: '1',
           CI: 'true'
-        }
+        },
+        ...getWindowsPtySpawnExtras()
       })
 
       session.ptyProcess = ptyProcess

@@ -21,6 +21,120 @@ import { useTranscriptStore } from '../../store/transcriptStore'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 import { useEmbedInputHistoryStore } from '../../store/embedInputHistoryStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
+import { useTokenUsageStore } from '../../store/tokenUsageStore'
+import { formatTokenCount } from '../../lib/formatTokens'
+
+/*
+ * [2026-05-12] 原 ContextUsagePill：在按钮行左侧用文字 pill 显示上下文用量。
+ * 改为「打开终端」右侧环形图（ContextUsageRing），与截图布局一致。
+ *
+ * function ContextUsagePill({ sessionId }: { sessionId: string }): React.ReactElement | null {
+ *   const ctxTotal = useTokenUsageStore(s => s.bySession[sessionId]?.contextTokensTotal)
+ *   const ctxUsed = useTokenUsageStore(s => s.bySession[sessionId]?.contextTokensUsed)
+ *   if (ctxTotal === undefined || ctxTotal <= 0) return null
+ *   const pct = ctxUsed !== undefined ? Math.round((ctxUsed / ctxTotal) * 100) : null
+ *   return (
+ *     <div className="flex items-center gap-1 rounded-lg border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[10px] font-mono tabular-nums text-claude-muted">
+ *       <span className="opacity-60">上下文:</span>
+ *       <span title={`上下文窗口 ${formatTokenCount(ctxUsed ?? 0)} / ${formatTokenCount(ctxTotal)}`}>
+ *         {formatTokenCount(ctxUsed ?? 0)}/{formatTokenCount(ctxTotal)}
+ *       </span>
+ *       {pct !== null && <span className="opacity-50">({pct}%)</span>}
+ *     </div>
+ *   )
+ * }
+ */
+
+/** 无状态栏 N/M 时，用 JSONL 累计 token 相对常见窗口粗估（与转录里 Σ 同源：usePty → tokenUsageStore add） */
+const DEFAULT_CTX_FALLBACK = 200_000
+const EXTENDED_CTX_FALLBACK = 1_000_000
+
+/** [2026-05-12] 外嵌底部：环形表示上下文用量（状态栏 N/M、`N% context`；无则 JSONL 累计粗估） */
+function ContextUsageRing({ sessionId }: { sessionId: string }): React.ReactElement {
+  const tok = useTokenUsageStore((s) => s.bySession[sessionId])
+  const ctxTotal = tok?.contextTokensTotal
+  const ctxUsed = tok?.contextTokensUsed
+  const ctxPctOnly = tok?.contextWindowPercent
+  const billed =
+    (tok?.input ?? 0) + (tok?.output ?? 0) + (tok?.cacheCreate ?? 0) + (tok?.cacheRead ?? 0)
+
+  const hasNm = ctxTotal !== undefined && ctxTotal > 0
+  const usedForNm =
+    hasNm && ctxUsed !== undefined && Number.isFinite(ctxUsed)
+      ? Math.max(0, ctxUsed)
+      : hasNm
+        ? Math.min(billed, ctxTotal!)
+        : 0
+
+  const hasPctOnly = !hasNm && ctxPctOnly !== undefined && ctxPctOnly >= 0 && ctxPctOnly <= 100
+  const fbWindow = billed > DEFAULT_CTX_FALLBACK ? EXTENDED_CTX_FALLBACK : DEFAULT_CTX_FALLBACK
+  const hasJsonlEstimate = !hasNm && !hasPctOnly && billed > 0
+
+  let ratio = 0
+  let pctLabel = '—'
+  let title =
+    '尚无用量：等待 JSONL 或状态栏；有对话后可用累计 token 粗估占 200k/1M 窗口'
+  let showArc = false
+
+  if (hasNm) {
+    ratio = Math.min(1, usedForNm / ctxTotal!)
+    pctLabel = `${Math.round(ratio * 100)}`
+    title = `上下文窗口 ${formatTokenCount(usedForNm)} / ${formatTokenCount(ctxTotal!)}（${Math.round(ratio * 100)}%）`
+    showArc = true
+  } else if (hasPctOnly) {
+    ratio = Math.min(1, ctxPctOnly! / 100)
+    pctLabel = `${Math.round(ctxPctOnly!)}`
+    title = `约 ${Math.round(ctxPctOnly!)}% 上下文（状态栏百分比；N/M 出现时会更精确）`
+    showArc = true
+  } else if (hasJsonlEstimate) {
+    ratio = Math.min(1, billed / fbWindow)
+    pctLabel = `${Math.round(ratio * 100)}`
+    title = `按 JSONL 累计 in+out+cache 粗估占 ${formatTokenCount(fbWindow)} 常用窗口约 ${Math.round(
+      ratio * 100
+    )}%（与转录气泡 Σ 同源；状态栏 N/M 更准确）`
+    showArc = true
+  }
+  const r = 13
+  const c = 2 * Math.PI * r
+  const dash = ratio * c
+  const ringAccent =
+    ratio >= 0.92 ? 'stroke-red-400/90' : ratio >= 0.75 ? 'stroke-amber-400/90' : 'stroke-[var(--theme-accent-border)]'
+
+  return (
+    <div
+      className="relative flex h-[34px] w-[34px] shrink-0 items-center justify-center"
+      title={title}
+      role="img"
+      aria-label={title}
+    >
+      <svg className="h-[34px] w-[34px] -rotate-90" viewBox="0 0 36 36" aria-hidden>
+        <circle
+          cx="18"
+          cy="18"
+          r={r}
+          fill="none"
+          className="stroke-[var(--theme-panel-border)]"
+          strokeWidth="3.5"
+        />
+        {showArc ? (
+          <circle
+            cx="18"
+            cy="18"
+            r={r}
+            fill="none"
+            className={`${ringAccent} transition-[stroke-dasharray] duration-300`}
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c}`}
+          />
+        ) : null}
+      </svg>
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[9px] font-semibold tabular-nums leading-none text-claude-muted">
+        {pctLabel}
+      </span>
+    </div>
+  )
+}
 
 /** [2026-05-10] 附件图片：blobUrl 用于预览，filePath 用于发送时的 @ 引用 */
 interface AttachedImage {
@@ -835,19 +949,20 @@ export function EmbedSessionComposer({
       ) : (
         <details className="mx-auto mb-2 max-w-3xl">
           <summary className="cursor-pointer select-none text-center text-[9px] text-claude-muted/50 transition-colors hover:text-claude-muted/80">
-            快捷键说明
-          </summary>
-          <p className="mt-1 text-center text-[9px] leading-relaxed text-claude-muted/75">
-            <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
-            发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
-            换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
-            命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
-            <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
-            填入/历史 · running / 等待确认时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
-          </p>
-        </details>
-      )}
-      <div className="mx-auto flex max-w-3xl min-h-0 items-end gap-2">
+              快捷键说明
+            </summary>
+            <p className="mt-1 text-center text-[9px] leading-relaxed text-claude-muted/75">
+              <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
+              发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
+              换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
+              命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
+              <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
+              填入/历史 · running / 等待确认时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
+            </p>
+          </details>
+        )}
+      {/* [2026-05-12] 原 items-end：多行输入时按钮贴底，与圆环/输入框视觉中线不齐；改为 items-center 整行垂直居中 */}
+      <div className="mx-auto flex max-w-3xl min-h-0 items-center gap-2">
         <div className="relative min-h-0 flex-1">
           {/* [2026-05-10] 附件图片预览：显示在输入框上方 */}
           {attachedImages.length > 0 && (
@@ -977,8 +1092,8 @@ export function EmbedSessionComposer({
           />
         </div>
 
-        {/* 按钮行：与 textarea 同行，贴底对齐 */}
-        <div className="flex shrink-0 flex-row items-end gap-1.5">
+        {/* [2026-05-12] 原 items-end：圆环 34px 与 py-1.5 按钮基线略错位；改为 items-center 与外层一致 */}
+        <div className="flex shrink-0 flex-row items-center gap-1.5">
           {showInterrupt ? (
             <button
               type="button"
@@ -1019,6 +1134,8 @@ export function EmbedSessionComposer({
               {nativeTerminalNeeded ? '打开终端' : '显示终端'}
             </button>
           ) : null}
+          {/* [2026-05-12] 上下文用量：环形图放在「打开终端」右侧（终端已打开时仍显示在按钮行末尾） */}
+          <ContextUsageRing sessionId={sessionId} />
         </div>
       </div>
     </div>

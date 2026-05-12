@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
 import type { ClaudeSettings } from '../../types/settings'
 import { useI18n } from '../../i18n'
+import { UsageOverviewDashboard } from './UsageOverviewDashboard'
 
 const CHART_DAYS = 14
 const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#06b6d4', '#f97316', '#8b5cf6']
+
+const OTHER_STACK_COLOR = '#94a3b8'
 
 type TimeRange = 'today' | 'week' | 'total'
 
@@ -34,6 +38,8 @@ function shortDate(dateStr: string): string {
   const [, m, d] = dateStr.split('-')
   return `${Number(m)}/${Number(d)}`
 }
+
+const emptyTotals = (): TokenTotals => ({ input: 0, output: 0, cacheCreate: 0, cacheRead: 0 })
 
 /** Get Monday-based week dates (Mon..Sun) for the current week */
 function currentWeekDates(): string[] {
@@ -179,6 +185,7 @@ export function UsageChart(): React.ReactElement {
 
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
   const [timeRange, setTimeRange] = useState<TimeRange>('today')
+  const [heatmapModalOpen, setHeatmapModalOpen] = useState(false)
 
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
@@ -261,9 +268,71 @@ export function UsageChart(): React.ReactElement {
   const maxVal = Math.max(...values, 1)
   const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, dh]) => [d, computeCost(dh, pricing)]))
 
-  const BAR_H = 80
-  const BAR_W = 32
-  const BAR_GAP = 8
+  const valuesFingerprint = values.join(',')
+  const recentStackedLegend = useMemo(() => {
+    if (!settings) return [] as { id: string; name: string; tokens: number; color: string; pct: number; other?: boolean }[]
+    const totals: Record<string, number> = {}
+    let attributed = 0
+    for (const d of dates) {
+      const dm = dailyHistoryPerProfile[d] ?? {}
+      for (const p of settings.profiles) {
+        const v = tokenSum(dm[p.id] ?? emptyTotals())
+        totals[p.id] = (totals[p.id] ?? 0) + v
+        attributed += v
+      }
+    }
+    const dayAll = values.reduce((a, b) => a + b, 0)
+    const other = Math.max(0, dayAll - attributed)
+    const grand = dayAll > 0 ? dayAll : attributed + other
+    if (grand <= 0) return []
+    const rows = settings.profiles
+      .map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        tokens: totals[p.id] ?? 0,
+        color: COLORS[i % COLORS.length],
+        pct: ((totals[p.id] ?? 0) / grand) * 100
+      }))
+      .filter((r) => r.tokens > 0)
+      .sort((a, b) => b.tokens - a.tokens)
+    if (other > 0) {
+      rows.push({
+        id: '_other',
+        name: '',
+        tokens: other,
+        color: OTHER_STACK_COLOR,
+        pct: (other / grand) * 100,
+        other: true
+      })
+    }
+    return rows
+  }, [settings, dates.join(','), dailyHistoryPerProfile, valuesFingerprint])
+
+  const BAR_H = 96
+  const BAR_W = 26
+  const BAR_GAP = 7
+  const barScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = barScrollRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [dailyHistory, todayDate])
+
+  useEffect(() => {
+    if (!heatmapModalOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setHeatmapModalOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [heatmapModalOpen])
+
+  const closeHeatmapModal = useCallback(() => setHeatmapModalOpen(false), [])
 
   const rangeLabel = timeRange === 'today' ? t.stats.today : timeRange === 'week' ? t.stats.thisWeek : t.stats.total
   const breakdownTitle = timeRange === 'today' ? t.stats.todayDetail : t.stats.periodDetail.replace('{period}', rangeLabel)
@@ -313,23 +382,82 @@ export function UsageChart(): React.ReactElement {
         </div>
       )}
 
-      {/* Bar chart */}
-      <div>
-        <div className="text-[10px] text-claude-muted mb-2 uppercase tracking-wider">{t.stats.recentDays.replace('{n}', String(CHART_DAYS))}</div>
-        <div ref={(el) => { if (el) el.scrollLeft = el.scrollWidth }} className="overflow-x-auto pb-1 -mx-3 px-3">
-          <div className="flex items-end gap-[8px]" style={{ width: CHART_DAYS * (BAR_W + BAR_GAP), minWidth: '100%', height: BAR_H + 22 }}>
+      {/* [2026-05-12] 原柱 / 热力 / 堆叠三态切换；产品改为仅堆叠，且柱高按当日总 token 相对 maxVal 缩放（非 100% 等高堆叠） */}
+      <div className="rounded-xl border border-[var(--theme-panel-border)] bg-[#f2efe8] p-3 shadow-sm dark:bg-[var(--theme-card-bg)] dark:shadow-none">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-stone-500 dark:text-claude-muted">
+            {t.stats.recentDays.replace('{n}', String(CHART_DAYS))}
+          </div>
+        </div>
+        <div
+          ref={barScrollRef}
+          className="-mx-0.5 overflow-x-auto px-0.5 pb-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300/90 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-600"
+        >
+          <div
+            className="flex items-end gap-[7px]"
+            style={{ width: CHART_DAYS * (BAR_W + BAR_GAP), minWidth: '100%', height: BAR_H + 24 }}
+          >
             {dates.map((date, i) => {
               const v = values[i]
-              const barH = v > 0 ? Math.max(3, Math.round((v / maxVal) * BAR_H)) : 2
               const isToday = date === todayDate
+              const dm = dailyHistoryPerProfile[date] ?? {}
+              type Seg = { val: number; color: string; label: string }
+              const segs: Seg[] = []
+              if (settings && v > 0) {
+                settings.profiles.forEach((p, pi) => {
+                  const tot = tokenSum(dm[p.id] ?? emptyTotals())
+                  if (tot > 0) segs.push({ val: tot, color: COLORS[pi % COLORS.length], label: p.name })
+                })
+                segs.sort((a, b) => b.val - a.val)
+                const sumP = segs.reduce((s, x) => s + x.val, 0)
+                const other = Math.max(0, v - sumP)
+                if (other > 0) segs.push({ val: other, color: OTHER_STACK_COLOR, label: t.stats.chartOther })
+                segs.sort((a, b) => b.val - a.val)
+              }
+              const barTotalH = v > 0 ? Math.max(4, Math.round((v / maxVal) * BAR_H)) : 3
               return (
-                <div key={date} className="flex flex-col items-center gap-1 shrink-0" style={{ width: BAR_W }}>
-                  <div
-                    title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                    className={`w-full rounded-sm ${isToday ? 'bg-amber-400' : v > 0 ? 'bg-amber-400/70' : 'bg-claude-border/30'}`}
-                    style={{ height: barH, marginTop: BAR_H - barH }}
-                  />
-                  <span className={`text-[9px] leading-none ${isToday ? 'text-amber-400 font-semibold' : 'text-claude-muted/50'}`}>
+                <div key={date} className="flex shrink-0 flex-col items-center gap-1.5" style={{ width: BAR_W }}>
+                  <div className="flex w-full flex-col justify-end" style={{ height: BAR_H }}>
+                    {v <= 0 ? (
+                      <div
+                        className="w-full shrink-0 rounded-sm bg-stone-300/50 dark:bg-zinc-700/55"
+                        style={{ height: 3 }}
+                        title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
+                      />
+                    ) : segs.length === 0 ? (
+                      <div
+                        title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
+                        className={`w-full shrink-0 overflow-hidden rounded-md ${
+                          isToday
+                            ? 'bg-[#e8a820] shadow-sm ring-1 ring-amber-600/35 dark:ring-amber-400/30'
+                            : 'bg-[#f5c84c] dark:bg-amber-500/75'
+                        }`}
+                        style={{ height: barTotalH }}
+                      />
+                    ) : (
+                      <div
+                        className="flex w-full shrink-0 flex-col-reverse gap-px overflow-hidden rounded-md bg-stone-200/60 dark:bg-zinc-950/80"
+                        style={{ height: barTotalH }}
+                        title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
+                      >
+                        {segs.map((s, si) => (
+                          <div
+                            key={`${date}-${si}-${s.label}`}
+                            className="w-full min-h-[2px] shrink-0 rounded-[2px]"
+                            style={{ flexGrow: s.val, flexBasis: 0, backgroundColor: s.color }}
+                            title={`${date} · ${s.label}: ${formatK(s.val)}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[9px] leading-none tabular-nums ${
+                      isToday
+                        ? 'font-semibold text-amber-800 dark:text-amber-400'
+                        : 'text-stone-500/80 dark:text-claude-muted/70'
+                    }`}
+                  >
                     {shortDate(date)}
                   </span>
                 </div>
@@ -337,10 +465,92 @@ export function UsageChart(): React.ReactElement {
             })}
           </div>
         </div>
-        <div className="text-[10px] text-claude-muted text-center mt-2">
-          {t.stats.peak}: <span className="text-claude-text">{formatK(maxVal)}</span> {t.stats.tokensPerDay}
+        {recentStackedLegend.length > 0 ? (
+          <div className="mt-2 space-y-1 border-t border-stone-300/45 pt-2 dark:border-[var(--theme-panel-border)]">
+            <div className="text-[9px] font-medium uppercase tracking-wide text-stone-500 dark:text-claude-muted">
+              {t.stats.chartStackLegend}
+            </div>
+            {recentStackedLegend.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 text-[10px]">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: r.color }} />
+                <span className="min-w-0 flex-1 truncate text-stone-700 dark:text-claude-text">
+                  {r.other ? t.stats.chartOther : r.name}
+                </span>
+                <span className="shrink-0 font-mono text-stone-600 dark:text-claude-muted">{formatK(r.tokens)}</span>
+                <span className="w-9 shrink-0 text-right font-mono text-stone-500 dark:text-claude-muted/80">
+                  {r.pct.toFixed(0)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="mt-2 border-t border-stone-300/45 pt-2 text-center text-[10px] text-stone-600 dark:border-[var(--theme-panel-border)] dark:text-claude-muted">
+          {t.stats.peak}:{' '}
+          <span className="font-mono font-semibold text-stone-800 dark:text-claude-text">{formatK(maxVal)}</span>{' '}
+          {t.stats.tokensPerDay}
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setHeatmapModalOpen(true)}
+        className="mt-1 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] py-2.5 text-[11px] font-medium text-claude-muted transition-colors hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-800 dark:hover:text-amber-300"
+      >
+        <span className="inline-grid h-3.5 w-3.5 grid-cols-2 gap-px" aria-hidden>
+          <span className="rounded-[1px] bg-sky-300/90 dark:bg-sky-500/80" />
+          <span className="rounded-[1px] bg-sky-200/80 dark:bg-sky-600/50" />
+          <span className="rounded-[1px] bg-sky-400 dark:bg-sky-400/70" />
+          <span className="rounded-[1px] bg-stone-300/70 dark:bg-zinc-600" />
+        </span>
+        {t.stats.overviewHeatmapOpen}
+      </button>
+
+      {heatmapModalOpen
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[140] flex items-center justify-center bg-black/50 p-3 backdrop-blur-[2px]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="stats-heatmap-dialog-title"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) closeHeatmapModal()
+              }}
+            >
+              <div
+                className="flex max-h-[min(92vh,900px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] shadow-2xl shadow-black/20 ring-1 ring-black/5 dark:ring-white/10"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-4 py-3">
+                  <div className="min-w-0">
+                    <h2 id="stats-heatmap-dialog-title" className="text-sm font-semibold text-claude-text">
+                      {t.stats.overviewHeatmapDialogTitle}
+                    </h2>
+                    <p className="mt-0.5 text-[10px] leading-snug text-claude-muted">{t.stats.overviewHeatmapDialogDesc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeHeatmapModal}
+                    className="shrink-0 rounded-lg border border-transparent px-2 py-1 text-[11px] text-claude-muted transition-colors hover:border-[var(--theme-panel-border)] hover:bg-[var(--theme-card-bg)] hover:text-claude-text"
+                    aria-label={t.common.close}
+                  >
+                    {t.common.close}
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-width:thin]">
+                  <UsageOverviewDashboard
+                    embedded
+                    dailyHistory={dailyHistory}
+                    dailyHistoryPerProfile={dailyHistoryPerProfile}
+                    settings={settings}
+                    profileStats={profileStats}
+                    todayDate={todayDate}
+                  />
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   )
 }

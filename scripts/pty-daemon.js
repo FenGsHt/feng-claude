@@ -90,12 +90,15 @@ function getScrollbackBase64() {
 }
 
 // ── Spawn PTY ────────────────────────────────────────────────────────
+// [2026-05-12] 与主进程一致：默认 useConpty:false，避免无控制台时 AttachConsole failed；FENG_USE_CONPTY=1 强制 ConPTY
+const winPtyOpts = process.platform === 'win32' ? { useConpty: process.env.FENG_USE_CONPTY === '1' } : {}
 const ptyProc = pty.spawn(shellArg, [], {
   name: 'xterm-256color',
   cols,
   rows,
   cwd,
-  env: process.env   // inherits env vars passed by Electron on spawn
+  env: process.env, // inherits env vars passed by Electron on spawn
+  ...winPtyOpts
 })
 
 const clients = new Set()

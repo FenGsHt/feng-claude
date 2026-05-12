@@ -1,4 +1,5 @@
 import * as pty from 'node-pty'
+import { getWindowsPtySpawnExtras } from './winPtySpawnExtras'
 import { createHash } from 'crypto'
 import { spawnSync, spawn as spawnProc } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, unlinkSync } from 'fs'
@@ -613,7 +614,8 @@ export class PtyManager {
       cols: 120,
       rows: 40,
       cwd: workdir,
-      env: ptyEnv
+      env: ptyEnv,
+      ...getWindowsPtySpawnExtras()
     })
 
     // Auto-launch claude CLI after shell is ready
