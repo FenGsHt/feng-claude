@@ -5,6 +5,18 @@
 
 ---
 
+## v0.7.4 (2026-05-13)
+
+### 改进 | Improvements
+- **本地字体**：`@fontsource` 随包分发 woff2，去掉 Google Fonts 外链；严格 CSP 下正常显示
+- **CSP**：恢复仅 `'self'` 的 style/font 策略（不再依赖 fonts.googleapis.com / gstatic）
+
+### 修复 | Bug Fixes
+- **Preload**：关闭 preload 产物压缩，避免个别构建链下 IPC 回调报 `m is not defined`
+- **Preload 类型**：`GitUpdateWorktree*` 导入补全
+
+---
+
 ## v0.7.3 (2026-05-12)
 
 ### 改进 | Improvements

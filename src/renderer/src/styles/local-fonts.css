@@ -1,0 +1,8 @@
+/* [2026-05-12] 本地 woff2（@fontsource），随应用打包，无需 CSP 放行 Google、离线可用 */
+
+@import '@fontsource/dm-sans/latin-400.css';
+@import '@fontsource/dm-sans/latin-500.css';
+@import '@fontsource/dm-sans/latin-600.css';
+@import '@fontsource/dm-sans/latin-700.css';
+@import '@fontsource/vt323/latin-400.css';
+@import '@fontsource/share-tech-mono/latin-400.css';

@@ -1,7 +1,7 @@
 {
   "name": "feng-claude",
   "productName": "Feng Claude",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "A third-party GUI wrapper for Claude Code CLI",
   "main": "./out/main/index.js",
   "scripts": {
@@ -26,6 +26,9 @@
   "license": "MIT",
   "dependencies": {
     "@electron-toolkit/utils": "^3.0.0",
+    "@fontsource/dm-sans": "^5.2.8",
+    "@fontsource/share-tech-mono": "^5.2.7",
+    "@fontsource/vt323": "^5.2.7",
     "ansi-to-html": "^0.7.2",
     "chokidar": "^3.6.0",
     "electron-store": "^8.2.0",

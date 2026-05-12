@@ -1,8 +1,8 @@
 /*
  * [2026-05-06] indeed-flow-git Fallout 主题的磷光绿 / CRT 效果 → claude-gui 的 --claude-* 与 html 叠加层。
  * 启用：设置里选 Fallout，或 document.documentElement.setAttribute('data-theme','fallout')。
+ * [2026-05-12] VT323 / Share Tech Mono 改由 local-fonts.css 本地加载，不再 @import Google。
  */
-@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
 
 html[data-theme='fallout'] {
   --claude-bg: #020502;

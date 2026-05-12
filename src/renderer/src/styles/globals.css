@@ -1,5 +1,4 @@
-/* ── Google Fonts: DM Sans (UI, closest free to Aeonik) — must be first ── */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+/* [2026-05-12] DM Sans / VT323 / Share Tech Mono 由 main.tsx → local-fonts.css（@fontsource）先行加载 */
 /* [2026-05-06] Fallout 变量与 CRT（html[data-theme="fallout"]）；须在自定义规则之前 */
 @import './fallout-port.css';
 

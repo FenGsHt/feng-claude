@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.4] - 2026-05-13
+
+### 改进 | Improvements
+- **本地字体**：通过 `@fontsource` 打包 DM Sans、VT323、Share Tech Mono（woff2），移除对 Google Fonts 的 `@import`，正式包在严格 CSP 下仍可加载字体、离线可用
+- **CSP**：打包态不再为外链字体放宽 `style-src` / `font-src`
+
+### 修复 | Bug Fixes
+- **Preload 生产报错**：部分环境压缩后出现 `m is not defined`；preload 构建关闭 `minify` 规避
+- **Preload 类型**：补全 `GitUpdateWorktreePayload` / `GitUpdateWorktreeResult` 的类型导入
+
+---
+
 ## [0.7.3] - 2026-05-12
 
 ### 改进 | Improvements

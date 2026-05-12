@@ -14,20 +14,17 @@
 - **斜杠识别与首行 `/`**：`/**` 等不再误判为命令；非命令时对首行 `/` 做转义
 - **斜杠交互**：统一用「中断」，移除「强制退出」
 
-### 致谢与上游项目
+### 内置 MCP 与上游说明
 
-本项目在能力上依赖或参考了以下开源仓库（排名不分先后；具体以各组件许可证为准）：
+应用启动时会向 Claude Code 使用的 MCP 配置（用户级 `~/.claude/.claude.json`）**自动注册**下列项（可在侧栏 MCP 面板查看或开关）。第三方以各项目许可证为准。
 
-| 用途 | 仓库 |
-|------|------|
-| Claude Code CLI | [anthropics/claude-code](https://github.com/anthropics/claude-code) |
-| 桌面壳与打包 | [electron/electron](https://github.com/electron/electron) |
-| Electron 构建脚手架 | [alex8088/electron-vite](https://github.com/alex8088/electron-vite)、[@electron-toolkit](https://github.com/alex8088/electron-toolkit) |
-| 终端渲染 | [xtermjs/xterm.js](https://github.com/xtermjs/xterm.js) |
-| 伪终端 | [microsoft/node-pty](https://github.com/microsoft/node-pty) |
-| 状态与布局等 | [pmndrs/zustand](https://github.com/pmndrs/zustand)、[bvaughn/react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
-| 文档与 Markdown | [remarkjs/remark-gfm](https://github.com/remarkjs/remark-gfm) 等 remark 生态 |
-| Fallout 风格终端视觉（磷光 CRT） | 灵感来自社区 RobCo / 终端皮肤类项目（如 README 历史版本中提及的 indeed-flow-git 等） |
+| MCP 名称 | 作用 | 上游 / 实现 |
+|----------|------|-------------|
+| `office-cli` | 处理 Office 文档（如 docx / xlsx / pptx）等 | 二进制与能力来自 **[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)**；本应用负责下载、更新与写入 MCP 配置 |
+| `browser-tools` | 内嵌浏览器：导航、截图、点击、输入等 | **本仓库** [`scripts/browser-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/browser-mcp-server.js)，经 `node` 以 stdio 启动，与主进程内置浏览器 HTTP 接口通信 |
+| `visual-agent` | 本地图片分析（走所配置的 Anthropic 兼容多模态 API） | **本仓库** [`scripts/visual-agent-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/visual-agent-mcp-server.js)，经 `node` 以 stdio 启动 |
+
+GUI 本体还依赖 Electron、xterm.js、node-pty 等常见技术栈，详见 `package.json`。
 
 ### v0.6.8 主要更新
 
@@ -190,20 +187,17 @@ A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/cl
 - **Slash detection & leading `/`**: `/**` blocks are not treated as slash commands; leading-space escape for non-command lines starting with `/`
 - **Slash TUI UX**: single **Interrupt** control; removed separate “force exit”
 
-### Acknowledgements & upstream
+### Bundled MCPs & upstream
 
-This project builds on or takes inspiration from the following open-source repositories (non-exhaustive; see each license):
+On launch, the app **auto-registers** these MCP entries in the Claude Code user config (`~/.claude/.claude.json`). You can toggle them in the sidebar MCP panel. Third-party components follow their own licenses.
 
-| Role | Repository |
-|------|------------|
-| Claude Code CLI | [anthropics/claude-code](https://github.com/anthropics/claude-code) |
-| Desktop shell | [electron/electron](https://github.com/electron/electron) |
-| Build tooling | [alex8088/electron-vite](https://github.com/alex8088/electron-vite), [@electron-toolkit](https://github.com/alex8088/electron-toolkit) |
-| Terminal UI | [xtermjs/xterm.js](https://github.com/xtermjs/xterm.js) |
-| PTY | [microsoft/node-pty](https://github.com/microsoft/node-pty) |
-| State & layout | [pmndrs/zustand](https://github.com/pmndrs/zustand), [bvaughn/react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
-| Markdown | [remarkjs/remark-gfm](https://github.com/remarkjs/remark-gfm) and the remark ecosystem |
-| Fallout-style CRT look | Inspired by community RobCo–style terminal themes (see historical README notes such as indeed-flow-git) |
+| MCP name | Purpose | Upstream / implementation |
+|----------|---------|---------------------------|
+| `office-cli` | Office documents (e.g. docx / xlsx / pptx) | Binaries and behavior from **[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)**; this app downloads, updates, and writes the MCP entry |
+| `browser-tools` | Embedded browser: navigate, screenshot, click, type, … | **This repo**: [`scripts/browser-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/browser-mcp-server.js), stdio via `node`, talking to the app’s built-in browser HTTP API |
+| `visual-agent` | Local image analysis (Anthropic-compatible multimodal API from your profile) | **This repo**: [`scripts/visual-agent-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/visual-agent-mcp-server.js), stdio via `node` |
+
+The GUI stack (Electron, xterm.js, node-pty, etc.) is listed in `package.json`.
 
 ### v0.6.8 Highlights
 

@@ -8,6 +8,20 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.4': {
+    titleZh: 'Feng Claude 0.7.4 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.4",
+    bulletsZh: [
+      '字体改为本地打包（DM Sans / VT323 / Share Tech Mono），不再从 Google 拉取，离线与严格 CSP 均可用',
+      '修复正式包下 preload 偶发「m is not defined」',
+      '完整变更见 CHANGELOG'
+    ],
+    bulletsEn: [
+      'Fonts ship locally (@fontsource woff2); no Google Fonts fetch; works offline with strict CSP',
+      'Fix rare packaged preload error: m is not defined',
+      'See CHANGELOG for details'
+    ]
+  },
   '0.7.3': {
     titleZh: 'Feng Claude 0.7.3 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.3",
@@ -16,14 +30,14 @@ const ENTRIES: Record<string, WhatsNewCopy> = {
       'PTY 发送带回传 ACK（可选 traceId），便于确认内容是否写入终端',
       '斜杠命令识别收紧；以 /** 开头的多行不再误判为命令',
       '斜杠交互仅保留「中断」，去掉单独的「强制退出」',
-      '完整变更见 CHANGELOG / README 致谢中的上游项目说明'
+      '完整变更见 CHANGELOG；README「内置 MCP 与上游说明」列出 office-cli、browser-tools、visual-agent'
     ],
     bulletsEn: [
       'Embed multiline: body and Enter sent in two steps so slash TUIs submit reliably',
       'PTY send acknowledgment (optional traceId) to verify input reached the terminal',
       'Stricter slash-command detection; multiline blocks starting with /** are not treated as commands',
       'Slash TUI: single Interrupt action; removed separate force-exit control',
-      'See CHANGELOG; README lists upstream projects we build on'
+      'See CHANGELOG; README Bundled MCPs section lists office-cli, browser-tools, visual-agent'
     ]
   },
   '0.6.9': {

@@ -136,10 +136,16 @@ function createWindow(): BrowserWindow {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
-  // [2026-05-11] dev 模式下始终打开 DevTools
-  if (is.dev) {
-    win.webContents.openDevTools({ mode: 'detach' })
-  }
+  // [2026-05-12] F12 随时打开 DevTools（dev / prod 均可）
+  win.webContents.on('before-input-event', (_ev, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      if (win.webContents.isDevToolsOpened()) {
+        win.webContents.closeDevTools()
+      } else {
+        win.webContents.openDevTools({ mode: 'detach' })
+      }
+    }
+  })
 
   // ── Embedded browser for debugging ──────────────────────────────
   void startBrowserServer(win)

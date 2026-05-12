@@ -5,8 +5,7 @@
  */
 /* ===== Fallout Terminal Theme ===== */
 /* 2026-03-22: RobCo OS 绿色磷光终端风格 */
-
-@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+/* [2026-05-12] VT323 改由应用内 local-fonts.css 加载；本备份文件若单独引用请先保证字体已注册 */
 
 /* ===== CSS 变量 ===== */
 [data-theme="fallout"] {
