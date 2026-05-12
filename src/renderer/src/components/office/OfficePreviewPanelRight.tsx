@@ -10,6 +10,7 @@ import { parsePptx } from './pptxParser'
 import { getElementSelectorScript } from './elementSelector'
 import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
 import { useSessionStore } from '../../store/sessionStore'
+import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 
 interface PreviewState {
   fileName: string
@@ -109,7 +110,10 @@ export function OfficePreviewPanel(): React.ReactElement | null {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'office-element-selected' && e.data.path && activeSessionId) {
         const ref = `@${filePath}#${e.data.path} `
-        window.electronAPI.sendInput(activeSessionId, ref)
+        // [2026-05-12] 优先写入外嵌输入框，不存在时发到 PTY
+        if (!injectEmbedDraft(activeSessionId, ref)) {
+          window.electronAPI.sendInput(activeSessionId, ref)
+        }
         setPickMode(false)
       }
     }
