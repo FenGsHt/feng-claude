@@ -7,7 +7,7 @@ import {
 } from '../../lib/claudeRef'
 import { CC_SLASH_DRAG_MIME, CC_SLASH_PLAIN_PREFIX } from '../../lib/ccSlashDrag'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
-import { isOfficeFile } from '../sidebar/office/officeFileDetector'
+import { isOfficeFile } from '../office/officeFileDetector'
 import { focusTerminal } from './XTerminal'
 
 /** 包住 xterm：从文件树拖入时往当前 Claude 会话注入 @path 引用（经 PTY 发送） */
