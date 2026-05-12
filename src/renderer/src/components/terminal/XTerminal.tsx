@@ -211,13 +211,8 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   }
   const win = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
   const lines = raw.split('\n')
-  /* [2026-05-08] 原仅发正文+行尾；光标若停在上一次输出同一行（终端里已有「在吗」），外嵌再发会视觉上拼成「在吗在吗」。普通消息先清 PTY 当前行，斜杠命令避免额外控制键影响 TUI */
-  // const payload =
-  //   lines.length === 1
-  //     ? `${lines[0]!}${win ? '\r' : '\n'}`
-  //     : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
-  let payload: string
   const lineEnding = win ? '\r' : '\n'
+  let payload: string
   /* [2026-05-12] 注释掉原“多行统一用 \n + 前置 \x15 清行”的策略：
    * 用户反馈多行块（如 /** 注释）可进入 sendInput，但在原终端不稳定提交。
    * 改为：多行走平台换行（Windows=\r\n）且不前置 \x15；单行保持原行为。 */
@@ -234,14 +229,17 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   // [2026-05-12] 原: const multilineSubmitSuffix = `${lineEnding}\n`
   // [2026-05-12] 原: const multilineSubmitSuffix = '\r'
   // 同批次末尾 Enter 会被 TUI 当作多行编辑内容消费；多行改为“先写正文，延迟后单独发送 Enter”。
-  const multilineSubmitSuffix = splitMultilineSubmit ? '' : '\r'
+  const multilineSubmitSuffix = splitMultilineSubmit ? '' : lineEnding
   const submitMode = splitMultilineSubmit ? 'split-lf-body+delayed-cr' : 'default'
   const hasCaretAtLineEnd = win && textPart.split(/\r?\n/).some(line => line.trimEnd().endsWith('^'))
+  // [2026-05-12] ! 开头的命令是 Claude Code shell 命令前缀，在 BP 模式下会被当作纯文本粘贴而不触发 shell 执行，需跳过 BP 包裹
+  const isShellCommand = firstLine.startsWith('!')
   if (!isSlashCommand) {
     /* [2026-05-12] 若 Claude Code 已开启 Bracketed Paste 模式（\x1b[?2004h），用 BP 序列包裹文本。
      * 这样 Claude Code 不会把首字符 `/` 解读为 slash 命令触发符，也不会把中间的 `\n` 解读为 Enter 提交。
-     * 此方案同时修复：/** 注释、/path 路径、多行粘贴等所有被 slash 弹窗拦截的场景。 */
-    if (bp) {
+     * 此方案同时修复：/** 注释、/path 路径、多行粘贴等所有被 slash 弹窗拦截的场景。
+     * 但 shell 命令（! 开头）需跳过 BP 包裹，否则 ! 无法触发 shell 执行。 */
+    if (bp && !isShellCommand) {
       // BP 模式：\x15 清行 + BP 包裹 + \r 提交；@ 补全问题也随之消失（BP 内不触发自动补全）
       // [2026-05-12] 原: payload = `\x15\x1b[200~${textPart}\x1b[201~\r`
       payload = isMultiline
