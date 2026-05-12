@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { resolve, join, extname } from 'path'
 import { homedir } from 'os'
 import { existsSync, promises as fsPromises } from 'fs'
+import { spawnSync } from 'child_process'
 import { IPC } from '../renderer/src/types/ipc'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { augmentPathWithBunInstallDirs, type PtyManager } from './ptyManager'
@@ -16,7 +17,7 @@ import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from '
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
-import { getOfficeCLICurrentStatus, checkAndUpdateOfficeCLI } from './officeCliManager'
+import { getOfficeCLICurrentStatus, checkAndUpdateOfficeCLI, getOfficeCLIPath } from './officeCliManager'
 import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
 import type { McpServerConfig, SessionCreatePayload, WhatsNewShouldShowResult } from '../renderer/src/types/ipc'
 import { listSkills, getSkillContent, saveSkill, deleteSkill, openSkillsDir } from './skillsManager'
@@ -59,6 +60,108 @@ function broadcastSettingsChanged(): void {
   BrowserWindow.getAllWindows().forEach(win => {
     win.webContents.send(IPC.SETTINGS_CHANGED)
   })
+}
+
+/** [2026-05-12] PPTX 通过 office-cli SVG 渲染，返回含全部样式的 HTML */
+function renderPptxViaOfficeCli(filePath: string): { success: boolean; html?: string; error?: string } {
+  const binPath = getOfficeCLIPath()
+  if (!existsSync(binPath)) {
+    return { success: false, error: 'office-cli 未安装，请先在侧边栏设置中更新' }
+  }
+
+  // [2026-05-12] Windows 下路径统一用 resolve() 确保绝对路径，反斜杠格式
+  const normalizedPath = process.platform === 'win32' ? resolve(filePath.replace(/\//g, '\\')) : filePath
+
+  // 文件存在性检查
+  if (!existsSync(normalizedPath)) {
+    return { success: false, error: `文件不存在: ${normalizedPath}` }
+  }
+
+  // 1. Get total slide count
+  const stats = spawnSync(binPath, ['view', normalizedPath, 'stats', '--json'], {
+    encoding: 'utf8', timeout: 15000, windowsHide: true,
+  })
+
+  // [2026-05-13] 捕获 spawnSync 启动失败的错误（如 binary 无执行权限）
+  if (stats.error) {
+    return { success: false, error: `office-cli 启动失败: ${stats.error.message}` }
+  }
+
+  if (stats.status !== 0 || !stats.stdout) {
+    // [2026-05-13] 常见失败：文件被其他程序（如 PowerPoint）独占打开时 office-cli 无法读取
+  const errDetail = stats.stderr?.trim() || '获取幻灯片数量失败'
+  const errHint = errDetail.includes('EBUSY') || errDetail.includes('locked') || errDetail.includes('占用')
+    ? '（文件可能被其他程序占用，请关闭后重试）'
+    : ''
+  return { success: false, error: `${errDetail}${errHint}` }
+  }
+
+  let totalSlides: number
+  try {
+    const json = JSON.parse(stats.stdout)
+    totalSlides = json?.data?.slides ?? 0
+  } catch {
+    return { success: false, error: '解析统计数据失败' }
+  }
+  if (totalSlides === 0) {
+    return { success: false, error: 'PPT 文件无幻灯片' }
+  }
+
+  // 2. Render each slide as SVG, inject data-office-path for picker
+  const slides: { svg: string; shapeCount: number }[] = []
+  for (let i = 1; i <= totalSlides; i++) {
+    const result = spawnSync(binPath, ['view', normalizedPath, 'svg', '--page', String(i)], {
+      encoding: 'utf8', timeout: 15000, windowsHide: true,
+    })
+    if (result.status === 0 && result.stdout) {
+      let svg = result.stdout.trim()
+      // Inject data-office-path into each <g transform="..."> shape element
+      let shapeIdx = 0
+      svg = svg.replace(/<g transform=/g, () => {
+        const path = `Slide ${i} / Shape ${++shapeIdx}`
+        return `<g data-office-path="${path}" transform=`
+      })
+      slides.push({ svg, shapeCount: shapeIdx })
+    } else {
+      slides.push({ svg: `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#f1f5f9"/><text x="960" y="540" text-anchor="middle" fill="#94a3b8" font-size="24">幻灯片 ${i} 渲染失败</text></svg>`, shapeCount: 0 })
+    }
+  }
+
+  // 3. Build HTML wrapper — all slides on one page
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; padding: 16px; background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .slide-container {
+    margin-bottom: 16px;
+    border: 1px solid #e2e8f0; border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    background: white;
+    width: 100%;
+    aspect-ratio: 16/9;
+    overflow: hidden;
+  }
+  .slide-container svg { width: 100%; height: 100%; display: block; }
+  .slide-label {
+    display: inline-block;
+    margin-bottom: 4px;
+    padding: 2px 8px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+${slides.map((s, i) => `<div><span class="slide-label">${i + 1}/${totalSlides} · ${s.shapeCount} shapes</span><div class="slide-container">${s.svg}</div></div>`).join('\n')}
+</body>
+</html>`
+
+  return { success: true, html }
 }
 
 export function registerIpcHandlers(
@@ -453,6 +556,12 @@ export function registerIpcHandlers(
       if (!['.docx', '.xlsx', '.pptx'].includes(ext)) {
         return { success: false, error: 'Not an Office file' }
       }
+
+      /* [2026-05-12] PPTX 走 office-cli SVG 渲染，保留背景/字体/颜色等全部样式 */
+      if (ext === '.pptx') {
+        return renderPptxViaOfficeCli(payload.filePath)
+      }
+
       const buffer = await fsPromises.readFile(payload.filePath)
       return { success: true, buffer: buffer.buffer }
     } catch (err: any) {

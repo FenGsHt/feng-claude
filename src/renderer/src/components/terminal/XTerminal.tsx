@@ -246,12 +246,16 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
         ? `\x15\x1b[200~${textPart}\x1b[201~${multilineSubmitSuffix}`
         : `\x15\x1b[200~${textPart}\x1b[201~\r`
     } else if (textPart.includes('@')) {
-      /* [2026-05-11] 文本含 @ 时 Claude Code 的 @ 自动补全会弹出，\r 被补全消费导致不提交。
-       * 在 @path 后追加空格再 Enter：Claude Code 的 @ 补全正则 @(\S*)$ 只在行末匹配，
-       * 有空格时补全不触发，Enter 正常提交。 */
-      // [2026-05-12] 原：payload = `\x15${textPart} ${lineEnding}`；多行前置 Ctrl+U 会干扰提交，改为仅单行清行。
-      // [2026-05-12] 原: payload = isMultiline ? `${textPart} ${lineEnding}` : `\x15${textPart} ${lineEnding}`
-      payload = isMultiline ? `${textPart} ${multilineSubmitSuffix}` : `\x15${textPart} ${lineEnding}`
+      /* [2026-05-12] 原 BP 包裹方案在 daemon 模式下导致输入无法送达 PTY。
+       * 改为：尾部空格阻止 @ 补全触发，不用 BP 序列。
+       * 多行内容不包含尾部空格（Claude Code 不会在多行中间触发 @ 补全）。 */
+      if (!isShellCommand) {
+        payload = isMultiline
+          ? `\x15${textPart}${lineEnding}`
+          : `\x15${textPart} ${lineEnding}`
+      } else {
+        payload = isMultiline ? `${textPart} ${multilineSubmitSuffix}` : `\x15${textPart} ${lineEnding}`
+      }
     } else if (hasCaretAtLineEnd) {
       // Windows ^ 行继续符会吞 \r；额外追加一个 \r 确保提交
       // [2026-05-12] 原：payload = `\x15${textPart}${lineEnding}${lineEnding}`；多行禁用 Ctrl+U，避免破坏块输入。

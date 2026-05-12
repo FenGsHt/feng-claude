@@ -126,6 +126,8 @@ export function injectMockElectronAPI(): void {
         checkUpdate: async () => ({ started: false }),
         onStatus: () => () => {}
       },
+      openOfficePreview: async (filePath: string) => ({ success: false, error: 'Not available in browser preview' }),
+      onOfficePreviewTrigger: () => () => {},
       skills: {
         list: async () => [],
         get: async () => '',

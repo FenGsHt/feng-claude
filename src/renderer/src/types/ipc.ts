@@ -141,6 +141,7 @@ export const IPC = {
   OFFICE_CLI_CHECK_UPDATE: 'officeCli:checkUpdate',
 
   OFFICE_PREVIEW_OPEN: 'office:preview:open',
+  OFFICE_PREVIEW_TRIGGER: 'office:preview:trigger', // [2026-05-12] HTTP MCP → renderer push event
 } as const
 
 export interface ShellOption {
@@ -609,5 +610,6 @@ export interface OfficePreviewOpenPayload {
 export interface OfficePreviewOpenResult {
   success: boolean
   buffer?: ArrayBuffer
+  html?: string // [2026-05-12] PPTX 预渲染 HTML（走 office-cli SVG）
   error?: string
 }

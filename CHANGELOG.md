@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.9] - 2026-05-13
+
+### 新功能 | New Features
+- **Office 文件预览**：侧栏新增 Office 标签页，双击 docx/xlsx/pptx 文件即可打开右侧预览面板；支持文件浏览器拖拽与 MCP 触发
+- **PPT 高保真渲染**：PPTX 优先通过 office-cli SVG 输出，完整保留背景、渐变、字体与布局；全部幻灯片纵向排列一页浏览
+- **元素/单元格选择器**：预览面板顶部 @ 按钮进入拾取模式，点击 PPT 形状 / Excel 单元格即可将 `@path` 引用注入外嵌输入框
+- **宠物 21 点 Blackjack 小游戏**：对话 token 消耗量自动换算为游戏币，支持下注、要牌/停牌，胜负即时结算
+
+### 修复 | Bug Fixes
+- **流式 token 统计膨胀**：跳过 intermediate streaming snapshot（output=0 & cache=0），input token 不再被重复计数
+- **分屏输入框异常**：react-resizable-panels 布局未稳定时 textarea scrollHeight 测量错误导致输入框撑爆；ResizeObserver 监听宽度后重新测量
+- **BP 模式下 ! 命令失效**：shell 命令在 bracketed paste 模式下被当作纯文本粘贴，不再触发执行
+- **@ 路径外嵌发送失败**：含 @ 的文本不再用 BP 转义序列包裹，改用尾部空格阻止自动补全，确保输入正确送达 PTY
+
+---
+
 ## [0.7.7] - 2026-05-12
 
 ### 修复 | Bug Fixes

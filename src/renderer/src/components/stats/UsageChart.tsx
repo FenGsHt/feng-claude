@@ -312,6 +312,8 @@ export function UsageChart(): React.ReactElement {
   const BAR_W = 26
   const BAR_GAP = 7
   const barScrollRef = useRef<HTMLDivElement>(null)
+  const [hoverBar, setHoverBar] = useState<string | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
 
   useEffect(() => {
     const el = barScrollRef.current
@@ -415,37 +417,40 @@ export function UsageChart(): React.ReactElement {
                 segs.sort((a, b) => b.val - a.val)
               }
               const barTotalH = v > 0 ? Math.max(4, Math.round((v / maxVal) * BAR_H)) : 3
+
+              const handleHover = (e: React.MouseEvent<HTMLDivElement>) => {
+                setHoverBar(date)
+                const rect = e.currentTarget.getBoundingClientRect()
+                setTooltipPos({ x: rect.left + rect.width / 2, y: rect.top - 4 })
+              }
+
+              const barClass = v <= 0
+                ? 'w-full shrink-0 rounded-sm bg-stone-300/50 dark:bg-zinc-700/55 cursor-default'
+                : segs.length === 0
+                  ? `w-full shrink-0 overflow-hidden rounded-md cursor-default ${
+                      isToday
+                        ? 'bg-[#e8a820] shadow-sm ring-1 ring-amber-600/35 dark:ring-amber-400/30'
+                        : 'bg-[#f5c84c] dark:bg-amber-500/75'
+                    }`
+                  : 'flex w-full shrink-0 flex-col-reverse gap-px overflow-hidden rounded-md bg-stone-200/60 dark:bg-zinc-950/80 cursor-default'
+
               return (
                 <div key={date} className="flex shrink-0 flex-col items-center gap-1.5" style={{ width: BAR_W }}>
-                  <div className="flex w-full flex-col justify-end" style={{ height: BAR_H }}>
+                  <div className="flex w-full flex-col justify-end relative" style={{ height: BAR_H }}
+                    onMouseEnter={handleHover}
+                    onMouseLeave={() => setHoverBar(null)}
+                  >
                     {v <= 0 ? (
-                      <div
-                        className="w-full shrink-0 rounded-sm bg-stone-300/50 dark:bg-zinc-700/55"
-                        style={{ height: 3 }}
-                        title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                      />
+                      <div className={barClass} style={{ height: 3 }} />
                     ) : segs.length === 0 ? (
-                      <div
-                        title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                        className={`w-full shrink-0 overflow-hidden rounded-md ${
-                          isToday
-                            ? 'bg-[#e8a820] shadow-sm ring-1 ring-amber-600/35 dark:ring-amber-400/30'
-                            : 'bg-[#f5c84c] dark:bg-amber-500/75'
-                        }`}
-                        style={{ height: barTotalH }}
-                      />
+                      <div className={barClass} style={{ height: barTotalH }} />
                     ) : (
-                      <div
-                        className="flex w-full shrink-0 flex-col-reverse gap-px overflow-hidden rounded-md bg-stone-200/60 dark:bg-zinc-950/80"
-                        style={{ height: barTotalH }}
-                        title={`${date}: ${formatK(v)} tokens · ${formatCost(dayCosts[date] ?? 0)}`}
-                      >
+                      <div className={barClass} style={{ height: barTotalH }}>
                         {segs.map((s, si) => (
                           <div
                             key={`${date}-${si}-${s.label}`}
                             className="w-full min-h-[2px] shrink-0 rounded-[2px]"
                             style={{ flexGrow: s.val, flexBasis: 0, backgroundColor: s.color }}
-                            title={`${date} · ${s.label}: ${formatK(s.val)}`}
                           />
                         ))}
                       </div>
@@ -465,6 +470,51 @@ export function UsageChart(): React.ReactElement {
             })}
           </div>
         </div>
+
+        {/* Custom tooltip showing all models for hovered day */}
+        {hoverBar && createPortal(
+          <div className="pointer-events-none fixed z-[200] rounded-lg border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] px-3 py-2 shadow-lg dark:shadow-black/40"
+            style={{ left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, -100%)' }}
+          >
+            <div className="text-[10px] font-semibold text-claude-text mb-1">{hoverBar}</div>
+            {(() => {
+              const dh = dailyHistory[hoverBar]
+              if (!dh) return null
+              const totalTokens = tokenSum(dh)
+              const dm = dailyHistoryPerProfile[hoverBar] ?? {}
+              const modelRows: { label: string; val: number; color: string }[] = []
+              let attributed = 0
+              if (settings) {
+                settings.profiles.forEach((p, pi) => {
+                  const t = tokenSum(dm[p.id] ?? emptyTotals())
+                  if (t > 0) {
+                    modelRows.push({ label: p.name, val: t, color: COLORS[pi % COLORS.length] })
+                    attributed += t
+                  }
+                })
+              }
+              const other = Math.max(0, totalTokens - attributed)
+              if (other > 0) modelRows.push({ label: t.stats.chartOther, val: other, color: OTHER_STACK_COLOR })
+              modelRows.sort((a, b) => b.val - a.val)
+              return (
+                <>
+                  <div className="text-[10px] text-claude-muted font-mono mb-1">{formatK(totalTokens)} tokens · {formatCost(dayCosts[hoverBar] ?? 0)}</div>
+                  <div className="flex flex-col gap-0.5">
+                    {modelRows.map((r) => (
+                      <div key={r.label} className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: r.color }} />
+                        <span className="text-[10px] text-claude-text flex-1 truncate">{r.label}</span>
+                        <span className="text-[10px] font-mono text-claude-muted">{formatK(r.val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )
+            })()}
+          </div>,
+          document.body
+        )}
+
         {recentStackedLegend.length > 0 ? (
           <div className="mt-2 space-y-1 border-t border-stone-300/45 pt-2 dark:border-[var(--theme-panel-border)]">
             <div className="text-[9px] font-medium uppercase tracking-wide text-stone-500 dark:text-claude-muted">

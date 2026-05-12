@@ -1749,17 +1749,15 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     }
 
     if (n < prevLen) {
-      setHistoryStartIndex((old) =>
-        Math.min(
-          old ?? effectiveHistoryStartIndex,
-          n <= INITIAL_HISTORY_TAIL ? 0 : Math.max(0, n - INITIAL_HISTORY_TAIL)
-        )
-      )
+      setHistoryStartIndex((old) => {
+        const eff = old ?? (n <= INITIAL_HISTORY_TAIL ? 0 : Math.max(0, n - INITIAL_HISTORY_TAIL))
+        return Math.min(eff, n <= INITIAL_HISTORY_TAIL ? 0 : Math.max(0, n - INITIAL_HISTORY_TAIL))
+      })
       return
     }
 
     setHistoryStartIndex((old) => Math.min(old ?? effectiveHistoryStartIndex, Math.max(0, n - 1)))
-  }, [sessionId, visibleEntries.length, effectiveHistoryStartIndex])
+  }, [sessionId, visibleEntries.length])
 
   // [2026-05-12] 同步 historyStartIndex 到模块缓存，分屏 remount 后可恢复
   useEffect(() => {

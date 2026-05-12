@@ -56,7 +56,7 @@ export function OfficePreviewPanel(): React.ReactElement | null {
 
     try {
       const result = await window.electronAPI.openOfficePreview(fp)
-      if (!result.success || !result.buffer) {
+      if (!result.success || (!result.buffer && !result.html)) {
         setState((prev) => prev ? { ...prev, loading: false, error: result.error || 'Failed to open file' } : null)
         return
       }
@@ -64,15 +64,15 @@ export function OfficePreviewPanel(): React.ReactElement | null {
       let html: string
       switch (fileType) {
         case 'docx':
-          html = await parseDocx(result.buffer)
+          html = await parseDocx(result.buffer!)
           break
         case 'xlsx': {
-          const xlsxResult = parseXlsx(result.buffer)
+          const xlsxResult = parseXlsx(result.buffer!)
           html = xlsxResult.html
           break
         }
         case 'pptx':
-          html = await parsePptx(result.buffer)
+          html = result.html || await parsePptx(result.buffer!)
           break
         default:
           html = '<p>Unsupported format</p>'
@@ -103,6 +103,13 @@ export function OfficePreviewPanel(): React.ReactElement | null {
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }, [width, setWidth])
+
+  // Listen for MCP-triggered office preview open
+  useEffect(() => {
+    return window.electronAPI.onOfficePreviewTrigger?.((fp: string) => {
+      openFile(fp)
+    })
+  }, [openFile])
 
   // Listen for cell/element selection from iframe
   useEffect(() => {

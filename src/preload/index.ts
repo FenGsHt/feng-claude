@@ -209,6 +209,12 @@ const electronAPI = {
   openOfficePreview: (filePath: string): Promise<OfficePreviewOpenResult> =>
     ipcRenderer.invoke(IPC.OFFICE_PREVIEW_OPEN, { filePath }),
 
+  onOfficePreviewTrigger: (callback: (filePath: string) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, fp: string): void => callback(fp)
+    ipcRenderer.on(IPC.OFFICE_PREVIEW_TRIGGER, handler)
+    return () => ipcRenderer.removeListener(IPC.OFFICE_PREVIEW_TRIGGER, handler)
+  },
+
   skills: {
     list: (): Promise<SkillEntry[]> => ipcRenderer.invoke(IPC.SKILLS_LIST),
     get: (name: string, source?: string): Promise<string> => ipcRenderer.invoke(IPC.SKILLS_GET, { name, source }),

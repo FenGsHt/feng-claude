@@ -1121,6 +1121,19 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // POST /open-office-preview — trigger Office preview panel from MCP
+        if (path === '/open-office-preview' && req.method === 'POST') {
+          const body = await readBody(req)
+          const filePath = body?.filePath as string
+          if (!filePath) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Missing filePath' }))
+            return
+          }
+          state.mainWin?.webContents.send('office:preview:trigger', filePath)
+          res.writeHead(200); res.end(JSON.stringify({ success: true }))
+          return
+        }
+
         res.writeHead(404); res.end(JSON.stringify({ error: 'Not found' }))
       } catch (e) {
         res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))

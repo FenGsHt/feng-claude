@@ -8,6 +8,24 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.9': {
+    titleZh: 'Feng Claude 0.7.9 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.9",
+    bulletsZh: [
+      'Office 文件预览：侧栏新增 Office 标签页，双击 docx/xlsx/pptx 文件即可预览；PPTX 走 office-cli SVG 高保真渲染',
+      '元素/单元格选择器：预览面板 @ 按钮拾取 PPT 形状 / Excel 单元格，自动注入 @path 引用到外嵌输入框',
+      '宠物 21 点 Blackjack 小游戏：token 消耗换算游戏币，下注要牌即时结算',
+      '流式 token 统计修复：跳过中间快照，input token 不再重复计数',
+      '@ 路径外嵌发送修复：尾部空格防补全，输入正确送达 PTY'
+    ],
+    bulletsEn: [
+      'Office file preview: new Office sidebar tab; double-click docx/xlsx/pptx to preview; PPTX renders via office-cli SVG with full fidelity',
+      'Element/cell picker: @ button in preview panel captures PPT shapes / Excel cells, injects @path refs into embed input',
+      'Pet Blackjack: token consumption converted to chips, bet and play with instant results',
+      'Streaming token stats fix: skip intermediate snapshots, input tokens no longer double-counted',
+      '@ path embed send fix: trailing space prevents autocomplete, input reliably reaches PTY'
+    ]
+  },
   '0.7.7': {
     titleZh: 'Feng Claude 0.7.7 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.7",

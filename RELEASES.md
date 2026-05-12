@@ -5,6 +5,24 @@
 
 ---
 
+---
+
+## v0.7.9 (2026-05-13)
+
+### 新功能 | New Features
+- **Office 文件预览**：侧栏新增 Office 标签页，双击 docx/xlsx/pptx 文件打开右侧浮层预览；支持文件树拖拽与 MCP 工具触发
+- **PPT 高保真渲染**：PPTX 优先走 office-cli SVG 渲染，保留原始背景、渐变、字体与颜色；全部幻灯片纵向排列一页浏览，16:9 自动缩放
+- **元素/单元格选择器**：预览面板顶部 @ 按钮进入拾取模式，点击 PPT 形状 / Excel 单元格即可将 `@path#Slide N / Shape M` 引用注入外嵌输入框
+- **宠物 21 点 Blackjack 小游戏**：token 消耗量换算为游戏币，支持 10/50/100/ALL 下注、要牌/停牌/加倍，即时胜负结算
+
+### 修复 | Bug Fixes
+- **流式 token 统计膨胀**：跳过 intermediate streaming snapshot（output=0 & cache=0），input token 不再被重复计数
+- **分屏输入框异常**：面板宽度变化时 textarea 宽度为 0 导致 scrollHeight 异常；新增 ResizeObserver 监听宽度后重新测量高度
+- **BP 模式下 ! 命令失效**：shell 命令在 bracketed paste 模式下被当作纯文本粘贴不触发执行，现已跳过
+- **@ 路径外嵌发送失败**：含 @ 的文本发送时不再用 BP 转义序列包裹，改用尾部空格阻止 @ 自动补全，确保正确送达 PTY
+
+---
+
 ## v0.7.7 (2026-05-12)
 
 ### 修复 | Bug Fixes

@@ -111,6 +111,17 @@ const TOOLS = [
       },
       required: []
     }
+  },
+  {
+    name: 'office_preview',
+    description: 'Open an Office file (.docx/.xlsx/.pptx) in the built-in preview panel. This opens a right-side floating panel showing the rendered content. Double-clicking an Office file in the sidebar file tree also opens this preview.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: 'Absolute path to the Office file (.docx, .xlsx, or .pptx)' }
+      },
+      required: ['filePath']
+    }
   }
 ]
 
@@ -216,6 +227,10 @@ async function handleTool(name, args) {
           return [{ type: 'text', text: lines.join('\n') }]
         }
         return [{ type: 'text', text: 'No console logs captured' }]
+      }
+      case 'office_preview': {
+        const r = await callHttp('/open-office-preview', { filePath: args.filePath })
+        return [{ type: 'text', text: r.success ? `Office preview opened: ${args.filePath}` : `Failed: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
