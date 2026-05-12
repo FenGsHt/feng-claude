@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3] - 2026-05-12
+
+### 改进 | Improvements
+- **PTY 输入 ACK**：`sendInput` 后主进程向渲染进程回传 `PTY_INPUT_ACK`（含可选 `traceId`），便于确认多行/粘贴内容是否写入 PTY
+- **外嵌多行提交**：正文与提交回车分两帧发送（延迟 `\r`），避免斜杠 TUI 将 Enter 与多行正文粘在同一 write 内导致无法真正提交
+- **斜杠命令识别**：仅当首段匹配 `/` + 字母时视为斜杠命令；`/**` 等 JSDoc 不再误判
+- **非斜杠首行 `/` 转义**：首行以 `/` 开头且非斜杠命令时自动加前导空格，减轻 CLI 对 `/` 的误解析
+- **Bracketed Paste 检测**：抽取 `bracketedPasteMode` 工具，供外嵌发送路径判断终端是否处于粘贴模式
+
+### 修复 | Bug Fixes
+- **外嵌斜杠 TUI 中断入口**：移除单独的「强制退出」；需要时统一使用「中断」结束斜杠交互（含需原始终端时的场景）
+- **文案**：阻塞发送时的提示改为引导使用「中断」
+
+---
+
 ## [0.7.2] - 2026-05-11
 
 ### 新功能 | New Features

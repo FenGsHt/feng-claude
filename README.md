@@ -8,6 +8,27 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.3 主要更新
+
+- **外嵌多行提交**：正文与回车分两帧发送，修复斜杠 TUI 下多行无法提交；PTY 写入增加 ACK 便于排查
+- **斜杠识别与首行 `/`**：`/**` 等不再误判为命令；非命令时对首行 `/` 做转义
+- **斜杠交互**：统一用「中断」，移除「强制退出」
+
+### 致谢与上游项目
+
+本项目在能力上依赖或参考了以下开源仓库（排名不分先后；具体以各组件许可证为准）：
+
+| 用途 | 仓库 |
+|------|------|
+| Claude Code CLI | [anthropics/claude-code](https://github.com/anthropics/claude-code) |
+| 桌面壳与打包 | [electron/electron](https://github.com/electron/electron) |
+| Electron 构建脚手架 | [alex8088/electron-vite](https://github.com/alex8088/electron-vite)、[@electron-toolkit](https://github.com/alex8088/electron-toolkit) |
+| 终端渲染 | [xtermjs/xterm.js](https://github.com/xtermjs/xterm.js) |
+| 伪终端 | [microsoft/node-pty](https://github.com/microsoft/node-pty) |
+| 状态与布局等 | [pmndrs/zustand](https://github.com/pmndrs/zustand)、[bvaughn/react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
+| 文档与 Markdown | [remarkjs/remark-gfm](https://github.com/remarkjs/remark-gfm) 等 remark 生态 |
+| Fallout 风格终端视觉（磷光 CRT） | 灵感来自社区 RobCo / 终端皮肤类项目（如 README 历史版本中提及的 indeed-flow-git 等） |
+
 ### v0.6.8 主要更新
 
 - **Telegram 多 Bot 预设**：支持添加多条 Bot Token 预设，每条约独立的配对状态与访问控制。标签栏一键切换 Bot，自动应用新 Token。
@@ -162,6 +183,27 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.3 Highlights
+
+- **Embed multiline submit**: split body vs Enter with a short delay so slash TUIs accept submission; PTY input ACK for debugging
+- **Slash detection & leading `/`**: `/**` blocks are not treated as slash commands; leading-space escape for non-command lines starting with `/`
+- **Slash TUI UX**: single **Interrupt** control; removed separate “force exit”
+
+### Acknowledgements & upstream
+
+This project builds on or takes inspiration from the following open-source repositories (non-exhaustive; see each license):
+
+| Role | Repository |
+|------|------------|
+| Claude Code CLI | [anthropics/claude-code](https://github.com/anthropics/claude-code) |
+| Desktop shell | [electron/electron](https://github.com/electron/electron) |
+| Build tooling | [alex8088/electron-vite](https://github.com/alex8088/electron-vite), [@electron-toolkit](https://github.com/alex8088/electron-toolkit) |
+| Terminal UI | [xtermjs/xterm.js](https://github.com/xtermjs/xterm.js) |
+| PTY | [microsoft/node-pty](https://github.com/microsoft/node-pty) |
+| State & layout | [pmndrs/zustand](https://github.com/pmndrs/zustand), [bvaughn/react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
+| Markdown | [remarkjs/remark-gfm](https://github.com/remarkjs/remark-gfm) and the remark ecosystem |
+| Fallout-style CRT look | Inspired by community RobCo–style terminal themes (see historical README notes such as indeed-flow-git) |
 
 ### v0.6.8 Highlights
 
