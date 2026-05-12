@@ -1,8 +1,8 @@
 import { ipcMain, dialog, clipboard, Notification, app, BrowserWindow, shell } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import { resolve, join } from 'path'
+import { resolve, join, extname } from 'path'
 import { homedir } from 'os'
-import { existsSync } from 'fs'
+import { existsSync, promises as fsPromises } from 'fs'
 import { IPC } from '../renderer/src/types/ipc'
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { augmentPathWithBunInstallDirs, type PtyManager } from './ptyManager'
@@ -445,6 +445,19 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.OFFICE_CLI_CHECK_UPDATE, async () => {
     checkAndUpdateOfficeCLI().catch(() => { /* errors emitted via status event */ })
     return { started: true }
+  })
+
+  ipcMain.handle(IPC.OFFICE_PREVIEW_OPEN, async (_event, payload: { filePath: string }) => {
+    try {
+      const ext = extname(payload.filePath).toLowerCase()
+      if (!['.docx', '.xlsx', '.pptx'].includes(ext)) {
+        return { success: false, error: 'Not an Office file' }
+      }
+      const buffer = await fsPromises.readFile(payload.filePath)
+      return { success: true, buffer: buffer.buffer }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
   })
 
   // ── Skills ────────────────────────────────────────────────────

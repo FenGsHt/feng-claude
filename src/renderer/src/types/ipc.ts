@@ -137,6 +137,8 @@ export const IPC = {
   OFFICE_CLI_STATUS: 'officeCli:status',
   OFFICE_CLI_GET_STATUS: 'officeCli:getStatus',
   OFFICE_CLI_CHECK_UPDATE: 'officeCli:checkUpdate',
+
+  OFFICE_PREVIEW_OPEN: 'office:preview:open',
 } as const
 
 export interface ShellOption {
@@ -584,4 +586,14 @@ export interface OfficeCLIStatus {
   downloading: boolean
   progress: number
   error: string | null
+}
+
+export interface OfficePreviewOpenPayload {
+  filePath: string
+}
+
+export interface OfficePreviewOpenResult {
+  success: boolean
+  buffer?: ArrayBuffer
+  error?: string
 }
