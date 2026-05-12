@@ -27,11 +27,13 @@ export function injectMockElectronAPI(): void {
         telegramChannel
       }),
       closeSession: async () => ({ success: true }),
-      sendInput: noop,
+      // [2026-05-12] 原: sendInput: noop；补充可选 traceId 形状，保持与 preload 签名一致
+      sendInput: (_sessionId: string, _data: string, _traceId?: string) => {},
       resizePty: noop,
       onPtyOutput: listener,
       onPtyStatus: listener,
       onPtyIntrSent: listener,
+      onPtyInputAck: listener,
       openDirDialog: async () => '/mock/workdir',
       resolveWorkdirMany: async (paths: string[]) => paths.map((p) => p),
       readFileTree: async () => [

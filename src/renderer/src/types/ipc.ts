@@ -7,6 +7,8 @@ export const IPC = {
   SESSION_LIST: 'session:list',
 
   PTY_INPUT: 'pty:input',
+  /** [2026-05-12] 调试：主进程回执本次 sendInput 是否真正写入 PTY/daemon */
+  PTY_INPUT_ACK: 'pty:inputAck',
   PTY_OUTPUT: 'pty:output',
   PTY_RESIZE: 'pty:resize',
   PTY_STATUS: 'pty:status',
@@ -252,6 +254,18 @@ export interface SessionCreateErr {
 export interface PtyInputPayload {
   sessionId: string
   data: string
+  /** [2026-05-12] 调试链路：把一次发送和 ACK/后续输出关联起来 */
+  traceId?: string
+}
+
+export interface PtyInputAckPayload {
+  sessionId: string
+  ok: boolean
+  via?: 'daemon' | 'pty'
+  bytes: number
+  reason?: string
+  /** [2026-05-12] 与 PtyInputPayload.traceId 对应 */
+  traceId?: string
 }
 
 export interface PtyOutputPayload {

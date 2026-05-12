@@ -14,9 +14,11 @@ import { useClaudeRuntimeStatusStore } from '../store/claudeRuntimeStatusStore'
 import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
 import {
   feedPtyAlternateScreenFromOutput,
-  isPtyAlternateScreenActive
+  isPtyAlternateScreenActive,
+  clearPtyAlternateScreenSession
 } from '../store/ptyAlternateScreenStore'
 import { stripAnsi } from '../lib/stripAnsi'
+import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -32,7 +34,12 @@ const NOTIFY_DEBOUNCE_MS = 30_000
 const lastTokenTime = new Map<string, number>()
 const runtimeStatusTailBySession = new Map<string, string>()
 const runtimeStatusTouchAtBySession = new Map<string, number>()
+
 const DEBUG_EMBED_MCP = true
+const inputTraceBySession = new Map<
+  string,
+  { traceId: string; ackAt: number; chunks: string[]; timer?: ReturnType<typeof setTimeout> }
+>()
 const TERMINAL_INTERACTION_HINT_RE =
   /Enter to select|(?:↑|↓|\^|\x1b\[A|\x1b\[B).*to navigate|Esc to cancel|Space to cycle|Search skills|Do you want to proceed|Would you like to|Allow this action|Press Enter to confirm|yes\/no|Y\/n\)?[\s]*$/im
 // [2026-05-11] 有 spinner 字符时接受任意大写开头的词（Sprouting 等未知词）；无 spinner 时保守白名单
@@ -133,10 +140,47 @@ export function usePty(): void {
       useClaudeRuntimeStatusStore.getState().clearRuntimeStatus(payload.sessionId)
       runtimeStatusTailBySession.delete(payload.sessionId)
       runtimeStatusTouchAtBySession.delete(payload.sessionId)
+      /* [2026-05-12] 部分 TUI 退出时未回传 ?1049l，备用屏标志会卡死，外嵌「发送」永远被挡；中断后清标志便于继续输入 */
+      clearPtyAlternateScreenSession(payload.sessionId)
+    })
+    const unsubInputAck = window.electronAPI.onPtyInputAck((payload) => {
+      // [2026-05-12] 发送回执调试：确认“外嵌已调用 sendInput”后，主进程是否真正写入了 PTY
+      console.log('[pty-input-ack]', payload)
+      const traceId = payload.traceId?.trim()
+      if (!traceId) return
+      const prev = inputTraceBySession.get(payload.sessionId)
+      if (prev?.timer) clearTimeout(prev.timer)
+      const trace = {
+        traceId,
+        ackAt: Date.now(),
+        chunks: [] as string[]
+      }
+      trace.timer = setTimeout(() => {
+        const current = inputTraceBySession.get(payload.sessionId)
+        if (!current || current.traceId !== traceId) return
+        const plain = current.chunks.join('').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+        console.log('[pty-input-trace]', {
+          sessionId: payload.sessionId,
+          traceId,
+          ok: payload.ok,
+          via: payload.via,
+          bytes: payload.bytes,
+          outputPreview: plain.slice(0, 320),
+          outputLen: plain.length,
+          ackToReportMs: Date.now() - current.ackAt
+        })
+        inputTraceBySession.delete(payload.sessionId)
+      }, 800)
+      inputTraceBySession.set(payload.sessionId, trace)
     })
 
     const unsubOutput = window.electronAPI.onPtyOutput((payload) => {
       const { sessionId, data } = payload
+      const trace = inputTraceBySession.get(sessionId)
+      if (trace) {
+        trace.chunks.push(data)
+        if (trace.chunks.length > 6) trace.chunks = trace.chunks.slice(-6)
+      }
       if (DEBUG_EMBED_MCP && /Manage MCP servers|User MCPs|Built-in MCPs|View tools|Reconnect|Disable/.test(data)) {
         console.log('[embed-mcp][pty:chunk]', {
           sessionId,
@@ -146,6 +190,14 @@ export function usePty(): void {
           hasAltEnter: /\x1b\[\?(1049|1047)h/.test(data),
           hasAltExit: /\x1b\[\?(1049|1047)l/.test(data)
         })
+      }
+      // [2026-05-12] 检测 Bracketed Paste 模式开关（\x1b[?2004h = 开，\x1b[?2004l = 关）
+      if (/\x1b\[\?2004h/.test(data)) {
+        console.log('[bp] session', sessionId, '→ bracketed paste ON')
+        setBracketedPasteMode(sessionId, true)
+      } else if (/\x1b\[\?2004l/.test(data)) {
+        console.log('[bp] session', sessionId, '→ bracketed paste OFF')
+        setBracketedPasteMode(sessionId, false)
       }
       const plain = stripAnsi(data)
       const tail = appendRuntimeStatusTail(sessionId, plain)
@@ -186,6 +238,8 @@ export function usePty(): void {
         useClaudeRuntimeStatusStore.getState().clearRuntimeStatus(sessionId)
         runtimeStatusTailBySession.delete(sessionId)
         runtimeStatusTouchAtBySession.delete(sessionId)
+        /* [2026-05-12] 与中断同理：idle 表示主循环可接受新输入，清掉误粘的备用屏状态，避免外嵌无法发送 */
+        clearPtyAlternateScreenSession(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
       }
@@ -257,7 +311,12 @@ export function usePty(): void {
 
     return () => {
       offEmbedSettings()
+      for (const t of inputTraceBySession.values()) {
+        if (t.timer) clearTimeout(t.timer)
+      }
+      inputTraceBySession.clear()
       unsubIntr()
+      unsubInputAck()
       unsubOutput()
       unsubStatus()
       unsubTokens()

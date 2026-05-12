@@ -360,8 +360,17 @@ export function registerIpcHandlers(
 
   // ── PTY I/O ─────────────────────────────────────────────────
   /* [2026-05-08] 原仅转发 PTY；经典终端 Ctrl+C 与外嵌「中断」同源，渲染层需据此把上次普通提问填回输入框 */
-  ipcMain.on(IPC.PTY_INPUT, (e, payload: { sessionId: string; data: string }) => {
-    ptyManager.sendInput(payload.sessionId, payload.data)
+  ipcMain.on(IPC.PTY_INPUT, (e, payload: { sessionId: string; data: string; traceId?: string }) => {
+    const ack = ptyManager.sendInput(payload.sessionId, payload.data)
+    // [2026-05-12] 发送回执：用于定位“外嵌看起来发送了，但主进程未写入 PTY”的问题
+    e.sender.send(IPC.PTY_INPUT_ACK, {
+      sessionId: payload.sessionId,
+      ok: ack.ok,
+      via: ack.via,
+      bytes: ack.bytes,
+      reason: ack.reason,
+      traceId: payload.traceId
+    })
     if (typeof payload?.data === 'string' && payload.data.includes('\x03')) {
       const win = BrowserWindow.fromWebContents(e.sender)
       if (win && !win.isDestroyed()) {

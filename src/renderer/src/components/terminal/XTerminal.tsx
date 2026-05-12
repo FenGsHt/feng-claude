@@ -11,6 +11,7 @@ import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../../store/embedInterruptSuppressStore'
 import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
 import { beginSlashPtyEchoRound, setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
+import { isBracketedPasteModeActive } from '../../lib/bracketedPasteMode'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
 import { DARK_THEME, useResolvedTheme } from '../../hooks/useTheme'
@@ -185,6 +186,13 @@ export function commitUserPrompt(sessionId: string): void {
   userInputBuffers.set(sessionId, [])
 }
 
+function visualizePayloadForLog(payload: string): string {
+  return payload
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\x15/g, '\\x15')
+}
+
 /**
  * [2026-05-06] 外嵌 Beta：无 xterm 时通过前端输入框发往 PTY（与 onData 路径一致的缓冲与历史一行）
  */
@@ -196,7 +204,12 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   /* [2026-05-08] 新一轮用户提交时取消「中断后隐藏 loading」抑制，否则永远不显示处理中 */
   useEmbedInterruptSuppressStore.getState().clear(sessionId)
   const firstLine = raw.split('\n')[0]?.trimStart() ?? ''
-  const isSlashCommand = firstLine.startsWith('/')
+  // [2026-05-12] 只有 /word（字母开头）才是 Claude Code slash 命令；/** / /* 路径等不能误判
+  const isSlashCommand = /^\/[a-zA-Z]/.test(firstLine)
+  // [2026-05-12] 优先读 xterm 内部 modes（会话建立时就同步），自有 Map 兜底
+  const xtermBp = getOrCreateTerminal(sessionId).term.modes.bracketedPasteMode
+  const bp = xtermBp || isBracketedPasteModeActive(sessionId)
+  console.log('[submitEmbed] firstLine:', JSON.stringify(firstLine), 'isSlash:', isSlashCommand, 'bp(xterm):', xtermBp, 'bp(map):', isBracketedPasteModeActive(sessionId), 'lines:', raw.split('\n').length)
   /* [2026-05-06] 仅斜杠命令需要把 PTY 原文写入转录（/mcp 等）；普通对话仍以 JSONL 为准避免重复 */
   /* [2026-05-06] 每条新斜杠命令先 flush 并重置缓冲，否则多次 /mcp 在同一会话里会把整屏输出重复堆叠 */
   if (isSlashCommand) {
@@ -213,28 +226,78 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   //     : lines.join(win ? '\r\n' : '\n') + (win ? '\r' : '\n')
   let payload: string
   const lineEnding = win ? '\r' : '\n'
-  /* [2026-05-12] 多行文本在 PTY 中用 \n 换行即可（Claude Code readline 自行处理），
-   * 只在末尾用 \r 提交。
-   * [2026-05-12] Windows 上 conpty/cmd.exe 中 ^ 是行继续符：
-   * 若任意行以 ^ 结尾，^ 会吞掉后面的 \r 或 \n（行继续）。需要额外的 \r 来触发实际提交。 */
-  const textPart = lines.length === 1 ? lines[0]! : lines.join('\n')
-  const hasCaretAtLineEnd = win && textPart.split('\n').some(line => line.trimEnd().endsWith('^'))
+  /* [2026-05-12] 注释掉原“多行统一用 \n + 前置 \x15 清行”的策略：
+   * 用户反馈多行块（如 /** 注释）可进入 sendInput，但在原终端不稳定提交。
+   * 改为：多行走平台换行（Windows=\r\n）且不前置 \x15；单行保持原行为。 */
+  // const textPart = lines.length === 1 ? lines[0]! : lines.join('\n')
+  const isMultiline = lines.length > 1
+  // [2026-05-12] 原: const textPart = isMultiline ? lines.join(win ? '\r\n' : '\n') : lines[0]!
+  // [2026-05-12] 原改为 CRLF 后 Claude Code/Qwen 仍停在多行编辑态；按官方语义改为行内 LF(Ctrl+J)，末尾 CR(Enter) 提交。
+  // 首行以 "/" 开头且并非真正 slash 命令时，Claude CLI 仍可能按命令语义处理；前置空格规避该分支。
+  const escapedLeadingSlash = !isSlashCommand && firstLine.startsWith('/')
+  const baseTextPart = isMultiline ? lines.join('\n') : lines[0]!
+  const textPart = escapedLeadingSlash ? ` ${baseTextPart}` : baseTextPart
+  const splitMultilineSubmit = !isSlashCommand && isMultiline
+  // [2026-05-12] 原: const multilineSubmitSuffix = `${lineEnding}${lineEnding}`
+  // [2026-05-12] 原: const multilineSubmitSuffix = `${lineEnding}\n`
+  // [2026-05-12] 原: const multilineSubmitSuffix = '\r'
+  // 同批次末尾 Enter 会被 TUI 当作多行编辑内容消费；多行改为“先写正文，延迟后单独发送 Enter”。
+  const multilineSubmitSuffix = splitMultilineSubmit ? '' : '\r'
+  const submitMode = splitMultilineSubmit ? 'split-lf-body+delayed-cr' : 'default'
+  const hasCaretAtLineEnd = win && textPart.split(/\r?\n/).some(line => line.trimEnd().endsWith('^'))
   if (!isSlashCommand) {
-    /* [2026-05-11] 文本含 @ 时 Claude Code 的 @ 自动补全会弹出，\r 被补全消费导致不提交。
-     * 在 @path 后追加空格再 Enter：Claude Code 的 @ 补全正则 @(\S*)$ 只在行末匹配，
-     * 有空格时补全不触发，Enter 正常提交。 */
-    if (textPart.includes('@')) {
-      payload = `\x15${textPart} ${lineEnding}`
+    /* [2026-05-12] 若 Claude Code 已开启 Bracketed Paste 模式（\x1b[?2004h），用 BP 序列包裹文本。
+     * 这样 Claude Code 不会把首字符 `/` 解读为 slash 命令触发符，也不会把中间的 `\n` 解读为 Enter 提交。
+     * 此方案同时修复：/** 注释、/path 路径、多行粘贴等所有被 slash 弹窗拦截的场景。 */
+    if (bp) {
+      // BP 模式：\x15 清行 + BP 包裹 + \r 提交；@ 补全问题也随之消失（BP 内不触发自动补全）
+      // [2026-05-12] 原: payload = `\x15\x1b[200~${textPart}\x1b[201~\r`
+      payload = isMultiline
+        ? `\x15\x1b[200~${textPart}\x1b[201~${multilineSubmitSuffix}`
+        : `\x15\x1b[200~${textPart}\x1b[201~\r`
+    } else if (textPart.includes('@')) {
+      /* [2026-05-11] 文本含 @ 时 Claude Code 的 @ 自动补全会弹出，\r 被补全消费导致不提交。
+       * 在 @path 后追加空格再 Enter：Claude Code 的 @ 补全正则 @(\S*)$ 只在行末匹配，
+       * 有空格时补全不触发，Enter 正常提交。 */
+      // [2026-05-12] 原：payload = `\x15${textPart} ${lineEnding}`；多行前置 Ctrl+U 会干扰提交，改为仅单行清行。
+      // [2026-05-12] 原: payload = isMultiline ? `${textPart} ${lineEnding}` : `\x15${textPart} ${lineEnding}`
+      payload = isMultiline ? `${textPart} ${multilineSubmitSuffix}` : `\x15${textPart} ${lineEnding}`
     } else if (hasCaretAtLineEnd) {
       // Windows ^ 行继续符会吞 \r；额外追加一个 \r 确保提交
-      payload = `\x15${textPart}${lineEnding}${lineEnding}`
+      // [2026-05-12] 原：payload = `\x15${textPart}${lineEnding}${lineEnding}`；多行禁用 Ctrl+U，避免破坏块输入。
+      // [2026-05-12] 原: payload = isMultiline ? `${textPart}${lineEnding}${lineEnding}` : `\x15${textPart}${lineEnding}${lineEnding}`
+      payload = isMultiline ? `${textPart}${multilineSubmitSuffix}` : `\x15${textPart}${lineEnding}${lineEnding}`
     } else {
-      payload = `\x15${textPart}${lineEnding}`
+      // [2026-05-12] 原：payload = `\x15${textPart}${lineEnding}`；仅单行保留 Ctrl+U 清行。
+      // [2026-05-12] 原: payload = isMultiline ? `${textPart}${lineEnding}` : `\x15${textPart}${lineEnding}`
+      payload = isMultiline ? `${textPart}${multilineSubmitSuffix}` : `\x15${textPart}${lineEnding}`
     }
   } else {
     payload = `${textPart}${lineEnding}`
   }
-  window.electronAPI.sendInput(sessionId, payload)
+  const traceId = `embed-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  // [2026-05-12] 原仅 sendInput(sessionId, payload)；为定位“ACK 成功但终端未按预期处理”，补 traceId + 可见转义日志。
+  // window.electronAPI.sendInput(sessionId, payload)
+  console.log('[submitEmbed:payload]', {
+    traceId,
+    sessionId,
+    escapedLeadingSlash,
+    submitMode,
+    bytes: new TextEncoder().encode(payload).length,
+    payloadPreview: visualizePayloadForLog(payload).slice(0, 240)
+  })
+  window.electronAPI.sendInput(sessionId, payload, traceId)
+  if (splitMultilineSubmit) {
+    window.setTimeout(() => {
+      console.log('[submitEmbed:delayedSubmit]', {
+        traceId,
+        sessionId,
+        delayMs: 80,
+        payloadPreview: '\\r'
+      })
+      window.electronAPI.sendInput(sessionId, '\r')
+    }, 80)
+  }
   if (isSlashCommand) {
     /* [2026-05-07] 原把 /mcp、/skills 当普通用户消息写入转录和历史，外嵌里会堆出一串生硬的右侧气泡；slash 只驱动终端交互块。 */
     // bufferUserInput(sessionId, `${raw}\n`)

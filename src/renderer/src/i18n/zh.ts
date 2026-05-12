@@ -39,7 +39,9 @@ export const zh = {
     name: '名称',
     type: '类型',
     optional: '可选',
-    error: '错误'
+    error: '错误',
+    embedSendBlockedAlt: '全屏终端界面中已暂停外嵌发送：退出 TUI、点中断，或等空闲后再试。',
+    embedSendBlockedSlash: '斜杠命令交互中：请先点「中断」退出或完成上方终端内操作。'
   },
   // Token usage widget
   token: {

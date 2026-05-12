@@ -39,7 +39,9 @@ export const en: Translations = {
     name: 'Name',
     type: 'Type',
     optional: 'Optional',
-    error: 'Error'
+    error: 'Error',
+    embedSendBlockedAlt: 'Alternate-screen (full-screen TUI) detected: exit the TUI, use Interrupt, or wait until idle before sending from here.',
+    embedSendBlockedSlash: 'Slash command interaction: tap Interrupt to exit or finish in the terminal above.'
   },
   token: {
     title: 'Token Usage',

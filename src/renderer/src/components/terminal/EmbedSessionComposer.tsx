@@ -23,6 +23,7 @@ import { useEmbedInputHistoryStore } from '../../store/embedInputHistoryStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { formatTokenCount } from '../../lib/formatTokens'
+import { useI18n } from '../../i18n'
 
 /*
  * [2026-05-12] 原 ContextUsagePill：在按钮行左侧用文字 pill 显示上下文用量。
@@ -161,6 +162,7 @@ export function EmbedSessionComposer({
   sessionId,
   nativeTerminalOverlayVisible = false
 }: Props): React.ReactElement {
+  const { t } = useI18n()
   const alternateScreen = usePtyAlternateScreenStore((s) => s.bySession[sessionId] === true)
   const [draft, setDraft] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -206,15 +208,17 @@ export function EmbedSessionComposer({
     }
     return false
   })
+  /* [2026-05-12] 斜杠 TUI 交互态不再单独显示「强制退出」，与 running 等场景统一用「中断」退出（仍走单 Ctrl+C + clearNativeTerminal）。 */
+  /* [2026-05-12] 斜杠交互时 nativeTerminalNeeded 常为 true；若仍要求 !nativeTerminalInteractionActive 会导致无「中断」可点。 */
   const showInterrupt =
     !alternateScreen &&
-    !slashInteractiveMode &&
-    !nativeTerminalInteractionActive &&
-    /* [2026-05-11] 原把 sessionStatus=running 当作“Claude 正在干活”，但它也表示 Claude Code 进程正常待命。
-     * 空输入时点「中断」会发送双 Ctrl+C，可能直接退出 Claude Code 并触发重启，造成双实例。 */
-    (sessionStatus === 'waiting_input' ||
-      pendingReply ||
-      transcriptSignalsWork)
+    (slashInteractiveMode ||
+      (!nativeTerminalInteractionActive &&
+        /* [2026-05-11] 原把 sessionStatus=running 当作“Claude 正在干活”，但它也表示 Claude Code 进程正常待命。
+         * 空输入时点「中断」会发送双 Ctrl+C，可能直接退出 Claude Code 并触发重启，造成双实例。 */
+        (sessionStatus === 'waiting_input' ||
+          pendingReply ||
+          transcriptSignalsWork)))
   /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
   // useEmbedPtyResize(sessionId, true)
   useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible)
@@ -441,24 +445,6 @@ export function EmbedSessionComposer({
     },
     [draft, atCtx]
   )
-
-  const interruptGeneration = useCallback((): void => {
-    const shouldInterrupt =
-      !alternateScreen &&
-      !slashInteractiveMode &&
-      !nativeTerminalInteractionActive &&
-      (sessionStatus === 'waiting_input' || pendingReply || transcriptSignalsWork)
-    if (!shouldInterrupt) return
-    sendPtyInterruptSignal(sessionId)
-  }, [
-    alternateScreen,
-    nativeTerminalInteractionActive,
-    pendingReply,
-    sessionId,
-    sessionStatus,
-    slashInteractiveMode,
-    transcriptSignalsWork
-  ])
 
   /* [2026-05-10] 将 blob 转 base64 发给主进程存临时文件 */
   const saveImageBlob = useCallback(async (blob: Blob): Promise<string | null> => {
@@ -691,25 +677,35 @@ export function EmbedSessionComposer({
     }, 250)
   }, [clearNativeTerminal, sessionId])
 
+  /* [2026-05-12] 斜杠 TUI 与 running 等统一走「中断」：斜杠态调用 exitSlashInteraction（单 Ctrl+C + clearNativeTerminal），否则双 Ctrl+C。 */
+  const interruptGeneration = useCallback((): void => {
+    if (alternateScreen) return
+    if (slashInteractiveMode) {
+      exitSlashInteraction()
+      return
+    }
+    if (nativeTerminalInteractionActive) return
+    if (!(sessionStatus === 'waiting_input' || pendingReply || transcriptSignalsWork)) return
+    sendPtyInterruptSignal(sessionId)
+  }, [
+    alternateScreen,
+    exitSlashInteraction,
+    nativeTerminalInteractionActive,
+    pendingReply,
+    sessionId,
+    sessionStatus,
+    slashInteractiveMode,
+    transcriptSignalsWork
+  ])
+
   const sendPtyControlKey = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      /* [2026-05-12] 原 Ctrl+Enter / Ctrl+C 调 exitSlashInteraction；与「仅中断按钮退出」一致，改由按钮处理，此处只吞键以免误输入 readOnly 框。 */
       if (!slashInteractiveMode || alternateScreen) return false
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        exitSlashInteraction()
-        return true
-      }
-      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
-        e.preventDefault()
-        exitSlashInteraction()
-        return true
-      }
-      /* [2026-05-07] 原在 textarea 里手动转发 ↑↓/字符/Tab；/skills 这类带输入框 TUI 需要真实 xterm 处理焦点、组合键和输入。 */
-      // sendRawPtyInput(sessionId, data)
       e.preventDefault()
       return true
     },
-    [alternateScreen, exitSlashInteraction, sessionId, slashInteractiveMode]
+    [alternateScreen, slashInteractiveMode]
   )
 
   const setDraftFromHistory = useCallback((text: string): void => {
@@ -863,14 +859,6 @@ export function EmbedSessionComposer({
 
     if (e.key === 'Enter') {
       if (e.ctrlKey || e.metaKey) {
-        /* [2026-05-06] 原 Ctrl/Cmd+Enter 永远是换行；斜杠交互态下改为退出直控，避免无法回到普通输入 */
-        // e.preventDefault()
-        // insertNewlineAtCursor()
-        if (slashInteractiveMode) {
-          e.preventDefault()
-          exitSlashInteraction()
-          return
-        }
         e.preventDefault()
         insertNewlineAtCursor()
         return
@@ -957,7 +945,7 @@ export function EmbedSessionComposer({
               换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
               命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
               <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
-              填入/历史 · running / 等待确认时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 发送斜杠命令后按键直通 PTY（Esc / Ctrl+Enter 退出）· 文件拖入上方可插入 @ 路径
+              填入/历史 · running / 等待确认或斜杠交互时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 斜杠交互时用「中断」退出 TUI · 文件拖入上方可插入 @ 路径
             </p>
           </details>
         )}
@@ -1080,7 +1068,7 @@ export function EmbedSessionComposer({
                 : alternateScreen
                 ? '全屏终端界面进行中，输入已暂停…'
                 : slashInteractiveMode
-                  ? '斜杠命令交互中：请在上方内嵌终端直接输入；Ctrl+Enter 强制退出'
+                  ? '斜杠命令交互中：请在上方内嵌终端操作；点「中断」退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
             className={`fo-embed-composer-textarea min-h-[36px] w-full overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow shadow-black/25 placeholder:text-claude-muted/70 focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
@@ -1097,26 +1085,28 @@ export function EmbedSessionComposer({
           {showInterrupt ? (
             <button
               type="button"
-              title="向 PTY 发送 Ctrl+C"
+              title={
+                slashInteractiveMode
+                  ? '退出斜杠命令 TUI（发送 Ctrl+C 并收起终端浮层）'
+                  : '向 PTY 发送 Ctrl+C'
+              }
               onClick={interruptGeneration}
               className="rounded-lg border border-red-500/55 bg-red-500/12 px-3 py-1.5 text-[11px] font-semibold text-red-400 transition hover:bg-red-500/20"
             >
               中断
             </button>
           ) : null}
-          {slashInteractiveMode ? (
-            <button
-              type="button"
-              onClick={exitSlashInteraction}
-              className="rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)]"
-            >
-              强制退出
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={() => send()}
-            disabled={alternateScreen || slashInteractiveMode}
+            disabled={isProcessDead || alternateScreen || slashInteractiveMode}
+            title={
+              alternateScreen
+                ? t.common.embedSendBlockedAlt
+                : slashInteractiveMode
+                  ? t.common.embedSendBlockedSlash
+                  : undefined
+            }
             className="rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-4 py-1.5 text-[11px] font-semibold text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             发送

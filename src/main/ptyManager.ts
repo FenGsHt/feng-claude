@@ -894,13 +894,25 @@ export class PtyManager {
     socket.on('error', () => { try { socket.destroy() } catch { /* ignore */ } })
   }
 
-  sendInput(sessionId: string, data: string): void {
+  sendInput(
+    sessionId: string,
+    data: string
+  ): { ok: boolean; via?: 'daemon' | 'pty'; bytes: number; reason?: string } {
+    const bytes = Buffer.byteLength(data ?? '', 'utf8')
     const session = this.sessions.get(sessionId)
-    if (!session) return
-    if (session.daemonSocket) {
-      session.daemonSocket.write(JSON.stringify({ t: 'i', d: data }) + '\n')
-    } else {
+    if (!session) {
+      return { ok: false, bytes, reason: 'session_not_found' }
+    }
+    try {
+      if (session.daemonSocket) {
+        session.daemonSocket.write(JSON.stringify({ t: 'i', d: data }) + '\n')
+        return { ok: true, via: 'daemon', bytes }
+      }
       session.ptyProcess?.write(data)
+      return { ok: true, via: 'pty', bytes }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      return { ok: false, bytes, reason }
     }
   }
 

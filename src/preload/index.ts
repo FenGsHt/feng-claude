@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
+import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, PtyInputAckPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings, ApiProfile, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
@@ -43,8 +43,9 @@ const electronAPI = {
     ipcRenderer.invoke(IPC.SESSION_CLOSE, { sessionId }),
 
   // PTY
-  sendInput: (sessionId: string, data: string): void =>
-    ipcRenderer.send(IPC.PTY_INPUT, { sessionId, data }),
+  // [2026-05-12] 原 sendInput 仅传 sessionId/data；为定位“已发送但未生效”补充 traceId 贯通主进程 ACK。
+  sendInput: (sessionId: string, data: string, traceId?: string): void =>
+    ipcRenderer.send(IPC.PTY_INPUT, { sessionId, data, traceId }),
 
   resizePty: (sessionId: string, cols: number, rows: number): void =>
     ipcRenderer.send(IPC.PTY_RESIZE, { sessionId, cols, rows }),
@@ -68,6 +69,12 @@ const electronAPI = {
       callback(payload)
     ipcRenderer.on(IPC.PTY_INTR_SENT, handler)
     return () => ipcRenderer.removeListener(IPC.PTY_INTR_SENT, handler)
+  },
+  onPtyInputAck: (callback: (payload: PtyInputAckPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: PtyInputAckPayload): void =>
+      callback(payload)
+    ipcRenderer.on(IPC.PTY_INPUT_ACK, handler)
+    return () => ipcRenderer.removeListener(IPC.PTY_INPUT_ACK, handler)
   },
 
   // Working directory
