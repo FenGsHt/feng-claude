@@ -21,7 +21,7 @@ export async function parsePptx(buffer: ArrayBuffer): Promise<string> {
     const xml = await zip.file(slideFiles[i])!.async('string')
     const slideHtml = await parseSlideXml(xml, zip, i + 1)
     slides.push(
-      `<div class="slide-container"><div class="slide">${slideHtml}</div></div>`
+      `<div class="slide-container"><div class="slide"><div class="slide-inner">${slideHtml}</div></div></div>`
     )
   }
 
@@ -39,15 +39,20 @@ export async function parsePptx(buffer: ArrayBuffer): Promise<string> {
     margin-bottom: 16px;
     border: 1px solid #e2e8f0; border-radius: 4px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    background: white; overflow: hidden;
-  }
-  .slide-outer {
-    width: 100%; overflow: hidden;
+    background: white;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
   }
   .slide {
-    position: relative; width: ${SLIDE_WIDTH}px; height: ${SLIDE_HEIGHT}px;
-    transform-origin: top left;
+    position: relative;
+    width: 100%; height: 100%;
     overflow: hidden;
+  }
+  .slide-inner {
+    position: absolute;
+    width: ${SLIDE_WIDTH}px; height: ${SLIDE_HEIGHT}px;
+    transform-origin: top left;
   }
   .slide-number {
     position: absolute; top: 8px; right: 8px;
@@ -78,16 +83,14 @@ export async function parsePptx(buffer: ArrayBuffer): Promise<string> {
 ${slides.join('\n')}
 <div id="path-bar"></div>
 <script>
-// Auto-scale slides to fit container width
 function scaleSlides() {
   document.querySelectorAll('.slide-container').forEach(function(container) {
-    const outer = container.querySelector('.slide-outer');
-    const slide = container.querySelector('.slide');
-    if (!outer || !slide) return;
-    const scale = outer.clientWidth / ${SLIDE_WIDTH};
-    slide.style.transform = 'scale(' + scale + ')';
-    slide.style.transformOrigin = 'top left';
-    outer.style.height = (${SLIDE_HEIGHT} * scale) + 'px';
+    var slideInner = container.querySelector('.slide-inner');
+    if (!slideInner) return;
+    var cw = container.clientWidth;
+    var ch = container.clientHeight;
+    var scale = Math.min(cw / ${SLIDE_WIDTH}, ch / ${SLIDE_HEIGHT});
+    slideInner.style.transform = 'scale(' + scale + ')';
   });
 }
 scaleSlides();
