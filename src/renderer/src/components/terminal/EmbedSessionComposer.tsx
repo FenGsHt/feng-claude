@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
 import { registerEmbedDraftInjector } from '../../lib/embedDraftBridge'
 import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
-import { usePtyAlternateScreenStore } from '../../store/ptyAlternateScreenStore'
+import { usePtyAlternateScreenStore, clearPtyAlternateScreenSession } from '../../store/ptyAlternateScreenStore'
 import { useSessionStore } from '../../store/sessionStore'
 import {
   filterSlashCommands,
@@ -931,6 +931,15 @@ export function EmbedSessionComposer({
               }}
             >
               q ↵
+            </button>
+            {/* [2026-05-12] 误检逃生门：若备用屏状态系误判（如 MCP 启动噪声），可强制解除而不向 PTY 发送任何内容 */}
+            <button
+              type="button"
+              title="强制解除备用屏锁定（不向终端发送任何内容，仅重置外嵌状态）"
+              className="rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-claude-muted transition hover:text-claude-text hover:bg-[var(--theme-panel-bg-soft)]"
+              onClick={() => clearPtyAlternateScreenSession(sessionId)}
+            >
+              强制恢复
             </button>
           </div>
         </div>

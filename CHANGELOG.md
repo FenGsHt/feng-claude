@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.6] - 2026-05-12
+
+### 修复 | Bug Fixes
+- **外嵌卡住（特定项目）**：含失败 MCP 服务器的项目在 PTY 进入 `idle` 后，延迟到达的 PTY_OUTPUT chunk 可能携带 `?1049h`（Ink/TUI 启动噪声），导致备用屏标志被误置 `true`、外嵌输入框永久禁用。根本原因为 `PTY_OUTPUT` 与 `PTY_STATUS` 经不同 IPC 通道发送，渲染端收到顺序无保证。修复：`idle` 后 1500ms 宽限期内的 `?1049h` 视作噪声丢弃，不触发备用屏锁定
+- **外嵌备用屏误判逃生门**：备用屏横幅新增「强制恢复」按钮，直接重置前端状态而不向 PTY 发送任何内容，供误检时恢复
+
+---
+
 ## [0.7.5] - 2026-05-13
 
 ### 修复 | Bug Fixes

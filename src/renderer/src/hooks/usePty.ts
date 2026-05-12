@@ -15,7 +15,8 @@ import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
 import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive,
-  clearPtyAlternateScreenSession
+  clearPtyAlternateScreenSession,
+  markPtySessionIdle
 } from '../store/ptyAlternateScreenStore'
 import { stripAnsi } from '../lib/stripAnsi'
 import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
@@ -190,6 +191,8 @@ export function usePty(): void {
         runtimeStatusTailBySession.delete(sessionId)
         runtimeStatusTouchAtBySession.delete(sessionId)
         /* [2026-05-12] 与中断同理：idle 表示主循环可接受新输入，清掉误粘的备用屏状态，避免外嵌无法发送 */
+        /* [2026-05-12] markPtySessionIdle 先于 clear：宽限期阻止 idle 后仍在途的 ?1049h chunk 重新锁定 */
+        markPtySessionIdle(sessionId)
         clearPtyAlternateScreenSession(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
