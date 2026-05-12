@@ -3,6 +3,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
+import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 import { SplitWorkdirDialog } from './SplitWorkdirDialog'
 import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
@@ -284,7 +285,11 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       lines.push(`Selector: ${info.selector}`)
       if (info.text) lines.push(`Text: "${info.text.replace(/\n/g, ' ')}"`)
       lines.push(`HTML: ${info.html}`)
-      window.electronAPI.sendInput(sess.id, '\n' + lines.join('\n') + '\n')
+      const ref = '\n' + lines.join('\n') + '\n'
+      // [2026-05-12] 优先写入外嵌输入框，不存在时发到 PTY
+      if (!injectEmbedDraft(sess.id, ref)) {
+        window.electronAPI.sendInput(sess.id, ref)
+      }
     })
     return unsub
   }, [sess?.id])
