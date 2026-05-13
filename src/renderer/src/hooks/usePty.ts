@@ -12,6 +12,7 @@ import { useEmbedAwaitingReplyStore } from '../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../store/embedInterruptSuppressStore'
 import { useClaudeRuntimeStatusStore } from '../store/claudeRuntimeStatusStore'
 import { feedPtyChunkForTokenUsage } from '../lib/claudeTokenUsageParse'
+import { useOsc9ProgressStore } from '../store/osc9ProgressStore'
 import {
   feedPtyAlternateScreenFromOutput,
   isPtyAlternateScreenActive,
@@ -150,6 +151,21 @@ export function usePty(): void {
         setBracketedPasteMode(sessionId, true)
       } else if (/\x1b\[\?2004l/.test(data)) {
         setBracketedPasteMode(sessionId, false)
+      }
+      /* [2026-05-13] OSC 9;4 进度条：\x1b]9;4;<percent>\x07 或 \x1b]9;4;<percent>;<message>\x07 */
+      const oscRe = /\x1b]9;4;(\d{1,3})(?:;([^\x07]*))?\x07/g
+      let m: RegExpExecArray | null
+      let lastPercent = -1
+      let lastMsg: string | undefined
+      while ((m = oscRe.exec(data)) !== null) {
+        lastPercent = parseInt(m[1], 10)
+        lastMsg = m[2] || undefined
+      }
+      if (lastPercent >= 0) {
+        useOsc9ProgressStore.getState().setProgress(sessionId, lastPercent, lastMsg)
+      } else if (/\x1b]9;4;\x07/.test(data)) {
+        /* 空参数 = 清除进度 */
+        useOsc9ProgressStore.getState().clearProgress(sessionId)
       }
       const plain = stripAnsi(data)
       const tail = appendRuntimeStatusTail(sessionId, plain)

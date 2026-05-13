@@ -455,13 +455,14 @@ export function PetWidget(): React.ReactElement {
   }, [gameCoins])
 
   // [2026-05-12] 全局 token 变化时自动同步游戏币（游戏打开时暂停，避免干扰结算）
-  const gTotals = useGlobalTokenStore(s => s.total)
+  // 改用 today 而非 total，与「今日花费」保持一致
+  const gToday = useGlobalTokenStore(s => s.today)
   const gPricing = useGlobalTokenStore(s => s.pricing)
   useEffect(() => {
     if (gameIsOpenRef.current) return
-    const cost = computeCost(gTotals, gPricing)
+    const cost = computeCost(gToday, gPricing)
     syncGameCoins(cost)
-  }, [gTotals, gPricing]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gToday, gPricing]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
@@ -899,7 +900,7 @@ export function PetWidget(): React.ReactElement {
             </span>
           )}
           <button
-            className="flex flex-row items-center gap-1 rounded px-1.5 py-1 text-claude-muted transition hover:text-[#f5c542] hover:bg-claude-surface"
+            className="group flex flex-row items-center gap-1 rounded px-1.5 py-1 text-claude-muted transition-all duration-300 ease-out hover:text-[#f5c542] hover:bg-claude-surface hover:-translate-x-1 overflow-hidden whitespace-nowrap"
             onClick={() => {
               gameIsOpenRef.current = true
               setBlackjackMinimized(false)
@@ -908,11 +909,14 @@ export function PetWidget(): React.ReactElement {
             }}
             title="21 点 Blackjack"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="9" />
               <path d="M14.5 9a2.5 2.5 0 0 0-5 0c0 2.5 5 2 5 4.5a2.5 2.5 0 0 1-5 0" />
             </svg>
-            <span className="text-[10px] tabular-nums leading-none" style={{ color: '#2ecc71' }}>
+            <span
+              className="text-[10px] tabular-nums leading-none overflow-hidden whitespace-nowrap transition-all duration-300 ease-out opacity-0 w-0 translate-x-2 group-hover:opacity-100 group-hover:w-auto group-hover:translate-x-0"
+              style={{ color: '#2ecc71' }}
+            >
               {Math.floor(gameCoins).toLocaleString()}
             </span>
           </button>

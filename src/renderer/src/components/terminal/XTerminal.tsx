@@ -234,28 +234,26 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
   const hasCaretAtLineEnd = win && textPart.split(/\r?\n/).some(line => line.trimEnd().endsWith('^'))
   // [2026-05-12] ! 开头的命令是 Claude Code shell 命令前缀，在 BP 模式下会被当作纯文本粘贴而不触发 shell 执行，需跳过 BP 包裹
   const isShellCommand = firstLine.startsWith('!')
+  // [2026-05-12] @ 路径引用（如 @.feng-temp/...）尾部加空格阻止补全（@(\S*)$ 只在行末匹配）
+  const hasAt = textPart.includes('@') && !isShellCommand
+  // [2026-05-12] 仅当 xterm 确认 BP 已开启时才使用 BP 包裹
+  const useBp = bp && !isShellCommand
   if (!isSlashCommand) {
     /* [2026-05-12] 若 Claude Code 已开启 Bracketed Paste 模式（\x1b[?2004h），用 BP 序列包裹文本。
      * 这样 Claude Code 不会把首字符 `/` 解读为 slash 命令触发符，也不会把中间的 `\n` 解读为 Enter 提交。
      * 此方案同时修复：/** 注释、/path 路径、多行粘贴等所有被 slash 弹窗拦截的场景。
      * 但 shell 命令（! 开头）需跳过 BP 包裹，否则 ! 无法触发 shell 执行。 */
-    if (bp && !isShellCommand) {
+    if (useBp) {
       // BP 模式：\x15 清行 + BP 包裹 + \r 提交；@ 补全问题也随之消失（BP 内不触发自动补全）
       // [2026-05-12] 原: payload = `\x15\x1b[200~${textPart}\x1b[201~\r`
       payload = isMultiline
         ? `\x15\x1b[200~${textPart}\x1b[201~${multilineSubmitSuffix}`
         : `\x15\x1b[200~${textPart}\x1b[201~\r`
-    } else if (textPart.includes('@')) {
-      /* [2026-05-12] 原 BP 包裹方案在 daemon 模式下导致输入无法送达 PTY。
-       * 改为：尾部空格阻止 @ 补全触发，不用 BP 序列。
-       * 多行内容不包含尾部空格（Claude Code 不会在多行中间触发 @ 补全）。 */
-      if (!isShellCommand) {
-        payload = isMultiline
-          ? `\x15${textPart}${lineEnding}`
-          : `\x15${textPart} ${lineEnding}`
-      } else {
-        payload = isMultiline ? `${textPart} ${multilineSubmitSuffix}` : `\x15${textPart} ${lineEnding}`
-      }
+    } else if (hasAt) {
+      /* [2026-05-12] 不在 BP 模式时，@ 在行末会触发补全弹窗。
+       * 尾部追加空格阻止补全（Claude Code 的 @(\S*)$ 正则只在行末且 @ 后无空白时匹配）。
+       * \x15 清行确保上一次残留不影响当前输入。 */
+      payload = `\x15${textPart} ${lineEnding}`
     } else if (hasCaretAtLineEnd) {
       // Windows ^ 行继续符会吞 \r；额外追加一个 \r 确保提交
       // [2026-05-12] 原：payload = `\x15${textPart}${lineEnding}${lineEnding}`；多行禁用 Ctrl+U，避免破坏块输入。
@@ -270,11 +268,25 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
     payload = `${textPart}${lineEnding}`
   }
   const traceId = `embed-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  window.electronAPI.sendInput(sessionId, payload, traceId)
-  if (splitMultilineSubmit) {
+  // [2026-05-12] @ 路径引用分三步发送，避免单步中 @ 触发补全拦截 \r
+  // 第一步：清行
+  // 第二步：等清行生效后发正文（带尾部空格阻止补全）
+  // 第三步：等正文到达后再发行尾触发提交
+  if (hasAt && !useBp) {
+    window.electronAPI.sendInput(sessionId, '\x15', traceId)
     window.setTimeout(() => {
-      window.electronAPI.sendInput(sessionId, '\r')
+      window.electronAPI.sendInput(sessionId, `${textPart} `, traceId)
+    }, 30)
+    window.setTimeout(() => {
+      window.electronAPI.sendInput(sessionId, lineEnding, traceId)
     }, 80)
+  } else {
+    window.electronAPI.sendInput(sessionId, payload, traceId)
+    if (splitMultilineSubmit) {
+      window.setTimeout(() => {
+        window.electronAPI.sendInput(sessionId, '\r')
+      }, 80)
+    }
   }
   if (isSlashCommand) {
     /* [2026-05-07] 原把 /mcp、/skills 当普通用户消息写入转录和历史，外嵌里会堆出一串生硬的右侧气泡；slash 只驱动终端交互块。 */

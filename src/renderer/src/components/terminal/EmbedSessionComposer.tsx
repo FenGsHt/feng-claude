@@ -22,6 +22,7 @@ import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequest
 import { useEmbedInputHistoryStore } from '../../store/embedInputHistoryStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
+import { useOsc9ProgressStore } from '../../store/osc9ProgressStore'
 import { formatTokenCount } from '../../lib/formatTokens'
 import { useI18n } from '../../i18n'
 
@@ -183,12 +184,16 @@ export function EmbedSessionComposer({
   const embedSendBusyRef = useRef(false)
   /** [2026-05-08] 与 draft state 同步；onChange 即写入，避免仅靠闭包/React 批处理滞后 */
   const draftMirrorRef = useRef('')
+  /** [2026-05-13] 标记刚填入 slash 建议项，避免 React 批处理延迟导致第二次 Enter 重复进入补全逻辑 */
+  const slashJustFilledRef = useRef(false)
   const inputHistory = useEmbedInputHistoryStore((s) => s.bySession[sessionId] ?? [])
   const pushInputHistory = useEmbedInputHistoryStore((s) => s.pushHistory)
   const workdir = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.workdir ?? '')
   /* [2026-05-08] interruptSuppress 只用于收起底部「处理中」条；若绑在按钮上，中断一次后 suppress 恒真直至 idle，按钮会长期不出现，也无法二次中断 */
   const sessionStatus = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status)
   const isProcessDead = sessionStatus === 'exited' || sessionStatus === 'error'
+  /* [2026-05-13] OSC 9;4 上下文压缩/长任务进度条 */
+  const osc9Progress = useOsc9ProgressStore((s) => s.bySession[sessionId])
   const pendingReply = useEmbedAwaitingReplyStore((s) => s.pendingBySession[sessionId] === true)
   /* [2026-05-07] 原强制退出复用 dismiss，会留下 needed 状态；强制退出应清理整条终端请求。 */
   // const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
@@ -235,6 +240,15 @@ export function EmbedSessionComposer({
       return []
     })
   }, [sessionId])
+
+  /* [2026-05-13] OSC 9;4 进度条超时 5s 自动清除，避免 Claude Code 未主动清除时残留 */
+  useEffect(() => {
+    if (!osc9Progress) return
+    const timer = window.setTimeout(() => {
+      useOsc9ProgressStore.getState().clearProgress(sessionId)
+    }, 5000)
+    return () => window.clearTimeout(timer)
+  }, [sessionId, osc9Progress?.updatedAt])
 
   /* [2026-05-08] 主进程在任意 sendInput 含 Ctrl+C 时广播；与经典终端 xterm 打断同源，恢复上次普通提问草稿 */
   useEffect(() => {
@@ -351,6 +365,11 @@ export function EmbedSessionComposer({
     setSelectedSlash(0)
   }, [slashCtx?.query, slashCtx?.end])
 
+  /* [2026-05-13] slash 菜单关闭时清除填入标记，避免残留影响后续普通消息发送 */
+  useEffect(() => {
+    if (!slashMenuOpen) slashJustFilledRef.current = false
+  }, [slashMenuOpen])
+
   useEffect(() => {
     setSelectedSlash((s) => (slashList.length === 0 ? 0 : Math.min(s, slashList.length - 1)))
   }, [slashList.length])
@@ -427,10 +446,11 @@ export function EmbedSessionComposer({
       const range = resolveSlashInsertRange(draft, curPos)
       if (!range) return
       const after = draft.slice(range.end)
-      const next = item.insert + after
+      const insertWithSpace = item.insert + ' '
+      const next = insertWithSpace + after
       draftMirrorRef.current = next
       setDraft(next)
-      const pos = range.start + item.insert.length
+      const pos = range.start + insertWithSpace.length
       requestAnimationFrame(() => {
         const el = taRef.current
         if (el) {
@@ -640,7 +660,7 @@ export function EmbedSessionComposer({
     toCleanup.forEach((img) => {
       setTimeout(() => {
         window.electronAPI.deleteFile(img.filePath)
-      }, 120_000) // 2 分钟，足够覆盖绝大多数响应耗时
+      }, 30 * 60 * 1000) // 30 分钟，给长对话留足读取时间
     })
 
     queueMicrotask(() => {
@@ -801,11 +821,36 @@ export function EmbedSessionComposer({
         setSelectedSlash((i) => (i - 1 + slashList.length) % slashList.length)
         return
       }
-      /* [2026-05-06] 原 Enter 只 applySlashItem，用户补全已展开时无法发送；改为 Tab 填入 */
+      /* [2026-05-13] Enter 两步：首次填入建议项并关闭菜单，再次 Enter 发送。
+       * 用 setTimeout 清除 ref（晚于 rAF），避免 React 状态未更新时第二次 Enter 重复进入补全逻辑 */
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault()
+        if (slashJustFilledRef.current) {
+          /* 刚填入完毕，这次 Enter 正常发送 */
+          slashJustFilledRef.current = false
+          window.setTimeout(() => send(), 0)
+          return
+        }
+        const item = slashList[selectedSlash]
+        if (item) {
+          applySlashItem(item)
+          slashJustFilledRef.current = true
+          window.setTimeout(() => {
+            slashJustFilledRef.current = false
+          }, 100)
+        }
+        return
+      }
       if (e.key === 'Tab') {
         e.preventDefault()
         const item = slashList[selectedSlash]
-        if (item) applySlashItem(item)
+        if (item) {
+          applySlashItem(item)
+          slashJustFilledRef.current = true
+          window.setTimeout(() => {
+            slashJustFilledRef.current = false
+          }, 100)
+        }
         return
       }
       if (e.key === 'Escape') {
@@ -1067,6 +1112,32 @@ export function EmbedSessionComposer({
               ))}
             </ul>
           ) : null}
+          {/* [2026-05-13] OSC 9;4 上下文压缩/长任务进度条 */}
+          {osc9Progress && (
+            <div className="mb-1.5">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--theme-panel-bg-soft)]" style={{ height: 4 }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-300 ease-out"
+                    style={{
+                      width: `${osc9Progress.percent}%`,
+                      background: osc9Progress.percent > 80
+                        ? 'linear-gradient(90deg, #ef4444, #f97316)'
+                        : osc9Progress.percent > 50
+                          ? 'linear-gradient(90deg, #eab308, #f59e0b)'
+                          : 'linear-gradient(90deg, #3b82f6, #6366f1)'
+                    }}
+                  />
+                </div>
+                <span className="shrink-0 text-[10px] font-mono text-claude-muted tabular-nums">
+                  {osc9Progress.percent}%
+                </span>
+              </div>
+              {osc9Progress.message ? (
+                <p className="mt-0.5 truncate text-[10px] text-claude-muted">{osc9Progress.message}</p>
+              ) : null}
+            </div>
+          )}
           <textarea
             ref={taRef}
             value={draft}

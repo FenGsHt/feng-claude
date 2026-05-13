@@ -218,7 +218,7 @@ export function BlackjackGame({
   // Reset baseline when session key changes (game restored from minimize)
   useEffect(() => {
     openBalanceRef.current = gameCoins
-    openCostRef.current = computeCost(useGlobalTokenStore.getState().total, useGlobalTokenStore.getState().pricing)
+    openCostRef.current = computeCost(useGlobalTokenStore.getState().today, useGlobalTokenStore.getState().pricing)
   }, [sessionKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Click outside to minimize
@@ -234,7 +234,7 @@ export function BlackjackGame({
 
   // Track opening cost for sync catch-up on close
   useEffect(() => {
-    openCostRef.current = computeCost(useGlobalTokenStore.getState().total, useGlobalTokenStore.getState().pricing)
+    openCostRef.current = computeCost(useGlobalTokenStore.getState().today, useGlobalTokenStore.getState().pricing)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Place bet ────────────────────────────────────────────────── */
@@ -453,7 +453,7 @@ export function BlackjackGame({
     const gameDelta = gameCoins - openBalanceRef.current
 
     // [2] Sync missed tokens → coins (does NOT affect PnL)
-    const currentCost = computeCost(useGlobalTokenStore.getState().total, useGlobalTokenStore.getState().pricing)
+    const currentCost = computeCost(useGlobalTokenStore.getState().today, useGlobalTokenStore.getState().pricing)
     const missedDelta = currentCost - openCostRef.current
     if (missedDelta > 0) {
       addGameCoins(Math.round(missedDelta * 100) / 100)
@@ -500,6 +500,74 @@ export function BlackjackGame({
   const sessionPnlDelta = gameCoins - openBalanceRef.current
   const totalPnl = sessionPnl + sessionPnlDelta
   const pnlColor = totalPnl > 0 ? 'var(--theme-success-text, #2ecc71)' : totalPnl < 0 ? 'var(--theme-danger-text, #e94560)' : 'var(--claude-muted)'
+
+  /* ── AI 分析：算牌 + 基本策略 + 趋势 ────────────────────────── */
+  // Hi-Lo Running Count：已见牌中低牌(+1)减高牌(-1)
+  const runningCount = React.useMemo(() => {
+    const seen: Card[] = [...gs.dealerHand, ...gs.playerHands.flat()]
+    let rc = 0
+    for (const c of seen) {
+      if (c.rank === 'A' || ['10', 'J', 'Q', 'K'].includes(c.rank)) rc -= 1
+      else if (parseInt(c.rank) >= 2 && parseInt(c.rank) <= 6) rc += 1
+    }
+    return rc
+  }, [gs.dealerHand, gs.playerHands])
+
+  // 剩余牌数估算
+  const remainingCards = Math.max(0, gs.deck.length)
+
+  // 真牌数 = Running Count / (剩余牌组数)，单副牌直接用 Running Count
+  const trueCount = remainingCards > 0 ? +(runningCount / (remainingCards / 52)).toFixed(1) : 0
+
+  // 基本策略建议
+  const basicStrategy = React.useMemo((): string | null => {
+    if (gs.phase !== 'player' || activeHand.length === 0) return null
+    const pScore = aScore
+    const dealerUp = cardValue(gs.dealerHand[0])
+    const soft = isSoft(activeHand)
+
+    // 分牌
+    if (canSplt) {
+      const pair = cardValue(activeHand[0])
+      if (pair === 8 || activeHand[0].rank === 'A') return '分牌'
+      if (pair === 9 && dealerUp !== 7 && dealerUp !== 10 && dealerUp !== 11) return '分牌'
+      if (pair === 6 && dealerUp >= 3 && dealerUp <= 6) return '分牌'
+    }
+
+    // 软牌
+    if (soft) {
+      if (pScore >= 19) return '停牌'
+      if (pScore === 18 && dealerUp >= 9) return '要牌'
+      if (pScore === 18 && (dealerUp === 2 || dealerUp === 7 || dealerUp === 8)) return '停牌'
+      if (pScore === 18) return '加倍'
+      if (pScore === 17) return dealerUp >= 3 && dealerUp <= 6 ? '加倍' : '要牌'
+      if (pScore <= 16) return dealerUp >= 4 && dealerUp <= 6 ? '加倍' : '要牌'
+      return null
+    }
+
+    // 硬牌
+    if (pScore >= 17) return '停牌'
+    if (pScore === 16) return (dealerUp >= 2 && dealerUp <= 6) ? '停牌' : '要牌'
+    if (pScore === 15) return (dealerUp >= 2 && dealerUp <= 6) ? '停牌' : '要牌'
+    if (pScore === 13 || pScore === 14) return (dealerUp >= 2 && dealerUp <= 6) ? '停牌' : '要牌'
+    if (pScore === 12) return (dealerUp >= 4 && dealerUp <= 6) ? '停牌' : '要牌'
+    if (pScore === 11) return canDbl && dealerUp !== 11 ? '加倍' : '要牌'
+    if (pScore === 10) return canDbl && dealerUp >= 10 ? '要牌' : canDbl ? '加倍' : '要牌'
+    if (pScore === 9) return canDbl && dealerUp >= 3 && dealerUp <= 6 ? '加倍' : '要牌'
+    return '要牌'
+  }, [gs.phase, gs.dealerHand, activeHand, aScore, canSplt, canDbl])
+
+  // 建议动作映射到可用按钮
+  const stratAction = basicStrategy === '要牌' ? 'hit'
+    : basicStrategy === '停牌' ? 'stand'
+    : basicStrategy === '加倍' ? 'double'
+    : basicStrategy === '分牌' ? 'split' : null
+
+  const strategyColor = stratAction === 'hit' ? 'var(--theme-success-text, #2ecc71)'
+    : stratAction === 'stand' ? 'var(--theme-warning-text, #f39c12)'
+    : stratAction === 'double' ? 'var(--theme-accent, #9b59b6)'
+    : stratAction === 'split' ? '#e67e22'
+    : 'var(--claude-muted)'
 
   return (
     <div
@@ -563,25 +631,29 @@ export function BlackjackGame({
 
         {/* Insurance */}
         {gs.phase === 'insurance' && (
-          <div className="mb-2 flex items-center justify-center gap-2 rounded border-2 border-dashed px-3 py-1.5 text-[10px]"
+          <div className="mb-2 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-2 text-[11px]"
             style={{
-              background: 'var(--theme-danger-bg, rgba(233,69,96,0.1))',
-              borderColor: 'var(--theme-danger-border, rgba(233,69,96,0.4))',
-              color: 'var(--theme-danger-text, #e94560)',
+              background: 'var(--theme-warning-bg, rgba(255,193,7,0.15))',
+              borderColor: 'var(--theme-warning-border, rgba(255,193,7,0.6))',
+              color: 'var(--theme-warning-text, #e6a200)',
+              animation: 'insurancePulse 2s ease-in-out infinite',
             }}>
-            <span>庄家明牌是 A，买保险？</span>
+            <span className="text-[12px]">⚠</span>
+            <span className="font-bold">庄家明牌是 A，买保险？</span>
             <button onClick={() => takeInsurance(true)} disabled={Math.floor(gs.currentBet / 2) > gameCoins}
-              className="rounded px-2 py-0.5 text-[9px] font-bold text-white disabled:opacity-40"
+              className="rounded-lg px-4 py-1.5 text-[12px] font-bold text-white shadow-lg disabled:opacity-40 disabled:shadow-none"
               style={{
                 fontFamily: 'VT323, monospace',
-                background: 'var(--theme-accent-bg, #f5c542)',
-                color: 'var(--theme-accent-text, #fff)',
+                background: 'linear-gradient(135deg, #e94560 0%, #c0392b 100%)',
+                boxShadow: '0 2px 0 #8b1a2b, 0 0 12px rgba(233,69,96,0.5)',
+                border: '2px solid #ff6b81',
+                letterSpacing: 1,
               }}>${Math.floor(gs.currentBet / 2)}</button>
             <button onClick={() => takeInsurance(false)}
-              className="rounded px-2 py-0.5 text-[9px] font-bold transition"
+              className="rounded-lg px-4 py-1.5 text-[12px] font-bold transition hover:bg-white/10"
               style={{
                 fontFamily: 'VT323, monospace',
-                background: 'var(--claude-surface2)',
+                background: 'rgba(0,0,0,0.08)',
                 border: '1px solid var(--claude-border)',
                 color: 'var(--claude-text)',
               }}>不买</button>
@@ -731,21 +803,77 @@ export function BlackjackGame({
           </button>
         </div>
 
-        {/* AI panel */}
+        {/* AI panel — 算牌 + 基本策略 + 牌桌统计 */}
         {showAi && (
           <div className="mt-2 rounded border p-2"
             style={{
               background: 'var(--claude-surface2)',
               borderColor: 'var(--claude-border)',
             }}>
-            <div className="mb-1 flex items-center gap-2 text-[9px]" style={{ color: 'var(--claude-muted)' }}>
-              <span>胜率</span>
+            {/* 1. 基本策略建议 */}
+            {basicStrategy && (
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-[9px]" style={{ color: 'var(--claude-muted)' }}>建议</span>
+                <span className="text-[10px] font-bold" style={{ fontFamily: 'VT323, monospace', color: strategyColor }}>
+                  {basicStrategy}
+                </span>
+                <span className="text-[8px]" style={{ color: 'var(--claude-muted)' }}>
+                  (玩家{aScore}{aSoft} vs 庄家{cardValue(gs.dealerHand[0])})
+                </span>
+              </div>
+            )}
+
+            {/* 2. 算牌 Hi-Lo */}
+            <div className="mb-2 flex items-center gap-2 text-[9px]">
+              <span style={{ color: 'var(--claude-muted)' }}>算牌 RC</span>
+              <span className="text-[10px] font-bold"
+                style={{
+                  fontFamily: 'VT323, monospace',
+                  color: runningCount > 2 ? 'var(--theme-success-text, #2ecc71)'
+                    : runningCount < -2 ? 'var(--theme-danger-text, #e94560)'
+                    : 'var(--claude-text)',
+                }}>
+                {runningCount > 0 ? '+' : ''}{runningCount}
+              </span>
+              <span style={{ color: 'var(--claude-muted)' }}>TC {trueCount > 0 ? '+' : ''}{trueCount}</span>
+              <span className="ml-auto" style={{ color: 'var(--claude-muted)' }}>
+                剩余 {remainingCards} 张
+              </span>
+            </div>
+
+            {/* 3. 统计 */}
+            <div className="flex items-center gap-2 text-[9px]">
+              <span style={{ color: 'var(--claude-muted)' }}>胜率</span>
               <div className="h-2 flex-1 rounded border" style={{ borderColor: 'var(--claude-border)', background: 'var(--claude-surface)' }}>
                 <div className="h-full rounded bg-[#2ecc71] transition-all" style={{ width: `${accuracy}%` }} />
               </div>
               <span className="w-8 text-right" style={{ color: 'var(--claude-text)' }}>{accuracy}%</span>
+              <span className="ml-1" style={{ color: 'var(--claude-muted)' }}>
+                共 {gs.wins + gs.losses + gs.draws} 局
+              </span>
             </div>
-            <p className="text-center text-[8px]" style={{ color: 'var(--claude-muted)' }}>共 {gs.wins + gs.losses + gs.draws} 局</p>
+
+            {/* 4. 下注提示 */}
+            {runningCount >= 3 && (
+              <div className="mt-1.5 rounded px-2 py-1 text-center text-[9px] font-bold"
+                style={{
+                  background: 'var(--theme-success-bg, rgba(46,204,113,0.1))',
+                  color: 'var(--theme-success-text, #2ecc71)',
+                  border: '1px solid var(--theme-success-border, rgba(46,204,113,0.3))',
+                }}>
+                🔥 真值偏正，剩余高牌多 — 考虑加注
+              </div>
+            )}
+            {runningCount <= -3 && (
+              <div className="mt-1.5 rounded px-2 py-1 text-center text-[9px] font-bold"
+                style={{
+                  background: 'var(--theme-danger-bg, rgba(233,69,96,0.1))',
+                  color: 'var(--theme-danger-text, #e94560)',
+                  border: '1px solid var(--theme-danger-border, rgba(233,69,96,0.3))',
+                }}>
+                 真值偏负，低牌多 — 考虑保守下注
+              </div>
+            )}
           </div>
         )}
       </div>

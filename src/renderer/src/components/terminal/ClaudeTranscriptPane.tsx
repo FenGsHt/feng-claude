@@ -1595,10 +1595,13 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   )
 
   // PTY running + 无新条目 = 重启历史恢复，视同完成；有新条目才是真实运行中的间隙
+  // [2026-05-12] 加 pendingReply 条件：用户刚发送消息、本轮对话未完成时，即使中间 assistant 快照
+  // 后 1 秒没变化也不应清除 loading，避免工具执行期 sessionBusy 短暂 idle 导致 loading 闪烁
   const suppressBarAfterAssistantDone =
     assistantTailQuiet &&
     lastMeaningfulEntry?.kind === 'assistant' &&
     !latestToolFresh &&
+    !pendingReply &&
     (!sessionBusy || !hasNewEntriesSinceMount)
 
   useEffect(() => {
@@ -1829,6 +1832,21 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
       pre.scrollTop = pre.scrollHeight
     })
   }, [entries])
+
+  /* [2026-05-13] 后台切回前台时：多个未完成的助手消息同时流式输出会卡顿，只保留最后一个流式，其余直接渲染 */
+  useEffect(() => {
+    const handler = (): void => {
+      if (document.visibilityState !== 'visible') return
+      const assistantMsgIds = entries
+        .filter((e): e is DisplayEntry & { kind: 'assistant'; messageId: string } => e.kind === 'assistant' && !!e.messageId)
+        .map((e) => e.messageId)
+      if (assistantMsgIds.length <= 1) return
+      // 除最后一个外全部标记为已揭示
+      markManyRevealed(sessionId, assistantMsgIds.slice(0, -1))
+    }
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
+  }, [sessionId, entries])
 
   const handleScrollPane = useCallback((): void => {
     updateStickFromScroll()
