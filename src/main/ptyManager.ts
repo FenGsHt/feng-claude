@@ -908,7 +908,15 @@ export class PtyManager {
         session.daemonSocket.write(JSON.stringify({ t: 'i', d: data }) + '\n')
         return { ok: true, via: 'daemon', bytes }
       }
-      session.ptyProcess?.write(data)
+      try {
+        session.ptyProcess?.write(data)
+      } catch (writeErr) {
+        // [2026-05-13] 忽略 EPIPE（PTY 进程已退出但写入队列还有残余）
+        if (writeErr instanceof Error && (writeErr as any).code === 'EPIPE') {
+          return { ok: false, bytes, reason: 'pty_exited' }
+        }
+        throw writeErr
+      }
       return { ok: true, via: 'pty', bytes }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
