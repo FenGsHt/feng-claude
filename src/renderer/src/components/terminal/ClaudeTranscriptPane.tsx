@@ -938,7 +938,7 @@ function ToolLineIcon({ name }: { name: string }): React.ReactElement {
   )
 }
 
-function InlineToolDiff({ name, input }: { name: string; input: Record<string, unknown> }): React.ReactElement {
+const InlineToolDiff = React.memo(function InlineToolDiff({ name, input }: { name: string; input: Record<string, unknown> }): React.ReactElement {
   if (name === 'Bash') {
     return (
       <pre className={`${CODE_BOX_BASE} max-h-[180px] whitespace-pre-wrap break-words bg-[var(--theme-tool-bg)] border-[var(--theme-tool-border)] text-[var(--theme-accent-muted)]`}>
@@ -983,7 +983,7 @@ function InlineToolDiff({ name, input }: { name: string; input: Record<string, u
       </div>
     </div>
   )
-}
+})
 
 const EntryBlock = React.memo(function EntryBlock({
   e,
@@ -1445,10 +1445,7 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     if (!query) return base
     return base.filter((e) => entryMatchesQuery(e, query))
   }, [visibleEntries, effectiveHistoryStartIndex, query, sessionId])
-  const matchedCount = useMemo(
-    () => (query ? displayedEntries.filter((e) => entryMatchesQuery(e, query)).length : 0),
-    [displayedEntries, query]
-  )
+  const matchedCount = query ? displayedEntries.length : 0
   const activeMatchIndex =
     matchedCount > 0 ? ((searchCursor % matchedCount) + matchedCount) % matchedCount : 0
 

@@ -174,6 +174,7 @@ export function EmbedSessionComposer({
   /** [2026-05-10] 附件图片列表 */
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const atListRef = useRef<HTMLUListElement>(null)
   const historyCursorRef = useRef<number | null>(null)
@@ -226,7 +227,7 @@ export function EmbedSessionComposer({
           transcriptSignalsWork)))
   /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
   // useEmbedPtyResize(sessionId, true)
-  useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible)
+  useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible, rootRef)
 
   useEffect(() => {
     lastPlainEmbedSentRef.current = ''
@@ -939,7 +940,7 @@ export function EmbedSessionComposer({
   }
 
   return (
-    <div className="shrink-0 border-t border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-3 py-3">
+    <div ref={rootRef} className="shrink-0 border-t border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg)] px-3 py-3">
       {/* [2026-05-11] 提示区挪到输入框上方，输入框贴底 */}
       {isProcessDead && (
         <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
