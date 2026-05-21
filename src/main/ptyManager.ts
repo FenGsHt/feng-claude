@@ -747,8 +747,9 @@ export class PtyManager {
 
     ptyProcess.onExit(({ exitCode }) => {
       if (!this.win.isDestroyed()) {
-        // Write a visible error line to the terminal before updating status
-        if (exitCode !== 0) {
+        // [2026-05-20] 259 = STILL_ACTIVE（winpty 子进程尚未完全退出但 PTY 回调已触发），
+        // 子进程可能仍在运行但 PTY 连接已断，不显示错误消息避免误导。
+        if (exitCode !== 0 && exitCode !== 259) {
           this.win.webContents.send(IPC.PTY_OUTPUT, {
             sessionId,
             data: `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`,
