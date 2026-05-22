@@ -289,17 +289,17 @@ const FRAME_INTERVAL: Record<Activity, number> = {
 }
 
 const ACTIVITY_COLOR: Record<Activity, string> = {
-  look: '#94a3b8', sleep: '#475569', play: '#fcd34d', curious: '#7dd3fc',
-  thinking: '#64748b', excited: '#fbbf24',
+  look: '#cbd5e1', sleep: '#93c5fd', play: '#fcd34d', curious: '#7dd3fc',
+  thinking: '#94a3b8', excited: '#fbbf24',
   // 新增空闲
-  blink: '#cbd5e1', stretch: '#a3e635', yawn: '#94a3b8', hungry: '#fb923c',
-  sneeze: '#f87171', groom: '#a78bfa', wiggle: '#34d399', tilt: '#7dd3fc', doze: '#64748b',
+  blink: '#e2e8f0', stretch: '#bef264', yawn: '#cbd5e1', hungry: '#fb923c',
+  sneeze: '#f87171', groom: '#c4b5fd', wiggle: '#6ee7b7', tilt: '#93c5fd', doze: '#94a3b8',
   // 抚摸
-  happy: '#f9a8d4',
+  happy: '#fbcfe8',
   // 走动
-  walk: '#60a5fa',
+  walk: '#93c5fd',
   // 等级解锁
-  dance: '#f9a8d4', meditate: '#a78bfa', fly: '#7dd3fc', crown: '#fbbf24', legend: '#f472b6',
+  dance: '#fbcfe8', meditate: '#c4b5fd', fly: '#93c5fd', crown: '#fcd34d', legend: '#f9a8d4',
 }
 
 // ── ASCII 宠物渲染 ─────────────────────────────────────────────────
