@@ -68,6 +68,13 @@ export const GUIDE_SECTIONS: Section[] = [
           '让 Claude 制定带有"测试门"的分阶段计划：第一阶段完成后跑单元测试，通过后才进入第二阶段。这样能在早期发现问题，而不是等到所有代码写完才发现基础假设错了。'
       },
       {
+        id: 'plan-vertical-slices',
+        title: '用竖向切片替代横向分阶段',
+        brief: '按功能切片穿透所有层，获得端到端反馈',
+        detail:
+          'AI 默认会按技术层横向分阶段（DB 层 → API 层 → UI 层），这会把端到端验证推到最后。更好的做法是把 PRD 拆成竖向切片（tracer bullets）——每个切片同时覆盖 DB + Service + UI，让你更早发现整条链路是否可行，而非在最后才集成。'
+      },
+      {
         id: 'plan-second-claude',
         title: '用第二个 Claude 审查计划',
         brief: '开新会话让另一个 Claude 以资深工程师视角审计计划',
