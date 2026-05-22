@@ -1,6 +1,7 @@
 /**
  * 预设内容库 - 确保即使 API 失败也有内容可用
  */
+import { GUIDE_SECTIONS } from '../components/guide/guideData'
 
 export type ContentCategory = 'chitchat' | 'joke' | 'news' | 'tip'
 
@@ -56,9 +57,14 @@ export const PRESET_NEWS: string[] = [
   "最近 DevOps 很流行，CI/CD 你们用的哪个？",
 ]
 
+// 从指南数据中提取每条 tip 的 brief，带 section emoji 前缀
+const GUIDE_TIPS: string[] = GUIDE_SECTIONS.flatMap((section) =>
+  section.tips.map((tip) => `${section.emoji} ${tip.brief}`)
+)
+
 export const ALL_PRESETS: Record<ContentCategory, string[]> = {
   chitchat: PRESET_CHITCHATS,
   joke: PRESET_JOKES,
-  tip: PRESET_TIPS,
+  tip: [...PRESET_TIPS, ...GUIDE_TIPS],
   news: PRESET_NEWS,
 }
