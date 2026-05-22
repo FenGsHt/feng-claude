@@ -1082,7 +1082,7 @@ export function PetWidget(): React.ReactElement {
           {/* 浮窗提示 — 游戏币增加时上浮消失 */}
           {coinTip && (
             <span
-              className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full text-[10px] font-bold text-[#2ecc71] pointer-events-none"
+              className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full text-[14px] font-bold text-[#2ecc71] pointer-events-none"
               style={{ fontFamily: 'VT323, monospace', animation: 'coinTipUp 1.5s ease-out forwards' }}
             >
               +{coinTip}
