@@ -74,9 +74,12 @@ export const useContentBankStore = create<ContentBankStore>()(
         const now = Date.now()
         const oneDayMs = 24 * 60 * 60 * 1000
         set((state) => ({
-          items: state.items.filter((item) =>
-            !item.used && (now - item.createdAt) < oneDayMs
-          ),
+          items: state.items.filter((item) => {
+            if (item.used) return false
+            // api 内容24小时过期（新闻/笑话有时效性）；preset 内容只要未使用就保留
+            if (item.source === 'api' && (now - item.createdAt) >= oneDayMs) return false
+            return true
+          }),
         }))
       },
 
