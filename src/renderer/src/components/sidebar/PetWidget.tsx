@@ -362,10 +362,10 @@ const FRAME_INTERVAL: Record<Activity, number> = {
 }
 
 const ACTIVITY_COLOR: Record<Activity, string> = {
-  look: '#f1f5f9', sleep: '#60a5fa', play: '#fbbf24', curious: '#38bdf8',
-  thinking: '#e2e8f0', excited: '#f59e0b',
+  look: '#a5b4fc', sleep: '#60a5fa', play: '#fbbf24', curious: '#38bdf8',
+  thinking: '#94a3b8', excited: '#f59e0b',
   // 新增空闲
-  blink: '#f8fafc', stretch: '#a3e635', yawn: '#e2e8f0', hungry: '#f97316',
+  blink: '#a5b4fc', stretch: '#a3e635', yawn: '#94a3b8', hungry: '#f97316',
   sneeze: '#f87171', groom: '#a78bfa', wiggle: '#34d399', tilt: '#38bdf8', doze: '#94a3b8',
   // 抚摸
   happy: '#f472b6',
