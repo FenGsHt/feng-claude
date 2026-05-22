@@ -357,34 +357,36 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
   }, [text, loading])
 
   return (
-    <div className="flex-1 min-w-0 rounded-lg bg-slate-700/80 border border-slate-600/50 px-2.5 py-2 text-[10px] text-slate-200 leading-snug relative max-h-[150px] overflow-y-auto">
-      {/* 三角指向左侧宠物 */}
-      <span
-        className="absolute top-3 -left-[5px] w-0 h-0"
+    <div className="absolute bottom-full left-0 right-0 mb-1 z-50 px-2">
+      <div className="rounded-lg bg-slate-800/95 border border-slate-600/60 px-3 py-2.5 text-[11px] text-slate-100 leading-relaxed shadow-lg backdrop-blur-sm">
+        {loading ? (
+          <span className="flex items-center gap-1.5 text-slate-400">
+            {[0, 1, 2].map((k) => (
+              <span
+                key={k}
+                className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce inline-block"
+                style={{ animationDelay: `${k * 0.13}s` }}
+              />
+            ))}
+          </span>
+        ) : (
+          <>
+            {shown}
+            {shown.length < text.length && (
+              <span className="inline-block w-[2px] h-[10px] bg-amber-400/80 animate-pulse align-middle ml-0.5" />
+            )}
+          </>
+        )}
+      </div>
+      {/* 三角指向下方宠物栏 */}
+      <div
+        className="absolute bottom-0 left-6 translate-y-full w-0 h-0"
         style={{
-          borderTop: '4px solid transparent',
-          borderBottom: '4px solid transparent',
-          borderRight: '5px solid rgba(51,65,85,0.8)',
+          borderLeft: '5px solid transparent',
+          borderRight: '5px solid transparent',
+          borderTop: '6px solid rgba(51,65,85,0.95)',
         }}
       />
-      {loading ? (
-        <span className="flex items-center gap-1 text-slate-500">
-          {[0, 1, 2].map((k) => (
-            <span
-              key={k}
-              className="w-1 h-1 rounded-full bg-slate-500 animate-bounce inline-block"
-              style={{ animationDelay: `${k * 0.13}s` }}
-            />
-          ))}
-        </span>
-      ) : (
-        <>
-          {shown}
-          {shown.length < text.length && (
-            <span className="inline-block w-[2px] h-[9px] bg-amber-400/80 animate-pulse align-middle ml-0.5" />
-          )}
-        </>
-      )}
     </div>
   )
 }
@@ -790,8 +792,8 @@ export function PetWidget(): React.ReactElement {
   // 气泡是否可见：loading 时 or talking 时
   const bubbleVisible = showBubble
 
-  // 空闲时宠物居中放大，讲话时靠左紧凑
-  const idleMode = !bubbleVisible && !isLoading
+  // 气泡已移到绝对定位，宠物栏始终居中
+  const idleMode = true
 
   // 当前活动在空闲列表中
   const isIdleActivity = IDLE_ACTIVITIES.includes(activity)
@@ -812,7 +814,10 @@ export function PetWidget(): React.ReactElement {
   const walkIndicator = activity === 'walk' ? (walkDirection === 'right' ? '→' : '←') : ''
 
   return (
-    <div className="shrink-0 border-t border-claude-border bg-claude-surface/50">
+    <div className="shrink-0 border-t border-claude-border bg-claude-surface/50 relative overflow-visible">
+      {/* 浮动气泡（绝对定位在宠物栏上方）*/}
+      {bubbleVisible && <Bubble text={speech} loading={isLoading} />}
+
       {/* 21 点游戏面板（内嵌在宠物栏上方，最小化时 CSS 隐藏但组件不卸载）*/}
       {showBlackjack && (
         <div style={{ display: blackjackMinimized ? 'none' : undefined }}>
@@ -871,10 +876,6 @@ export function PetWidget(): React.ReactElement {
             </div>
           )}
         </div>
-        {bubbleVisible && (
-          <Bubble text={speech} loading={isLoading} />
-        )}
-
         {/* 设置按钮（齿轮图标）*/}
         <button
           className="ml-auto p-1 text-claude-muted hover:text-claude-text hover:bg-claude-surface rounded shrink-0"
