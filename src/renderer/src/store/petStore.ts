@@ -22,6 +22,9 @@ export interface PetGrowth {
   lastInteractionAt: number
   lastDecayAt: number        // 上次衰减计算时间戳，防止重复衰减
   totalInteractions: number
+  hunger: number             // 0-100, 100 = 吃饱
+  lastFedAt: number          // 上次喂食时间戳
+  lastHungerTickAt: number   // 上次饥饿计算时间戳
 }
 
 export type InteractionType = 'pet' | 'chat' | 'autoTrigger' | 'contentBank'
@@ -88,6 +91,7 @@ export function calculateActualTriggerProbability(userProbability: number, tier:
 }
 
 function defaultGrowth(): PetGrowth {
+  const now = Date.now()
   return {
     level: 1,
     xp: 0,
@@ -95,9 +99,12 @@ function defaultGrowth(): PetGrowth {
     affection: 25,
     skillPoints: 0,
     skills: SKILL_DEFINITIONS.map(s => ({ id: s.id, level: 0 })),
-    lastInteractionAt: Date.now(),
-    lastDecayAt: Date.now(),
+    lastInteractionAt: now,
+    lastDecayAt: now,
     totalInteractions: 0,
+    hunger: 80,
+    lastFedAt: now,
+    lastHungerTickAt: now,
   }
 }
 
@@ -117,6 +124,11 @@ function mergeGrowth(state: Record<string, unknown>): void {
   // 补充缺失字段
   if (g.lastDecayAt === undefined) {
     g.lastDecayAt = g.lastInteractionAt ?? Date.now()
+  }
+  if (g.hunger === undefined) {
+    g.hunger = 80
+    g.lastFedAt = Date.now()
+    g.lastHungerTickAt = Date.now()
   }
 }
 
@@ -156,6 +168,11 @@ interface PetStore {
   applyAffectionDecay: (amount: number) => void
   upgradeSkill: (skillId: string) => boolean
   resetGrowth: () => void
+
+  /** 喂食，恢复饥饿值 */
+  feed: (amount: number) => void
+  /** 根据时间流逝计算饥饿消耗，挂载时调用 */
+  tickHunger: () => void
 
   /** [2026-05-12] 将新增的 token 费用换算为游戏币并累加 */
   syncGameCoins: (totalCost: number) => void
@@ -271,6 +288,33 @@ export const usePetStore = create<PetStore>()(
       },
 
       resetGrowth: () => set({ growth: defaultGrowth() }),
+
+      feed: (amount) => set((s) => {
+        const now = Date.now()
+        return {
+          growth: {
+            ...s.growth,
+            hunger: Math.min(100, s.growth.hunger + amount),
+            lastFedAt: now,
+            lastHungerTickAt: now,
+          },
+        }
+      }),
+
+      tickHunger: () => set((s) => {
+        const now = Date.now()
+        // 12小时耗尽全部饥饿值
+        const RATE = 100 / (12 * 3600 * 1000)
+        const elapsed = now - (s.growth.lastHungerTickAt ?? now)
+        const depleted = elapsed * RATE
+        return {
+          growth: {
+            ...s.growth,
+            hunger: Math.max(0, s.growth.hunger - depleted),
+            lastHungerTickAt: now,
+          },
+        }
+      }),
 
       syncGameCoins: (totalCost) => set((s) => {
         const delta = totalCost - s.lastCoinSyncCost

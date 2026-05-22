@@ -375,15 +375,22 @@ const ACTIVITY_COLOR: Record<Activity, string> = {
   dance: '#f472b6', meditate: '#a78bfa', fly: '#38bdf8', crown: '#fbbf24', legend: '#f9a8d4',
 }
 
+// 等级对应帧行数：1-10级=2行，11-20级=3行，21+级=4行
+function getSizeLines(level: number): 2 | 3 | 4 {
+  if (level <= 10) return 2
+  if (level <= 20) return 3
+  return 4
+}
+
 // ── ASCII 宠物渲染 ─────────────────────────────────────────────────
 function AsciiPet({
   type,
   activity,
-  large,
+  level,
 }: {
   type: PetType
   activity: Activity
-  large?: boolean
+  level: number
 }): React.ReactElement {
   const [fi, setFi] = useState(0)
   const frames = FRAMES[activity][type]
@@ -394,12 +401,14 @@ function AsciiPet({
     return () => clearInterval(id)
   }, [activity, frames.length])
 
-  const lines = frames[fi % frames.length]!
+  const sizeLines = getSizeLines(level)
+  const allLines = frames[fi % frames.length]!
+  const lines = allLines.slice(0, sizeLines)
   const color = ACTIVITY_COLOR[activity]
 
   return (
     <pre
-      className={`font-mono leading-[1.35] select-none shrink-0 transition-all duration-300 ${large ? 'text-[15px]' : 'text-[11px]'}`}
+      className="font-mono leading-[1.35] select-none shrink-0 transition-all duration-300 text-[15px]"
       style={{
         color,
         textShadow:
@@ -466,6 +475,22 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
 
 const BUBBLE_DISPLAY_MS = 30_000  // 回复气泡显示时长（30秒）
 
+// ── 食物商店 ──────────────────────────────────────────────────────
+interface FoodItem {
+  id: string
+  name: string
+  emoji: string
+  cost: number
+  restore: number
+  desc: string
+}
+
+const FOOD_ITEMS: FoodItem[] = [
+  { id: 'snack', name: '小饼干', emoji: '🍪', cost: 5,  restore: 20,  desc: '+20 饱食度' },
+  { id: 'fish',  name: '小鱼干', emoji: '🐟', cost: 15, restore: 45,  desc: '+45 饱食度' },
+  { id: 'meal',  name: '豪华套餐', emoji: '🍱', cost: 40, restore: 100, desc: '完全饱食' },
+]
+
 // ── Main ─────────────────────────────────────────────────────────
 const COOLDOWN_MS = 45_000       // 两次自动触发最小间隔
 const PET_COOLDOWN_MS = 3_000    // 抚摸冷却 3 秒
@@ -482,7 +507,7 @@ function randomPick<T>(arr: T[]): T {
 export function PetWidget(): React.ReactElement {
   const { config, speech, history, lastAutoAt, lastPetAt, growth, gameCoins,
           setSpeech, pushHistory, setLastAutoAt, setLastPetAt,
-          addXp, addAffection, syncGameCoins } = usePetStore()
+          addXp, addAffection, syncGameCoins, feed, tickHunger } = usePetStore()
   const { sessions, activeSessionId, history: sessionHistory } = useSessionStore()
   // output token 计数是最准确的"Claude Code 完成了一轮回答"的信号
   const outputTokens = useTokenUsageStore((s) =>
@@ -501,6 +526,8 @@ export function PetWidget(): React.ReactElement {
   const [celebrating, setCelebrating] = useState(false)
   // XP 条可见性
   const [showXpBar, setShowXpBar] = useState(false)
+  // 饥饿食物商店
+  const [showFoodShop, setShowFoodShop] = useState(false)
   // 21 点游戏
   const [showBlackjack, setShowBlackjack] = useState(false)
   const [blackjackMinimized, setBlackjackMinimized] = useState(false)
@@ -619,6 +646,14 @@ export function PetWidget(): React.ReactElement {
     step()
   }, [])
 
+  // ── 饥饿值初始化（挂载时根据时间计算消耗） ────────────────────────
+  useEffect(() => {
+    tickHunger()
+    // 每 10 分钟 tick 一次
+    const hungerInterval = setInterval(() => tickHunger(), 10 * 60 * 1000)
+    return () => clearInterval(hungerInterval)
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── 内容库初始化和每日更新 ───────────────────────────────────────
   useEffect(() => {
     // 初始化预设内容
@@ -698,6 +733,18 @@ export function PetWidget(): React.ReactElement {
     const step = (): void => {
       // 气泡显示期间暂停轮换，等 showBubble 变 false 时 effect 重跑再恢复
       if (showBubble || isLoading) return
+      // 饥饿优先：hunger < 10 时 70% 概率强制 hungry，hunger < 30 时 30% 概率
+      const currentHunger = usePetStore.getState().growth.hunger
+      if (currentHunger < 10 && Math.random() < 0.7) {
+        setActivity('hungry')
+        idleCycleRef.current = setTimeout(step, 2000)
+        return
+      }
+      if (currentHunger < 30 && Math.random() < 0.3) {
+        setActivity('hungry')
+        idleCycleRef.current = setTimeout(step, 3000)
+        return
+      }
       // 概率触发内容库
       if (Math.random() < IDLE_BANK_TRIGGER_PROBABILITY) {
         triggerContentBank()
@@ -916,7 +963,7 @@ export function PetWidget(): React.ReactElement {
           onMouseLeave={() => setShowXpBar(false)}
           style={walkStyle}
         >
-          <AsciiPet type={config.type} activity={effectiveActivity} large={idleMode} />
+          <AsciiPet type={config.type} activity={effectiveActivity} level={growth.level} />
           <span
             className="text-[10px] font-semibold leading-none mt-0.5 transition-colors duration-300"
             style={{ color: ACTIVITY_COLOR[activity] }}
@@ -929,7 +976,7 @@ export function PetWidget(): React.ReactElement {
                  activity === 'curious' || activity === 'tilt' ? '?' :
                  activity === 'groom' ? '✨' :
                  activity === 'yawn' ? 'o' :
-                 activity === 'hungry' ? '!' :
+                 activity === 'hungry' ? '🍖' :
                  activity === 'sneeze' ? '~' :
                  activity === 'stretch' ? '↔' :
                  activity === 'walk' ? walkIndicator :
@@ -941,6 +988,18 @@ export function PetWidget(): React.ReactElement {
               </span>
             )}
           </span>
+          {/* 饥饿条：hunger < 70 时显示，悬停也显示 */}
+          {(showXpBar || growth.hunger < 70) && (
+            <div className="w-16 h-1 bg-slate-700 rounded-full overflow-hidden mt-0.5">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${growth.hunger}%`,
+                  backgroundColor: growth.hunger < 20 ? '#ef4444' : growth.hunger < 40 ? '#f97316' : '#4ade80',
+                }}
+              />
+            </div>
+          )}
           {/* XP 进度条（悬停显示）*/}
           {showXpBar && (
             <div className="w-16 h-1 bg-slate-700 rounded-full overflow-hidden mt-0.5">
@@ -951,9 +1010,63 @@ export function PetWidget(): React.ReactElement {
             </div>
           )}
         </div>
+        {/* 喂食按钮 + 食物商店 */}
+        <div className="ml-auto relative shrink-0">
+          <button
+            className={`p-1 rounded text-base leading-none transition-colors ${growth.hunger < 30 ? 'text-orange-400 animate-pulse' : 'text-claude-muted hover:text-claude-text'} hover:bg-claude-surface`}
+            onClick={() => setShowFoodShop(v => !v)}
+            title={`饱食度 ${Math.round(growth.hunger)}%`}
+          >
+            🍖
+          </button>
+          {/* 食物商店面板 */}
+          {showFoodShop && (
+            <div className="absolute bottom-full right-0 mb-1 z-50 w-44 rounded-lg bg-slate-800/98 border border-slate-600/60 shadow-xl p-2">
+              <div className="text-[11px] text-slate-400 mb-1.5 px-1">
+                饱食度 <span className={growth.hunger < 30 ? 'text-orange-400' : 'text-green-400'}>{Math.round(growth.hunger)}%</span>
+                <span className="float-right text-slate-500">{Math.floor(gameCoins)} 🪙</span>
+              </div>
+              <div className="space-y-1">
+                {FOOD_ITEMS.map(item => {
+                  const canAfford = gameCoins >= item.cost
+                  return (
+                    <button
+                      key={item.id}
+                      disabled={!canAfford}
+                      onClick={() => {
+                        if (!canAfford) return
+                        feed(item.restore)
+                        usePetStore.getState().addGameCoins(-item.cost)
+                        setActivity('happy')
+                        setSpeech(`${item.emoji} 好吃！`)
+                        setShowBubble(true)
+                        if (talkEndRef.current) clearTimeout(talkEndRef.current)
+                        talkEndRef.current = setTimeout(() => { setShowBubble(false); startIdleCycle() }, 3000)
+                        setShowFoodShop(false)
+                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${
+                        canAfford
+                          ? 'hover:bg-slate-700/70 text-slate-200 cursor-pointer'
+                          : 'text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="text-base leading-none">{item.emoji}</span>
+                      <span className="flex-1 text-[11px]">
+                        <span className="block font-medium">{item.name}</span>
+                        <span className="text-slate-400">{item.desc}</span>
+                      </span>
+                      <span className={`text-[11px] font-mono ${canAfford ? 'text-yellow-400' : 'text-slate-600'}`}>{item.cost}🪙</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* 设置按钮（齿轮图标）*/}
         <button
-          className="ml-auto p-1 text-claude-muted hover:text-claude-text hover:bg-claude-surface rounded shrink-0"
+          className="p-1 text-claude-muted hover:text-claude-text hover:bg-claude-surface rounded shrink-0"
           onClick={() => navigateToPetTab()}
           title="设置"
         >
