@@ -1,9 +1,2 @@
 #!/bin/sh
-# [2026-04-23] 每次 git commit 后在仓库根目录生成便携版 exe（见 npm run postcommit:root-exe）
-ROOT="$(git rev-parse --show-toplevel)"
-cd "$ROOT" || exit 0
-if ! command -v npm >/dev/null 2>&1; then
-  exit 0
-fi
-# 构建失败不阻断提交完成（产物较大、耗时）
-npm run build:root-exe 2>&1 || true
+# [2026-05-22] 自动构建已禁用，手动运行 npm run build:root-exe 按需打包
