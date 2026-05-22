@@ -696,8 +696,10 @@ export function PetWidget(): React.ReactElement {
   useEffect(() => {
     if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
     const step = (): void => {
+      // 气泡显示期间暂停轮换，等 showBubble 变 false 时 effect 重跑再恢复
+      if (showBubble || isLoading) return
       // 概率触发内容库
-      if (Math.random() < IDLE_BANK_TRIGGER_PROBABILITY && !showBubble && !isLoading) {
+      if (Math.random() < IDLE_BANK_TRIGGER_PROBABILITY) {
         triggerContentBank()
         return
       }
