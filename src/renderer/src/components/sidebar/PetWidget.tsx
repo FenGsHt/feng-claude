@@ -362,17 +362,17 @@ const FRAME_INTERVAL: Record<Activity, number> = {
 }
 
 const ACTIVITY_COLOR: Record<Activity, string> = {
-  look: '#cbd5e1', sleep: '#93c5fd', play: '#fcd34d', curious: '#7dd3fc',
-  thinking: '#94a3b8', excited: '#fbbf24',
+  look: '#f1f5f9', sleep: '#60a5fa', play: '#fbbf24', curious: '#38bdf8',
+  thinking: '#e2e8f0', excited: '#f59e0b',
   // 新增空闲
-  blink: '#e2e8f0', stretch: '#bef264', yawn: '#cbd5e1', hungry: '#fb923c',
-  sneeze: '#f87171', groom: '#c4b5fd', wiggle: '#6ee7b7', tilt: '#93c5fd', doze: '#94a3b8',
+  blink: '#f8fafc', stretch: '#a3e635', yawn: '#e2e8f0', hungry: '#f97316',
+  sneeze: '#f87171', groom: '#a78bfa', wiggle: '#34d399', tilt: '#38bdf8', doze: '#94a3b8',
   // 抚摸
-  happy: '#fbcfe8',
+  happy: '#f472b6',
   // 走动
-  walk: '#93c5fd',
+  walk: '#60a5fa',
   // 等级解锁
-  dance: '#fbcfe8', meditate: '#c4b5fd', fly: '#93c5fd', crown: '#fcd34d', legend: '#f9a8d4',
+  dance: '#f472b6', meditate: '#a78bfa', fly: '#38bdf8', crown: '#fbbf24', legend: '#f9a8d4',
 }
 
 // ── ASCII 宠物渲染 ─────────────────────────────────────────────────
@@ -399,7 +399,7 @@ function AsciiPet({
 
   return (
     <pre
-      className={`font-mono leading-[1.35] select-none shrink-0 transition-all duration-300 ${large ? 'text-[12px]' : 'text-[10px]'}`}
+      className={`font-mono leading-[1.35] select-none shrink-0 transition-all duration-300 ${large ? 'text-[15px]' : 'text-[11px]'}`}
       style={{
         color,
         textShadow:
@@ -916,7 +916,7 @@ export function PetWidget(): React.ReactElement {
         >
           <AsciiPet type={config.type} activity={effectiveActivity} large={idleMode} />
           <span
-            className="text-[8.5px] font-semibold leading-none mt-0.5 transition-colors duration-300"
+            className="text-[10px] font-semibold leading-none mt-0.5 transition-colors duration-300"
             style={{ color: ACTIVITY_COLOR[activity] }}
           >
             {config.name} <span className="opacity-60">Lv.{growth.level}</span>
