@@ -5,115 +5,13 @@ import { useUserPromptStore } from '../../store/userPromptStore'
 import type { PetLogRecord } from '../../types/ipc'
 import { useI18n } from '../../i18n'
 import { PetGrowthPanel } from './PetGrowthPanel'
-
-// ── ASCII Art ────────────────────────────────────────────────────
-// 每个 PetType 3 帧（idle 循环），thinking 状态用独立帧
-
-const IDLE_FRAMES: Record<PetType, string[][]> = {
-  cat: [
-    [' /\\_/\\ ', '( >ω< )', ' > ^ < ', '       '],
-    [' /\\_/\\ ', '( >ω< )', '  >^<  ', '   ~   '],
-    [' /\\_/\\ ', '( ·ω· )', ' > ^ < ', '       '],
-  ],
-  robot: [
-    ['┌──────┐', '│◉    ◉│', '│  ▽   │', '└──────┘', ' |    | '],
-    ['┌──────┐', '│◉    ◉│', '│  △   │', '└──────┘', ' |    | '],
-    ['┌──────┐', '│◈    ◈│', '│  ▽   │', '└──────┘', ' |    | '],
-  ],
-  dragon: [
-    ['  ∩___∩ ', ' (◕ ▽ ◕)', '  ╲_╱  ', ' ~~^~~ '],
-    ['  ∩___∩ ', ' (◕ ‿ ◕)', '  ╲_╱  ', '  ~^~  '],
-    ['  ∩___∩ ', ' (◕ ▲ ◕)', '  ╲W╱  ', ' ~~^~~ '],
-  ],
-  ghost: [
-    [' .----. ', '( O  O )', ' |  ‿ | ', '/|____|\\ ', ' ∿∿∿∿∿ '],
-    [' .----. ', '( O  O )', ' |  ‿ | ', '/|____|\\ ', '  ∿∿∿  '],
-    [' .----. ', '( ◉  ◉ )', ' |  ω | ', '/|____|\\ ', ' ∿∿∿∿∿ '],
-  ],
-}
-
-const THINKING_FRAMES: Record<PetType, string[][]> = {
-  cat: [
-    [' /\\_/\\ ', '( >.< )', ' . . . ', '       '],
-    [' /\\_/\\ ', '( >.< )', '  . .  ', '       '],
-  ],
-  robot: [
-    ['┌──────┐', '│◉    ◉│', '│ ···  │', '└──────┘', ' |    | '],
-    ['┌──────┐', '│◈    ◈│', '│  ··· │', '└──────┘', ' |    | '],
-  ],
-  dragon: [
-    ['  ∩___∩ ', ' (- . - )', '  ╲.╱  ', '  . .  '],
-    ['  ∩___∩ ', ' (- . -)', '  ╲..╱ ', '   .   '],
-  ],
-  ghost: [
-    [' .----. ', '( · · )', ' | ... | ', '/|____|\\ ', '  ...  '],
-    [' .----. ', '( · · )', ' | ··· | ', '/|____|\\ ', '   ..  '],
-  ],
-}
-
-const EXCITED_FRAMES: Record<PetType, string[][]> = {
-  cat: [
-    [' /\\_/\\ ', '( ★ω★ )', ' !! ! !!', '       '],
-    [' /\\_/\\ ', '( ★ω★ )', '!! ! !! ', '  ✨   '],
-  ],
-  robot: [
-    ['┌──────┐', '│★    ★│', '│  !! │', '└──────┘', ' | !! | '],
-    ['┌──────┐', '│◉    ◉│', '│ !!! │', '└──────┘', ' |  ! | '],
-  ],
-  dragon: [
-    ['  ∩___∩ ', ' (★ ▽ ★)', '  ╲!╱  ', '✨ ^ ✨'],
-    ['  ∩___∩ ', ' (★ ‿ ★)', '  ╲W╱  ', ' ✨^✨ '],
-  ],
-  ghost: [
-    [' .----. ', '( ★  ★ )', ' |  !! | ', '/|____|\\ ', '✨∿∿∿✨'],
-    [' .----. ', '( ◉  ◉ )', ' |  !  | ', '/|____|\\ ', ' ∿✨∿  '],
-  ],
-}
+import { AsciiPet } from './PetWidget'
 
 const PET_TYPE_LABELS: Record<PetType, string> = {
   cat: '🐱 猫咪',
   robot: '🤖 机器人',
   dragon: '🐉 龙',
   ghost: '👻 鬼魂',
-}
-
-function AsciiPet({ petType, mood }: { petType: PetType; mood: string }): React.ReactElement {
-  const [frameIdx, setFrameIdx] = useState(0)
-
-  const frames =
-    mood === 'thinking'
-      ? THINKING_FRAMES[petType]
-      : mood === 'excited'
-        ? EXCITED_FRAMES[petType]
-        : IDLE_FRAMES[petType]
-
-  useEffect(() => {
-    const interval = setInterval(
-      () => setFrameIdx((i) => (i + 1) % frames.length),
-      mood === 'thinking' ? 400 : mood === 'excited' ? 300 : 800
-    )
-    return () => clearInterval(interval)
-  }, [mood, frames.length])
-
-  const lines = frames[frameIdx % frames.length]!
-
-  return (
-    <pre
-      className="font-mono text-[11px] leading-[1.35] select-none text-center mx-auto transition-all duration-200"
-      style={{
-        color:
-          mood === 'thinking'
-            ? 'var(--claude-muted)'
-            : mood === 'excited'
-              ? 'var(--claude-accent)'
-              : 'var(--claude-text)',
-        textShadow: mood === 'excited' ? '0 0 6px color-mix(in srgb, var(--claude-accent) 67%, transparent)' : undefined,
-        minHeight: `${frames[0]!.length * 1.35 * 11}px`,
-      }}
-    >
-      {lines.join('\n')}
-    </pre>
-  )
 }
 
 // ── 打字动画气泡 ─────────────────────────────────────────────────
@@ -257,7 +155,7 @@ function PetLogSubPanel(): React.ReactElement {
 
 // ── Main Panel ───────────────────────────────────────────────────
 export function PetPanel(): React.ReactElement {
-  const { config, mood, speech, history, setConfig, setMood, setSpeech, pushHistory, clearHistory } =
+  const { config, mood, speech, history, growth, setConfig, setMood, setSpeech, pushHistory, clearHistory } =
     usePetStore()
   const { sessions, activeSessionId } = useSessionStore()
   const userPrompt = useUserPromptStore((s) =>
@@ -386,7 +284,11 @@ export function PetPanel(): React.ReactElement {
 
         {/* Pet display */}
         <div className="flex flex-col items-center pt-2 pb-1">
-          <AsciiPet petType={config.type} mood={mood} />
+          <AsciiPet
+            type={config.type}
+            activity={mood === 'thinking' ? 'thinking' : mood === 'excited' ? 'excited' : 'look'}
+            level={growth.level}
+          />
           <div className="mt-1 text-[10px] font-semibold text-claude-accent tracking-wide">
             {config.name}
           </div>

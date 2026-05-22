@@ -383,7 +383,7 @@ function getSizeLines(level: number): 2 | 3 | 4 {
 }
 
 // ── ASCII 宠物渲染 ─────────────────────────────────────────────────
-function AsciiPet({
+export function AsciiPet({
   type,
   activity,
   level,
