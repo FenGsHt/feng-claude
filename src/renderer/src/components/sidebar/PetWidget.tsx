@@ -555,8 +555,8 @@ export function PetWidget(): React.ReactElement {
     // 检查是否需要每日更新（每 5 分钟检查一次）
     const checkDaily = () => {
       const now = Date.now()
-      const oneDayMs = 24 * 60 * 60 * 1000
-      if (now - lastDailyUpdate > oneDayMs) {
+      const oneWeekMs = 7 * 24 * 60 * 60 * 1000
+      if (now - lastDailyUpdate > oneWeekMs) {
         performDailyUpdate()
       }
     }

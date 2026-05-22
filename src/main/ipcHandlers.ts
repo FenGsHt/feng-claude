@@ -1014,7 +1014,7 @@ export function registerIpcHandlers(
       chitchat: `生成 ${count} 条可爱的闲聊语句（宠物对程序员说的话），用 JSON 数组格式返回，每条一句话以内，中文，格式如：["语句1", "语句2", ...]`,
     }
 
-    const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5'
+    const model = activeProfile.haikuModel?.trim() || activeProfile.model?.trim() || 'claude-haiku-4-5-20251001'
 
     // 自动判断 API 格式
     const endsWithMessages = baseUrl.endsWith('/v1/messages')
@@ -1030,14 +1030,14 @@ export function registerIpcHandlers(
         endpoint = endsWithMessages ? baseUrl : `${baseUrl}/v1/messages`
         body = JSON.stringify({
           model,
-          max_tokens: 500,
+          max_tokens: 2048,
           messages: [{ role: 'user', content: prompts[category] ?? prompts.chitchat }],
         })
       } else {
         endpoint = endsWithCompletions ? baseUrl : `${baseUrl}/v1/chat/completions`
         body = JSON.stringify({
           model,
-          max_tokens: 500,
+          max_tokens: 2048,
           stream: false,
           messages: [{ role: 'user', content: prompts[category] ?? prompts.chitchat }],
         })

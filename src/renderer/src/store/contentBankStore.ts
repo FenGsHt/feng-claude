@@ -72,12 +72,12 @@ export const useContentBankStore = create<ContentBankStore>()(
 
       cleanup: () => {
         const now = Date.now()
-        const oneDayMs = 24 * 60 * 60 * 1000
+        const oneWeekMs = 7 * 24 * 60 * 60 * 1000
         set((state) => ({
           items: state.items.filter((item) => {
             if (item.used) return false
-            // api 内容24小时过期（新闻/笑话有时效性）；preset 内容只要未使用就保留
-            if (item.source === 'api' && (now - item.createdAt) >= oneDayMs) return false
+            // api 内容超过一周后过期；preset 内容只要未使用就保留
+            if (item.source === 'api' && (now - item.createdAt) >= oneWeekMs) return false
             return true
           }),
         }))
@@ -126,11 +126,11 @@ export const useContentBankStore = create<ContentBankStore>()(
 
         // 尝试调用 API 生成新内容
         try {
-          // 为每个分类生成 8 条新内容
+          // 一次生成一周用量（每类 40 条），慢慢发放
           for (const category of ['joke', 'tip', 'news'] as ContentCategory[]) {
             const result = await window.electronAPI.contentBank?.generate({
               category,
-              count: 8,
+              count: 40,
             })
             if (result?.items) {
               get().addItems(category, result.items, 'api')
