@@ -358,7 +358,7 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-1 z-50 px-2">
-      <div className="rounded-lg bg-slate-800/95 border border-slate-600/60 px-3 py-2.5 text-[11px] text-slate-100 leading-relaxed shadow-lg backdrop-blur-sm">
+      <div className="rounded-lg bg-slate-800/95 border border-slate-600/60 px-3 py-2.5 text-[13px] text-slate-100 leading-relaxed shadow-lg backdrop-blur-sm">
         {loading ? (
           <span className="flex items-center gap-1.5 text-slate-400">
             {[0, 1, 2].map((k) => (
