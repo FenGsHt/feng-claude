@@ -1021,7 +1021,7 @@ export function PetWidget(): React.ReactElement {
           </button>
           {/* 食物商店面板 */}
           {showFoodShop && (
-            <div className="absolute bottom-full right-0 mb-1 z-50 w-44 rounded-lg bg-slate-800/98 border border-slate-600/60 shadow-xl p-2">
+            <div className="absolute bottom-full right-0 mb-1 z-50 w-44 rounded-lg bg-slate-800 border border-slate-600 shadow-2xl p-2" style={{ backgroundColor: '#1e293b' }}>
               <div className="text-[11px] text-slate-400 mb-1.5 px-1">
                 饱食度 <span className={growth.hunger < 30 ? 'text-orange-400' : 'text-green-400'}>{Math.round(growth.hunger)}%</span>
                 <span className="float-right text-slate-500">{Math.floor(gameCoins)} 🪙</span>
