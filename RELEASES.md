@@ -7,6 +7,25 @@
 
 ---
 
+## v0.7.12 (2026-05-12)
+
+### 新功能 | New Features
+- **OfficeCLI 内置 MCP**：自动下载 office-cli 二进制并注册为 MCP，支持 docx/xlsx/pptx 读写；MCP 设置面板新增状态卡片，显示版本号、下载进度，支持一键检查更新
+- **宠物进食动画**：喂食时根据食物播放专属动画 —— 小饼干 3 帧轻快啃咬、小鱼干 4 帧热情猛嚼、豪华套餐 4 帧慢享盛宴；猫咪/机器人/龙/幽灵各有专属帧；台词从多句随机抽取
+- **外嵌进程退出检测**：PTY 进程 `exited`/`error` 时底部出现红色提示，输入框自动禁用，「重启 Claude」按钮一键重启 PTY 并原地恢复会话
+- **外嵌上下文用量环形图**：输入框右侧显示上下文占用百分比环形图；优先读取状态栏 N/M 精确值，次选百分比，兜底 JSONL 累计估算；75% 变橙、92% 变红
+
+### 修复 | Bug Fixes
+- **Agent 工具调用完整显示**：外嵌转录中 Agent/Explore 历史调用不再显示红色「no call data」；toolInput 现直接写入 transcript entry，不依赖 toolCallStore 跨存储查询；prompt 最多展示 600 字符
+- **外嵌代码框主题适配**：bash/Agent prompt/通用参数框改用 CSS 变量 (`--theme-tool-bg` 等)，浅色主题下颜色正常
+- **宠物食物扣费重启复原**：`lastCoinSyncCost` 加入持久化；修复重启后基准归零导致 `syncGameCoins` 把已消耗游戏币全部补回、购物相当于免费的 bug
+
+### 改进 | Improvements
+- 宠物 ASCII 全面升级：4 行格式、等级分档尺寸、饥饿系统与食物商店、颜色对比度提升、气泡浮动弹出
+- 宠物内容库改为每周批量拉取 40 条，集成 Claude Code 使用技巧
+
+---
+
 ## v0.7.9 (2026-05-13)
 
 ### 新功能 | New Features

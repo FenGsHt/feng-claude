@@ -8,6 +8,26 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.12': {
+    titleZh: 'Feng Claude 0.7.12 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.12",
+    bulletsZh: [
+      'OfficeCLI 内置 MCP：自动下载并注册，MCP 面板可查看版本/进度/一键更新，支持 docx/xlsx/pptx 读写',
+      '宠物进食动画：小饼干/小鱼干/豪华套餐三种食物各有专属多帧动画与随机台词',
+      '外嵌进程退出检测：PTY 退出时显示红色提示条 + 一键重启按钮，输入框自动禁用',
+      '外嵌上下文环形图：实时显示上下文占用百分比，超 75% 变橙、超 92% 变红',
+      '修复 Agent 历史调用显示 no call data，现完整展示 prompt',
+      '修复宠物食物购买重启后扣费失效的 bug',
+    ],
+    bulletsEn: [
+      'OfficeCLI built-in MCP: auto-download and register; MCP panel shows version/progress/update button; handles docx/xlsx/pptx',
+      'Pet eating animations: cookie/fish/meal each have unique multi-frame animations with random speech lines',
+      'Embed dead-process detection: red banner + one-click restart when PTY exits; input auto-disabled',
+      'Embed context usage ring: live context % ring; turns orange at 75%, red at 92%',
+      'Fix Agent historical calls showing "no call data"; prompt now fully displayed',
+      'Fix pet food purchase coins refunded on restart (lastCoinSyncCost now persisted)',
+    ]
+  },
   '0.7.9': {
     titleZh: 'Feng Claude 0.7.9 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.9",

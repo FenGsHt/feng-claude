@@ -34,6 +34,8 @@ type Activity =
   | 'walk'
   // 等级解锁
   | 'dance' | 'meditate' | 'fly' | 'crown' | 'legend'
+  // 进食（按食物区分）
+  | 'eat_snack' | 'eat_fish' | 'eat_meal'
 
 // 空闲活动列表（不含触发状态）
 const IDLE_ACTIVITIES: Activity[] = [
@@ -252,6 +254,39 @@ const FRAMES: Record<Activity, Record<PetType, string[][]>> = {
     dragon: [['★∩___∩★', '(★ ★★ )', ' ≋  ≋  ', '✨✨✨  '], [' ∩___∩ ', '(★★★★)', ' ≋  ≋  ', ' ✨✨   '], ['★∩___∩★', '(★ ★★ )', ' ≋  ≋  ', '✨✨✨  ']],
     ghost:  [['.★--.  ', '(★  ★)', '(    )', '✨∿✨   '], ['.--. ★ ', '(★★★★)', '(    )', '∿✨✨   '], ['.★--.  ', '(★  ★)', '(    )', '✨∿✨   ']],
   },
+  // ── 进食动画 ──────────────────────────────────────────────────────
+  eat_snack: {
+    cat: [
+      [' /\\_/\\ ', '(=^▽^=)', ' ( u  )', '  Om~  '],
+      [' /\\_/\\ ', '(=nom =)', ' ( u  )', '  ~~!  '],
+      [' /\\_/\\ ', '(=^ω^=)', ' ( u  )', '  yum~ '],
+    ],
+    robot:  [['  ╷  ', '[◉  ◉]', '[^_^ ]', '[═══]'], ['  ╷  ', '[●  ●]', '[nom ]', '[═══]'], ['  ╷  ', '[◉  ◉]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕ ▽◕)', ' ( ∪ )', '  Om~  '], ['∩___∩', '(◕nom◕)', ' ( ∪ )', '  ~~!  '], ['∩___∩', '(◕ ▽◕)', ' ( ∪ )', '  yum~ ']],
+    ghost:  [[' .--. ', '(O  O)', '( ^^ )', ' ∿Om~  '], [' .--. ', '(O  O)', '(nom )', ' ~~!   '], [' .--. ', '(O  O)', '( ▽  )', ' yum∿  ']],
+  },
+  eat_fish: {
+    cat: [
+      [' /\\_/\\ ', '(=*ω*=)', ' ( u  )', '  !!!  '],
+      [' /\\_/\\ ', '(= A  =)', ' ( u  )', '  NOM! '],
+      [' /\\_/\\ ', '(= ω =)', ' ( u  )', '  mrph '],
+      [' /\\_/\\ ', '(=^▽^=)', ' ( u  )', '  ~~~~ '],
+    ],
+    robot:  [['  ╷  ', '[★  ★]', '[!!! ]', '[═══]'], ['  ╷  ', '[●  ●]', '[NOM ]', '[═══]'], ['  ╷  ', '[●  ●]', '[mrph]', '[═══]'], ['  ╷  ', '[◉  ◉]', '[ ▽  ]', '[═══]']],
+    dragon: [['∩___∩', '(◕*▽*◕)', ' ( ∪ )', '  !!!  '], ['∩___∩', '(◕ A ◕)', ' ( ∪ )', '  NOM! '], ['∩___∩', '(◕ ω ◕)', ' ( ∪ )', '  mrph '], ['∩___∩', '(◕ ▽ ◕)', ' ( ∪ )', '  ~~~~ ']],
+    ghost:  [[' .--. ', '(★  ★)', '( !  )', ' ∿!!!  '], [' .--. ', '(O  O)', '(NOM )', ' !!!   '], [' .--. ', '(O  O)', '(mrph)', ' ~~~   '], [' .--. ', '(O  O)', '( ▽  )', ' ∿~~~  ']],
+  },
+  eat_meal: {
+    cat: [
+      [' /\\_/\\ ', '(=^▽^=)', ' ( u  )', '  woo! '],
+      [' /\\_/\\ ', '(= ω =)', ' ( u  )', '  Om~  '],
+      [' /\\_/\\ ', '(= A  =)', ' ( u  )', '  NOM! '],
+      [' /\\_/\\ ', '(=^▽^=)', ' ( u  )', '  *yum '],
+    ],
+    robot:  [['  ╷  ', '[★  ★]', '[woo!]', '[═══]'], ['  ╷  ', '[●  ●]', '[ Om ]', '[═══]'], ['  ╷  ', '[●  ●]', '[NOM!]', '[═══]'], ['  ╷  ', '[★  ★]', '[*yum]', '[═══]']],
+    dragon: [['∩___∩', '(◕*▽*◕)', ' ( ∪ )', '  woo! '], ['∩___∩', '(◕ ω ◕)', ' ( ∪ )', '  Om~  '], ['∩___∩', '(◕ A ◕)', ' ( ∪ )', '  NOM! '], ['∩___∩', '(◕*▽*◕)', ' ( ∪ )', '  *yum ']],
+    ghost:  [[' .--. ', '(★  ★)', '( !! )', ' woo!  '], [' .--. ', '(O  O)', '( Om )', ' ∿Om∿  '], [' .--. ', '(O  O)', '(NOM!)', ' !!!   '], [' .--. ', '(★  ★)', '(*yum)', ' ∿∿∿   ']],
+  },
 }
 
 // 加权随机空闲池
@@ -359,6 +394,8 @@ const FRAME_INTERVAL: Record<Activity, number> = {
   walk: 500,
   // 等级解锁
   dance: 350, meditate: 1500, fly: 600, crown: 800, legend: 400,
+  // 进食
+  eat_snack: 500, eat_fish: 380, eat_meal: 550,
 }
 
 const ACTIVITY_COLOR: Record<Activity, string> = {
@@ -373,6 +410,8 @@ const ACTIVITY_COLOR: Record<Activity, string> = {
   walk: '#60a5fa',
   // 等级解锁
   dance: '#f472b6', meditate: '#a78bfa', fly: '#38bdf8', crown: '#fbbf24', legend: '#f9a8d4',
+  // 进食
+  eat_snack: '#fbbf24', eat_fish: '#38bdf8', eat_meal: '#f472b6',
 }
 
 // 等级对应帧行数：1-10级=2行，11-20级=3行，21+级=4行
@@ -490,6 +529,24 @@ const FOOD_ITEMS: FoodItem[] = [
   { id: 'fish',  name: '小鱼干', emoji: '🐟', cost: 15, restore: 45,  desc: '+45 饱食度' },
   { id: 'meal',  name: '豪华套餐', emoji: '🍱', cost: 40, restore: 100, desc: '完全饱食' },
 ]
+
+const FOOD_SPEECHES: Record<string, string[]> = {
+  snack: ['🍪 咔嚓~ 好吃！', '嚼嚼嚼~ 香香的', '饼干！最喜欢~'],
+  fish:  ['🐟 鱼干！！最爱！', '好鲜！啊啊啊！', 'NOM NOM~ 美味！', '最好吃的~！！'],
+  meal:  ['🍱 太豪华了！！', '人生巅峰！！！', '今天吃饱了！！', '太幸福了ww'],
+}
+
+const FOOD_EAT_ACTIVITY: Record<string, Activity> = {
+  snack: 'eat_snack',
+  fish:  'eat_fish',
+  meal:  'eat_meal',
+}
+
+const FOOD_EAT_DURATION: Record<string, number> = {
+  snack: 2500,
+  fish:  3200,
+  meal:  5000,
+}
 
 // ── Main ─────────────────────────────────────────────────────────
 const COOLDOWN_MS = 45_000       // 两次自动触发最小间隔
@@ -1037,11 +1094,16 @@ export function PetWidget(): React.ReactElement {
                         if (!canAfford) return
                         feed(item.restore)
                         usePetStore.getState().addGameCoins(-item.cost)
-                        setActivity('happy')
-                        setSpeech(`${item.emoji} 好吃！`)
+                        // 停止空闲轮换，播放对应进食动画
+                        if (idleCycleRef.current) clearTimeout(idleCycleRef.current)
+                        const eatActivity = FOOD_EAT_ACTIVITY[item.id] ?? 'happy'
+                        const eatDuration = FOOD_EAT_DURATION[item.id] ?? 3000
+                        const speeches = FOOD_SPEECHES[item.id] ?? [`${item.emoji} 好吃！`]
+                        setActivity(eatActivity)
+                        setSpeech(randomPick(speeches))
                         setShowBubble(true)
                         if (talkEndRef.current) clearTimeout(talkEndRef.current)
-                        talkEndRef.current = setTimeout(() => { setShowBubble(false); startIdleCycle() }, 3000)
+                        talkEndRef.current = setTimeout(() => { setShowBubble(false); startIdleCycle() }, eatDuration)
                         setShowFoodShop(false)
                       }}
                       className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${

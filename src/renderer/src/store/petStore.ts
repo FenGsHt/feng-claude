@@ -344,6 +344,7 @@ export const usePetStore = create<PetStore>()(
         history: s.history,
         growth: s.growth,
         gameCoins: s.gameCoins,
+        lastCoinSyncCost: s.lastCoinSyncCost,
         sessionPnl: s.sessionPnl,
       }),
       migrate: (persisted, version) => {
