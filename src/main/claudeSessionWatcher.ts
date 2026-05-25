@@ -618,20 +618,35 @@ function readFullTranscriptEntriesFromDisk(
     return entries
   }
 
-  const paths = collectJsonlFilesFromProjectDir(projectDir).sort((a, b) => {
+  // [2026-05-12] 按 mtime 升序排列后只取最近 MAX_HYDRATE_FILES 个文件，
+  // 避免长期使用后目录积累数百个 JSONL 文件导致启动时全量读取卡顿。
+  // 更早的历史对当前会话已无意义（Claude Code 自身会 compact）。
+  const MAX_HYDRATE_FILES = 25
+  const MAX_HYDRATE_BYTES = 8 * 1024 * 1024 // 8 MB 总量上限
+
+  const allPaths = collectJsonlFilesFromProjectDir(projectDir).sort((a, b) => {
     try {
       return statSync(a).mtimeMs - statSync(b).mtimeMs
     } catch {
       return a.localeCompare(b)
     }
   })
+  const skipped = Math.max(0, allPaths.length - MAX_HYDRATE_FILES)
+  const paths = allPaths.slice(-MAX_HYDRATE_FILES)
 
   let totalBytes = 0
   let lineCount = 0
+  let byteLimitHit = false
   for (const filePath of paths) {
+    let fileSize: number
     let raw: string
     try {
-      totalBytes += statSync(filePath).size
+      fileSize = statSync(filePath).size
+      if (totalBytes + fileSize > MAX_HYDRATE_BYTES) {
+        byteLimitHit = true
+        break
+      }
+      totalBytes += fileSize
       raw = readFileSync(filePath, 'utf-8')
     } catch {
       continue
@@ -645,6 +660,8 @@ function readFullTranscriptEntriesFromDisk(
   console.log('[transcript:hydrate]', {
     projectDir,
     files: paths.length,
+    skippedOldFiles: skipped,
+    byteLimitHit,
     bytes: totalBytes,
     lines: lineCount,
     entries: entries.length,
