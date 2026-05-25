@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTextEditorStore, type SplitDirection } from '../../store/textEditorStore'
 
 const TEXT_EXTENSIONS = new Set([
@@ -46,10 +46,14 @@ function IconSplitV(): React.ReactElement {
 export function TextEditorPanel(): React.ReactElement | null {
   const { visible, filePath, content, isDirty, splitDirection, close, setContent, setSplitDirection, markSaved } = useTextEditorStore()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [confirmingClose, setConfirmingClose] = useState(false)
 
   useEffect(() => {
     if (visible) setTimeout(() => textareaRef.current?.focus(), 50)
   }, [visible, filePath])
+
+  // Reset confirm state when file changes or panel closes
+  useEffect(() => { setConfirmingClose(false) }, [filePath, visible])
 
   const save = useCallback(async () => {
     if (!filePath || !isDirty) return
@@ -57,15 +61,26 @@ export function TextEditorPanel(): React.ReactElement | null {
     if (result.success) markSaved()
   }, [filePath, content, isDirty, markSaved])
 
+  const tryClose = useCallback(() => {
+    if (isDirty) { setConfirmingClose(true) } else { close() }
+  }, [isDirty, close])
+
+  const forceClose = useCallback(() => { setConfirmingClose(false); close() }, [close])
+  const cancelClose = useCallback(() => { setConfirmingClose(false); textareaRef.current?.focus() }, [])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (!visible) return
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); void save() }
-      if (e.key === 'Escape') close()
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); void save(); return }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (confirmingClose) { cancelClose() } else { tryClose() }
+      }
+      if (confirmingClose && e.key === 'Enter') { e.preventDefault(); forceClose() }
     }
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [visible, save, close])
+  }, [visible, save, tryClose, forceClose, cancelClose, confirmingClose])
 
   if (!visible) return null
 
@@ -75,40 +90,65 @@ export function TextEditorPanel(): React.ReactElement | null {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-claude-bg">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-claude-border bg-claude-surface shrink-0">
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          {isDirty && <span className="text-amber-400 text-[13px] leading-none shrink-0" title="未保存">●</span>}
-          <span className="text-[12px] text-claude-text font-mono truncate" title={filePath ?? ''}>
-            {fileName}
-          </span>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {/* Split direction toggle */}
-          <button
-            onClick={() => setSplitDirection(nextDir)}
-            className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
-            title={nextDir === 'vertical' ? '切换为上下分屏' : '切换为左右分屏'}
-          >
-            {splitDirection === 'horizontal' ? <IconSplitV /> : <IconSplitH />}
-          </button>
-          <button
-            onClick={save}
-            disabled={!isDirty}
-            className="px-2 py-0.5 rounded text-[11px] bg-amber-500/20 text-amber-400 hover:bg-amber-500/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="保存 (Ctrl+S)"
-          >
-            保存
-          </button>
-          <button
-            onClick={close}
-            className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
-            title="关闭 (Esc)"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-claude-border bg-claude-surface shrink-0 min-h-[32px]">
+        {confirmingClose ? (
+          /* Unsaved-changes confirmation row */
+          <>
+            <span className="text-[11px] text-amber-400 flex-1 truncate">有未保存的修改，确定放弃？</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={forceClose}
+                className="px-2 py-0.5 rounded text-[11px] bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
+                title="放弃修改并关闭 (Enter)"
+              >
+                放弃
+              </button>
+              <button
+                onClick={cancelClose}
+                className="px-2 py-0.5 rounded text-[11px] bg-claude-border/60 text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+                title="取消 (Esc)"
+              >
+                取消
+              </button>
+            </div>
+          </>
+        ) : (
+          /* Normal header row */
+          <>
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              {isDirty && <span className="text-amber-400 text-[13px] leading-none shrink-0" title="未保存">●</span>}
+              <span className="text-[12px] text-claude-text font-mono truncate" title={filePath ?? ''}>
+                {fileName}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setSplitDirection(nextDir)}
+                className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+                title={nextDir === 'vertical' ? '切换为上下分屏' : '切换为左右分屏'}
+              >
+                {splitDirection === 'horizontal' ? <IconSplitV /> : <IconSplitH />}
+              </button>
+              <button
+                onClick={save}
+                disabled={!isDirty}
+                className="px-2 py-0.5 rounded text-[11px] bg-amber-500/20 text-amber-400 hover:bg-amber-500/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="保存 (Ctrl+S)"
+              >
+                保存
+              </button>
+              <button
+                onClick={tryClose}
+                className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+                title="关闭 (Esc)"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </>
+        )}
       </div>
       {/* Editor */}
       <textarea
