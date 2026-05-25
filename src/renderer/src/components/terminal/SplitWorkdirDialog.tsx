@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect } from 'react'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import type { SplitWorkdirItem } from '../../lib/recentWorkdirs'
 
@@ -28,29 +28,14 @@ export function SplitWorkdirDialog({
   onOpenTextFile,
   onClose
 }: Props): React.ReactElement | null {
-  const [showBrowseMenu, setShowBrowseMenu] = useState(false)
-  const browseMenuRef = useRef<HTMLDivElement>(null)
-
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') { setShowBrowseMenu(false); onClose() }
+      if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!showBrowseMenu) return
-    const handler = (e: MouseEvent): void => {
-      if (browseMenuRef.current && !browseMenuRef.current.contains(e.target as Node)) {
-        setShowBrowseMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showBrowseMenu])
 
   if (!open) return null
 
@@ -111,54 +96,20 @@ export function SplitWorkdirDialog({
         </div>
 
         <div className="flex shrink-0 gap-2 border-t border-claude-border px-4 py-3">
-          {/* Split button: main = 选择文件夹, arrow = dropdown with both options */}
-          <div className="relative flex flex-1" ref={browseMenuRef}>
-            <button
-              type="button"
-              onClick={onPickOther}
-              className="flex-1 rounded-l border border-amber-600/50 bg-claude-surface py-2 text-xs font-medium text-claude-text hover:bg-claude-border/30"
-            >
-              选择其他文件夹…
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowBrowseMenu((v) => !v)}
-              className="rounded-r border border-l-0 border-amber-600/50 bg-claude-surface px-2 py-2 text-claude-muted hover:bg-claude-border/30 hover:text-claude-text"
-              title="更多选项"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-            {showBrowseMenu && (
-              <div className="absolute bottom-full left-0 mb-1 w-full rounded-lg border border-claude-border bg-claude-surface shadow-xl py-1 z-10">
-                <button
-                  type="button"
-                  onClick={() => { setShowBrowseMenu(false); onPickOther() }}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-claude-text hover:bg-claude-border/50 transition-colors"
-                >
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="text-amber-400 shrink-0">
-                    <path d="M1 3.5C1 2.67 1.67 2 2.5 2H5l1.5 2h5c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5h-7C1.67 12 1 11.33 1 10.5V3.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-                  </svg>
-                  选择文件夹…
-                </button>
-                <div className="my-1 border-t border-claude-border/50" />
-                <button
-                  type="button"
-                  onClick={() => { setShowBrowseMenu(false); onOpenTextFile() }}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-claude-text hover:bg-claude-border/50 transition-colors"
-                >
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="text-blue-400 shrink-0">
-                    <path d="M3 1v11h7V4L7 1H3z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-                    <path d="M7 1v3h3" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-                    <line x1="4.5" y1="6.5" x2="8.5" y2="6.5" stroke="currentColor" strokeWidth="1"/>
-                    <line x1="4.5" y1="8.5" x2="8.5" y2="8.5" stroke="currentColor" strokeWidth="1"/>
-                  </svg>
-                  打开文本文件…
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={onPickOther}
+            className="flex-1 rounded border border-amber-600/50 bg-claude-surface py-2 text-xs font-medium text-claude-text hover:bg-claude-border/30"
+          >
+            选择其他文件夹…
+          </button>
+          <button
+            type="button"
+            onClick={onOpenTextFile}
+            className="flex-1 rounded border border-blue-600/40 bg-claude-surface py-2 text-xs font-medium text-claude-text hover:bg-claude-border/30"
+          >
+            打开文本文件…
+          </button>
           <button
             type="button"
             onClick={onClose}
