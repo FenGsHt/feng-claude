@@ -444,9 +444,13 @@ export function TextEditorPanel(): React.ReactElement | null {
               ))}
             </div>
           )}
+          {/* wrap="off" disables visual line-wrapping so each content line = exactly
+              one LINE_H row — required for the absolute highlight-box positions to be
+              accurate.  Long lines scroll horizontally (standard code-editor behavior). */}
           <textarea
             ref={textareaRef}
             value={content}
+            wrap="off"
             onChange={e => setContent(e.target.value)}
             onScroll={handleScroll}
             onKeyDown={handleTextareaKeyDown}
@@ -465,6 +469,7 @@ export function TextEditorPanel(): React.ReactElement | null {
               width: '100%',
               height: '100%',
               boxSizing: 'border-box',
+              whiteSpace: 'pre',
             }}
           />
         </div>
