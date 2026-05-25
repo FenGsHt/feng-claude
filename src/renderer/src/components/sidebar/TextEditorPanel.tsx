@@ -60,10 +60,11 @@ type PendingAction =
 export function TextEditorPanel(): React.ReactElement | null {
   const { visible, filePath, content, isDirty, splitDirection, open, close, setContent, setSplitDirection, markSaved } = useTextEditorStore()
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const lineNumRef  = useRef<HTMLDivElement>(null)
-  const findInputRef = useRef<HTMLInputElement>(null)
-  const splitMenuRef = useRef<HTMLDivElement>(null)
+  const textareaRef        = useRef<HTMLTextAreaElement>(null)
+  const lineNumRef         = useRef<HTMLDivElement>(null)
+  const findInputRef       = useRef<HTMLInputElement>(null)
+  const splitMenuRef       = useRef<HTMLDivElement>(null)
+  const highlightOverlayRef = useRef<HTMLDivElement>(null)
 
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
   const [pendingAction, setPendingAction]         = useState<PendingAction>(null)
@@ -129,6 +130,32 @@ export function TextEditorPanel(): React.ReactElement | null {
 
   useEffect(() => { setFindIndex(0) }, [findQuery])
 
+  // Highlight overlay content: split text into runs with <mark> at match positions
+  const highlightContent = useMemo((): React.ReactNode => {
+    if (!findQuery || !findMatches.length) return null
+    const qLen  = findQuery.length
+    const parts: React.ReactNode[] = []
+    let pos = 0
+    findMatches.forEach((start, i) => {
+      if (start > pos) parts.push(content.slice(pos, start))
+      parts.push(
+        <mark
+          key={i}
+          style={{
+            backgroundColor: i === findIndex ? 'rgba(251,191,36,0.45)' : 'rgba(251,191,36,0.2)',
+            color: 'transparent',
+            borderRadius: '2px',
+          }}
+        >
+          {content.slice(start, start + qLen)}
+        </mark>
+      )
+      pos = start + qLen
+    })
+    if (pos < content.length) parts.push(content.slice(pos))
+    return <>{parts}</>
+  }, [content, findMatches, findQuery, findIndex])
+
   // Line-number column width
   const lineNumWidth = `${Math.max(36, String(totalLines).length * 9 + 16)}px`
 
@@ -137,19 +164,18 @@ export function TextEditorPanel(): React.ReactElement | null {
     if (!findMatches.length || !textareaRef.current) return
     const idx   = ((i % findMatches.length) + findMatches.length) % findMatches.length
     const start = findMatches[idx]
-    const end   = start + findQuery.length
     setFindIndex(idx)
-    const ta = textareaRef.current
-    ta.focus()
-    ta.setSelectionRange(start, end)
+    const ta          = textareaRef.current
     const linesBefore = content.slice(0, start).split('\n').length
-    ta.scrollTop = Math.max(0, (linesBefore - 3) * 19.2)
-  }, [findMatches, findQuery, content])
+    const newScrollTop = Math.max(0, (linesBefore - 3) * 19.2)
+    ta.scrollTop = newScrollTop
+    if (highlightOverlayRef.current) highlightOverlayRef.current.scrollTop = newScrollTop
+  }, [findMatches, content])
 
   const handleScroll = useCallback(() => {
-    if (lineNumRef.current && textareaRef.current) {
-      lineNumRef.current.scrollTop = textareaRef.current.scrollTop
-    }
+    const top = textareaRef.current?.scrollTop ?? 0
+    if (lineNumRef.current)          lineNumRef.current.scrollTop          = top
+    if (highlightOverlayRef.current) highlightOverlayRef.current.scrollTop = top
   }, [])
 
   const updateCursor = useCallback(() => {
@@ -378,20 +404,51 @@ export function TextEditorPanel(): React.ReactElement | null {
           </div>
         </div>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={e => setContent(e.target.value)}
-          onScroll={handleScroll}
-          onKeyDown={handleTextareaKeyDown}
-          onKeyUp={updateCursor}
-          onClick={updateCursor}
-          onSelect={updateCursor}
-          spellCheck={false}
-          className="flex-1 resize-none outline-none bg-claude-bg text-claude-text font-mono overflow-auto"
-          style={{ fontSize: '12px', lineHeight: '1.6', tabSize: 2, padding: '12px' }}
-        />
+        {/* Textarea + highlight overlay wrapper */}
+        <div className="relative flex-1 bg-claude-bg overflow-hidden min-w-0">
+          {/* Mirror-div overlay: transparent text with <mark> highlights so we avoid
+              native selection-range rendering artifacts (wrong position / block spans) */}
+          {findOpen && findQuery.length > 0 && findMatches.length > 0 && (
+            <div
+              ref={highlightOverlayRef}
+              aria-hidden="true"
+              className="absolute inset-0 pointer-events-none select-none font-mono"
+              style={{
+                fontSize: '12px',
+                lineHeight: '1.6',
+                padding: '12px',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                overflowY: 'hidden',
+                color: 'transparent',
+                zIndex: 1,
+              }}
+            >
+              {highlightContent}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            onScroll={handleScroll}
+            onKeyDown={handleTextareaKeyDown}
+            onKeyUp={updateCursor}
+            onClick={updateCursor}
+            onSelect={updateCursor}
+            spellCheck={false}
+            className="absolute inset-0 w-full h-full resize-none outline-none text-claude-text font-mono overflow-auto"
+            style={{
+              fontSize: '12px',
+              lineHeight: '1.6',
+              tabSize: 2,
+              padding: '12px',
+              zIndex: 2,
+              background: 'transparent',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
       </div>
 
       {/* ── Status bar ── */}
