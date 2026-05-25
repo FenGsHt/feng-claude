@@ -145,8 +145,10 @@ export function TextEditorPanel(): React.ReactElement | null {
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-claude-border bg-claude-surface shrink-0 min-h-[32px]">
         {confirmingClose ? (
           <>
-            <span className="text-[11px] text-amber-400 flex-1 truncate">
-              {pendingOpenRef.current ? '有未保存的修改，确定放弃并打开新文件？' : '有未保存的修改，确定放弃？'}
+            <span className="text-[11px] text-amber-400 flex-1 truncate" title={filePath ?? ''}>
+              {pendingOpenRef.current
+                ? `「${fileName}」未保存，放弃修改并打开「${pendingOpenRef.current.split(/[/\\]/).pop()}」？`
+                : `「${fileName}」有未保存的修改，关闭将丢失所有更改。`}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <button
