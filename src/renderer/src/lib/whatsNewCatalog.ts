@@ -8,6 +8,20 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.13': {
+    titleZh: 'Feng Claude 0.7.13 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.13",
+    bulletsZh: [
+      '文本文件编辑器：双击文件树中任意文本文件即可在右侧分栏打开，支持行号、Ctrl+F 搜索、保存提示、未保存警告',
+      '外嵌进程退出检测：PTY 退出时底部红色提示 + 一键重启按钮，输入框自动禁用',
+      '外嵌历史加载提速：限制最多读取最近 25 个 JSONL 文件及 8 MB 总量，长期项目打开外嵌不再卡顿',
+    ],
+    bulletsEn: [
+      'Text file editor: double-click any text file in the file tree to open it in a split pane; line numbers, Ctrl+F search, save indicator, unsaved-changes warning',
+      'Embed dead-process detection: red banner + one-click restart when PTY exits; input auto-disabled',
+      'Embed history hydration speedup: capped at 25 most-recent JSONL files and 8 MB total; eliminates freeze on long-lived projects',
+    ]
+  },
   '0.7.12': {
     titleZh: 'Feng Claude 0.7.12 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.12",

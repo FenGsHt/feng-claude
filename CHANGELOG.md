@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.13] - 2026-05-12
+
+### 新功能 | New Features
+- **文本文件编辑器**：文件树双击文本文件即可在右侧分栏打开编辑器；支持语法高亮、行号、Ctrl+F 搜索、保存状态提示、未保存警告、一键重载；布局与浏览器面板独立分栏，不互相覆盖
+
+### 修复 | Bug Fixes
+- **外嵌进程退出检测**：PTY 进程 `exited`/`error` 时底部显示红色提示条，输入框自动禁用，「重启 Claude」一键恢复（之前已在 main 分支，本版正式合入）
+
+### 性能 | Performance
+- **外嵌历史水合限速**：`readFullTranscriptEntriesFromDisk` 现在只读最近 25 个 JSONL 文件（按修改时间）且总量不超过 8 MB；长期项目积累数百个历史文件时不再全量同步读取，消除打开外嵌时的卡顿
+
+---
+
 ## [0.7.12] - 2026-05-12
 
 ### 新功能 | New Features
