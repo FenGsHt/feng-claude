@@ -5,6 +5,7 @@ import type { CreateSessionMode } from '../../types/paneLayout'
 import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 import { SplitWorkdirDialog } from './SplitWorkdirDialog'
+import { openTextEditor } from '../sidebar/sidebarNav'
 import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
@@ -515,6 +516,11 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
               }
             }
             setSplitMode(null)
+          }}
+          onOpenTextFile={async () => {
+            setSplitMode(null)
+            const path = await window.electronAPI.openTextFileDialog()
+            if (path) void openTextEditor(path)
           }}
           onClose={() => setSplitMode(null)}
         />
