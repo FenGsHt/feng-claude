@@ -506,6 +506,24 @@ export function registerIpcHandlers(
     return fsHandler.readTree(payload.dirPath, payload.depth ?? 3)
   })
 
+  ipcMain.handle(IPC.FS_READ_FILE, async (_e, filePath: string) => {
+    try {
+      const content = await fsPromises.readFile(filePath, 'utf-8')
+      return { success: true, content }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.FS_WRITE_FILE, async (_e, filePath: string, content: string) => {
+    try {
+      await fsPromises.writeFile(filePath, content, 'utf-8')
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   // ── History ──────────────────────────────────────────────────
   ipcMain.handle(IPC.HISTORY_LIST, async () => historyStore.list())
   ipcMain.handle(IPC.HISTORY_SAVE, async (_e, { record }) => historyStore.save(record))

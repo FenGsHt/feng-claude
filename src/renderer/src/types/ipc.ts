@@ -142,6 +142,9 @@ export const IPC = {
 
   OFFICE_PREVIEW_OPEN: 'office:preview:open',
   OFFICE_PREVIEW_TRIGGER: 'office:preview:trigger', // [2026-05-12] HTTP MCP → renderer push event
+
+  FS_READ_FILE: 'fs:readFile',
+  FS_WRITE_FILE: 'fs:writeFile',
 } as const
 
 export interface ShellOption {

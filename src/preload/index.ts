@@ -87,6 +87,12 @@ const electronAPI = {
   readFileTree: (dirPath: string, depth?: number): Promise<FileTreeNode[]> =>
     ipcRenderer.invoke(IPC.FS_READ_TREE, { dirPath, depth }),
 
+  readTextFile: (filePath: string): Promise<{ success: boolean; content?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC.FS_READ_FILE, filePath),
+
+  writeTextFile: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC.FS_WRITE_FILE, filePath, content),
+
   // History
   history: {
     list: (): Promise<HistoryRecord[]> => ipcRenderer.invoke(IPC.HISTORY_LIST),

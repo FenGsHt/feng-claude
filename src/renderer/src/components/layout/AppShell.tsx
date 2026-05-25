@@ -6,6 +6,8 @@ import { TerminalPanel } from '../terminal/TerminalPanel'
 import { ToolCallFeed } from '../toolcalls/ToolCallFeed'
 import { OfficePreviewPanel } from '../office/OfficePreviewPanelRight'
 import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
+import { TextEditorPanel } from '../sidebar/TextEditorPanel'
+import { useTextEditorStore } from '../../store/textEditorStore'
 import { setTerminalLineHandler } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
@@ -31,6 +33,7 @@ export function AppShell(): React.ReactElement {
   const browserDragStartX = useRef(0)      // [2026-04-30] 拖拽开始时的鼠标位置
   const browserDragStartWidth = useRef(0)  // [2026-04-30] 拖拽开始时的面板宽度
   const officePanelWidth = useOfficePreviewPanelStore((s) => s.visible ? s.width : 0)
+  const textEditorWidth = useTextEditorStore((s) => s.visible ? s.width : 0)
 
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -125,8 +128,8 @@ export function AppShell(): React.ReactElement {
         />
         <main
           className="flex flex-col flex-1 overflow-hidden min-w-0"
-          style={browserPanel.visible || officePanelWidth > 0
-            ? { marginRight: browserPanel.width + officePanelWidth + (showTools ? 256 : 0) + 6 }
+          style={browserPanel.visible || officePanelWidth > 0 || textEditorWidth > 0
+            ? { marginRight: browserPanel.width + officePanelWidth + textEditorWidth + (showTools ? 256 : 0) + 6 }
             : undefined}
         >
           <TabBar />
@@ -157,6 +160,8 @@ export function AppShell(): React.ReactElement {
       </div>
       {/* Office preview right panel */}
       <OfficePreviewPanel />
+      {/* Text editor right panel */}
+      <TextEditorPanel />
     </div>
   )
 }
