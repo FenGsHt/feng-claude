@@ -60,11 +60,14 @@ type PendingAction =
 export function TextEditorPanel(): React.ReactElement | null {
   const { visible, filePath, content, isDirty, splitDirection, open, close, setContent, setSplitDirection, markSaved } = useTextEditorStore()
 
-  const textareaRef        = useRef<HTMLTextAreaElement>(null)
-  const lineNumRef         = useRef<HTMLDivElement>(null)
-  const findInputRef       = useRef<HTMLInputElement>(null)
-  const splitMenuRef       = useRef<HTMLDivElement>(null)
-  const highlightOverlayRef = useRef<HTMLDivElement>(null)
+  const textareaRef         = useRef<HTMLTextAreaElement>(null)
+  const lineNumRef          = useRef<HTMLDivElement>(null)
+  const findInputRef        = useRef<HTMLInputElement>(null)
+  const splitMenuRef        = useRef<HTMLDivElement>(null)
+  // Container for absolute-positioned highlight boxes; moved via translateY on scroll
+  const overlayContainerRef = useRef<HTMLDivElement>(null)
+  // Measured monospace character width (pixels) — avoids font-rendering mismatch vs mirror-div
+  const charWidthRef        = useRef(7.22)
 
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
   const [pendingAction, setPendingAction]         = useState<PendingAction>(null)
@@ -100,6 +103,19 @@ export function TextEditorPanel(): React.ReactElement | null {
     return () => document.removeEventListener('mousedown', h)
   }, [showSplitMenu])
 
+  // Measure actual character width from textarea computed font (runs once after visible)
+  useEffect(() => {
+    if (!visible || !textareaRef.current) return
+    const ta   = textareaRef.current
+    const span = document.createElement('span')
+    const cs   = getComputedStyle(ta)
+    span.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${cs.fontFamily};font-size:${cs.fontSize};`
+    span.textContent   = 'x'.repeat(100)
+    document.body.appendChild(span)
+    charWidthRef.current = span.getBoundingClientRect().width / 100
+    document.body.removeChild(span)
+  }, [visible])
+
   // Auto-clear save error after 4 s
   useEffect(() => {
     if (!saveError) return
@@ -130,53 +146,46 @@ export function TextEditorPanel(): React.ReactElement | null {
 
   useEffect(() => { setFindIndex(0) }, [findQuery])
 
-  // Highlight overlay content: split text into runs with <mark> at match positions
-  const highlightContent = useMemo((): React.ReactNode => {
-    if (!findQuery || !findMatches.length) return null
-    const qLen  = findQuery.length
-    const parts: React.ReactNode[] = []
-    let pos = 0
-    findMatches.forEach((start, i) => {
-      if (start > pos) parts.push(content.slice(pos, start))
-      parts.push(
-        <mark
-          key={i}
-          style={{
-            backgroundColor: i === findIndex ? 'rgba(251,191,36,0.45)' : 'rgba(251,191,36,0.2)',
-            color: 'transparent',
-            borderRadius: '2px',
-          }}
-        >
-          {content.slice(start, start + qLen)}
-        </mark>
-      )
-      pos = start + qLen
+  // Pre-compute match line/col positions so we can place absolute highlight boxes
+  // (avoids font-rendering alignment issues of the mirror-div approach)
+  const LINE_H      = 12 * 1.6  // 19.2 px — must match textarea lineHeight
+  const EDITOR_PAD  = 12        // must match textarea padding
+
+  const matchPositions = useMemo(() => {
+    if (!findOpen || !findQuery || !findMatches.length) return []
+    return findMatches.map((start) => {
+      const before = content.slice(0, start).split('\n')
+      return { lineNum: before.length - 1, col: before[before.length - 1].length }
     })
-    if (pos < content.length) parts.push(content.slice(pos))
-    return <>{parts}</>
-  }, [content, findMatches, findQuery, findIndex])
+  }, [content, findMatches, findQuery, findOpen])
 
   // Line-number column width
   const lineNumWidth = `${Math.max(36, String(totalLines).length * 9 + 16)}px`
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+  const syncOverlayTranslate = useCallback((scrollTop: number) => {
+    if (overlayContainerRef.current) {
+      overlayContainerRef.current.style.transform = `translateY(${-scrollTop}px)`
+    }
+  }, [])
+
   const goToMatch = useCallback((i: number) => {
     if (!findMatches.length || !textareaRef.current) return
-    const idx   = ((i % findMatches.length) + findMatches.length) % findMatches.length
-    const start = findMatches[idx]
+    const idx          = ((i % findMatches.length) + findMatches.length) % findMatches.length
+    const start        = findMatches[idx]
     setFindIndex(idx)
-    const ta          = textareaRef.current
-    const linesBefore = content.slice(0, start).split('\n').length
-    const newScrollTop = Math.max(0, (linesBefore - 3) * 19.2)
-    ta.scrollTop = newScrollTop
-    if (highlightOverlayRef.current) highlightOverlayRef.current.scrollTop = newScrollTop
-  }, [findMatches, content])
+    const ta           = textareaRef.current
+    const linesBefore  = content.slice(0, start).split('\n').length
+    const newScrollTop = Math.max(0, (linesBefore - 3) * LINE_H)
+    ta.scrollTop       = newScrollTop
+    syncOverlayTranslate(newScrollTop)
+  }, [findMatches, content, LINE_H, syncOverlayTranslate])
 
   const handleScroll = useCallback(() => {
     const top = textareaRef.current?.scrollTop ?? 0
-    if (lineNumRef.current)          lineNumRef.current.scrollTop          = top
-    if (highlightOverlayRef.current) highlightOverlayRef.current.scrollTop = top
-  }, [])
+    if (lineNumRef.current) lineNumRef.current.scrollTop = top
+    syncOverlayTranslate(top)
+  }, [syncOverlayTranslate])
 
   const updateCursor = useCallback(() => {
     const ta = textareaRef.current
@@ -406,25 +415,33 @@ export function TextEditorPanel(): React.ReactElement | null {
 
         {/* Textarea + highlight overlay wrapper */}
         <div className="relative flex-1 bg-claude-bg overflow-hidden min-w-0">
-          {/* Mirror-div overlay: transparent text with <mark> highlights so we avoid
-              native selection-range rendering artifacts (wrong position / block spans) */}
-          {findOpen && findQuery.length > 0 && findMatches.length > 0 && (
+          {/* Absolute-positioned highlight boxes.
+              Each box sits at (EDITOR_PAD + lineNum*LINE_H, EDITOR_PAD + col*charWidth).
+              The container is shifted via translateY on every scroll event (direct DOM,
+              no re-render) so boxes stay locked to the textarea text. */}
+          {findOpen && findQuery.length > 0 && matchPositions.length > 0 && (
             <div
-              ref={highlightOverlayRef}
+              ref={overlayContainerRef}
               aria-hidden="true"
-              className="absolute inset-0 pointer-events-none select-none font-mono"
-              style={{
-                fontSize: '12px',
-                lineHeight: '1.6',
-                padding: '12px',
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'anywhere',
-                overflowY: 'hidden',
-                color: 'transparent',
-                zIndex: 1,
-              }}
+              className="absolute top-0 left-0 w-full pointer-events-none"
+              style={{ zIndex: 1 }}
             >
-              {highlightContent}
+              {matchPositions.map(({ lineNum, col }, i) => (
+                <div
+                  key={i}
+                  className="absolute"
+                  style={{
+                    top:    EDITOR_PAD + lineNum * LINE_H,
+                    left:   EDITOR_PAD + col * charWidthRef.current,
+                    width:  findQuery.length * charWidthRef.current,
+                    height: LINE_H,
+                    backgroundColor: i === findIndex
+                      ? 'rgba(251,191,36,0.45)'
+                      : 'rgba(251,191,36,0.2)',
+                    borderRadius: 2,
+                  }}
+                />
+              ))}
             </div>
           )}
           <textarea
@@ -437,7 +454,7 @@ export function TextEditorPanel(): React.ReactElement | null {
             onClick={updateCursor}
             onSelect={updateCursor}
             spellCheck={false}
-            className="absolute inset-0 w-full h-full resize-none outline-none text-claude-text font-mono overflow-auto"
+            className="absolute inset-0 resize-none outline-none text-claude-text font-mono overflow-auto"
             style={{
               fontSize: '12px',
               lineHeight: '1.6',
@@ -445,6 +462,8 @@ export function TextEditorPanel(): React.ReactElement | null {
               padding: '12px',
               zIndex: 2,
               background: 'transparent',
+              width: '100%',
+              height: '100%',
               boxSizing: 'border-box',
             }}
           />
