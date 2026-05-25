@@ -70,8 +70,10 @@ export function AppShell(): React.ReactElement {
       // 向左拖拽增加面板宽度，向右拖拽减少面板宽度
       const delta = browserDragStartX.current - ev.clientX
       const newWidth = Math.max(200, browserDragStartWidth.current + delta)
-      // [2026-05-01] 比例基于去掉 Tools 面板后的有效宽度
-      const effectiveWidth = window.innerWidth - (showTools ? 256 : 0)
+      // 有效宽度排除右侧所有 DOM 固定面板（Tools + 文本编辑器 + Office 预览）
+      const teW = useTextEditorStore.getState().visible ? useTextEditorStore.getState().width : 0
+      const opW = useOfficePreviewPanelStore.getState().visible ? useOfficePreviewPanelStore.getState().width : 0
+      const effectiveWidth = window.innerWidth - (showTools ? 256 : 0) - teW - opW
       void window.electronAPI.browserView?.setRatio?.(newWidth / effectiveWidth)
     }
     const onUp = () => {
@@ -81,7 +83,7 @@ export function AppShell(): React.ReactElement {
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [browserPanel])
+  }, [browserPanel, showTools])
 
   useEffect(() => {
     setTerminalLineHandler((sessionId, line) => {
@@ -109,11 +111,11 @@ export function AppShell(): React.ReactElement {
     })
   }, [])
 
-  // [2026-05-01] 当 Tools calls 面板显示/隐藏时，通知主进程更新浏览器布局
+  // [2026-05-01] 通知主进程右侧所有 DOM 面板总宽度（Tools + 文本编辑器 + Office 预览），主进程据此定位 WebContentsView
   useEffect(() => {
-    const width = showTools ? 256 : 0  // w-64 = 256px
+    const width = (showTools ? 256 : 0) + textEditorWidth + officePanelWidth
     window.electronAPI.browserView?.setToolsPanelWidth?.(width)
-  }, [showTools])
+  }, [showTools, textEditorWidth, officePanelWidth])
 
   return (
     <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans antialiased">
@@ -146,7 +148,7 @@ export function AppShell(): React.ReactElement {
               position: 'fixed',
               top: 32,
               bottom: 0,
-              right: browserPanel.width + (showTools ? 256 : 0),
+              right: browserPanel.width + (showTools ? 256 : 0) + textEditorWidth + officePanelWidth,
               width: 8,
               zIndex: 50
             }}

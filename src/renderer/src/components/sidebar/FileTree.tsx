@@ -248,9 +248,9 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
             onClick={() => setExpanded((v) => !v)}
             onDoubleClick={handleDoubleClick}
             onContextMenu={handleContextMenu}
-            className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+            className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
             style={{ paddingLeft: `${8 + depth * 14}px` }}
-            title={`${node.path} — drag to Claude terminal as @ reference`}
+            title={node.path}
           >
             <span className="text-[10px] text-claude-muted/60 shrink-0 w-[10px]">{expanded ? '▾' : '▸'}</span>
             {getFileIcon(node.name, true)}
@@ -277,9 +277,9 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
         onDragStart={(e) => setFileDragData(e, node)}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
-        className="flex cursor-grab active:cursor-grabbing items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+        className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
         style={{ paddingLeft: `${8 + depth * 14}px` }}
-        title={`${node.path} — drag to Claude terminal as @ reference`}
+        title={node.path}
       >
         <span className="text-[10px] opacity-0 shrink-0 w-[10px]">▸</span>
         {getFileIcon(node.name, false)}
