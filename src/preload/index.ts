@@ -87,6 +87,9 @@ const electronAPI = {
   readFileTree: (dirPath: string, depth?: number): Promise<FileTreeNode[]> =>
     ipcRenderer.invoke(IPC.FS_READ_TREE, { dirPath, depth }),
 
+  openTextFileDialog: (): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.FS_OPEN_FILE_DIALOG),
+
   readTextFile: (filePath: string): Promise<{ success: boolean; content?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.FS_READ_FILE, filePath),
 

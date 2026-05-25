@@ -506,6 +506,18 @@ export function registerIpcHandlers(
     return fsHandler.readTree(payload.dirPath, payload.depth ?? 3)
   })
 
+  ipcMain.handle(IPC.FS_OPEN_FILE_DIALOG, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Text Files', extensions: ['ts','tsx','js','jsx','mjs','cjs','json','jsonc','md','mdx','txt','yaml','yml','toml','ini','cfg','css','scss','less','html','htm','xml','svg','sh','bash','zsh','fish','ps1','py','go','rs','java','c','cpp','h','hpp','cs','rb','php','lua','kt','swift','env','gitignore','lock'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
   ipcMain.handle(IPC.FS_READ_FILE, async (_e, filePath: string) => {
     try {
       const content = await fsPromises.readFile(filePath, 'utf-8')
