@@ -39,6 +39,7 @@ export function injectMockElectronAPI(): void {
       openTextFileDialog: async () => null,
       readTextFile: async (_path: string) => ({ success: true, content: '// browser preview mode' }),
       writeTextFile: async (_path: string, _content: string) => ({ success: false, error: 'Not available in browser preview' }),
+      readFileAsDataUrl: async (_path: string) => ({ success: false, error: 'Not available in browser preview' }),
 
       readFileTree: async () => [
         {

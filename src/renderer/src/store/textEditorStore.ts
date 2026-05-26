@@ -12,7 +12,7 @@ interface TextEditorState {
   splitSize: number          // editor pane width (horizontal) or height (vertical) in px
   splitDirection: SplitDirection
   open: (filePath: string, content: string) => void
-  openImage: (filePath: string) => void
+  openImage: (filePath: string, dataUrl: string) => void
   close: () => void
   setContent: (content: string) => void
   setSplitSize: (size: number) => void
@@ -29,7 +29,7 @@ export const useTextEditorStore = create<TextEditorState>((set) => ({
   splitSize: 500,
   splitDirection: 'horizontal',
   open: (filePath, content) => set({ visible: true, filePath, content, isDirty: false, mode: 'text' }),
-  openImage: (filePath) => set({ visible: true, filePath, content: '', isDirty: false, mode: 'image' }),
+  openImage: (filePath, dataUrl) => set({ visible: true, filePath, content: dataUrl, isDirty: false, mode: 'image' }),
   close: () => set({ visible: false, isDirty: false }),
   setContent: (content) => set({ content, isDirty: true }),
   setSplitSize: (splitSize) => set({ splitSize }),

@@ -24,9 +24,10 @@ export function openOfficePreview(filePath: string): void {
   useOfficePreviewPanelStore.getState().open(filePath)
 }
 
-/** [2026-05-26] 图片预览面板。直接用 file:// 协议，无需读取内容。 */
-export function openImagePreview(filePath: string): void {
-  useTextEditorStore.getState().openImage(filePath)
+/** [2026-05-26] 图片预览面板。通过 IPC 读成 base64 data URL，绕过 CSP 限制。 */
+export async function openImagePreview(filePath: string): Promise<void> {
+  const result = await window.electronAPI.readFileAsDataUrl(filePath)
+  useTextEditorStore.getState().openImage(filePath, result.success && result.dataUrl ? result.dataUrl : '')
 }
 
 /** [2026-05-25] 文本编辑器右侧面板。读取文件内容后打开。 */

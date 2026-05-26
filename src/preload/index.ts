@@ -96,6 +96,9 @@ const electronAPI = {
   writeTextFile: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC.FS_WRITE_FILE, filePath, content),
 
+  readFileAsDataUrl: (filePath: string): Promise<{ success: boolean; dataUrl?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC.FS_READ_FILE_AS_DATA_URL, filePath),
+
   // History
   history: {
     list: (): Promise<HistoryRecord[]> => ipcRenderer.invoke(IPC.HISTORY_LIST),

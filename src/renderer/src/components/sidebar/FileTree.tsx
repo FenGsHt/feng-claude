@@ -187,7 +187,7 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
       return
     }
     if (node.type === 'file' && isImageFile(node.name)) {
-      openImagePreview(node.path)
+      void openImagePreview(node.path)
       return
     }
     if (node.type === 'file' && isTextFile(node.name)) {

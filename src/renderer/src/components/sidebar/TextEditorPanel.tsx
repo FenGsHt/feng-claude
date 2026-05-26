@@ -329,7 +329,7 @@ export function TextEditorPanel(): React.ReactElement | null {
         {/* Image */}
         <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-claude-bg min-h-0">
           <img
-            src={`file:///${(filePath ?? '').replace(/\\/g, '/')}`}
+            src={content || undefined}
             alt={fileName}
             draggable={false}
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}

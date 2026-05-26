@@ -146,6 +146,7 @@ export const IPC = {
   FS_READ_FILE: 'fs:readFile',
   FS_WRITE_FILE: 'fs:writeFile',
   FS_OPEN_FILE_DIALOG: 'fs:openFileDialog',
+  FS_READ_FILE_AS_DATA_URL: 'fs:readFileAsDataUrl',
 } as const
 
 export interface ShellOption {

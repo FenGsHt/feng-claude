@@ -536,6 +536,23 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle(IPC.FS_READ_FILE_AS_DATA_URL, async (_e, filePath: string) => {
+    try {
+      const data = await fsPromises.readFile(filePath)
+      const ext  = extname(filePath).toLowerCase().slice(1)
+      const mime: Record<string, string> = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+        bmp: 'image/bmp', ico: 'image/x-icon', tiff: 'image/tiff',
+        tif: 'image/tiff', avif: 'image/avif',
+      }
+      const mimeType = mime[ext] ?? 'application/octet-stream'
+      return { success: true, dataUrl: `data:${mimeType};base64,${data.toString('base64')}` }
+    } catch (err: any) {
+      return { success: false, error: err.message as string }
+    }
+  })
+
   // ── History ──────────────────────────────────────────────────
   ipcMain.handle(IPC.HISTORY_LIST, async () => historyStore.list())
   ipcMain.handle(IPC.HISTORY_SAVE, async (_e, { record }) => historyStore.save(record))
