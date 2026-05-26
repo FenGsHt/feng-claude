@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTextEditorStore, type SplitDirection } from '../../store/textEditorStore'
 
+const IMAGE_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif',
+])
+
+export function isImageFile(name: string): boolean {
+  const ext = name.toLowerCase().split('.').pop() ?? ''
+  return IMAGE_EXTENSIONS.has(ext)
+}
+
 const TEXT_EXTENSIONS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
   'json', 'jsonc',
@@ -58,7 +67,7 @@ type PendingAction =
 // ── Component ──────────────────────────────────────────────────────────────
 /** Content-only panel — layout and split handle are managed by AppShell */
 export function TextEditorPanel(): React.ReactElement | null {
-  const { visible, filePath, content, isDirty, splitDirection, open, close, setContent, setSplitDirection, markSaved } = useTextEditorStore()
+  const { visible, filePath, content, isDirty, mode, splitDirection, open, close, setContent, setSplitDirection, markSaved } = useTextEditorStore()
 
   const textareaRef         = useRef<HTMLTextAreaElement>(null)
   const lineNumRef          = useRef<HTMLDivElement>(null)
@@ -263,6 +272,7 @@ export function TextEditorPanel(): React.ReactElement | null {
       }
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (mode === 'image')  { close(); return }
         if (findOpen)          { setFindOpen(false); textareaRef.current?.focus(); return }
         if (showSplitMenu)     { setShowSplitMenu(false); return }
         if (confirmingDiscard) { cancelDiscard() } else { tryAction({ type: 'close' }) }
@@ -283,6 +293,55 @@ export function TextEditorPanel(): React.ReactElement | null {
 
   const fileName = filePath?.split(/[/\\]/).pop() ?? ''
   const nextDir: SplitDirection = splitDirection === 'horizontal' ? 'vertical' : 'horizontal'
+
+  // ── Image preview mode ──────────────────────────────────────────────────────
+  if (mode === 'image') {
+    return (
+      <div className="flex flex-col h-full overflow-hidden bg-claude-bg">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-claude-border bg-claude-surface shrink-0 min-h-[32px]">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <span className="text-[12px] text-claude-text font-mono truncate" title={filePath ?? ''}>{fileName}</span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Switch split direction */}
+            <div className="relative" ref={splitMenuRef}>
+              <button onClick={() => setShowSplitMenu(v => !v)} className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors" title="分屏选项">
+                {splitDirection === 'horizontal' ? <IconSplitV /> : <IconSplitH />}
+              </button>
+              {showSplitMenu && (
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-claude-border bg-claude-surface shadow-xl py-1">
+                  <button onClick={() => { setSplitDirection(nextDir); setShowSplitMenu(false) }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-[11px] text-claude-text hover:bg-claude-border/50 transition-colors">
+                    <span className="text-claude-muted">{nextDir === 'horizontal' ? <IconSplitH /> : <IconSplitV />}</span>
+                    {nextDir === 'vertical' ? '切换为上下分屏' : '切换为左右分屏'}
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* Close */}
+            <button onClick={() => close()} className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors" title="关闭 (Esc)">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        {/* Image */}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-claude-bg min-h-0">
+          <img
+            src={`file://${filePath}`}
+            alt={fileName}
+            draggable={false}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+          />
+        </div>
+        {/* Status bar */}
+        <div className="flex items-center gap-4 px-3 border-t border-claude-border bg-claude-surface shrink-0" style={{ height: '22px' }}>
+          <span className="text-[10px] font-mono text-claude-muted truncate">{filePath}</span>
+        </div>
+      </div>
+    )
+  }
 
   // Confirm-discard message
   let discardMsg: string
