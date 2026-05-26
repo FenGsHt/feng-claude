@@ -8,6 +8,20 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.14': {
+    titleZh: 'Feng Claude 0.7.14 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.14",
+    bulletsZh: [
+      '图片预览：文件树双击图片文件（png/jpg/gif/webp/svg/avif 等）即可在分屏窗格内预览，与文本编辑器共用分屏逻辑',
+      '文本编辑器增强：保存失败提示条、底部状态栏（行/列/文件大小）、从磁盘重新加载、行号显示',
+      'Ctrl+F 查找修复：字符级精准高亮，关闭折行，高亮位置不再偏移',
+    ],
+    bulletsEn: [
+      'Image preview: double-click png/jpg/gif/webp/svg/avif etc. in the file tree to preview in the split pane alongside the text editor',
+      'Text editor enhancements: save-failure error bar, status bar (line/col/size), reload-from-disk button, line numbers',
+      'Ctrl+F find fix: accurate character-level highlight boxes, wrap="off" prevents line-shift after long lines',
+    ]
+  },
   '0.7.13': {
     titleZh: 'Feng Claude 0.7.13 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.13",
