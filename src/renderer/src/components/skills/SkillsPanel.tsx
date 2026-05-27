@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import type { SkillEntry } from '../../types/ipc'
 import { useI18n } from '../../i18n'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 // ── Markdown viewer (lightweight) ────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ function ContentModal({
   onEdit: () => void
 }): React.ReactElement {
   const { t } = useI18n()
+  useFocusWindow()
   useEffect(() => {
     const h = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)
@@ -124,6 +126,7 @@ function EditorModal({
   const [error, setError] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
   const { t } = useI18n()
+  useFocusWindow()
 
   useEffect(() => { taRef.current?.focus() }, [])
   useEffect(() => {

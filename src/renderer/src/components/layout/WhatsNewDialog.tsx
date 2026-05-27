@@ -1,6 +1,7 @@
 import React from 'react'
 import { useI18n } from '../../i18n'
 import type { WhatsNewCopy } from '../../lib/whatsNewCatalog'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 interface Props {
   open: boolean
@@ -12,6 +13,7 @@ interface Props {
 /** [2026-05-08] 新版本安装后首次启动展示；内容由 whatsNewCatalog 提供 */
 export function WhatsNewDialog({ open, version, copy, onDismiss }: Props): React.ReactElement | null {
   const { lang } = useI18n()
+  useFocusWindow(open)
   if (!open) return null
 
   const title = lang === 'zh' ? copy.titleZh : copy.titleEn

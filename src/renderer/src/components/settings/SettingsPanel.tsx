@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 import type { ClaudeSettings, ApiProfile, FallbackConfig, TelegramBotPreset } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
@@ -1276,6 +1277,7 @@ function ProfileEditor({
   onDelete?: () => void
   lang: 'zh' | 'en'
 }): React.ReactElement {
+  useFocusWindow()
   const [form, setForm] = useState<ApiProfile>(profile)
 
   const handleChange = <K extends keyof ApiProfile>(key: K, value: ApiProfile[K]) => {

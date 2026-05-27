@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 interface Props {
   open: boolean
@@ -16,6 +17,7 @@ export function TopicEditModal({
   onClear,
   onClose
 }: Props): React.ReactElement | null {
+  useFocusWindow(open)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {

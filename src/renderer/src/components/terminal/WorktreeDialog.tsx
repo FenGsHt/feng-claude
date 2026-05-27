@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 interface Props {
   open: boolean
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function WorktreeDialog({ open, repoPath, onClose, onCreate }: Props): React.ReactElement | null {
+  useFocusWindow(open)
   const [currentBranch, setCurrentBranch] = useState('')
   const [mainRepoPath, setMainRepoPath] = useState('')
   const [worktrees, setWorktrees] = useState<Array<{ path: string; branch: string; commit: string; isMain: boolean }>>([])

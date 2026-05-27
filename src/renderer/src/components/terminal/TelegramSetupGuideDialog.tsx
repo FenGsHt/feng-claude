@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { useI18n } from '../../i18n'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 import { navigateToSettingsTab } from '../sidebar/Sidebar'
 import { buildTelegramMultiBotPairPrompt } from '../../lib/telegramPairPrompt'
 
@@ -17,6 +18,7 @@ export function TelegramSetupGuideDialog({
   resolvedStateDirId
 }: Props): React.ReactElement | null {
   const { t, lang } = useI18n()
+  useFocusWindow(open)
 
   const pairBody = useMemo(() => {
     const id = resolvedStateDirId?.trim()

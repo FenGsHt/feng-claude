@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { GUIDE_SECTIONS } from './guideData'
 import type { Tip, Section } from './guideData'
 import { useI18n } from '../../i18n'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 const STORAGE_KEY = 'claude-guide-learned'
 
@@ -36,6 +37,7 @@ function TipModal({
   onClose: () => void
 }): React.ReactElement {
   const { t } = useI18n()
+  useFocusWindow()
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import type { ToolCallEntry } from '../../store/toolCallStore'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 // ── LCS-based line diff ───────────────────────────────────────
 
@@ -123,6 +124,7 @@ export function DiffModal({ call, onClose }: Props): React.ReactElement {
 }
 
 function Overlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  useFocusWindow()
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"

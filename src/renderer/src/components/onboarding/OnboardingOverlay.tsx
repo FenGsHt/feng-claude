@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../../i18n'
 import { navigateToSettingsTab } from '../sidebar/Sidebar'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 const STORAGE_KEY = 'claude-gui-onboarding-complete'
 
@@ -34,6 +35,7 @@ const PROVIDERS = [
 ]
 
 export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps): React.ReactElement {
+  useFocusWindow()
   const [step, setStep] = useState<'welcome' | 'choose-provider' | 'provider-detail'>('welcome')
   const [providerType, setProviderType] = useState<'anthropic' | 'third-party' | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<string>('aliyun')

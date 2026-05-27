@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import type { UpdateStatusPayload, UpdateProgressPayload } from '../../types/ipc'
 import { useI18n } from '../../i18n'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 function fmtBytes(b: number): string {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
@@ -36,6 +37,8 @@ export function UpdateNotification(): React.ReactElement | null {
   const isDownloading = !!progress && status.status !== 'downloaded'
   const isReady      = status.status === 'downloaded'
   const isError      = status.status === 'error'
+
+  useFocusWindow(isReady)
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-[300px] w-72 animate-slide-up">

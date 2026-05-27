@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 import { createPortal } from 'react-dom'
 import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
 import type { ClaudeSettings } from '../../types/settings'
@@ -186,6 +187,7 @@ export function UsageChart(): React.ReactElement {
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
   const [timeRange, setTimeRange] = useState<TimeRange>('today')
   const [heatmapModalOpen, setHeatmapModalOpen] = useState(false)
+  useFocusWindow(heatmapModalOpen)
 
   useEffect(() => {
     void window.electronAPI.settings.get().then(setSettings)
