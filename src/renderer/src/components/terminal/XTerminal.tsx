@@ -69,6 +69,9 @@ function scheduleScrollToBottom(sessionId: string, options?: { focus?: boolean; 
         pendingBottomRafsBySession.delete(sessionId)
         return
       }
+      // [2026-05-27] 交替屏幕模式（lazygit/vim 等 TUI）下不滚动——强制 scrollToBottom 会让
+      // 普通屏幕 scrollback 透过交替屏幕显示，造成乱码。
+      if (entry.term.buffer.active === entry.term.buffer.alternate) return
       entry.term.scrollToBottom()
       /* [2026-05-11] xterm 内部 scroll index 到底不一定同步 DOM .xterm-viewport.scrollTop；
        * 浮窗重挂载后首次滚轮会用旧 DOM scrollTop，从顶部开始滚。同步真实 viewport。 */
@@ -146,6 +149,8 @@ export function wakeTerminal(sessionId: string): void {
   } catch {
     // ignore hidden/detached terminal fit errors
   }
+  // [2026-05-27] 交替屏幕（TUI 应用）中不调 refresh/scrollToBottom，否则 scrollback 渗透造成乱码
+  if (entry.term.buffer.active === entry.term.buffer.alternate) return
   try {
     entry.term.refresh(0, Math.max(0, entry.term.rows - 1))
   } catch {
