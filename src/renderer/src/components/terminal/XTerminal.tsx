@@ -558,22 +558,31 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   // Fit then scroll to bottom when becoming active (fit first, then scroll so resize doesn't undo it)
   useEffect(() => {
     if (!active) return
+
+    // [2026-05-27] 立即 refresh：display:none → visible 时 xterm canvas 可能有脏帧，
+    // 先强制重绘当前 buffer，避免用户看到 200ms 的残影/乱码。
+    const entry0 = terminals.get(sessionId)
+    if (entry0) {
+      try { entry0.term.refresh(0, Math.max(0, entry0.term.rows - 1)) } catch {}
+    }
+
     const t = window.setTimeout(() => {
       const entry = terminals.get(sessionId)
       const el = containerRef.current
       if (!entry || !el || el.clientWidth < 4 || el.clientHeight < 4) return
+      const isAltScreen = entry.term.buffer.active === entry.term.buffer.alternate
       try {
         entry.fitAddon.fit()
         const { cols, rows } = entry.term
         const prev = lastPtyGeomRef.current
-        if (!prev || prev.cols !== cols || prev.rows !== rows) {
+        // [2026-05-27] TUI（alternate screen）时无论尺寸是否变化都发一次 SIGWINCH，
+        // 强制 lazygit/vim 等重绘整个界面，防止 tab 切回后残影。
+        if (isAltScreen || !prev || prev.cols !== cols || prev.rows !== rows) {
           lastPtyGeomRef.current = { cols, rows }
           window.electronAPI?.resizePty(sessionId, cols, rows)
         }
       } catch {}
-      // [2026-05-27] 交替屏幕（TUI 如 lazygit）tab 切回时，canvas 不会自动重绘（无 scrollToBottom 触发）。
-      // refresh() 重绘 active buffer 是安全的；只有 scrollToBottom/scrollTop 会让 scrollback 渗透。
-      if (entry.term.buffer.active === entry.term.buffer.alternate) {
+      if (isAltScreen) {
         try { entry.term.refresh(0, Math.max(0, entry.term.rows - 1)) } catch {}
         return
       }
