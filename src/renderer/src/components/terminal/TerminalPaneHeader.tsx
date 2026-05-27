@@ -10,6 +10,7 @@ import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
+import { wakeTerminal } from './XTerminal'
 
 interface WorktreeInfo {
   path: string
@@ -418,6 +419,13 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
               <MergeIcon />
             </HeaderBtn>
           )}
+          {/* [2026-05-27] 刷新终端画面（TUI 应用切回后乱码时手动补救） */}
+          <HeaderBtn title="刷新终端 (Refresh)" onClick={() => wakeTerminal(sessionId)}>
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M9.5 5.5A4 4 0 1 1 8 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M8 1v2h-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </HeaderBtn>
           <HeaderBtn title="Split right" onClick={() => void beginSplit('split-right')}>
             <SplitVIcon />
           </HeaderBtn>
