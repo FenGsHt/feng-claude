@@ -149,13 +149,14 @@ export function wakeTerminal(sessionId: string): void {
   } catch {
     // ignore hidden/detached terminal fit errors
   }
-  // [2026-05-27] 交替屏幕（TUI 应用）中不调 refresh/scrollToBottom，否则 scrollback 渗透造成乱码
-  if (entry.term.buffer.active === entry.term.buffer.alternate) return
+  // [2026-05-27] refresh() 重绘 active buffer 内容，对普通屏和交替屏都安全。
+  // 只有 scheduleScrollToBottom（含 scrollTop 操作）会让 scrollback 渗透到 TUI 界面，才需要跳过。
   try {
     entry.term.refresh(0, Math.max(0, entry.term.rows - 1))
   } catch {
     // refresh is best-effort
   }
+  if (entry.term.buffer.active === entry.term.buffer.alternate) return
   scheduleScrollToBottom(sessionId, { focus: true, frames: 4 })
 }
 
@@ -570,6 +571,12 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
           window.electronAPI?.resizePty(sessionId, cols, rows)
         }
       } catch {}
+      // [2026-05-27] 交替屏幕（TUI 如 lazygit）tab 切回时，canvas 不会自动重绘（无 scrollToBottom 触发）。
+      // refresh() 重绘 active buffer 是安全的；只有 scrollToBottom/scrollTop 会让 scrollback 渗透。
+      if (entry.term.buffer.active === entry.term.buffer.alternate) {
+        try { entry.term.refresh(0, Math.max(0, entry.term.rows - 1)) } catch {}
+        return
+      }
       scheduleScrollToBottom(sessionId, { frames: 4 })
     }, 200)
     return () => clearTimeout(t)
