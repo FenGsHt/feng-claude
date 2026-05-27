@@ -379,7 +379,12 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     if (!term.element) {
       term.open(container)
     } else {
+      // [2026-05-27] 重挂载（布局切换/tab 恢复）：将 element 移入新容器后强制刷新 canvas，
+      // 防止 display:none 或 DOM 移动后 xterm 画布残留旧内容。
       container.appendChild(term.element)
+      requestAnimationFrame(() => {
+        try { term.refresh(0, Math.max(0, term.rows - 1)) } catch {}
+      })
     }
     scheduleScrollToBottom(sessionId, { frames: 3 })
 
