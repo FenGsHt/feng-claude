@@ -133,14 +133,26 @@ export function TextEditorPanel(): React.ReactElement | null {
   }, [saveError])
 
   // ── Computed ──────────────────────────────────────────────────────────────
-  const lines      = useMemo(() => content.split('\n'), [content])
-  const totalLines = lines.length
+  // Count lines cheaply (no array allocation) — updates on every keystroke
+  const totalLines = useMemo(() => {
+    let n = 1
+    for (let i = 0; i < content.length; i++) if (content[i] === '\n') n++
+    return n
+  }, [content])
 
+  // Single text-node for line numbers — avoids rendering N React elements
+  const lineNumText = useMemo(
+    () => Array.from({ length: totalLines }, (_, i) => i + 1).join('\n'),
+    [totalLines]
+  )
+
+  // File size: use content.length (chars ≈ bytes for typical code) — avoids
+  // running TextEncoder on every keystroke for large files
   const fileSize = useMemo(() => {
-    const bytes = new TextEncoder().encode(content).length
-    if (bytes < 1024)        return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    const n = content.length
+    if (n < 1024)        return `${n} B`
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+    return `${(n / 1024 / 1024).toFixed(1)} MB`
   }, [content])
 
   const findMatches = useMemo(() => {
@@ -156,16 +168,21 @@ export function TextEditorPanel(): React.ReactElement | null {
   useEffect(() => { setFindIndex(0) }, [findQuery])
 
   // Pre-compute match line/col positions so we can place absolute highlight boxes
-  // (avoids font-rendering alignment issues of the mirror-div approach)
   const LINE_H      = 12 * 1.6  // 19.2 px — must match textarea lineHeight
   const EDITOR_PAD  = 12        // must match textarea padding
 
   const matchPositions = useMemo(() => {
     if (!findOpen || !findQuery || !findMatches.length) return []
-    return findMatches.map((start) => {
-      const before = content.slice(0, start).split('\n')
-      return { lineNum: before.length - 1, col: before[before.length - 1].length }
-    })
+    // Single pass O(n) through content instead of O(n) per match
+    const result: { lineNum: number; col: number }[] = new Array(findMatches.length)
+    let lineNum = 0, lineStart = 0, mi = 0
+    for (let i = 0; i <= content.length && mi < findMatches.length; i++) {
+      if (i === findMatches[mi]) {
+        result[mi++] = { lineNum, col: i - lineStart }
+      }
+      if (content[i] === '\n') { lineNum++; lineStart = i + 1 }
+    }
+    return result
   }, [content, findMatches, findQuery, findOpen])
 
   // Line-number column width
@@ -196,12 +213,19 @@ export function TextEditorPanel(): React.ReactElement | null {
     syncOverlayTranslate(top)
   }, [syncOverlayTranslate])
 
+  // Read from ta.value (not from content state) so no dep on content —
+  // avoids re-creating the callback on every keystroke
   const updateCursor = useCallback(() => {
     const ta = textareaRef.current
     if (!ta) return
-    const before = content.slice(0, ta.selectionStart).split('\n')
-    setCursorPos({ line: before.length, col: before[before.length - 1].length + 1 })
-  }, [content])
+    const val    = ta.value
+    const pos    = ta.selectionStart
+    let line = 1, lineStart = 0
+    for (let i = 0; i < pos; i++) {
+      if (val[i] === '\n') { line++; lineStart = i + 1 }
+    }
+    setCursorPos({ line, col: pos - lineStart + 1 })
+  }, [])
 
   const save = useCallback(async () => {
     if (!filePath || !isDirty) return
@@ -453,22 +477,17 @@ export function TextEditorPanel(): React.ReactElement | null {
 
       {/* ── Editor: line numbers + textarea ── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Line numbers — overflow hidden but scrollTop synced via JS */}
+        {/* Line numbers — single text node instead of N <div>s; scrollTop synced via JS */}
         <div
           ref={lineNumRef}
           className="shrink-0 bg-claude-surface border-r border-claude-border select-none"
           style={{ width: lineNumWidth, overflowY: 'hidden' }}
         >
-          <div style={{ paddingTop: '12px', paddingBottom: '12px' }}>
-            {lines.map((_, i) => (
-              <div
-                key={i}
-                className="text-right text-claude-muted font-mono"
-                style={{ fontSize: '11px', lineHeight: '1.745', paddingRight: '8px' }}
-              >
-                {i + 1}
-              </div>
-            ))}
+          <div
+            className="text-right text-claude-muted font-mono"
+            style={{ padding: '12px 8px 12px 0', fontSize: '11px', lineHeight: '1.745', whiteSpace: 'pre' }}
+          >
+            {lineNumText}
           </div>
         </div>
 
