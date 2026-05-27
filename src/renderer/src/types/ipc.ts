@@ -149,6 +149,8 @@ export const IPC = {
   FS_WRITE_FILE: 'fs:writeFile',
   FS_OPEN_FILE_DIALOG: 'fs:openFileDialog',
   FS_READ_FILE_AS_DATA_URL: 'fs:readFileAsDataUrl',
+  /** [2026-05-27] 递归枚举目录下所有可打开文件（跳过 node_modules / .git 等），供 Ctrl+P 文件搜索 */
+  FS_WALK_FILES: 'fs:walkFiles',
 } as const
 
 export interface ShellOption {

@@ -556,6 +556,40 @@ export function registerIpcHandlers(
     }
   })
 
+  // [2026-05-27] Ctrl+P 文件搜索：递归枚举目录下所有可打开文件
+  ipcMain.handle(IPC.FS_WALK_FILES, async (_e, dirPath: string) => {
+    const SKIP_DIRS = new Set(['node_modules', '.git', '.svn', 'dist', 'out', 'build', '__pycache__', '.next', '.nuxt', 'coverage', '.cache'])
+    const OPEN_EXTS = new Set([
+      'ts','tsx','js','jsx','mjs','cjs','json','jsonc','md','mdx','txt','yaml','yml','toml','ini','cfg',
+      'css','scss','less','html','htm','xml','svg','sh','bash','zsh','fish','ps1','py','go','rs','java',
+      'c','cpp','h','hpp','cs','rb','php','lua','kt','swift','env','lock',
+      'png','jpg','jpeg','gif','webp','bmp','ico','tiff','tif','avif',
+    ])
+    const results: string[] = []
+    const walk = async (dir: string): Promise<void> => {
+      if (results.length >= 5000) return
+      let entries: import('fs').Dirent[]
+      try { entries = await fsPromises.readdir(dir, { withFileTypes: true }) } catch { return }
+      for (const entry of entries) {
+        if (results.length >= 5000) return
+        if (entry.isDirectory()) {
+          if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+            await walk(join(dir, entry.name))
+          }
+        } else if (entry.isFile()) {
+          const ext = entry.name.includes('.') ? entry.name.split('.').pop()!.toLowerCase() : ''
+          const lower = entry.name.toLowerCase()
+          if (OPEN_EXTS.has(ext) ||
+              ['makefile','dockerfile','containerfile','.env','.gitignore','.gitattributes','.editorconfig'].includes(lower)) {
+            results.push(join(dir, entry.name))
+          }
+        }
+      }
+    }
+    try { await walk(dirPath) } catch { /* ignore */ }
+    return results
+  })
+
   // ── History ──────────────────────────────────────────────────
   ipcMain.handle(IPC.HISTORY_LIST, async () => historyStore.list())
   ipcMain.handle(IPC.HISTORY_SAVE, async (_e, { record }) => historyStore.save(record))

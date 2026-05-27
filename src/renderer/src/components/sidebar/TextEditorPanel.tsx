@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTextEditorStore, type SplitDirection } from '../../store/textEditorStore'
+import { useSessionStore } from '../../store/sessionStore'
+import { openTextEditor, openImagePreview } from './sidebarNav'
 
 const IMAGE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif',
@@ -86,6 +88,18 @@ export function TextEditorPanel(): React.ReactElement | null {
   const [findQuery, setFindQuery]                 = useState('')
   const [findIndex, setFindIndex]                 = useState(0)
   const [cursorPos, setCursorPos]                 = useState({ line: 1, col: 1 })
+  // [2026-05-27] Ctrl+P 文件搜索
+  const [pickerOpen, setPickerOpen]               = useState(false)
+  const [pickerQuery, setPickerQuery]             = useState('')
+  const [pickerSel, setPickerSel]                 = useState(0)
+  const pickerFilesRef                            = useRef<string[]>([])
+  const pickerLoadedDirRef                        = useRef<string | null>(null)
+  const pickerInputRef                            = useRef<HTMLInputElement>(null)
+
+  const activeWorkdir = useSessionStore(s => {
+    const sess = s.sessions.find(x => x.id === s.activeSessionId)
+    return sess?.workdir ?? null
+  })
 
   // Reset per-file state
   useEffect(() => {
@@ -131,6 +145,49 @@ export function TextEditorPanel(): React.ReactElement | null {
     const id = setTimeout(() => setSaveError(null), 4000)
     return () => clearTimeout(id)
   }, [saveError])
+
+  // Load file list when picker opens (cache per workdir)
+  useEffect(() => {
+    if (!pickerOpen || !activeWorkdir) return
+    if (pickerLoadedDirRef.current === activeWorkdir) return
+    pickerLoadedDirRef.current = activeWorkdir
+    void window.electronAPI.walkFiles(activeWorkdir).then(files => {
+      pickerFilesRef.current = files
+    })
+  }, [pickerOpen, activeWorkdir])
+
+  // Focus picker input on open
+  useEffect(() => {
+    if (pickerOpen) {
+      setPickerQuery('')
+      setPickerSel(0)
+      setTimeout(() => pickerInputRef.current?.focus(), 30)
+    }
+  }, [pickerOpen])
+
+  // Fuzzy filter: filename match first, then full path — max 50 results
+  const pickerResults = useMemo(() => {
+    const files = pickerFilesRef.current
+    if (!pickerOpen || !files.length) return []
+    const q = pickerQuery.trim().toLowerCase()
+    if (!q) return files.slice(0, 50)
+    const sep = /[/\\]/
+    const matched: { path: string; score: number }[] = []
+    for (const f of files) {
+      const name = f.split(sep).pop()!.toLowerCase()
+      const rel  = f.toLowerCase()
+      if (name.includes(q))      matched.push({ path: f, score: 0 })
+      else if (rel.includes(q))  matched.push({ path: f, score: 1 })
+      if (matched.length >= 50) break
+    }
+    matched.sort((a, b) => a.score - b.score)
+    return matched.map(m => m.path)
+  }, [pickerOpen, pickerQuery, pickerFilesRef.current.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clamp selection when results change
+  useEffect(() => {
+    setPickerSel(s => Math.min(s, Math.max(0, pickerResults.length - 1)))
+  }, [pickerResults.length])
 
   // ── Computed ──────────────────────────────────────────────────────────────
   // Count lines cheaply (no array allocation) — updates on every keystroke
@@ -283,11 +340,24 @@ export function TextEditorPanel(): React.ReactElement | null {
     requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2 })
   }, [content, setContent])
 
+  // Open a file from the picker (respects dirty state)
+  const pickerOpenFile = useCallback((absPath: string) => {
+    setPickerOpen(false)
+    if (isImageFile(absPath)) { void openImagePreview(absPath); return }
+    tryAction({ type: 'open', path: absPath })
+  }, [tryAction])
+
   // Global shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (!visible) return
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); void save(); return }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault()
+        if (pickerOpen) setPickerOpen(false)
+        else setPickerOpen(true)
+        return
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault()
         setFindOpen(true)
@@ -296,10 +366,22 @@ export function TextEditorPanel(): React.ReactElement | null {
       }
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (pickerOpen)        { setPickerOpen(false); return }
         if (mode === 'image')  { close(); return }
         if (findOpen)          { setFindOpen(false); textareaRef.current?.focus(); return }
         if (showSplitMenu)     { setShowSplitMenu(false); return }
         if (confirmingDiscard) { cancelDiscard() } else { tryAction({ type: 'close' }) }
+        return
+      }
+      if (pickerOpen) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); setPickerSel(s => Math.min(s + 1, pickerResults.length - 1)); return }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); setPickerSel(s => Math.max(s - 1, 0)); return }
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          const f = pickerResults[pickerSel]
+          if (f) pickerOpenFile(f)
+          return
+        }
         return
       }
       if (findOpen && (e.key === 'Enter' || e.key === 'F3')) {
@@ -311,7 +393,7 @@ export function TextEditorPanel(): React.ReactElement | null {
     }
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [visible, save, findOpen, findIndex, goToMatch, showSplitMenu, confirmingDiscard, cancelDiscard, tryAction, confirmDiscard])
+  }, [visible, save, pickerOpen, pickerResults, pickerSel, pickerOpenFile, findOpen, findIndex, goToMatch, showSplitMenu, confirmingDiscard, cancelDiscard, tryAction, confirmDiscard, mode, close])
 
   if (!visible) return null
 
@@ -378,7 +460,58 @@ export function TextEditorPanel(): React.ReactElement | null {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-claude-bg">
+    <div className="flex flex-col h-full overflow-hidden bg-claude-bg relative">
+
+      {/* ── Ctrl+P File Picker ── */}
+      {pickerOpen && (
+        <div
+          className="absolute inset-0 z-[100] flex items-start justify-center pt-12 bg-black/40"
+          onMouseDown={e => { if (e.target === e.currentTarget) setPickerOpen(false) }}
+        >
+          <div className="w-full max-w-[480px] mx-3 rounded-lg border border-claude-border bg-claude-surface shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '60vh' }}>
+            {/* Search input */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-claude-border shrink-0">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-claude-muted shrink-0">
+                <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M8 8l2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+              <input
+                ref={pickerInputRef}
+                value={pickerQuery}
+                onChange={e => { setPickerQuery(e.target.value); setPickerSel(0) }}
+                placeholder="搜索文件…"
+                className="flex-1 bg-transparent text-[12px] text-claude-text font-mono outline-none placeholder-claude-muted/60"
+              />
+              <span className="text-[9px] text-claude-muted shrink-0">Esc 关闭</span>
+            </div>
+            {/* Results */}
+            <div className="overflow-y-auto min-h-0">
+              {pickerResults.length === 0 ? (
+                <div className="px-3 py-3 text-[11px] text-claude-muted text-center">
+                  {!activeWorkdir ? '无项目目录' : pickerQuery ? '无匹配文件' : '加载中…'}
+                </div>
+              ) : pickerResults.map((absPath, i) => {
+                const parts  = absPath.replace(/\\/g, '/').split('/')
+                const name   = parts.pop()!
+                const relDir = activeWorkdir
+                  ? absPath.replace(/\\/g, '/').slice(activeWorkdir.replace(/\\/g, '/').length).replace(/^\//, '').split('/').slice(0, -1).join('/')
+                  : parts.slice(-3).join('/')
+                return (
+                  <button
+                    key={absPath}
+                    onMouseDown={() => pickerOpenFile(absPath)}
+                    onMouseEnter={() => setPickerSel(i)}
+                    className={`w-full text-left flex items-baseline gap-2 px-3 py-1.5 transition-colors ${i === pickerSel ? 'bg-amber-500/10 text-amber-400' : 'text-claude-text hover:bg-claude-border/40'}`}
+                  >
+                    <span className="text-[12px] font-mono truncate shrink-0 max-w-[55%]">{name}</span>
+                    {relDir && <span className="text-[10px] text-claude-muted truncate">{relDir}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-claude-border bg-claude-surface shrink-0 min-h-[32px]">

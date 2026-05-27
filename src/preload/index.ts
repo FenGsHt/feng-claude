@@ -99,6 +99,9 @@ const electronAPI = {
   readFileAsDataUrl: (filePath: string): Promise<{ success: boolean; dataUrl?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.FS_READ_FILE_AS_DATA_URL, filePath),
 
+  walkFiles: (dirPath: string): Promise<string[]> =>
+    ipcRenderer.invoke(IPC.FS_WALK_FILES, dirPath),
+
   // History
   history: {
     list: (): Promise<HistoryRecord[]> => ipcRenderer.invoke(IPC.HISTORY_LIST),
