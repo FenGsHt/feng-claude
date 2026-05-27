@@ -118,6 +118,7 @@ export function injectMockElectronAPI(): void {
         markSeen: async () => ({ success: true })
       },
       openDevTools: noop,
+      focusWindow: noop,
       showNotification: (_title: string, _body: string) => {},
       tokenData: {
         get: async () => null,

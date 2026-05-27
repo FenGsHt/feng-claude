@@ -324,6 +324,7 @@ const electronAPI = {
   },
 
   openDevTools: (): void => ipcRenderer.send(IPC.APP_OPEN_DEVTOOLS),
+  focusWindow: (): void => ipcRenderer.send(IPC.APP_FOCUS_WINDOW),
 
   // Notifications
   showNotification: (title: string, body: string): void =>

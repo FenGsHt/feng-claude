@@ -30,6 +30,8 @@ export function SplitWorkdirDialog({
 }: Props): React.ReactElement | null {
   useEffect(() => {
     if (!open) return
+    // 弹窗打开时把主窗口移至最前，避免被 detach DevTools 窗口遮挡
+    window.electronAPI?.focusWindow?.()
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }

@@ -666,6 +666,11 @@ export function registerIpcHandlers(
     BrowserWindow.fromWebContents(e.sender)?.webContents.openDevTools({ mode: 'detach' })
   })
 
+  ipcMain.on(IPC.APP_FOCUS_WINDOW, (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (win) { win.focus(); win.moveTop() }
+  })
+
   // ── Pet Agent ─────────────────────────────────────────────────
   ipcMain.handle(IPC.PET_ASK, async (_e, payload) => {
     const { message, history, petConfig, triggerType, growth } = payload as {

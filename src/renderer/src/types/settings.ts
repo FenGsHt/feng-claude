@@ -37,11 +37,31 @@ export interface FallbackConfig {
   format?: 'anthropic' | 'openai'
 }
 
+/** 官方配置的固定 ID，不存入 profiles 数组，仅用于 activeProfileId */
+export const OFFICIAL_PROFILE_ID = '__official__'
+
+/** 官方配置虚拟对象，不注入任何 ANTHROPIC_* 环境变量，Claude Code 使用自身存储的 credentials */
+export const OFFICIAL_PROFILE = {
+  id: OFFICIAL_PROFILE_ID,
+  name: '官方配置',
+  authToken: '',
+  baseUrl: '',
+  model: '',
+  sonnetModel: '',
+  haikuModel: '',
+  opusModel: '',
+  subagentModel: '',
+  disableExperimentalBetas: false,
+  isOfficial: true as const,
+} as const satisfies Partial<ApiProfile> & { id: string; name: string; isOfficial: true }
+
 /**
  * [2026-04-28] API 配置 - 支持多配置切换
  * 每个 profile 包含完整的 API 连接参数
  */
 export interface ApiProfile {
+  /** 官方配置标记：true 时不注入任何 ANTHROPIC_* 环境变量 */
+  isOfficial?: boolean
   /** UUID */
   id: string
   /** 显示名称 */

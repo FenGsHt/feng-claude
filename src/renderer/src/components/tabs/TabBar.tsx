@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useMemo } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import type { Session } from '../../types/session'
 import type { ClaudeSettings, ApiProfile, TelegramBotPreset, TelegramChannelSessionConfig } from '../../types/settings'
+import { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { matchSessionToPresetId, presetToSessionConfig } from '../../lib/telegramBotPresets'
 import { useI18n } from '../../i18n'
 import { TelegramSetupGuideDialog } from '../terminal/TelegramSetupGuideDialog'
@@ -61,6 +62,12 @@ function ProfileDropdown({
     return () => clearTimeout(timer)
   }, [onClose])
 
+  // Prepend the virtual official profile entry
+  const allEntries: { id: string; name: string; model: string }[] = [
+    { id: OFFICIAL_PROFILE_ID, name: OFFICIAL_PROFILE.name, model: '' },
+    ...profiles.map(p => ({ id: p.id, name: p.name, model: p.model }))
+  ]
+
   return (
     <div
       className="profile-dropdown-menu bg-claude-surface2 border border-claude-border rounded-md shadow-xl min-w-[120px] py-1"
@@ -72,7 +79,7 @@ function ProfileDropdown({
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      {profiles.map((p, idx) => (
+      {allEntries.map((p, idx) => (
         <button
           key={p.id}
           onClick={() => { onSelect(p.id); onClose() }}
@@ -80,11 +87,11 @@ function ProfileDropdown({
             currentProfileId === p.id
               ? 'text-amber-400 bg-amber-500/10'
               : 'text-claude-text hover:bg-claude-border'
-          } ${idx === 0 ? 'rounded-t-md' : ''} ${idx === profiles.length - 1 ? 'rounded-b-md' : ''}`}
+          } ${idx === 0 ? 'rounded-t-md' : ''} ${idx === allEntries.length - 1 ? 'rounded-b-md' : ''}`}
         >
           <div className="flex flex-col leading-tight">
             <span className="font-medium">{p.name}</span>
-            <span className="text-[9px] text-claude-muted">{p.model}</span>
+            {p.model && <span className="text-[9px] text-claude-muted">{p.model}</span>}
           </div>
           {currentProfileId === p.id && (
             <span className="ml-2 text-[10px] opacity-60 shrink-0">●</span>
@@ -309,6 +316,7 @@ export function TabBar(): React.ReactElement {
     if (!settings) return ''
     // [2026-04-28] If session has no profileId, show active profile name
     const profileId = sess.profileId ?? settings.activeProfileId
+    if (profileId === OFFICIAL_PROFILE_ID) return OFFICIAL_PROFILE.name
     const profile = settings.profiles.find(p => p.id === profileId)
     return profile?.name ?? ''
   }

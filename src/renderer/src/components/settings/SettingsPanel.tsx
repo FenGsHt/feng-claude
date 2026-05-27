@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { ClaudeSettings, ApiProfile, FallbackConfig, TelegramBotPreset } from '../../types/settings'
-import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING } from '../../types/settings'
+import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { useI18n, useLangStore } from '../../i18n'
 import { useThemeStore } from '../../store/themeStore'
 import type { TelegramChannelCheckResult, UpdateStatusPayload } from '../../types/ipc'
@@ -96,8 +96,11 @@ export function SettingsPanel(): React.ReactElement {
     }
   }
 
-  // 获取当前激活的 profile
-  const activeProfile = form.profiles.find(p => p.id === form.activeProfileId) ?? form.profiles[0]
+  // 获取当前激活的 profile（官方配置是虚拟 profile，不在 profiles 数组中）
+  const isOfficialActive = form.activeProfileId === OFFICIAL_PROFILE_ID
+  const activeProfile = isOfficialActive
+    ? null
+    : (form.profiles.find(p => p.id === form.activeProfileId) ?? form.profiles[0])
   const telegramChannel = form.telegramChannel ?? DEFAULT_SETTINGS.telegramChannel!
 
   // 处理非 API 配置的变化
@@ -552,8 +555,9 @@ export function SettingsPanel(): React.ReactElement {
             onChange={(e) => handleProfileSwitch(e.target.value)}
             className="field-input"
             style={{ flex: 1, minWidth: 0 }}
-            title={form.profiles.find(p => p.id === form.activeProfileId)?.model ?? ''}
+            title={isOfficialActive ? (lang === 'zh' ? '使用 Claude 官方凭证' : 'Use Claude official credentials') : (form.profiles.find(p => p.id === form.activeProfileId)?.model ?? '')}
           >
+            <option value={OFFICIAL_PROFILE_ID}>{OFFICIAL_PROFILE.name}</option>
             {form.profiles.map(p => (
               <option key={p.id} value={p.id}>{p.name} ({p.model})</option>
             ))}
@@ -566,23 +570,26 @@ export function SettingsPanel(): React.ReactElement {
           >
             +
           </button>
-          {/* Edit button */}
-          <button
-            onClick={handleEditProfile}
-            title={lang === 'zh' ? '编辑配置' : 'Edit profile'}
-            className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
-          >
-            ✏
-          </button>
-          {/* Delete button (only if more than 1 profile) */}
-          {form.profiles.length > 1 && (
-            <button
-              onClick={handleDeleteProfile}
-              title={lang === 'zh' ? '删除配置' : 'Delete profile'}
-              className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-red-400 hover:border-red-500/50"
-            >
-              ✕
-            </button>
+          {/* Edit / Delete only for non-official profiles */}
+          {!isOfficialActive && (
+            <>
+              <button
+                onClick={handleEditProfile}
+                title={lang === 'zh' ? '编辑配置' : 'Edit profile'}
+                className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
+              >
+                ✏
+              </button>
+              {form.profiles.length > 1 && (
+                <button
+                  onClick={handleDeleteProfile}
+                  title={lang === 'zh' ? '删除配置' : 'Delete profile'}
+                  className="shrink-0 rounded border border-claude-border bg-claude-bg px-2 py-1 text-[10px] text-red-400 hover:border-red-500/50"
+                >
+                  ✕
+                </button>
+              )}
+            </>
           )}
         </div>
         <p className="mt-1 text-[9px] leading-snug text-claude-muted">

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import Store from 'electron-store'
 import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../renderer/src/types/settings'
-import { DEFAULT_SETTINGS, createDefaultProfile, migrateOldSettings } from '../renderer/src/types/settings'
+import { DEFAULT_SETTINGS, createDefaultProfile, migrateOldSettings, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../renderer/src/types/settings'
 import { getConfigDir } from './configDir'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -112,12 +112,15 @@ export class SettingsStore {
   /** [2026-04-28] 获取当前激活的 API 配置 */
   getActiveProfile(): ApiProfile {
     const settings = this.get()
+    if (settings.activeProfileId === OFFICIAL_PROFILE_ID) return OFFICIAL_PROFILE as unknown as ApiProfile
     const active = settings.profiles.find(p => p.id === settings.activeProfileId)
     return active ?? settings.profiles[0] ?? createDefaultProfile('Default', 'default')
   }
 
   /** [2026-04-28] 转换 ApiProfile 为环境变量 */
   profileToEnv(profile: ApiProfile): Record<string, string> {
+    // 官方配置：不注入任何环境变量，让 Claude Code 使用 ~/.claude/ 中存储的 credentials
+    if (profile.isOfficial) return {}
     return {
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
       ANTHROPIC_API_KEY: profile.authToken,
@@ -133,6 +136,7 @@ export class SettingsStore {
 
   /** [2026-04-30] 转换 ApiProfile 为环境变量（考虑代理开关） */
   profileToEnvWithProxy(profile: ApiProfile, proxyUrl?: string): Record<string, string> {
+    if (profile.isOfficial) return {}
     const baseUrl = proxyUrl ?? profile.baseUrl
     return {
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
@@ -191,7 +195,8 @@ export class SettingsStore {
   /** [2026-04-28] 设置激活配置 */
   setActiveProfile(profileId: string): { success: boolean; error?: string } {
     const settings = this.get()
-    if (!settings.profiles.some(p => p.id === profileId)) {
+    // Allow OFFICIAL_PROFILE_ID without checking profiles array (it's a virtual profile)
+    if (profileId !== OFFICIAL_PROFILE_ID && !settings.profiles.some(p => p.id === profileId)) {
       return { success: false, error: 'Profile not found' }
     }
     settings.activeProfileId = profileId

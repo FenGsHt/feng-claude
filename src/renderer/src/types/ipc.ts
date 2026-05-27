@@ -41,6 +41,8 @@ export const IPC = {
 
   /** [2026-04-29] 打开 Chrome DevTools（开发者模式用） */
   APP_OPEN_DEVTOOLS: 'app:openDevTools',
+  /** 将主窗口移至最前（对抗悬浮的 detach DevTools 窗口） */
+  APP_FOCUS_WINDOW: 'app:focusWindow',
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
