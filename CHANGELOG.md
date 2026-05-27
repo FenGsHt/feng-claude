@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.15] - 2026-05-27
+
+### 性能 | Performance
+- **文本编辑器大幅提速**：修复打开大文件时按键卡顿的问题
+  - 行号从 N 个 React `<div>` 改为单一文本节点，万行文件的渲染开销降至接近零
+  - 查找匹配坐标计算从 O(n×m) 改为单次 O(n) 扫描，搜索高频字符不再卡顿
+  - 光标位置更新回调不再依赖 `content` state，每次按键不重建函数
+  - 文件大小显示不再每次按键运行 TextEncoder 全文编码
+
 ## [0.7.14] - 2026-05-26
 
 ### 新功能 | New Features

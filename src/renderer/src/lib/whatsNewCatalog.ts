@@ -8,6 +8,16 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.15': {
+    titleZh: 'Feng Claude 0.7.15 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.15",
+    bulletsZh: [
+      '文本编辑器性能大幅提升：修复大文件按键卡顿——行号改为单一文本节点、查找坐标单次扫描、光标回调稳定化',
+    ],
+    bulletsEn: [
+      'Text editor performance: fixed input lag on large files — line numbers now a single text node, find positions computed in one O(n) pass, cursor callback no longer recreated on every keystroke',
+    ]
+  },
   '0.7.14': {
     titleZh: 'Feng Claude 0.7.14 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.14",
