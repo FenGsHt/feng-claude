@@ -8,6 +8,20 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.16': {
+    titleZh: 'Feng Claude 0.7.16 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.16",
+    bulletsZh: [
+      'Ctrl+P 文件搜索：编辑器内按 Ctrl+P 弹出搜索框，实时过滤项目文件，↑↓ 导航，Enter 打开',
+      '官方配置：API 配置新增「官方配置」选项，使用 claude login 凭证启动，不注入第三方 API 变量',
+      '空控制台 TUI 修复：lazygit / vim 等切换标签不再乱码',
+    ],
+    bulletsEn: [
+      'Ctrl+P file picker: press Ctrl+P in editor to fuzzy-search project files, ↑↓ navigate, Enter to open',
+      'Official profile: new option that launches Claude with its own ~/.claude credentials (claude login OAuth)',
+      'Shell console TUI fix: lazygit/vim no longer garbles on tab switch',
+    ]
+  },
   '0.7.15': {
     titleZh: 'Feng Claude 0.7.15 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.15",

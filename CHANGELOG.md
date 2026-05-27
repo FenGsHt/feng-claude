@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.16] - 2026-05-27
+
+### 新功能 | New Features
+- **Ctrl+P 文件搜索**：文本编辑器内按 Ctrl+P 弹出浮动文件搜索框，输入关键词实时过滤当前项目下所有文件（文件名匹配优先于路径匹配），↑↓ 导航、Enter/点击打开，Esc 关闭；文件列表首次加载后缓存，再次打开即时显示
+- **官方配置（Official Profile）**：API 配置列表新增「官方配置」选项，选中后不注入任何 `ANTHROPIC_*` 环境变量，Claude Code 使用 `~/.claude/` 中自身存储的凭证（支持 `claude login` OAuth）
+- **TUI 应用（lazygit / vim 等）显示修复**：切换标签时不再强制滚动终端视口，避免普通屏幕 scrollback 透过交替屏幕显示（乱码问题）
+- **分屏弹窗遮挡修复**：打开分屏目录选择弹窗时自动将主窗口移至最前，防止被 detach DevTools 窗口遮挡
+
+### 修复 | Bug Fixes
+- 官方配置下 `CLAUDE_CODE_OAUTH_TOKEN` 不再被清除，OAuth 登录凭证正常生效
+- 官方配置 profileId `__official__` 传给主进程时正确解析，不再回退到全局激活配置
+
 ## [0.7.15] - 2026-05-27
 
 ### 性能 | Performance

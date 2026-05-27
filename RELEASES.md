@@ -7,6 +7,20 @@
 
 ---
 
+## v0.7.16 (2026-05-27)
+
+### 新功能 | New Features
+- **Ctrl+P 文件搜索**：文本编辑器内按 Ctrl+P 弹出浮动文件搜索框，输入关键词实时过滤当前项目下所有文件；文件名匹配优先于路径匹配，↑↓ 导航，Enter / 点击打开，Esc 关闭；文件列表首次加载后按项目缓存，再次打开即时显示，图片文件自动进入预览模式
+- **官方配置（Official Profile）**：API 配置下拉新增「官方配置」虚拟选项，选中后启动 Claude Code 不注入任何 `ANTHROPIC_*` 环境变量，使用 `~/.claude/` 中自身存储的凭证（兼容 `claude login` OAuth 流程）
+- **TUI 应用显示修复（lazygit / vim / htop 等）**：切换标签或唤醒浮窗时不再强制滚动终端视口，彻底解决普通屏幕 scrollback 透过交替屏幕造成的乱码问题
+- **分屏弹窗遮挡修复**：新增 `app:focusWindow` IPC，分屏目录选择弹窗打开时自动将主窗口移至最前，防止被 detach DevTools 窗口遮挡
+
+### 修复 | Bug Fixes
+- 官方配置 `__official__` 作为 profileId 传入主进程时直接解析为官方 profile，不再错误回退到全局激活配置
+- 官方配置启动 PTY 时保留 `CLAUDE_CODE_OAUTH_TOKEN`，OAuth 登录凭证正常生效
+
+---
+
 ## v0.7.15 (2026-05-27)
 
 ### 性能 | Performance
