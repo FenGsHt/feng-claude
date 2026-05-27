@@ -5,7 +5,7 @@ import { homedir } from 'os'
 import { existsSync, promises as fsPromises } from 'fs'
 import { spawnSync } from 'child_process'
 import { IPC } from '../renderer/src/types/ipc'
-import { DEFAULT_SETTINGS } from './settingsStore'
+import { DEFAULT_SETTINGS, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from './settingsStore'
 import { augmentPathWithBunInstallDirs, type PtyManager } from './ptyManager'
 import type { FileSystemHandler } from './fileSystemHandler'
 import type { HistoryStore } from './historyStore'
@@ -404,8 +404,11 @@ export function registerIpcHandlers(
       const settings = settingsStore.get()
 
       // [2026-04-28] 获取指定的 profile 或使用全局激活的
+      // [2026-05-27] OFFICIAL_PROFILE_ID 是虚拟 profile，不在 profiles 数组中，需显式处理
       const profile = profileId
-        ? settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile()
+        ? (profileId === OFFICIAL_PROFILE_ID
+            ? OFFICIAL_PROFILE as unknown as import('./settingsStore').ApiProfile
+            : settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile())
         : settingsStore.getActiveProfile()
 
       // Read scrollback before creating session (file written by previous session's close)

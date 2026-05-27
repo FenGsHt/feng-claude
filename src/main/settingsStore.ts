@@ -3,6 +3,7 @@ import { join } from 'path'
 import Store from 'electron-store'
 import type { ClaudeSettings, ApiProfile, FallbackConfig } from '../renderer/src/types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, migrateOldSettings, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../renderer/src/types/settings'
+export { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE }
 import { getConfigDir } from './configDir'
 import { v4 as uuidv4 } from 'uuid'
 

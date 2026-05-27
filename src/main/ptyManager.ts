@@ -77,9 +77,11 @@ export function augmentPathWithBunInstallDirs(basePath: string): string {
   return `${bunBin}${sep}${basePath}`
 }
 
-function buildPtyEnv(claudeEnv: Record<string, string>): Record<string, string> {
+function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = false): Record<string, string> {
   const e = { ...(process.env as Record<string, string>) }
   for (const k of PTY_ENV_STRIP) {
+    // [2026-05-27] 官方配置保留 CLAUDE_CODE_OAUTH_TOKEN，让 Claude Code 使用自身 OAuth 凭证
+    if (isOfficialProfile && k === 'CLAUDE_CODE_OAUTH_TOKEN') continue
     delete e[k]
   }
   /* [2026-05-08] 原末尾 PATH: process.env.PATH ?? ''：未把 ~/.bun/bin 并入，插件内调用 bun 因找不到命令失败。 */
@@ -599,7 +601,7 @@ export class PtyManager {
     }
 
     const ptyEnv = {
-      ...buildPtyEnv(claudeEnv),
+      ...buildPtyEnv(claudeEnv, profile.isOfficial === true),
       ...(preparedTelegram.env ?? {})
     }
 
