@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.18] - 2026-05-28
+
+### 新功能 | New Features
+- **终端刷新按钮**：终端标题栏新增 ↺ 刷新按钮，单击调用 `wakeTerminal` 立即重绘画面；lazygit / vim 等 TUI 出现乱码时可快速恢复
+- **所有弹窗/浮层自动置前**：`useFocusWindow` hook 扩展至全部 11 个覆盖层组件（`UpdateNotification`、`UsageChart` 热力图、`SettingsPanel.ProfileEditor` 等），打开任意界面时主窗口均自动浮到最前
+
+### 修复 | Bug Fixes
+- **TUI 画面多项修复（lazygit / vim / htop）**：
+  - 切换标签时立即同步刷新 xterm canvas（不再等 200ms），解决第一帧仍为旧画面的问题
+  - 交替屏幕（alternate screen）标签始终强制发送 SIGWINCH，确保 TUI 响应尺寸变化重绘
+  - 分屏布局切换（单窗格 ↔ 分屏）时 `container.appendChild` 移动 DOM 元素后补一帧 `refresh()`，消除"新分屏显示旧 lazygit 内容"
+- **Windows ConPTY exit-259 修复**：`APP_FOCUS_WINDOW` 和 `browserViewManager.revealMainWindow` 均改为 `if (!win.isFocused()) win.focus()`，移除 `win.moveTop()`；打开调试浏览器后不再触发 ConPTY 意外断开（exit code 259 = `STILL_ACTIVE`）
+
 ## [0.7.16] - 2026-05-27
 
 ### 新功能 | New Features

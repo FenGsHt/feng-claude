@@ -8,6 +8,22 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.18': {
+    titleZh: 'Feng Claude 0.7.18 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.18",
+    bulletsZh: [
+      '所有对话框/浮层自动置前：打开设置、弹窗、图表等界面时主窗口自动浮到最前，防止被 DevTools 窗口遮挡',
+      '终端刷新按钮：终端标题栏新增 ↺ 刷新按钮，一键重绘画面（lazygit / vim 乱码时可用）',
+      'TUI 多项修复：切换标签立即刷新画面、强制发送 SIGWINCH、分屏切换时 canvas 刷新——lazygit 乱码大幅改善',
+      'Windows ConPTY 259 修复：打开调试浏览器后不再触发 PTY 意外断开（exit 259）',
+    ],
+    bulletsEn: [
+      'All dialogs/overlays auto-focus window: opening settings, modals, charts etc. now brings the main window to front, preventing DevTools from blocking them',
+      'Terminal refresh button: ↺ button in terminal header redraws the screen on demand (useful when lazygit/vim scrambles)',
+      'TUI display fixes: immediate canvas refresh on tab switch, forced SIGWINCH for alternate-screen sessions, canvas repaint after split layout change — lazygit display significantly improved',
+      'Windows ConPTY exit-259 fix: opening the debug browser no longer causes PTY disconnect (exit code 259)',
+    ]
+  },
   '0.7.16': {
     titleZh: 'Feng Claude 0.7.16 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.16",

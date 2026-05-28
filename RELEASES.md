@@ -7,6 +7,21 @@
 
 ---
 
+## v0.7.18 (2026-05-28)
+
+### 新功能 | New Features
+- **终端刷新按钮**：终端标题栏新增 ↺ 刷新按钮，单击立即重绘终端画面；lazygit / vim 等 TUI 出现乱码时可快速恢复
+- **所有弹窗/浮层自动置前**：`useFocusWindow` hook 扩展至所有 11 个覆盖层组件，打开设置、更新通知、热力图统计等界面时主窗口均自动浮到最前，防止被 detach DevTools 窗口遮挡
+
+### 修复 | Bug Fixes
+- **TUI 画面多项修复（lazygit / vim / htop）**：
+  - 切换标签立即刷新 canvas（解决第一帧残留旧画面）
+  - 交替屏幕标签强制发送 SIGWINCH（确保 TUI 正确响应尺寸）
+  - 分屏布局切换后补一帧 `refresh()`（消除新分屏显示旧 lazygit 内容）
+- **Windows ConPTY exit-259 修复**：打开调试浏览器后不再触发 PTY 意外断开（exit code 259 `STILL_ACTIVE`）；改为仅在窗口未聚焦时调用 `win.focus()`，移除 `win.moveTop()`
+
+---
+
 ## v0.7.16 (2026-05-27)
 
 ### 新功能 | New Features
