@@ -705,7 +705,9 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.APP_FOCUS_WINDOW, (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
-    if (win) { win.focus(); win.moveTop() }
+    // [2026-05-27] 只在窗口未聚焦时才 focus；不调 moveTop()——Windows ConPTY
+    // 在 SetFocus/BringWindowToTop 时可能断开连接，导致 PTY 以 259 退出。
+    if (win && !win.isFocused()) win.focus()
   })
 
   // ── Pet Agent ─────────────────────────────────────────────────

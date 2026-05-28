@@ -292,7 +292,9 @@ function toggleDevTools(): void {
 function revealMainWindow(win: BrowserWindow): void {
   if (win.isMinimized()) win.restore()
   if (!win.isVisible()) win.show()
-  win.focus()
+  // [2026-05-27] 只在窗口未聚焦时才 focus；Windows ConPTY 在已聚焦窗口重复收到
+  // SetFocus 时可能断开，PTY 进程以 STILL_ACTIVE(259) 退出。
+  if (!win.isFocused()) win.focus()
 }
 
 /** 创建或显示浏览器面板 */
