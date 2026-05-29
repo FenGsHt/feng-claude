@@ -8,6 +8,12 @@ import { getConfigDir } from './configDir'
 import { v4 as uuidv4 } from 'uuid'
 
 export type { ClaudeSettings, ApiProfile, FallbackConfig }
+
+/** [2026-05-29] 过滤空字符串值：防止把 ANTHROPIC_MODEL='' 这类空值注入 PTY 环境，
+ * 避免新版 Claude Code CLI 把空字符串原样传给 API 引起 "400 Request body format invalid" */
+function filterEnvRecord(rec: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(rec).filter(([, v]) => v !== ''))
+}
 export { DEFAULT_SETTINGS, createDefaultProfile }
 
 interface StoreSchema {
@@ -122,7 +128,7 @@ export class SettingsStore {
   profileToEnv(profile: ApiProfile): Record<string, string> {
     // 官方配置：不注入任何环境变量，让 Claude Code 使用 ~/.claude/ 中存储的 credentials
     if (profile.isOfficial) return {}
-    return {
+    return filterEnvRecord({
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
       ANTHROPIC_API_KEY: profile.authToken,
       ANTHROPIC_BASE_URL: profile.baseUrl,
@@ -132,14 +138,14 @@ export class SettingsStore {
       ANTHROPIC_DEFAULT_OPUS_MODEL: profile.opusModel,
       CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
-    }
+    })
   }
 
   /** [2026-04-30] 转换 ApiProfile 为环境变量（考虑代理开关） */
   profileToEnvWithProxy(profile: ApiProfile, proxyUrl?: string): Record<string, string> {
     if (profile.isOfficial) return {}
     const baseUrl = proxyUrl ?? profile.baseUrl
-    return {
+    return filterEnvRecord({
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
       ANTHROPIC_API_KEY: profile.authToken,
       ANTHROPIC_BASE_URL: baseUrl,
@@ -149,7 +155,7 @@ export class SettingsStore {
       ANTHROPIC_DEFAULT_OPUS_MODEL: profile.opusModel,
       CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
-    }
+    })
   }
 
   /** [2026-04-28] Convert settings to env vars for PTY injection (uses active profile) */
