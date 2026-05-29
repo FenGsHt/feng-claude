@@ -188,6 +188,8 @@ export interface ClaudeSettings {
   enableApiProxy?: boolean
   /** [2026-05-01] 任务完成时发送系统通知 */
   enableNotifications?: boolean
+  /** [2026-05-29] 禁止 Claude Code CLI 自动更新（注入 DISABLE_AUTOUPDATER=1） */
+  disableAutoUpdate?: boolean
   /** [2026-05-08] 官方 Telegram Channel 默认配置；每个会话可覆盖 */
   telegramChannel?: TelegramChannelGlobalSettings
   /** [2026-05-06] 终端配置 */

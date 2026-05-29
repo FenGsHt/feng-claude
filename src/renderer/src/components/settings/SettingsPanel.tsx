@@ -401,6 +401,31 @@ export function SettingsPanel(): React.ReactElement {
         </p>
       </div>
 
+      {/* [2026-05-29] 禁止 Claude Code 自动更新 */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+            {lang === 'zh' ? '禁止 CLI 自动更新' : 'Disable CLI Auto-Update'}
+          </span>
+          <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors"
+            style={{ backgroundColor: form.disableAutoUpdate ? '#f59e0b' : undefined }}>
+            <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+              style={{ transform: form.disableAutoUpdate ? 'translateX(16px)' : 'translateX(0)' }} />
+          </div>
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={!!form.disableAutoUpdate}
+            onChange={(e) => handleChange('disableAutoUpdate' as never, e.target.checked as never)}
+          />
+        </label>
+        <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+          {lang === 'zh'
+            ? '注入 DISABLE_AUTOUPDATER=1，防止 Claude Code CLI 自动升级到新版本'
+            : 'Inject DISABLE_AUTOUPDATER=1 to prevent Claude Code CLI from auto-upgrading'}
+        </p>
+      </div>
+
       {/* [2026-05-08] Telegram：开关 + 多条 Bot 预设（首条=新建会话默认） */}
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <div className="mb-1 flex items-center justify-between gap-2">

@@ -602,6 +602,8 @@ export class PtyManager {
 
     const ptyEnv = {
       ...buildPtyEnv(claudeEnv, profile.isOfficial === true),
+      // [2026-05-29] 禁止 Claude Code 自动更新（防止降级后被自动升回）
+      ...(s.disableAutoUpdate ? { DISABLE_AUTOUPDATER: '1' } : {}),
       ...(preparedTelegram.env ?? {})
     }
 
