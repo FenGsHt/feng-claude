@@ -35,6 +35,12 @@ export function SettingsPanel(): React.ReactElement {
   const [fallbacksExpanded, setFallbacksExpanded] = useState(true)
 
 
+  // [2026-05-29] Claude Code CLI 版本
+  const [claudeVersion, setClaudeVersion] = useState<string | null>(null)
+  useEffect(() => {
+    window.electronAPI?.getClaudeVersion?.().then(v => setClaudeVersion(v ?? null)).catch(() => {})
+  }, [])
+
   // [2026-05-03] 麦克风设备列表
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([])
   useEffect(() => {
@@ -404,8 +410,13 @@ export function SettingsPanel(): React.ReactElement {
       {/* [2026-05-29] 禁止 Claude Code 自动更新 */}
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <label className="flex items-center justify-between cursor-pointer">
-          <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider flex items-center gap-1">
             {lang === 'zh' ? '禁止 CLI 自动更新' : 'Disable CLI Auto-Update'}
+            {claudeVersion && (
+              <span className="font-normal normal-case tracking-normal text-claude-muted opacity-60">
+                ({claudeVersion})
+              </span>
+            )}
           </span>
           <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors"
             style={{ backgroundColor: form.disableAutoUpdate ? '#f59e0b' : undefined }}>

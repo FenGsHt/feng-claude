@@ -43,6 +43,8 @@ export const IPC = {
   APP_OPEN_DEVTOOLS: 'app:openDevTools',
   /** 将主窗口移至最前（对抗悬浮的 detach DevTools 窗口） */
   APP_FOCUS_WINDOW: 'app:focusWindow',
+  /** [2026-05-29] 获取已安装的 Claude Code CLI 版本号 */
+  APP_GET_CLAUDE_VERSION: 'app:getClaudeVersion',
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',

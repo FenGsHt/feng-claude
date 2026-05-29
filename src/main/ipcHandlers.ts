@@ -686,6 +686,18 @@ export function registerIpcHandlers(
     return app.getVersion()
   })
 
+  ipcMain.handle(IPC.APP_GET_CLAUDE_VERSION, () => {
+    try {
+      const result = spSync('claude', ['--version'], { encoding: 'utf8', timeout: 5000 })
+      // output: "Claude Code v2.1.156\n" → extract version part
+      const text = (result.stdout ?? '').trim()
+      const m = text.match(/v(\d+\.\d+\.\d+)/)
+      return m ? `v${m[1]}` : (text || null)
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle(IPC.APP_WHATS_NEW_SHOULD_SHOW, (): WhatsNewShouldShowResult => {
     const version = app.getVersion()
     const last = getLastSeenWhatsNewVersion()
