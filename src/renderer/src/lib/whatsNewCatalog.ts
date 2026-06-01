@@ -8,6 +8,18 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.21': {
+    titleZh: 'Feng Claude 0.7.21 修复版',
+    titleEn: "Feng Claude 0.7.21 — Bug Fixes",
+    bulletsZh: [
+      '多配置 baseUrl 修复：切换 tab 配置时不再被全局配置覆盖，每个 session 使用自己的接口地址',
+      '多配置 model 混用修复：切换配置后 /model 列表不再混入其他配置的模型名',
+    ],
+    bulletsEn: [
+      'Multi-profile baseUrl fix: switching tab profile no longer routes through the global active profile',
+      'Multi-profile model mix fix: /model list no longer shows models from other profiles after switching',
+    ],
+  },
   '0.7.20': {
     titleZh: 'Feng Claude 0.7.20 修复版',
     titleEn: "Feng Claude 0.7.20 — Bug Fixes",

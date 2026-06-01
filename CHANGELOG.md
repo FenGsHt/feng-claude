@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.21] - 2026-06-01
+
+### 修复 | Bug Fixes
+- **多配置 baseUrl 全局化**：代理服务器只读全局 activeProfileId，导致非全局配置的 session 也走全局 baseUrl；现在非全局配置直接使用自身 baseUrl 绕过代理，全局配置保留原有容灾逻辑
+- **多配置 model 混用**：PTY_ENV_STRIP 补全 model 相关 env var，切换配置时旧值不再残留
+- **诊断日志**：PTY 启动时打印实际注入的 model env var，便于排查配置问题
+
 ## [0.7.20] - 2026-06-01
 
 ### 修复 | Bug Fixes
