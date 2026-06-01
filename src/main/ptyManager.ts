@@ -587,8 +587,10 @@ export class PtyManager {
     telegramChannel?: TelegramChannelSessionConfig
   ): Promise<{ pid: number; telegramChannel?: TelegramChannelSessionConfig }> {
     const s = settings ?? this.settingsStore.get()
-    // [2026-04-30] 代理开启时使用本地代理 URL
-    const proxyUrl = s.enableApiProxy ? `http://127.0.0.1:${getProxyPort()}` : undefined
+    // [2026-06-01] 代理仅对全局激活配置生效：代理服务器只读 activeProfileId，
+    // 非全局配置的 session 直接使用 profile 自身的 baseUrl，避免多配置时 baseUrl 被全局覆盖。
+    const isGlobalActiveProfile = profile.id === s.activeProfileId || profile.isOfficial === true
+    const proxyUrl = (s.enableApiProxy && isGlobalActiveProfile) ? `http://127.0.0.1:${getProxyPort()}` : undefined
     const claudeEnv = this.settingsStore.profileToEnvWithProxy(profile, proxyUrl)
     // [2026-06-01] 诊断日志：确认实际注入的 model 环境变量（排查多配置混用问题）
     console.log('[PTY] createSession profile:', profile.name, profile.id, {
