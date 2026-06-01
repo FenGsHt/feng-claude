@@ -290,6 +290,8 @@ const electronAPI = {
     // [2026-05-01] 设置 Tools calls 面板宽度，浏览器需要在其左边布局
     setToolsPanelWidth: (width: number): void =>
       ipcRenderer.send('browser-view:set-tools-panel-width', width),
+    setOverlayOpen: (open: boolean): void =>
+      ipcRenderer.send('browser-view:overlay', open),
   },
 
   // Git Worktree

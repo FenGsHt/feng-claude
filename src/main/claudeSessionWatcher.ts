@@ -388,9 +388,10 @@ function coerceUsageRecord(raw: unknown): ParsedUsage | null {
   )
   const cacheCreate = n(o.cache_creation_input_tokens ?? o.cacheCreationInputTokens)
   const cacheRead = n(o.cache_read_input_tokens ?? o.cacheReadInputTokens)
-  /* [2026-05-12] 流式响应中途的中间快照只有 input_tokens，不含 output 和 cache 字段。
-   * 这些是同一请求的重复计数，跳过避免 input 暴增。最终条目才会有 output 或 cache 数据。 */
-  if (output === 0 && cacheCreate === 0 && cacheRead === 0) return null
+  /* [2026-05-12] 流式中间快照过滤：跳过 output=0 且 cacheCreate=0 的条目。
+   * [2026-05-29] 原只过滤三者全 0；但流式快照也可能带 cacheRead>0（running total），
+   * 导致 cacheRead 被计两次（快照 + 最终条目）。output=0 && cacheCreate=0 时一律跳过。 */
+  if (output === 0 && cacheCreate === 0) return null
   const total = input + output + cacheCreate + cacheRead
   if (total <= 0) return null
   return { input, output, cacheCreate, cacheRead }

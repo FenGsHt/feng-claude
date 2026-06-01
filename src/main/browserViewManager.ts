@@ -69,6 +69,10 @@ let devToolsDragTimer: NodeJS.Timeout | null = null
 let browserDragging = false
 let browserDragTimer: NodeJS.Timeout | null = null
 
+// 弹窗遮挡计数：>0 时临时隐藏浏览器面板，降至 0 时自动恢复
+let overlayCount = 0
+let overlayHiddenWhileVisible = false
+
 // ── 布局计算 ───────────────────────────────────────────────────────
 
 function notifyBrowserState(): void {
@@ -202,7 +206,7 @@ button:disabled { opacity: 0.3; cursor: default; }
   <button id="fwd-btn" title="前进">▶</button>
   <button id="reload-btn" title="刷新">⟳</button>
   <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
-  <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框">⊕</button>
+  <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
   <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
   <button id="close-btn" title="关闭浏览器">×</button>
 <script>
@@ -709,6 +713,23 @@ new Promise((resolve) => {
   }
 }
 
+/** 弹窗打开/关闭时调用，防止原生 WebContentsView 遮挡 DOM 弹窗 */
+export function setOverlayOpen(win: BrowserWindow, open: boolean): void {
+  if (open) {
+    overlayCount++
+    if (overlayCount === 1 && state.visible) {
+      overlayHiddenWhileVisible = true
+      hideBrowserView()
+    }
+  } else {
+    overlayCount = Math.max(0, overlayCount - 1)
+    if (overlayCount === 0 && overlayHiddenWhileVisible) {
+      overlayHiddenWhileVisible = false
+      showBrowserView(win)
+    }
+  }
+}
+
 // ─ IPC ────────────────────────────────────────────────────────────────
 
 export function registerBrowserViewIpc(): void {
@@ -717,6 +738,11 @@ export function registerBrowserViewIpc(): void {
     if (!win) return { visible: false }
     const visible = toggleBrowserView(win)
     return { visible }
+  })
+
+  ipcMain.on('browser-view:overlay', (event, open: boolean) => {
+    const win = getBrowserOwnerWindow(event.sender) ?? state.mainWin
+    if (win) setOverlayOpen(win, open)
   })
 
   ipcMain.handle('browser-view:navigate', (_event, url: string) => {

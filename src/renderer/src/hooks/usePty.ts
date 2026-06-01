@@ -30,10 +30,10 @@ import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
  * Mount once at the App root.
  */
 
-// [2026-05-01] Debounce notifications: only notify after 30s of no tokens
-// This prevents premature notifications between multi-step tool calls
-const NOTIFY_DEBOUNCE_MS = 30_000
+// idle 转为通知前的延迟：等待 8s 覆盖大多数工具执行时间，期间若重新变 running 则取消
+const NOTIFY_DELAY_MS = 8_000
 const lastTokenTime = new Map<string, number>()
+const notifyTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const runtimeStatusTailBySession = new Map<string, string>()
 const runtimeStatusTouchAtBySession = new Map<string, number>()
 
@@ -107,13 +107,23 @@ function shouldKeepEmbedLoadingForTranscript(
 }
 
 function notifyTaskDone(sessionId: string): void {
-  const lastToken = lastTokenTime.get(sessionId)
-  const elapsed = lastToken ? Date.now() - lastToken : 0
-  if (!lastToken || elapsed < NOTIFY_DEBOUNCE_MS) return
-  window.electronAPI.settings.get().then((s) => {
-    if (s.enableNotifications === false) return
-    window.electronAPI?.showNotification('Feng Claude', 'Task completed')
-  }).catch(() => {})
+  if (!lastTokenTime.has(sessionId)) return
+  const existing = notifyTimers.get(sessionId)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    notifyTimers.delete(sessionId)
+    lastTokenTime.delete(sessionId)  // 通知后清除，防止下一个 idle 重复触发
+    window.electronAPI.settings.get().then((s) => {
+      if (s.enableNotifications === false) return
+      window.electronAPI?.showNotification('Feng Claude', 'Task completed')
+    }).catch(() => {})
+  }, NOTIFY_DELAY_MS)
+  notifyTimers.set(sessionId, timer)
+}
+
+function cancelNotify(sessionId: string): void {
+  const t = notifyTimers.get(sessionId)
+  if (t) { clearTimeout(t); notifyTimers.delete(sessionId) }
 }
 
 export function usePty(): void {
@@ -201,6 +211,9 @@ export function usePty(): void {
     // ── PTY status changes ────────────────────────────────────
     const unsubStatus = window.electronAPI.onPtyStatus((payload) => {
       const { sessionId, status } = payload
+      if (status === 'running') {
+        cancelNotify(sessionId)
+      }
       if (status === 'idle') {
         notifyTaskDone(sessionId)
         useClaudeRuntimeStatusStore.getState().clearRuntimeStatus(sessionId)

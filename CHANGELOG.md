@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.19] - 2026-06-01
+
+### 修复 | Bug Fixes
+- **Token cacheRead 约两倍**：流式响应的中间快照（output=0 且 cacheCreate=0）未被过滤，导致 cacheRead 被重复计数；修正过滤条件后与 CC 内置 `/usage` 对齐
+- **官方配置 token 未归属**：图表遍历 `settings.profiles` 时未包含虚拟 profile `__official__`，导致官方配置用量显示为「未归属」；新增 `displayProfiles()` helper 修复所有图表处
+- **系统通知多次触发**：原 30 秒 debounce 逻辑因 `elapsed` 恒 < 30s 而从不触发，工具调用期间的 idle 事件又会误发多次；改为 idle 后延迟 8 秒发通知，期间若重新 running 则取消
+- **React #310 崩溃（useFocusWindow）**：`UpdateNotification` 在两个 early return 之后才调用 `useFocusWindow`，违反 React Hooks 规则；将 hook 调用移至组件顶部
+- **热力图被内嵌浏览器遮挡**：`WebContentsView` 为原生层，DOM z-index 无效；`useFocusWindow` 弹窗打开时自动通知主进程临时隐藏 browser panel，关闭后恢复
+
+### 功能调整 | Changes
+- **移除 Tool call 侧边面板**：删除标题栏「Toggle tool call panel」按钮及对应面板
+- **外嵌按钮按设置显示**：「外嵌输出 BETA」关闭时，终端标题栏不再显示切换按钮
+- **浏览器元素拾取快捷键说明**：导航栏 ⊕ 按钮 tooltip 补充 `(Ctrl+Shift+Q)`
+
 ## [0.7.18] - 2026-05-28
 
 ### 新功能 | New Features

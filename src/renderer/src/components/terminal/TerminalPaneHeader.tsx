@@ -11,6 +11,7 @@ import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
 import { wakeTerminal } from './XTerminal'
+import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 
 interface WorktreeInfo {
   path: string
@@ -114,6 +115,7 @@ function MicIcon({ active }: { active: boolean }): React.ReactElement {
 }
 
 export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactElement {
+  const embedBetaEnabled = useEmbedClaudeOutputBeta()
   const embedBeta = useSessionStore((s) => {
     const sess = s.sessions.find((x) => x.id === sessionId)
     return sess?.embedMode ?? false
@@ -397,17 +399,19 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
 
         {/* Action buttons */}
         <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
-          <HeaderBtn
-            title={
-              embedBeta
-                ? '切换到传统 Claude Code 终端 (xterm)'
-                : '切换到外嵌会话视图 (结构化对话)'
-            }
-            onClick={toggleEmbedVersusTerminal}
-            accent={embedBeta}
-          >
-            {embedBeta ? <TerminalClassicIcon /> : <TranscriptEmbedIcon />}
-          </HeaderBtn>
+          {embedBetaEnabled && (
+            <HeaderBtn
+              title={
+                embedBeta
+                  ? '切换到传统 Claude Code 终端 (xterm)'
+                  : '切换到外嵌会话视图 (结构化对话)'
+              }
+              onClick={toggleEmbedVersusTerminal}
+              accent={embedBeta}
+            >
+              {embedBeta ? <TerminalClassicIcon /> : <TranscriptEmbedIcon />}
+            </HeaderBtn>
+          )}
           {/* [2026-05-08] Telegram 配置已迁至标签栏「模型」药丸旁的频道按钮 */}
           {/* 合并提醒 */}
           {showMergeReminder && (

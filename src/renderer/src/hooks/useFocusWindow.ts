@@ -1,11 +1,16 @@
 import { useEffect } from 'react'
 
 /**
- * 弹窗/对话框出现时将主窗口移至最前，避免被 detach DevTools 等浮窗遮挡。
+ * 弹窗/对话框出现时：① 主窗口置前；② 临时隐藏原生 browser WebContentsView（z-index 对原生层无效）。
  * @param active 可选，默认 true。传入 `open` prop 可在弹窗打开时触发。
  */
 export function useFocusWindow(active = true): void {
   useEffect(() => {
-    if (active) window.electronAPI?.focusWindow?.()
+    if (!active) return
+    window.electronAPI?.focusWindow?.()
+    window.electronAPI?.browserView?.setOverlayOpen?.(true)
+    return () => {
+      window.electronAPI?.browserView?.setOverlayOpen?.(false)
+    }
   }, [active])
 }

@@ -30,15 +30,16 @@ export function UpdateNotification(): React.ReactElement | null {
     return () => { unsubStatus(); unsubProgress() }
   }, [])
 
+  // [2026-05-29] Hook 必须在所有 early return 之前调用，否则触发 React #310
+  const isReady = status?.status === 'downloaded'
+  useFocusWindow(isReady)
+
   if (dismissed || !status) return null
   // Only show during download / ready / error; hide for not-available / checking
   if (!['available', 'downloaded', 'error'].includes(status.status) && !progress) return null
 
   const isDownloading = !!progress && status.status !== 'downloaded'
-  const isReady      = status.status === 'downloaded'
   const isError      = status.status === 'error'
-
-  useFocusWindow(isReady)
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-[300px] w-72 animate-slide-up">

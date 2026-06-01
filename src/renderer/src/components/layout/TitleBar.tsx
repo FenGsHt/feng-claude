@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
-import { useToolCallStore } from '../../store/toolCallStore'
 import type { UpdateStatusPayload } from '../../types/ipc'
 import { useI18n } from '../../i18n'
 import appIcon from '../../assets/icon.png'
@@ -16,18 +15,10 @@ function formatWorkdir(workdir: string): string {
   return `…/${parts.slice(-2).join('/')}`
 }
 
-interface TitleBarProps {
-  onToggleTools: () => void
-  showTools: boolean
-}
-
-export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.ReactElement {
+export function TitleBar(): React.ReactElement {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const sessions = useSessionStore((s) => s.sessions)
   const activeSession = sessions.find((s) => s.id === activeSessionId)
-  const recentCallCount = useToolCallStore((s) =>
-    s.calls.filter((c) => c.sessionId === activeSessionId && Date.now() - c.timestamp < 60_000).length
-  )
   const { lang } = useI18n()
 
   const [version, setVersion] = useState('')
@@ -170,21 +161,6 @@ export function TitleBar({ onToggleTools, showTools }: TitleBarProps): React.Rea
           </svg>
           {(updateStatus?.status === 'available' || updateStatus?.status === 'downloaded') && (
             <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-400 rounded-full" />
-          )}
-        </button>
-        <button
-          onClick={onToggleTools}
-          title="Toggle tool call panel"
-          className={`relative w-8 h-7 flex items-center justify-center rounded transition-colors ${
-            showTools ? 'text-amber-400 bg-amber-500/10' : 'text-claude-muted hover:text-claude-text hover:bg-claude-border'
-          }`}
-        >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <path d="M9 1.5l2 2L4.5 10H2V7.5L9 1.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-            <path d="M1 12h5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-          </svg>
-          {recentCallCount > 0 && !showTools && (
-            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-amber-400 rounded-full" />
           )}
         </button>
         <WinBtn onClick={handleMinimize} label="Minimize">

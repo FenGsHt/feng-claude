@@ -8,6 +8,22 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.19': {
+    titleZh: 'Feng Claude 0.7.19 修复版',
+    titleEn: "Feng Claude 0.7.19 — Bug Fixes",
+    bulletsZh: [
+      'Token 统计修复：cacheRead 重复计数问题已修复，官方配置用量不再显示为「未归属」',
+      '系统通知修复：对话完成后仅发一次通知，不再因工具调用触发多次',
+      '热力图修复：弹窗打开时自动隐藏内嵌浏览器，不再被遮挡',
+      '崩溃修复：修复更新通知组件在部分场景（如与 Codex 同时运行）触发的 React #310 崩溃',
+    ],
+    bulletsEn: [
+      'Token stats fix: cacheRead double-counting resolved; official profile tokens no longer show as "Unassigned"',
+      'Notification fix: task-complete notification fires only once, no longer spams on multi-tool calls',
+      'Heatmap fix: embedded browser now hides automatically when a modal opens',
+      'Crash fix: React #310 crash in UpdateNotification (triggered alongside Codex) resolved',
+    ],
+  },
   '0.7.18': {
     titleZh: 'Feng Claude 0.7.18 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.18",

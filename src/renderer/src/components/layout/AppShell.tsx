@@ -3,7 +3,6 @@ import { TitleBar } from './TitleBar'
 import { Sidebar } from '../sidebar/Sidebar'
 import { TabBar } from '../tabs/TabBar'
 import { TerminalPanel } from '../terminal/TerminalPanel'
-import { ToolCallFeed } from '../toolcalls/ToolCallFeed'
 import { OfficePreviewPanel } from '../office/OfficePreviewPanelRight'
 import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
 import { TextEditorPanel } from '../sidebar/TextEditorPanel'
@@ -19,7 +18,6 @@ const SIDEBAR_MAX = 520
 const SIDEBAR_STORAGE_KEY = 'sidebar-width'
 
 export function AppShell(): React.ReactElement {
-  const [showTools, setShowTools] = useState(false)
   const [browserPanel, setBrowserPanel] = useState({ visible: false, width: 0 })
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY)
@@ -91,7 +89,7 @@ export function AppShell(): React.ReactElement {
       const delta = browserDragStartX.current - ev.clientX
       const newWidth = Math.max(200, browserDragStartWidth.current + delta)
       const opW = useOfficePreviewPanelStore.getState().visible ? useOfficePreviewPanelStore.getState().width : 0
-      const effectiveWidth = window.innerWidth - (showTools ? 256 : 0) - opW
+      const effectiveWidth = window.innerWidth - opW
       void window.electronAPI.browserView?.setRatio?.(newWidth / effectiveWidth)
     }
     const onUp = (): void => {
@@ -101,7 +99,7 @@ export function AppShell(): React.ReactElement {
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [browserPanel, showTools])
+  }, [browserPanel])
 
   useEffect(() => {
     setTerminalLineHandler((sessionId, line) => {
@@ -126,9 +124,8 @@ export function AppShell(): React.ReactElement {
 
   // Notify main process of total right-side DOM panel width so WebContentsView is positioned correctly
   useEffect(() => {
-    const width = (showTools ? 256 : 0) + officePanelWidth
-    window.electronAPI.browserView?.setToolsPanelWidth?.(width)
-  }, [showTools, officePanelWidth])
+    window.electronAPI.browserView?.setToolsPanelWidth?.(officePanelWidth)
+  }, [officePanelWidth])
 
   // ── Main content: terminal + optional editor split ──────────
   const editorPane = editorVisible ? <TextEditorPanel /> : null
@@ -169,7 +166,7 @@ export function AppShell(): React.ReactElement {
 
   return (
     <div className="flex flex-col h-screen bg-claude-bg text-claude-text overflow-hidden font-sans antialiased">
-      <TitleBar onToggleTools={() => setShowTools((v) => !v)} showTools={showTools} />
+      <TitleBar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar width={sidebarWidth} />
         {/* Sidebar resize handle */}
@@ -181,7 +178,7 @@ export function AppShell(): React.ReactElement {
         <main
           className="flex flex-col flex-1 overflow-hidden min-w-0"
           style={browserPanel.visible || officePanelWidth > 0
-            ? { marginRight: browserPanel.width + officePanelWidth + (showTools ? 256 : 0) + 6 }
+            ? { marginRight: browserPanel.width + officePanelWidth + 6 }
             : undefined}
         >
           <TabBar />
@@ -196,16 +193,11 @@ export function AppShell(): React.ReactElement {
               position: 'fixed',
               top: 32,
               bottom: 0,
-              right: browserPanel.width + (showTools ? 256 : 0) + officePanelWidth,
+              right: browserPanel.width + officePanelWidth,
               width: 8,
               zIndex: 50,
             }}
           />
-        )}
-        {showTools && (
-          <div className="flex flex-col w-64 shrink-0 border-l border-claude-border bg-claude-surface overflow-hidden">
-            <ToolCallFeed />
-          </div>
         )}
       </div>
       {/* Office preview right panel (fixed overlay) */}

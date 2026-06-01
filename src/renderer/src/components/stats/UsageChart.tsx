@@ -2,9 +2,19 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useFocusWindow } from '../../hooks/useFocusWindow'
 import { createPortal } from 'react-dom'
 import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
-import type { ClaudeSettings } from '../../types/settings'
+import type { ClaudeSettings, ApiProfile } from '../../types/settings'
+import { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { useI18n } from '../../i18n'
 import { UsageOverviewDashboard } from './UsageOverviewDashboard'
+
+/** 返回需要在图表中展示的配置列表，包含官方虚拟 profile（若有数据）*/
+function displayProfiles(settings: ClaudeSettings | null, perProfileData: Record<string, unknown>): Array<ApiProfile> {
+  const profiles: ApiProfile[] = settings?.profiles ?? []
+  if (perProfileData[OFFICIAL_PROFILE_ID] && !profiles.some(p => p.id === OFFICIAL_PROFILE_ID)) {
+    return [...profiles, OFFICIAL_PROFILE as unknown as ApiProfile]
+  }
+  return profiles
+}
 
 const CHART_DAYS = 14
 const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#06b6d4', '#f97316', '#8b5cf6']
@@ -111,7 +121,7 @@ function buildPieSlices(settings: ClaudeSettings | null, perProfile: Record<stri
   const totalTokens = tokenSum(total)
   if (totalTokens === 0) return []
 
-  return settings.profiles.map((profile, i) => {
+  return displayProfiles(settings, perProfile).map((profile, i) => {
     const t = perProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
     return {
       label: profile.name,
@@ -249,7 +259,7 @@ export function UsageChart(): React.ReactElement {
   const pieSlices = buildPieSlices(settings, rangePerProfile, rangeData)
 
   // Per-profile stats
-  const profileStats = settings?.profiles.map((profile, i) => {
+  const profileStats = displayProfiles(settings, rangePerProfile).map((profile, i) => {
     const pt = rangePerProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
     const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
     return {
@@ -275,9 +285,10 @@ export function UsageChart(): React.ReactElement {
     if (!settings) return [] as { id: string; name: string; tokens: number; color: string; pct: number; other?: boolean }[]
     const totals: Record<string, number> = {}
     let attributed = 0
+    const allPerProfileData = Object.values(dailyHistoryPerProfile).reduce<Record<string, unknown>>((acc, dm) => ({ ...acc, ...dm }), {})
     for (const d of dates) {
       const dm = dailyHistoryPerProfile[d] ?? {}
-      for (const p of settings.profiles) {
+      for (const p of displayProfiles(settings, allPerProfileData)) {
         const v = tokenSum(dm[p.id] ?? emptyTotals())
         totals[p.id] = (totals[p.id] ?? 0) + v
         attributed += v
@@ -408,7 +419,7 @@ export function UsageChart(): React.ReactElement {
               type Seg = { val: number; color: string; label: string }
               const segs: Seg[] = []
               if (settings && v > 0) {
-                settings.profiles.forEach((p, pi) => {
+                displayProfiles(settings, dm).forEach((p, pi) => {
                   const tot = tokenSum(dm[p.id] ?? emptyTotals())
                   if (tot > 0) segs.push({ val: tot, color: COLORS[pi % COLORS.length], label: p.name })
                 })
@@ -487,7 +498,7 @@ export function UsageChart(): React.ReactElement {
               const modelRows: { label: string; val: number; color: string }[] = []
               let attributed = 0
               if (settings) {
-                settings.profiles.forEach((p, pi) => {
+                displayProfiles(settings, dm).forEach((p, pi) => {
                   const t = tokenSum(dm[p.id] ?? emptyTotals())
                   if (t > 0) {
                     modelRows.push({ label: p.name, val: t, color: COLORS[pi % COLORS.length] })

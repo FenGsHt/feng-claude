@@ -7,6 +7,22 @@
 
 ---
 
+## v0.7.19 (2026-06-01)
+
+### 修复
+- **Token cacheRead 约两倍**：过滤流式快照中间条目，cacheRead 计数与 CC 内置 `/usage` 对齐
+- **官方配置 token 未归属**：图表新增 `displayProfiles()` 包含虚拟 profile，官方配置用量正确归属
+- **系统通知多次触发**：改为 idle 后延迟 8 秒发通知，工具调用期间若重新 running 自动取消
+- **React #310 崩溃**：修复 `UpdateNotification` 中 `useFocusWindow` 在 early return 后调用的 Hooks 规则违反
+- **热力图被内嵌浏览器遮挡**：弹窗打开时自动隐藏原生 WebContentsView，关闭后恢复
+
+### 调整
+- 移除标题栏 Tool call 侧边面板按钮
+- 「外嵌输出 BETA」关闭时隐藏终端外嵌切换按钮
+- 浏览器元素拾取按钮 tooltip 补充快捷键说明 `(Ctrl+Shift+Q)`
+
+---
+
 ## v0.7.18 (2026-05-28)
 
 ### 新功能 | New Features
