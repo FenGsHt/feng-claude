@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.20] - 2026-06-01
+
+### 修复 | Bug Fixes
+- **切换配置时 model 混用**：`PTY_ENV_STRIP` 补全 `ANTHROPIC_DEFAULT_SONNET/HAIKU/OPUS_MODEL` 和 `CLAUDE_CODE_SUBAGENT_MODEL`，防止旧配置的 model 变量残留；`filterEnvRecord` 同时过滤 `null/undefined`，避免未填字段的 undefined 键穿透继承系统环境变量
+- **打包版 CSP 拦截主题脚本**：`script-src 'self'` 阻止 anti-FOUC inline script 执行导致主题初始化失败；将脚本 hash 加入白名单
+
 ## [0.7.19] - 2026-06-01
 
 ### 修复 | Bug Fixes

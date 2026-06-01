@@ -8,6 +8,18 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.20': {
+    titleZh: 'Feng Claude 0.7.20 修复版',
+    titleEn: "Feng Claude 0.7.20 — Bug Fixes",
+    bulletsZh: [
+      '配置切换 model 混用修复：切换 API 配置后 /model 列表不再混入旧配置的模型名',
+      '打包版主题修复：CSP 策略不再拦截主题初始化脚本，深色/浅色模式恢复正常',
+    ],
+    bulletsEn: [
+      'Profile model mix fixed: switching API profiles no longer shows stale model names in /model',
+      'Theme init fix: CSP no longer blocks the anti-FOUC script in packaged builds',
+    ],
+  },
   '0.7.19': {
     titleZh: 'Feng Claude 0.7.19 修复版',
     titleEn: "Feng Claude 0.7.19 — Bug Fixes",
