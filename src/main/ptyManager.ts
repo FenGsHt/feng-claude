@@ -590,6 +590,13 @@ export class PtyManager {
     // [2026-04-30] 代理开启时使用本地代理 URL
     const proxyUrl = s.enableApiProxy ? `http://127.0.0.1:${getProxyPort()}` : undefined
     const claudeEnv = this.settingsStore.profileToEnvWithProxy(profile, proxyUrl)
+    // [2026-06-01] 诊断日志：确认实际注入的 model 环境变量（排查多配置混用问题）
+    console.log('[PTY] createSession profile:', profile.name, profile.id, {
+      ANTHROPIC_MODEL: claudeEnv.ANTHROPIC_MODEL,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: claudeEnv.ANTHROPIC_DEFAULT_SONNET_MODEL,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: claudeEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: claudeEnv.ANTHROPIC_DEFAULT_OPUS_MODEL,
+    })
 
     const isWindows = process.platform === 'win32'
     const customShell = s.terminal?.shell?.trim()
