@@ -175,6 +175,12 @@ export function preFillTerminal(sessionId: string, rawBase64: string): void {
   term.write('\x1b[?1049l\x1b[m\x1b[?25h\r\n')
 }
 
+/** [2026-06-01] 检查当前 session 是否有用户输入缓冲（即是否为用户触发的新一轮对话） */
+export function hasUserInputPending(sessionId: string): boolean {
+  const lines = userInputBuffers.get(sessionId)
+  return !!(lines && lines.length > 0)
+}
+
 /** [2026-04-27] 提交用户问题：将缓冲的多行合并为完整问题，存入 userPromptStore */
 export function commitUserPrompt(sessionId: string): void {
   const lines = userInputBuffers.get(sessionId)

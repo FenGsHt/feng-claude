@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { useEmbedOutputBetaStore } from '../store/embedOutputBetaStore'
 import { ingestEmbedPtyEcho } from '../lib/embedPtyTranscriptEcho'
-import { writeToTerminal, commitUserPrompt } from '../components/terminal/XTerminal'
+import { writeToTerminal, commitUserPrompt, hasUserInputPending } from '../components/terminal/XTerminal'
 import { useTokenUsageStore } from '../store/tokenUsageStore'
 import { useGlobalTokenStore } from '../store/globalTokenStore'
 import { useToolCallStore } from '../store/toolCallStore'
@@ -30,10 +30,12 @@ import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
  * Mount once at the App root.
  */
 
-// idle 转为通知前的延迟：等待 8s 覆盖大多数工具执行时间，期间若重新变 running 则取消
-const NOTIFY_DELAY_MS = 8_000
+// idle 转为通知前的延迟：等待 12s 覆盖大多数工具执行时间，期间若重新变 running 则取消
+const NOTIFY_DELAY_MS = 12_000
 const lastTokenTime = new Map<string, number>()
 const notifyTimers = new Map<string, ReturnType<typeof setTimeout>>()
+// 每轮任务最多发一次通知；用户发新消息后才重置，避免工具调用链触发多次
+const notifiedThisTurn = new Set<string>()
 const runtimeStatusTailBySession = new Map<string, string>()
 const runtimeStatusTouchAtBySession = new Map<string, number>()
 
@@ -108,11 +110,13 @@ function shouldKeepEmbedLoadingForTranscript(
 
 function notifyTaskDone(sessionId: string): void {
   if (!lastTokenTime.has(sessionId)) return
+  if (notifiedThisTurn.has(sessionId)) return  // 本轮已通知，等用户发新消息才重置
   const existing = notifyTimers.get(sessionId)
   if (existing) clearTimeout(existing)
   const timer = setTimeout(() => {
     notifyTimers.delete(sessionId)
-    lastTokenTime.delete(sessionId)  // 通知后清除，防止下一个 idle 重复触发
+    if (notifiedThisTurn.has(sessionId)) return  // 二次校验
+    notifiedThisTurn.add(sessionId)
     window.electronAPI.settings.get().then((s) => {
       if (s.enableNotifications === false) return
       window.electronAPI?.showNotification('Feng Claude', 'Task completed')
@@ -124,6 +128,12 @@ function notifyTaskDone(sessionId: string): void {
 function cancelNotify(sessionId: string): void {
   const t = notifyTimers.get(sessionId)
   if (t) { clearTimeout(t); notifyTimers.delete(sessionId) }
+}
+
+/** 用户发新消息时调用，重置本轮通知状态 */
+function resetNotifyTurn(sessionId: string): void {
+  notifiedThisTurn.delete(sessionId)
+  cancelNotify(sessionId)
 }
 
 export function usePty(): void {
@@ -239,6 +249,10 @@ export function usePty(): void {
       lastTokenTime.set(sessionId, Date.now())
 
       if (input > 0 || output > 0) {
+        // 有用户输入缓冲 = 用户发了新消息，重置本轮通知状态
+        if (hasUserInputPending(sessionId)) {
+          resetNotifyTurn(sessionId)
+        }
         commitUserPrompt(sessionId)
       }
 
