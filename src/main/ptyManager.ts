@@ -61,7 +61,12 @@ const PTY_ENV_STRIP = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_BASE_URL',
-  'ANTHROPIC_MODEL'
+  'ANTHROPIC_MODEL',
+  // [2026-06-01] 切换配置时防止旧配置的 model 变量残留（profile 无此字段时 filterEnvRecord 不会覆盖）
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'CLAUDE_CODE_SUBAGENT_MODEL'
 ] as const
 
 /** [2026-05-08] Bun 默认装在 ~/.bun/bin；Electron 包壳启动时常继承不到用户后来在终端里改的 PATH，Telegram 等官方插件会 spawn bun 失败。 */

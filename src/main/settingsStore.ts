@@ -9,10 +9,13 @@ import { v4 as uuidv4 } from 'uuid'
 
 export type { ClaudeSettings, ApiProfile, FallbackConfig }
 
-/** [2026-05-29] 过滤空字符串值：防止把 ANTHROPIC_MODEL='' 这类空值注入 PTY 环境，
- * 避免新版 Claude Code CLI 把空字符串原样传给 API 引起 "400 Request body format invalid" */
-function filterEnvRecord(rec: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(rec).filter(([, v]) => v !== ''))
+/** [2026-05-29] 过滤空字符串值：防止把 ANTHROPIC_MODEL='' 这类空值注入 PTY 环境。
+ * [2026-06-01] 同时过滤 null/undefined：可选字段未填时为 undefined，若不过滤会在 spread 中覆盖
+ * 为 undefined key，node-pty 跳过 undefined 导致旧配置的系统环境变量被意外继承。 */
+function filterEnvRecord(rec: Record<string, string | undefined | null>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(rec).filter((entry): entry is [string, string] => entry[1] != null && entry[1] !== '')
+  )
 }
 export { DEFAULT_SETTINGS, createDefaultProfile }
 
