@@ -1,6 +1,9 @@
 name: Build and Release
 
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   release:
     types: [published]
   workflow_dispatch:
@@ -18,7 +21,7 @@ permissions:
 
 jobs:
   create-release:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       tag-name: ${{ steps.version.outputs.TAG }}
@@ -33,26 +36,23 @@ jobs:
       - name: Get version
         id: version
         run: |
-          # 获取当前 package.json 版本
           CURRENT_VER=$(node -p "require('./package.json').version")
 
-          if [ -n "${{ inputs.version }}" ]; then
-            # 用户指定了版本
+          if [ "${{ github.event_name }}" == "push" ]; then
+            # tag push 触发：直接从 tag 名取版本，无需改文件
+            TAG="${{ github.ref_name }}"
+            NEED_COMMIT=false
+          elif [ -n "${{ inputs.version }}" ]; then
             TAG="v${{ inputs.version }}"
             NEED_COMMIT=false
           else
-            # 自动递增版本号（patch 版本）
-            # 例如 0.5.1 -> 0.5.2, 1.2.9 -> 1.2.10
             MAJOR=$(echo $CURRENT_VER | cut -d. -f1)
             MINOR=$(echo $CURRENT_VER | cut -d. -f2)
             PATCH=$(echo $CURRENT_VER | cut -d. -f3)
             NEW_PATCH=$((PATCH + 1))
             NEW_VER="${MAJOR}.${MINOR}.${NEW_PATCH}"
             TAG="v${NEW_VER}"
-
-            # 更新 package.json
             node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.version='${NEW_VER}';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
-
             echo "Auto incrementing version: $CURRENT_VER -> ${NEW_VER}"
             NEED_COMMIT=true
           fi
@@ -72,12 +72,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push git tag
+        if: steps.version.outputs.NEED_COMMIT == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Fetch existing tags
           git fetch --tags
-          # Check if tag already exists on remote
           TAG="${{ steps.version.outputs.TAG }}"
           if git tag -l | grep -q "^${TAG}$"; then
             echo "Tag ${TAG} already exists, skipping creation"
