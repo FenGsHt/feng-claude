@@ -8,6 +8,18 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.25': {
+    titleZh: 'Feng Claude 0.7.25',
+    titleEn: 'Feng Claude 0.7.25',
+    bulletsZh: [
+      '切换配置后终端自动刷新，无需手动点刷新按钮',
+      '升级通知定位在浏览器面板左侧，不再被遮挡也不关闭面板',
+    ],
+    bulletsEn: [
+      'Terminal auto-refreshes after profile switch, no manual refresh needed',
+      'Update notification positions left of browser panel instead of being covered',
+    ],
+  },
   '0.7.24': {
     titleZh: 'Feng Claude 0.7.24',
     titleEn: 'Feng Claude 0.7.24',

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.25] - 2026-06-02
+
+### 修复 | Bug Fixes
+- **切换配置后终端显示异常**：restartSession 完成后自动触发 wakeTerminal，不再需要手动点刷新
+- **升级通知被浏览器面板遮挡**：通知自动定位在浏览器面板左侧，不关闭面板
+- **元素拾取发送后未聚焦输入框**：显式 focus renderer webcontents，双重延迟确保外嵌输入框获焦
+- **预览终端滚动失效**：transition 改为只过渡 opacity/transform，切换为固定模式时触发 wakeTerminal
+
 ## [0.7.24] - 2026-06-02
 
 ### 新功能 | New Features
