@@ -688,10 +688,13 @@ new Promise((resolve) => {
     tooltip.style.top = ty + 'px'
   }
 
-  // 构建面包屑，ancestors 为从顶到底的元素数组，activeEl 为当前选中
+  // 构建面包屑：当前元素在最左，父级依次向右；activeEl 为当前高亮项
+  // 点击非 active 项 → 切换高亮；点击已 active 项 → 确认发送
   function buildBreadcrumb(ancestors, activeEl) {
     bar.innerHTML = ''
-    ancestors.forEach((el, i) => {
+    // 反转：当前元素在第一位，父级依次向后
+    const reversed = [...ancestors].reverse()
+    reversed.forEach((el, i) => {
       if (i > 0) {
         const sep = document.createElement('span')
         sep.textContent = ' › '
@@ -701,21 +704,32 @@ new Promise((resolve) => {
       const btn = document.createElement('button')
       const isActive = el === activeEl
       btn.textContent = buildLabel(el)
-      btn.style.cssText = 'background:' + (isActive ? '#1e40af' : 'transparent') + ';color:' + (isActive ? '#93c5fd' : '#64748b') + ';border:none;padding:1px 4px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:11px;transition:background 0.1s'
+      btn.dataset.active = isActive ? '1' : '0'
+      btn.style.cssText = 'background:' + (isActive ? '#1e40af' : 'transparent') + ';color:' + (isActive ? '#93c5fd' : '#64748b') + ';border:none;padding:1px 6px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:11px;transition:background 0.1s'
       btn.addEventListener('mouseenter', () => {
-        if (!isActive) btn.style.background = '#1e293b'
+        if (btn.dataset.active !== '1') btn.style.background = '#1e293b'
         showOverlay(el)
         showTooltip(el)
       })
       btn.addEventListener('mouseleave', () => {
-        if (!isActive) btn.style.background = 'transparent'
-        showOverlay(activeEl)
-        showTooltip(activeEl)
+        if (btn.dataset.active !== '1') btn.style.background = 'transparent'
+        // 恢复到当前 active 元素的高亮
+        const activeBtn = bar.querySelector('button[data-active="1"]')
+        if (activeBtn && activeBtn._el) { showOverlay(activeBtn._el); showTooltip(activeBtn._el) }
       })
       btn.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation()
-        confirmSelection(el)
+        if (btn.dataset.active === '1') {
+          // 已是当前选中项，再次点击 → 确认发送
+          confirmSelection(el)
+        } else {
+          // 切换到该项：重建面包屑，高亮切换
+          buildBreadcrumb(ancestors, el)
+          showOverlay(el)
+          showTooltip(el)
+        }
       })
+      btn._el = el
       bar.appendChild(btn)
     })
   }
