@@ -10,7 +10,7 @@ import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
-import { wakeTerminal } from './XTerminal'
+import { wakeTerminal, focusTerminal } from './XTerminal'
 import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 
 interface WorktreeInfo {
@@ -291,8 +291,10 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       lines.push(`HTML: ${info.html}`)
       const ref = '\n' + lines.join('\n') + '\n'
       // [2026-05-12] 优先写入外嵌输入框，不存在时发到 PTY
+      // [2026-06-02] 插入后聚焦输入框，便于直接输入
       if (!injectEmbedDraft(sess.id, ref)) {
         window.electronAPI.sendInput(sess.id, ref)
+        focusTerminal(sess.id)
       }
     })
     return unsub
