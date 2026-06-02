@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import type { SplitWorkdirItem } from '../../lib/recentWorkdirs'
+import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 interface Props {
   open: boolean
@@ -28,10 +29,9 @@ export function SplitWorkdirDialog({
   onOpenTextFile,
   onClose
 }: Props): React.ReactElement | null {
+  useFocusWindow(open)
   useEffect(() => {
     if (!open) return
-    // 弹窗打开时把主窗口移至最前，避免被 detach DevTools 窗口遮挡
-    window.electronAPI?.focusWindow?.()
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
