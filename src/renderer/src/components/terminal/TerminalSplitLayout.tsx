@@ -48,10 +48,11 @@ export function PaneLeafShell({
   }
 
   useEffect(() => {
-    if (!nativeTerminalOpen) return
+    if (!overlayVisible) return
     const wake = (): void => wakeTerminal(sessionId)
     const raf = requestAnimationFrame(wake)
     /* [2026-05-11] 浮窗挂载后 ResizeObserver / fit 仍会重算 viewport；
+     * [2026-06-02] hover→fixed 切换时也需要 wake，防止 xterm 丢失滚动。
      * 最后一次稍晚执行，避免用户滚轮向下时 xterm 又从顶部开始。 */
     const t1 = window.setTimeout(wake, 120)
     const t2 = window.setTimeout(wake, 360)
@@ -60,7 +61,7 @@ export function PaneLeafShell({
       clearTimeout(t1)
       clearTimeout(t2)
     }
-  }, [nativeTerminalOpen, sessionId])
+  }, [nativeTerminalOpen, overlayVisible, sessionId])
 
   return (
     <div
@@ -91,7 +92,7 @@ export function PaneLeafShell({
                 'absolute right-4 z-30 flex flex-col overflow-hidden rounded-xl',
                 'border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)]',
                 'shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]',
-                'transition-all duration-200 ease-out',
+                'transition-[opacity,transform] duration-200 ease-out',
                 // 固定态底部紧贴，预览态抬起避开按钮区（约 100px）
                 nativeTerminalOpen ? 'bottom-4' : 'bottom-[108px]',
                 // 固定态高度大，预览态稍小
