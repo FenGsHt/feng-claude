@@ -598,13 +598,20 @@ export async function startElementPicker(): Promise<void> {
   const PICKER_JS = `
 new Promise((resolve) => {
   let highlighted = null
+  let phase = 'hover' // 'hover' | 'breadcrumb'
+
   const overlay = document.createElement('div')
-  overlay.style.cssText = 'position:fixed;pointer-events:none;background:rgba(59,130,246,0.25);border:2px solid #3b82f6;z-index:2147483647;box-sizing:border-box;border-radius:2px'
+  overlay.style.cssText = 'position:fixed;pointer-events:none;background:rgba(59,130,246,0.25);border:2px solid #3b82f6;z-index:2147483646;box-sizing:border-box;border-radius:2px;transition:all 0.08s ease'
   document.body.appendChild(overlay)
 
   const tooltip = document.createElement('div')
   tooltip.style.cssText = 'position:fixed;background:#1e293b;color:#93c5fd;font-family:monospace;font-size:11px;padding:3px 7px;border-radius:4px;z-index:2147483647;pointer-events:none;max-width:500px;word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 6px rgba(0,0,0,0.5)'
   document.body.appendChild(tooltip)
+
+  // 面包屑条（点击后显示）
+  const bar = document.createElement('div')
+  bar.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#0f172a;border-bottom:1px solid #1e40af;padding:5px 10px;font-family:monospace;font-size:11px;color:#94a3b8;overflow-x:auto;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.6);scrollbar-width:thin'
+  document.body.appendChild(bar)
 
   function getSelector(el) {
     const parts = []
@@ -639,29 +646,81 @@ new Promise((resolve) => {
     return chain.join(' > ')
   }
 
-  function highlight(el) {
-    if (el === overlay || el === tooltip) return
+  function getAncestors(el) {
+    const chain = []
+    let cur = el
+    while (cur && cur.tagName && cur !== document.documentElement) {
+      chain.unshift(cur)
+      cur = cur.parentElement
+    }
+    return chain
+  }
+
+  function buildLabel(el) {
+    let label = el.tagName.toLowerCase()
+    if (el.id) label += '#' + el.id
+    else if (el.className && typeof el.className === 'string') {
+      const cls = el.className.trim().split(/\\s+/).filter(Boolean).slice(0, 2).join('.')
+      if (cls) label += '.' + cls
+    }
+    return label
+  }
+
+  function showOverlay(el) {
+    if (!el || !el.tagName) return
     const r = el.getBoundingClientRect()
     overlay.style.left = r.left + 'px'
     overlay.style.top = r.top + 'px'
     overlay.style.width = r.width + 'px'
     overlay.style.height = r.height + 'px'
+    overlay.style.display = 'block'
+  }
+
+  function showTooltip(el) {
+    if (!el) { tooltip.style.display = 'none'; return }
+    const r = el.getBoundingClientRect()
     const sel = getSelector(el)
     tooltip.textContent = sel
+    tooltip.style.display = 'block'
     const ty = r.top > 28 ? r.top - 24 : r.bottom + 4
     const tx = Math.max(4, Math.min(r.left, window.innerWidth - 420))
     tooltip.style.left = tx + 'px'
     tooltip.style.top = ty + 'px'
   }
 
-  function onMove(e) {
-    const el = document.elementFromPoint(e.clientX, e.clientY)
-    if (el && el !== overlay && el !== tooltip) { highlighted = el; highlight(el) }
+  // 构建面包屑，ancestors 为从顶到底的元素数组，activeEl 为当前选中
+  function buildBreadcrumb(ancestors, activeEl) {
+    bar.innerHTML = ''
+    ancestors.forEach((el, i) => {
+      if (i > 0) {
+        const sep = document.createElement('span')
+        sep.textContent = ' › '
+        sep.style.cssText = 'color:#475569;margin:0 1px'
+        bar.appendChild(sep)
+      }
+      const btn = document.createElement('button')
+      const isActive = el === activeEl
+      btn.textContent = buildLabel(el)
+      btn.style.cssText = 'background:' + (isActive ? '#1e40af' : 'transparent') + ';color:' + (isActive ? '#93c5fd' : '#64748b') + ';border:none;padding:1px 4px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:11px;transition:background 0.1s'
+      btn.addEventListener('mouseenter', () => {
+        if (!isActive) btn.style.background = '#1e293b'
+        showOverlay(el)
+        showTooltip(el)
+      })
+      btn.addEventListener('mouseleave', () => {
+        if (!isActive) btn.style.background = 'transparent'
+        showOverlay(activeEl)
+        showTooltip(activeEl)
+      })
+      btn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation()
+        confirmSelection(el)
+      })
+      bar.appendChild(btn)
+    })
   }
 
-  function onClick(e) {
-    e.preventDefault(); e.stopPropagation()
-    const el = highlighted
+  function confirmSelection(el) {
     cleanup()
     if (!el) { resolve(null); return }
     const r = el.getBoundingClientRect()
@@ -677,6 +736,45 @@ new Promise((resolve) => {
     })
   }
 
+  function onMove(e) {
+    if (phase !== 'hover') return
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    if (el && el !== overlay && el !== tooltip && el !== bar && !bar.contains(el)) {
+      highlighted = el
+      showOverlay(el)
+      showTooltip(el)
+    }
+  }
+
+  function onClick(e) {
+    if (bar.contains(e.target)) return // 面包屑按钮自己处理
+    e.preventDefault(); e.stopPropagation()
+    if (phase === 'hover') {
+      const el = highlighted
+      if (!el) { cleanup(); resolve(null); return }
+      // 切换到面包屑阶段
+      phase = 'breadcrumb'
+      tooltip.style.display = 'none'
+      document.body.style.cursor = prev
+      document.removeEventListener('mousemove', onMove, true)
+      const ancestors = getAncestors(el)
+      bar.style.display = 'block'
+      buildBreadcrumb(ancestors, el)
+      showOverlay(el)
+    }
+    // breadcrumb 阶段点击空白处：重置回 hover
+    else if (phase === 'breadcrumb') {
+      if (!bar.contains(e.target)) {
+        phase = 'hover'
+        bar.style.display = 'none'
+        document.body.style.cursor = 'crosshair'
+        document.addEventListener('mousemove', onMove, true)
+        overlay.style.display = 'none'
+        tooltip.style.display = 'none'
+      }
+    }
+  }
+
   function onKey(e) {
     if (e.key === 'Escape') { cleanup(); resolve(null) }
   }
@@ -688,6 +786,7 @@ new Promise((resolve) => {
     document.body.style.cursor = prev
     overlay.remove()
     tooltip.remove()
+    bar.remove()
   }
 
   const prev = document.body.style.cursor
