@@ -8,6 +8,18 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.24': {
+    titleZh: 'Feng Claude 0.7.24',
+    titleEn: 'Feng Claude 0.7.24',
+    bulletsZh: [
+      '终端悬浮预览：外嵌模式悬浮「显示终端」时弹出预览，带动画，移开自动消失',
+      '元素拾取器：面包屑父级链 + 确认按钮修复',
+    ],
+    bulletsEn: [
+      'Terminal hover preview: hover "Show Terminal" to preview with animation, auto-hides on mouse out',
+      'Element picker: breadcrumb chain + confirm button fix',
+    ],
+  },
   '0.7.23': {
     titleZh: 'Feng Claude 0.7.23',
     titleEn: 'Feng Claude 0.7.23',

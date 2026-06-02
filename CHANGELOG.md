@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.24] - 2026-06-02
+
+### 新功能 | New Features
+- **终端悬浮预览**：外嵌模式下悬浮「显示终端」按钮时，右下角弹出终端预览（带淡入/淡出动画），移开自动消失，预览位于按钮区上方不遮挡操作；点击「显示终端」可固定
+
+### 修复 | Bug Fixes
+- **分屏弹窗被浏览器遮挡**：加 `useFocusWindow`，弹窗打开时自动隐藏内嵌浏览器
+
 ## [0.7.23] - 2026-06-02
 
 ### 新功能 | New Features
