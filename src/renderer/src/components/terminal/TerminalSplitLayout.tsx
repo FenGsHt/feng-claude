@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useSessionStore } from '../../store/sessionStore'
 import type { PaneNode } from '../../types/paneLayout'
@@ -36,6 +36,10 @@ export function PaneLeafShell({
   const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
   const nativeTerminalOpen = nativeTerminalRequest?.open === true
   const nativeTerminalNeeded = nativeTerminalRequest?.needed === true
+  const [termHover, setTermHover] = useState(false)
+  const handleTerminalHover = useCallback((h: boolean) => setTermHover(h), [])
+  // hover 预览：鼠标离开 overlay 区域时也要关闭
+  const overlayVisible = nativeTerminalOpen || termHover
   const closeNativeTerminalOverlay = (): void => {
     /* [2026-05-07] 原关闭浮窗时直接 Ctrl+C，会打断 Claude Code TUI 并导致终端黑屏；× 现在只隐藏浮窗。 */
     // sendRawPtyInput(sessionId, '\x03')
@@ -77,23 +81,28 @@ export function PaneLeafShell({
             <TerminalDropZone sessionId={sessionId}>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 <ClaudeTranscriptPane sessionId={sessionId} className="min-h-0 flex-1 border-b border-claude-border" />
-                <EmbedSessionComposer sessionId={sessionId} nativeTerminalOverlayVisible={nativeTerminalOpen} />
+                <EmbedSessionComposer sessionId={sessionId} nativeTerminalOverlayVisible={overlayVisible} onTerminalHover={handleTerminalHover} />
               </div>
             </TerminalDropZone>
             {/* 「显示终端」按钮已移入 EmbedSessionComposer 按钮列，此处不再渲染 */}
-            {nativeTerminalOpen ? (
-              <div className="absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(560px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]">
+            {overlayVisible ? (
+              <div
+                className={`absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(560px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)] transition-opacity ${termHover && !nativeTerminalOpen ? 'opacity-90' : 'opacity-100'}`}
+                onMouseEnter={() => termHover && setTermHover(true)}
+                onMouseLeave={() => !nativeTerminalOpen && setTermHover(false)}
+              >
                 <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-header)] px-2.5">
                   <div className="min-w-0">
-                    <span className="text-[10px] font-semibold text-[var(--theme-accent-text)]">需要终端交互</span>
-                    {nativeTerminalRequest?.reason ? (
+                    <span className="text-[10px] font-semibold text-[var(--theme-accent-text)]">
+                      {termHover && !nativeTerminalOpen ? '终端预览（点击「显示终端」可固定）' : '需要终端交互'}
+                    </span>
+                    {nativeTerminalOpen && nativeTerminalRequest?.reason ? (
                       <span className="ml-2 text-[9px] text-claude-muted">{nativeTerminalRequest.reason}</span>
                     ) : null}
                   </div>
+                  {nativeTerminalOpen && (
                   <button
                     type="button"
-                    /* [2026-05-07] 原关闭按钮过小且对比弱，用户不容易发现；改为更明显的浮窗关闭控件。 */
-                    // className="rounded border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[12px] leading-none text-claude-muted transition hover:bg-white/[0.08] hover:text-claude-text"
                     className="grid h-7 w-7 place-items-center rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[18px] font-bold leading-none text-[var(--theme-accent-text)] shadow-sm shadow-[color:var(--theme-shadow)] transition hover:border-[var(--theme-danger-border)] hover:bg-[var(--theme-danger-bg)] hover:text-[var(--theme-danger-text)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]"
                     aria-label="关闭原生终端浮窗"
                     title="关闭终端浮窗"
@@ -101,13 +110,14 @@ export function PaneLeafShell({
                   >
                     ×
                   </button>
+                  )}
                 </div>
                 {/* [2026-05-07] 原空白提示会长期压在终端内容上，影响观感；保留 wakeTerminal 逻辑即可。 */}
                 {/* <div className="pointer-events-none absolute left-3 top-10 z-10 rounded bg-black/45 px-2 py-1 text-[9px] text-claude-muted">
                   若短暂空白，请等待输出或点击终端区域
                 </div> */}
                 <TerminalDropZone sessionId={sessionId}>
-                  <XTerminal sessionId={sessionId} active={focused || nativeTerminalOpen} />
+                  <XTerminal sessionId={sessionId} active={focused || overlayVisible} />
                 </TerminalDropZone>
               </div>
             ) : null}

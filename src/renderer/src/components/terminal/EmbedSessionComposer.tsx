@@ -148,6 +148,8 @@ interface AttachedImage {
 interface Props {
   sessionId: string
   nativeTerminalOverlayVisible?: boolean
+  /** [2026-06-02] 鼠标悬浮「显示终端」按钮时通知父组件显示预览 */
+  onTerminalHover?: (hovered: boolean) => void
 }
 
 const atItemsCache = new Map<string, FileAtItem[]>()
@@ -161,7 +163,8 @@ const atItemsCache = new Map<string, FileAtItem[]>()
  */
 export function EmbedSessionComposer({
   sessionId,
-  nativeTerminalOverlayVisible = false
+  nativeTerminalOverlayVisible = false,
+  onTerminalHover
 }: Props): React.ReactElement {
   const { t } = useI18n()
   const alternateScreen = usePtyAlternateScreenStore((s) => s.bySession[sessionId] === true)
@@ -1214,6 +1217,8 @@ export function EmbedSessionComposer({
             <button
               type="button"
               onClick={() => openNativeTerminal(sessionId, nativeTerminalRequest?.reason ?? '手动打开')}
+              onMouseEnter={() => onTerminalHover?.(true)}
+              onMouseLeave={() => onTerminalHover?.(false)}
               className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ${
                 nativeTerminalNeeded
                   ? 'border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-bg-strong)]'
