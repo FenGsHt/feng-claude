@@ -3,7 +3,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
-import { injectEmbedDraft } from '../../lib/embedDraftBridge'
+import { injectEmbedDraft, focusEmbedInput } from '../../lib/embedDraftBridge'
 import { SplitWorkdirDialog } from './SplitWorkdirDialog'
 import { openTextEditor } from '../sidebar/sidebarNav'
 import { WorktreeDialog } from './WorktreeDialog'
@@ -295,6 +295,9 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       if (!injectEmbedDraft(sess.id, ref)) {
         window.electronAPI.sendInput(sess.id, ref)
         focusTerminal(sess.id)
+      } else {
+        // 外嵌输入框注入后，等主窗口 focus 完成再聚焦
+        setTimeout(() => focusEmbedInput(sess.id), 80)
       }
     })
     return unsub

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
-import { registerEmbedDraftInjector } from '../../lib/embedDraftBridge'
+import { registerEmbedDraftInjector, registerEmbedFocus } from '../../lib/embedDraftBridge'
 import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
 import { usePtyAlternateScreenStore, clearPtyAlternateScreenSession } from '../../store/ptyAlternateScreenStore'
 import { useSessionStore } from '../../store/sessionStore'
@@ -317,6 +317,13 @@ export function EmbedSessionComposer({
         })
         return next
       })
+    })
+  }, [sessionId])
+
+  // [2026-06-02] 注册 focus 回调，供元素拾取等外部调用聚焦输入框
+  useEffect(() => {
+    return registerEmbedFocus(sessionId, () => {
+      taRef.current?.focus()
     })
   }, [sessionId])
 
