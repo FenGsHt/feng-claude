@@ -792,6 +792,7 @@ new Promise((resolve) => {
 
   function onClick(e) {
     if (bar.contains(e.target)) return // 面包屑按钮自己处理
+    if (e.target === confirmBtn) return // 确认按钮自己处理（捕获阶段不拦截）
     e.preventDefault(); e.stopPropagation()
     if (phase === 'hover') {
       const el = highlighted
