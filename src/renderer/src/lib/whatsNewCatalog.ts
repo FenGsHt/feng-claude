@@ -8,6 +8,18 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.23': {
+    titleZh: 'Feng Claude 0.7.23',
+    titleEn: 'Feng Claude 0.7.23',
+    bulletsZh: [
+      '元素拾取器升级：点击后显示父级面包屑链，蓝色确认按钮浮于高亮元素旁，支持切换父级后确认发送',
+      'Token 修复：多标签同目录不再重复计费；完成通知每轮只发一次',
+    ],
+    bulletsEn: [
+      'Element picker upgraded: breadcrumb chain after click, floating confirm button near highlighted element',
+      'Token fix: no double-counting with multiple tabs; completion notification fires once per turn',
+    ],
+  },
   '0.7.22': {
     titleZh: 'Feng Claude 0.7.22',
     titleEn: "Feng Claude 0.7.22",
