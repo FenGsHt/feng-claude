@@ -84,23 +84,37 @@ export function PaneLeafShell({
                 <EmbedSessionComposer sessionId={sessionId} nativeTerminalOverlayVisible={overlayVisible} onTerminalHover={handleTerminalHover} />
               </div>
             </TerminalDropZone>
-            {/* 「显示终端」按钮已移入 EmbedSessionComposer 按钮列，此处不再渲染 */}
-            {overlayVisible ? (
-              <div
-                className={`absolute bottom-4 right-4 z-30 flex h-[min(420px,62%)] w-[min(560px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)] shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)] transition-opacity ${termHover && !nativeTerminalOpen ? 'opacity-90' : 'opacity-100'}`}
-                onMouseEnter={() => termHover && setTermHover(true)}
-                onMouseLeave={() => !nativeTerminalOpen && setTermHover(false)}
-              >
-                <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-header)] px-2.5">
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-semibold text-[var(--theme-accent-text)]">
-                      {termHover && !nativeTerminalOpen ? '终端预览（点击「显示终端」可固定）' : '需要终端交互'}
-                    </span>
-                    {nativeTerminalOpen && nativeTerminalRequest?.reason ? (
-                      <span className="ml-2 text-[9px] text-claude-muted">{nativeTerminalRequest.reason}</span>
-                    ) : null}
-                  </div>
-                  {nativeTerminalOpen && (
+            {/* 终端浮窗：nativeTerminalOpen 时固定显示（底部）；hover 预览时浮在按钮区上方
+                常驻 DOM 避免 XTerminal 反复挂载，用 opacity+translate 做进出动画 */}
+            <div
+              className={[
+                'absolute right-4 z-30 flex flex-col overflow-hidden rounded-xl',
+                'border border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-bg)]',
+                'shadow-2xl shadow-[color:var(--theme-shadow)] ring-1 ring-[var(--theme-accent-border)]',
+                'transition-all duration-200 ease-out',
+                // 固定态底部紧贴，预览态抬起避开按钮区（约 100px）
+                nativeTerminalOpen ? 'bottom-4' : 'bottom-[108px]',
+                // 固定态高度大，预览态稍小
+                nativeTerminalOpen ? 'h-[min(420px,62%)]' : 'h-[min(300px,55%)]',
+                'w-[min(560px,calc(100%-2rem))]',
+                // 显隐动画
+                overlayVisible
+                  ? 'opacity-100 translate-y-0 pointer-events-auto'
+                  : 'opacity-0 translate-y-3 pointer-events-none',
+              ].join(' ')}
+              onMouseEnter={() => { if (!nativeTerminalOpen) setTermHover(true) }}
+              onMouseLeave={() => { if (!nativeTerminalOpen) setTermHover(false) }}
+            >
+              <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--theme-accent-border)] bg-[var(--theme-terminal-overlay-header)] px-2.5">
+                <div className="min-w-0">
+                  <span className="text-[10px] font-semibold text-[var(--theme-accent-text)]">
+                    {!nativeTerminalOpen ? '终端预览 — 点击「显示终端」可固定' : '需要终端交互'}
+                  </span>
+                  {nativeTerminalOpen && nativeTerminalRequest?.reason ? (
+                    <span className="ml-2 text-[9px] text-claude-muted">{nativeTerminalRequest.reason}</span>
+                  ) : null}
+                </div>
+                {nativeTerminalOpen && (
                   <button
                     type="button"
                     className="grid h-7 w-7 place-items-center rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] text-[18px] font-bold leading-none text-[var(--theme-accent-text)] shadow-sm shadow-[color:var(--theme-shadow)] transition hover:border-[var(--theme-danger-border)] hover:bg-[var(--theme-danger-bg)] hover:text-[var(--theme-danger-text)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]"
@@ -110,17 +124,12 @@ export function PaneLeafShell({
                   >
                     ×
                   </button>
-                  )}
-                </div>
-                {/* [2026-05-07] 原空白提示会长期压在终端内容上，影响观感；保留 wakeTerminal 逻辑即可。 */}
-                {/* <div className="pointer-events-none absolute left-3 top-10 z-10 rounded bg-black/45 px-2 py-1 text-[9px] text-claude-muted">
-                  若短暂空白，请等待输出或点击终端区域
-                </div> */}
-                <TerminalDropZone sessionId={sessionId}>
-                  <XTerminal sessionId={sessionId} active={focused || overlayVisible} />
-                </TerminalDropZone>
+                )}
               </div>
-            ) : null}
+              <TerminalDropZone sessionId={sessionId}>
+                <XTerminal sessionId={sessionId} active={focused || overlayVisible} />
+              </TerminalDropZone>
+            </div>
           </div>
         ) : (
           <TerminalDropZone sessionId={sessionId}>
