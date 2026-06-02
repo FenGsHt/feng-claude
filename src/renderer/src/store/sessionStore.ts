@@ -7,7 +7,7 @@ import {
   removeSessionFromLayout,
   replaceLeafWithSplit
 } from '../lib/paneLayout'
-import { destroyTerminal, focusTerminal, preFillTerminal } from '../components/terminal/XTerminal'
+import { destroyTerminal, focusTerminal, preFillTerminal, wakeTerminal } from '../components/terminal/XTerminal'
 import { useEmbedAwaitingReplyStore } from './embedAwaitingReplyStore'
 import { clearEmbedTurnLatency } from './embedTurnLatencyStore'
 import { clearEmbedPtyEchoBuffer } from '../lib/embedPtyTranscriptEcho'
@@ -474,6 +474,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (result.scrollback) {
       preFillTerminal(result.sessionId, result.scrollback)
     }
+    // [2026-06-02] 切换配置后终端可能显示异常，延迟 wake 确保 XTerminal 完成挂载
+    setTimeout(() => wakeTerminal(result.sessionId), 200)
+    setTimeout(() => wakeTerminal(result.sessionId), 600)
   },
 
   restoreWorkspace: async (pw: PersistedWorkspace) => {
