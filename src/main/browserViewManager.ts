@@ -613,6 +613,15 @@ new Promise((resolve) => {
   bar.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#0f172a;border-bottom:1px solid #1e40af;padding:5px 10px;font-family:monospace;font-size:11px;color:#94a3b8;overflow-x:auto;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.6);scrollbar-width:thin'
   document.body.appendChild(bar)
 
+  // 确认按钮（浮在高亮元素右下角）
+  const confirmBtn = document.createElement('button')
+  confirmBtn.textContent = '✓ 发送到输入框'
+  confirmBtn.title = '点击将此元素信息发送到 Claude 输入框（也可再次点击面包屑中已选中项）'
+  confirmBtn.style.cssText = 'display:none;position:fixed;z-index:2147483647;background:#1d4ed8;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:system-ui,sans-serif;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,0.5);white-space:nowrap;transition:background 0.1s'
+  confirmBtn.addEventListener('mouseenter', () => { confirmBtn.style.background = '#2563eb' })
+  confirmBtn.addEventListener('mouseleave', () => { confirmBtn.style.background = '#1d4ed8' })
+  document.body.appendChild(confirmBtn)
+
   function getSelector(el) {
     const parts = []
     let cur = el
@@ -676,6 +685,25 @@ new Promise((resolve) => {
     overlay.style.display = 'block'
   }
 
+  function showConfirmBtn(el) {
+    if (!el || !el.tagName) return
+    const r = el.getBoundingClientRect()
+    const barH = bar.style.display !== 'none' ? 28 : 0
+    // 优先显示在元素右下角，边界保护
+    let top = r.bottom + 6
+    if (top + 30 > window.innerHeight) top = Math.max(barH + 4, r.top - 34)
+    let left = r.right - 130
+    if (left < 4) left = 4
+    if (left + 140 > window.innerWidth) left = window.innerWidth - 144
+    confirmBtn.style.top = top + 'px'
+    confirmBtn.style.left = left + 'px'
+    confirmBtn.style.display = 'block'
+  }
+
+  function hideConfirmBtn() {
+    confirmBtn.style.display = 'none'
+  }
+
   function showTooltip(el) {
     if (!el) { tooltip.style.display = 'none'; return }
     const r = el.getBoundingClientRect()
@@ -723,10 +751,12 @@ new Promise((resolve) => {
           // 已是当前选中项，再次点击 → 确认发送
           confirmSelection(el)
         } else {
-          // 切换到该项：重建面包屑，高亮切换
+          // 切换到该项：重建面包屑，高亮切换，更新确认按钮
           buildBreadcrumb(ancestors, el)
           showOverlay(el)
           showTooltip(el)
+          showConfirmBtn(el)
+          confirmBtn.onclick = (ev) => { ev.stopPropagation(); confirmSelection(el) }
         }
       })
       btn._el = el
@@ -775,12 +805,15 @@ new Promise((resolve) => {
       bar.style.display = 'block'
       buildBreadcrumb(ancestors, el)
       showOverlay(el)
+      showConfirmBtn(el)
+      confirmBtn.onclick = (e) => { e.stopPropagation(); confirmSelection(el) }
     }
-    // breadcrumb 阶段点击空白处：重置回 hover
+    // breadcrumb 阶段点击空白处（非 bar 非 confirmBtn）：重置回 hover
     else if (phase === 'breadcrumb') {
-      if (!bar.contains(e.target)) {
+      if (!bar.contains(e.target) && e.target !== confirmBtn) {
         phase = 'hover'
         bar.style.display = 'none'
+        hideConfirmBtn()
         document.body.style.cursor = 'crosshair'
         document.addEventListener('mousemove', onMove, true)
         overlay.style.display = 'none'
@@ -801,6 +834,7 @@ new Promise((resolve) => {
     overlay.remove()
     tooltip.remove()
     bar.remove()
+    confirmBtn.remove()
   }
 
   const prev = document.body.style.cursor
