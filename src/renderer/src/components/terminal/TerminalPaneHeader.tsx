@@ -296,8 +296,9 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         window.electronAPI.sendInput(sess.id, ref)
         focusTerminal(sess.id)
       } else {
-        // 外嵌输入框注入后，等主窗口 focus 完成再聚焦
-        setTimeout(() => focusEmbedInput(sess.id), 80)
+        // 外嵌输入框注入后，等主窗口 webContents focus 完成再聚焦（多帧保险）
+        setTimeout(() => focusEmbedInput(sess.id), 50)
+        setTimeout(() => focusEmbedInput(sess.id), 150)
       }
     })
     return unsub

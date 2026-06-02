@@ -849,8 +849,9 @@ new Promise((resolve) => {
   try {
     const result = await state.view.webContents.executeJavaScript(PICKER_JS)
     if (result && state.mainWin?.webContents) {
-      // 先 focus 主窗口，确保 renderer 的 ta.focus() 能生效
+      // 先 focus 主窗口和 renderer webcontents，确保 ta.focus() 能生效
       revealMainWindow(state.mainWin)
+      state.mainWin.webContents.focus()
       state.mainWin.webContents.send('browser:element-picked', result)
     }
   } catch (e) {
