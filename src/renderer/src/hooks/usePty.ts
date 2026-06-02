@@ -245,7 +245,7 @@ export function usePty(): void {
 
     // ── JSONL token usage (sole accurate source) ──────────────
     const unsubTokens = window.electronAPI.onTokenUsageUpdate((payload) => {
-      const { sessionId, input, output, cacheCreate, cacheRead, reset } = payload
+      const { sessionId, input, output, cacheCreate, cacheRead, reset, isPrimary } = payload
       lastTokenTime.set(sessionId, Date.now())
 
       if (input > 0 || output > 0) {
@@ -269,15 +269,17 @@ export function usePty(): void {
         })
       }
 
-      const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
-      const profileId = session?.profileId
-
-      useGlobalTokenStore.getState().ingest({
-        input,
-        output,
-        cacheCreate: cacheCreate ?? 0,
-        cacheRead: cacheRead ?? 0
-      }, profileId)
+      // [2026-06-01] 只有 primary session 更新全局 store，防止同 workdir 多标签重复计费
+      if (isPrimary !== false) {
+        const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
+        const profileId = session?.profileId
+        useGlobalTokenStore.getState().ingest({
+          input,
+          output,
+          cacheCreate: cacheCreate ?? 0,
+          cacheRead: cacheRead ?? 0
+        }, profileId)
+      }
     })
 
     // ── Tool call updates ─────────────────────────────────────

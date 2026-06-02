@@ -282,15 +282,19 @@ export class ClaudeSessionWatcher {
             sw.runningNotified = true
           }
           sw.lastTokenTime = Date.now()
-          /* [2026-05-12] 同一 projectDir 多 session 各自收到独立 token 更新 */
-          for (const sid of sw.linkedSessionIds) {
+          /* [2026-05-12] 同一 projectDir 多 session 各自收到独立 token 更新
+           * [2026-06-01] isPrimary: 只有第一个 session（watcher 创建者）标记为 primary，
+           * renderer 仅对 primary 更新全局 store，防止多标签重复计费 */
+          const linkedArr = [...sw.linkedSessionIds]
+          for (let i = 0; i < linkedArr.length; i++) {
             this.emit({
-              sessionId: sid,
+              sessionId: linkedArr[i],
               input: usage.input,
               output: usage.output,
               cacheCreate: usage.cacheCreate,
               cacheRead: usage.cacheRead,
-              reset: false
+              reset: false,
+              isPrimary: i === 0
             })
           }
         }

@@ -230,6 +230,9 @@ export interface TokenUsageUpdatePayload {
   cacheRead: number
   /** true = new claude conversation detected; renderer should reset counter first */
   reset: boolean
+  /** [2026-06-01] 同一 projectDir 多 session 时，只有主 session 的 isPrimary=true，
+   * renderer 仅对 isPrimary 的事件更新全局 token store，防止多 session 重复计费 */
+  isPrimary?: boolean
 }
 
 export interface SessionCreatePayload {

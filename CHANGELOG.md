@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.22] - 2026-06-02
+
+### 修复 | Bug Fixes
+- **缓存 token 重复计费**：同一 workdir 多标签时，JSONL watcher 向每个 session 发送 IPC，导致全局 store 重复 ingest；现在只有 primary session（watcher 创建者）更新全局 store
+
 ## [0.7.21] - 2026-06-01
 
 ### 修复 | Bug Fixes

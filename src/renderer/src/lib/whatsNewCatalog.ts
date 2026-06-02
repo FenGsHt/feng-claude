@@ -8,6 +8,12 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.22': {
+    titleZh: 'Feng Claude 0.7.22',
+    titleEn: "Feng Claude 0.7.22",
+    bulletsZh: ['Token 计费修复：多标签打开同一目录时缓存 token 不再重复计算'],
+    bulletsEn: ['Token billing fix: cache tokens no longer double-counted when multiple tabs open the same directory'],
+  },
   '0.7.21': {
     titleZh: 'Feng Claude 0.7.21 修复版',
     titleEn: "Feng Claude 0.7.21 — Bug Fixes",
