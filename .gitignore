@@ -17,3 +17,8 @@ local/deploy-config.local.json
 # 根目录便携 exe（npm run build:root-exe；启用 .githooks 后每次 commit 也会生成）
 /claude-gui-latest.exe
 /claude-gui-*-portable-*.exe
+
+# 临时剪贴板图片和用户工作目录产生的文件
+.feng-temp/
+*.avif
+*.webp
