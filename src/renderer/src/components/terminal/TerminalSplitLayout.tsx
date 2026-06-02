@@ -95,7 +95,7 @@ export function PaneLeafShell({
                 // 固定态底部紧贴，预览态抬起避开按钮区（约 100px）
                 nativeTerminalOpen ? 'bottom-4' : 'bottom-[108px]',
                 // 固定态高度大，预览态稍小
-                nativeTerminalOpen ? 'h-[min(420px,62%)]' : 'h-[min(300px,55%)]',
+                'h-[min(420px,62%)]',
                 'w-[min(560px,calc(100%-2rem))]',
                 // 显隐动画
                 overlayVisible
