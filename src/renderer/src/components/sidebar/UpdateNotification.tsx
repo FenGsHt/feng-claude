@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { UpdateStatusPayload, UpdateProgressPayload } from '../../types/ipc'
 import { useI18n } from '../../i18n'
-import { useFocusWindow } from '../../hooks/useFocusWindow'
 
 function fmtBytes(b: number): string {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
@@ -12,6 +11,7 @@ export function UpdateNotification(): React.ReactElement | null {
   const [status, setStatus] = useState<UpdateStatusPayload | null>(null)
   const [progress, setProgress] = useState<UpdateProgressPayload | null>(null)
   const [dismissed, setDismissed] = useState(false)
+  const [browserPanelWidth, setBrowserPanelWidth] = useState(0)
   const { lang } = useI18n()
   const zh = lang === 'zh'
 
@@ -30,9 +30,20 @@ export function UpdateNotification(): React.ReactElement | null {
     return () => { unsubStatus(); unsubProgress() }
   }, [])
 
+  // [2026-06-02] 跟踪浏览器面板宽度，使通知始终出现在面板左侧而非被遮挡
+  useEffect(() => {
+    const unsub = window.electronAPI.browserView?.onBrowserViewStateChanged?.((s) => {
+      setBrowserPanelWidth(s.visible ? s.width : 0)
+    })
+    return unsub
+  }, [])
+
   // [2026-05-29] Hook 必须在所有 early return 之前调用，否则触发 React #310
   const isReady = status?.status === 'downloaded'
-  useFocusWindow(isReady)
+  // [2026-06-02] 升级通知不关闭浏览器面板（位移到左侧），只需置前主窗口即可
+  useEffect(() => {
+    if (isReady) window.electronAPI?.focusWindow?.()
+  }, [isReady])
 
   if (dismissed || !status) return null
   // Only show during download / ready / error; hide for not-available / checking
@@ -41,8 +52,11 @@ export function UpdateNotification(): React.ReactElement | null {
   const isDownloading = !!progress && status.status !== 'downloaded'
   const isError      = status.status === 'error'
 
+  // 浏览器面板打开时，通知定位在面板左侧（+16px 间距）
+  const rightOffset = browserPanelWidth > 0 ? browserPanelWidth + 16 : 16
+
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-[300px] w-72 animate-slide-up">
+    <div className="fixed bottom-4 z-50 max-w-[300px] w-72 animate-slide-up" style={{ right: rightOffset }}>
       <div className="bg-claude-surface border border-claude-border rounded-lg shadow-xl overflow-hidden">
 
         {/* Top bar — color-coded */}
