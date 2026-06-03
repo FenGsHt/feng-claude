@@ -1316,6 +1316,195 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // GET /html?selector= — 返回页面或指定元素的 HTML
+        if (path === '/html' && req.method === 'GET') {
+          const selector = url.searchParams.get('selector')
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const js = selector
+              ? `document.querySelector(${JSON.stringify(selector)})?.outerHTML ?? null`
+              : 'document.documentElement.outerHTML'
+            const html = await wc.executeJavaScript(js)
+            res.writeHead(200); res.end(JSON.stringify({ html: typeof html === 'string' ? html.slice(0, 500_000) : null }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /scroll — 滚动到元素或坐标 { selector? x? y? behavior? }
+        if (path === '/scroll' && req.method === 'POST') {
+          const body = await readBody(req)
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const { selector, x, y, behavior = 'smooth' } = body as Record<string, unknown>
+            const js = selector
+              ? `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return false;el.scrollIntoView({behavior:${JSON.stringify(behavior)},block:'center'});return true})()`
+              : `window.scrollTo({left:${Number(x)||0},top:${Number(y)||0},behavior:${JSON.stringify(behavior)}});true`
+            const ok = await wc.executeJavaScript(js)
+            res.writeHead(200); res.end(JSON.stringify({ ok: !!ok }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /key — 模拟键盘按键 { key, modifiers? } key 如 "Enter" "Tab" "Escape" "a" 等
+        if (path === '/key' && req.method === 'POST') {
+          const body = await readBody(req)
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          const key = (body?.key as string) ?? ''
+          if (!key) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing key' })); return }
+          const modifiers = (body?.modifiers as string[]) ?? []
+          try {
+            wc.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers } as Electron.KeyboardInputEvent)
+            wc.sendInputEvent({ type: 'char', keyCode: key, modifiers } as Electron.KeyboardInputEvent)
+            wc.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers } as Electron.KeyboardInputEvent)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /hover — 鼠标悬浮到元素 { selector }
+        if (path === '/hover' && req.method === 'POST') {
+          const body = await readBody(req)
+          const selector = (body?.selector as string) ?? ''
+          if (!selector) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const rect = await wc.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`
+            )
+            if (!rect) { res.writeHead(404); res.end(JSON.stringify({ error: 'Element not found' })); return }
+            wc.sendInputEvent({ type: 'mouseMove', x: Math.round(rect.x), y: Math.round(rect.y) } as Electron.MouseInputEvent)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true, x: rect.x, y: rect.y }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /select — 设置 <select> 的值 { selector, value }
+        if (path === '/select' && req.method === 'POST') {
+          const body = await readBody(req)
+          const { selector, value } = body as Record<string, unknown>
+          if (!selector || value === undefined) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector or value' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const ok = await wc.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return false;el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('change',{bubbles:true}));return true})()`
+            )
+            res.writeHead(200); res.end(JSON.stringify({ ok: !!ok }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /check — 勾选/取消 checkbox { selector, checked? }
+        if (path === '/check' && req.method === 'POST') {
+          const body = await readBody(req)
+          const { selector, checked } = body as Record<string, unknown>
+          if (!selector) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const result = await wc.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;el.checked=${checked === undefined ? '!el.checked' : !!checked};el.dispatchEvent(new Event('change',{bubbles:true}));return el.checked})()`
+            )
+            res.writeHead(200); res.end(JSON.stringify({ ok: result !== null, checked: result }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // GET /screenshot-element?selector= — 只截指定元素
+        if (path === '/screenshot-element' && req.method === 'GET') {
+          const selector = url.searchParams.get('selector')
+          if (!selector) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector' })); return }
+          ensureBrowserVisible()
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const rect = await wc.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)}})()`
+            )
+            if (!rect || rect.width <= 0 || rect.height <= 0) { res.writeHead(404); res.end(JSON.stringify({ error: 'Element not found or zero size' })); return }
+            await new Promise(r => setTimeout(r, 50))
+            const full = await wc.capturePage()
+            const quality = Math.max(10, Math.min(100, parseInt(url.searchParams.get('quality') ?? '80', 10)))
+            // 裁剪到元素区域
+            const cropped = full.crop({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })
+            const buf = cropped.toJPEG(quality)
+            res.writeHead(200); res.end(JSON.stringify({
+              format: 'jpeg', data: buf.toString('base64'),
+              width: rect.width, height: rect.height, selector
+            }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // GET /cookies — 获取当前页面 cookies
+        if (path === '/cookies' && req.method === 'GET') {
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const pageUrl = wc.getURL()
+            const cookies = await wc.session.cookies.get({ url: pageUrl })
+            res.writeHead(200); res.end(JSON.stringify({ cookies }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /wait-for — 等待元素出现 { selector, timeout? (ms, default 5000) }
+        if (path === '/wait-for' && req.method === 'POST') {
+          const body = await readBody(req)
+          const selector = (body?.selector as string) ?? ''
+          const timeout = Math.min(30000, Math.max(100, Number(body?.timeout) || 5000))
+          if (!selector) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const found = await wc.executeJavaScript(`
+              new Promise((resolve) => {
+                const el = document.querySelector(${JSON.stringify(selector)})
+                if (el) { resolve(true); return }
+                const ob = new MutationObserver(() => {
+                  if (document.querySelector(${JSON.stringify(selector)})) { ob.disconnect(); resolve(true) }
+                })
+                ob.observe(document.body, { childList: true, subtree: true })
+                setTimeout(() => { ob.disconnect(); resolve(false) }, ${timeout})
+              })
+            `)
+            res.writeHead(200); res.end(JSON.stringify({ found: !!found, selector }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // GET /forms — 枚举页面所有表单字段
+        if (path === '/forms' && req.method === 'GET') {
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const forms = await wc.executeJavaScript(`
+              Array.from(document.forms).map((form, fi) => ({
+                index: fi,
+                id: form.id || null,
+                name: form.name || null,
+                action: form.action || null,
+                method: form.method || 'get',
+                fields: Array.from(form.elements).map(el => ({
+                  tag: el.tagName.toLowerCase(),
+                  type: el.type || null,
+                  name: el.name || null,
+                  id: el.id || null,
+                  value: el.type === 'password' ? '***' : (el.value || null),
+                  placeholder: el.placeholder || null,
+                  required: !!el.required
+                }))
+              }))
+            `)
+            res.writeHead(200); res.end(JSON.stringify({ forms }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
         // POST /open-office-preview — trigger Office preview panel from MCP
         if (path === '/open-office-preview' && req.method === 'POST') {
           const body = await readBody(req)
