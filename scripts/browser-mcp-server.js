@@ -114,14 +114,114 @@ const TOOLS = [
   },
   {
     name: 'office_preview',
-    description: 'Open an Office file (.docx/.xlsx/.pptx) in the built-in preview panel. This opens a right-side floating panel showing the rendered content. Double-clicking an Office file in the sidebar file tree also opens this preview.',
+    description: 'Open an Office file (.docx/.xlsx/.pptx) in the built-in preview panel.',
+    inputSchema: {
+      type: 'object',
+      properties: { filePath: { type: 'string', description: 'Absolute path to the Office file' } },
+      required: ['filePath']
+    }
+  },
+  {
+    name: 'browser_get_html',
+    description: 'Get the HTML source of the page or a specific element. Useful for understanding page structure without a screenshot (saves tokens).',
+    inputSchema: {
+      type: 'object',
+      properties: { selector: { type: 'string', description: 'CSS selector to get outerHTML of (optional, defaults to full page)' } },
+      required: []
+    }
+  },
+  {
+    name: 'browser_scroll',
+    description: 'Scroll the page to a CSS selector or to specific x/y coordinates.',
     inputSchema: {
       type: 'object',
       properties: {
-        filePath: { type: 'string', description: 'Absolute path to the Office file (.docx, .xlsx, or .pptx)' }
+        selector: { type: 'string', description: 'CSS selector to scroll into view (optional)' },
+        x: { type: 'number', description: 'Horizontal scroll position in pixels (used if no selector)' },
+        y: { type: 'number', description: 'Vertical scroll position in pixels (used if no selector)' },
+        behavior: { type: 'string', description: '"smooth" (default) or "instant"' }
       },
-      required: ['filePath']
+      required: []
     }
+  },
+  {
+    name: 'browser_key',
+    description: 'Send a keyboard key press to the page. Useful for Enter, Tab, Escape, arrow keys, etc.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Key name e.g. "Enter", "Tab", "Escape", "ArrowDown", "a"' },
+        modifiers: { type: 'array', items: { type: 'string' }, description: 'Modifier keys: ["ctrl"], ["shift"], ["alt"], ["meta"]' }
+      },
+      required: ['key']
+    }
+  },
+  {
+    name: 'browser_hover',
+    description: 'Move the mouse over an element to trigger hover effects, tooltips, or dropdown menus.',
+    inputSchema: {
+      type: 'object',
+      properties: { selector: { type: 'string', description: 'CSS selector of element to hover over' } },
+      required: ['selector']
+    }
+  },
+  {
+    name: 'browser_select',
+    description: 'Set the value of a <select> dropdown element.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector of the <select> element' },
+        value: { type: 'string', description: 'Option value to select' }
+      },
+      required: ['selector', 'value']
+    }
+  },
+  {
+    name: 'browser_check',
+    description: 'Check or uncheck a checkbox or radio button element.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector of the checkbox/radio' },
+        checked: { type: 'boolean', description: 'true to check, false to uncheck (toggles if omitted)' }
+      },
+      required: ['selector']
+    }
+  },
+  {
+    name: 'browser_screenshot_element',
+    description: 'Capture a screenshot of only a specific element (cropped). More efficient than a full page screenshot when focusing on a component.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector of element to capture' },
+        quality: { type: 'number', description: 'JPEG quality 10-100 (default 80)' }
+      },
+      required: ['selector']
+    }
+  },
+  {
+    name: 'browser_get_cookies',
+    description: 'Get all cookies for the current page URL. Useful for inspecting session/auth state.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_wait_for',
+    description: 'Wait for a CSS selector to appear in the DOM (useful for SPAs and dynamic content).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector to wait for' },
+        timeout: { type: 'number', description: 'Max wait time in milliseconds (default 5000, max 30000)' }
+      },
+      required: ['selector']
+    }
+  },
+  {
+    name: 'browser_get_forms',
+    description: 'Enumerate all forms and their input fields on the current page. Useful before filling out forms.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
   }
 ]
 
@@ -165,12 +265,9 @@ async function handleTool(name, args) {
       case 'browser_screenshot': {
         const r = await callHttp('/screenshot')
         if (r.data) {
-          // [2026-04-30] Return text diagnostics with the image so Claude Code shows a useful result even if image rendering is unavailable.
-          const meta = `Screenshot captured: ${r.width || '?'}x${r.height || '?'} PNG, ${r.byteLength || Math.round(r.data.length * 0.75)} bytes${r.url ? `, url: ${r.url}` : ''}`
-          return [
-            { type: 'text', text: meta },
-            { type: 'image', data: r.data, mimeType: 'image/png' }
-          ]
+          const fmt = r.format === 'png' ? 'image/png' : 'image/jpeg'
+          const meta = `Screenshot: ${r.width||'?'}x${r.height||'?'} ${r.format||'jpeg'}, ${r.byteLength||Math.round(r.data.length*0.75)} bytes${r.url?`, url: ${r.url}`:''}`
+          return [{ type: 'text', text: meta }, { type: 'image', data: r.data, mimeType: fmt }]
         }
         return [{ type: 'text', text: `Failed: ${r.error || 'No screenshot data returned'}` }]
       }
@@ -231,6 +328,66 @@ async function handleTool(name, args) {
       case 'office_preview': {
         const r = await callHttp('/open-office-preview', { filePath: args.filePath })
         return [{ type: 'text', text: r.success ? `Office preview opened: ${args.filePath}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_get_html': {
+        const path = args.selector ? `/html?selector=${encodeURIComponent(args.selector)}` : '/html'
+        const r = await callHttp(path)
+        return [{ type: 'text', text: r.html ?? `Failed: ${r.error}` }]
+      }
+      case 'browser_scroll': {
+        const r = await callHttp('/scroll', { selector: args.selector, x: args.x, y: args.y, behavior: args.behavior || 'smooth' })
+        return [{ type: 'text', text: r.ok ? `Scrolled${args.selector ? ` to ${args.selector}` : ` to (${args.x||0},${args.y||0})`}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_key': {
+        const r = await callHttp('/key', { key: args.key, modifiers: args.modifiers || [] })
+        return [{ type: 'text', text: r.ok ? `Key sent: ${args.key}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_hover': {
+        const r = await callHttp('/hover', { selector: args.selector })
+        return [{ type: 'text', text: r.ok ? `Hovered over ${args.selector}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_select': {
+        const r = await callHttp('/select', { selector: args.selector, value: args.value })
+        return [{ type: 'text', text: r.ok ? `Selected "${args.value}" in ${args.selector}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_check': {
+        const r = await callHttp('/check', { selector: args.selector, checked: args.checked })
+        return [{ type: 'text', text: r.ok ? `Checkbox ${args.selector} is now ${r.checked ? 'checked' : 'unchecked'}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_screenshot_element': {
+        const path = `/screenshot-element?selector=${encodeURIComponent(args.selector)}${args.quality ? `&quality=${args.quality}` : ''}`
+        const r = await callHttp(path)
+        if (r.data) {
+          return [
+            { type: 'text', text: `Element screenshot: ${r.width||'?'}x${r.height||'?'} jpeg — ${args.selector}` },
+            { type: 'image', data: r.data, mimeType: 'image/jpeg' }
+          ]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_get_cookies': {
+        const r = await callHttp('/cookies')
+        if (r.cookies) {
+          const lines = r.cookies.map(c => `${c.name}=${c.value.slice(0,40)}${c.value.length>40?'...':''} (${c.domain||''}${c.httpOnly?' httpOnly':''}${c.secure?' secure':''})`)
+          return [{ type: 'text', text: lines.length ? lines.join('\n') : 'No cookies' }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_wait_for': {
+        const r = await callHttp('/wait-for', { selector: args.selector, timeout: args.timeout || 5000 })
+        return [{ type: 'text', text: r.found ? `Element found: ${args.selector}` : `Timeout: ${args.selector} not found within ${args.timeout||5000}ms` }]
+      }
+      case 'browser_get_forms': {
+        const r = await callHttp('/forms')
+        if (r.forms) {
+          if (!r.forms.length) return [{ type: 'text', text: 'No forms found on page' }]
+          const lines = r.forms.map(f => {
+            const fields = f.fields.map(fl => `  - [${fl.tag}${fl.type?`:${fl.type}`:''}] name="${fl.name||''}" ${fl.placeholder?`placeholder="${fl.placeholder}"`:''}${fl.required?' required':''}`).join('\n')
+            return `Form #${f.index}${f.id?` id="${f.id}"`:''}${f.name?` name="${f.name}"`:''}:\n${fields}`
+          })
+          return [{ type: 'text', text: lines.join('\n\n') }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
