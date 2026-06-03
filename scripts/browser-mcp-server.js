@@ -64,10 +64,13 @@ const TOOLS = [
   },
   {
     name: 'browser_eval',
-    description: 'Execute JavaScript in the page context',
+    description: 'Execute JavaScript in the page context. For same-origin iframes, pass frameSelector to run JS inside the iframe.',
     inputSchema: {
       type: 'object',
-      properties: { javascript: { type: 'string', description: 'JS code to execute' } },
+      properties: {
+        javascript: { type: 'string', description: 'JS code to execute' },
+        frameSelector: { type: 'string', description: 'CSS selector of a same-origin <iframe> to execute inside (optional)' }
+      },
       required: ['javascript']
     }
   },
@@ -224,6 +227,23 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
+    name: 'browser_get_frames',
+    description: 'List all <iframe> elements on the page with their src, name, bounds, and center coordinates. Use this before browser_click_at to locate cross-origin iframes (e.g. Cloudflare Turnstile, reCAPTCHA).',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_click_at',
+    description: 'Click at exact page coordinates using OS-level mouse events. Works inside cross-origin iframes (Cloudflare Turnstile, reCAPTCHA, etc.) where CSS selectors cannot reach. Use browser_get_frames first to find the iframe center, then offset from it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x: { type: 'number', description: 'Page X coordinate to click' },
+        y: { type: 'number', description: 'Page Y coordinate to click' }
+      },
+      required: ['x', 'y']
+    }
+  },
+  {
     name: 'browser_drag',
     description: 'Simulate a realistic human-like drag (Bezier curve path with random jitter and ease-in-out timing). Useful for sliders, drag-and-drop, and CAPTCHA slider challenges.',
     inputSchema: {
@@ -332,8 +352,8 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: r.text || '' }]
       }
       case 'browser_eval': {
-        const r = await callHttp('/eval', { javascript: args.javascript })
-        return [{ type: 'text', text: r.result || 'No result' }]
+        const r = await callHttp('/eval', { javascript: args.javascript, frameSelector: args.frameSelector })
+        return [{ type: 'text', text: r.result !== undefined ? String(r.result) : `Failed: ${r.error}` }]
       }
       case 'browser_show': {
         await callHttp('/show')
@@ -431,6 +451,21 @@ async function handleTool(name, args) {
           return [{ type: 'text', text: lines.join('\n\n') }]
         }
         return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_get_frames': {
+        const r = await callHttp('/frames')
+        if (r.frames) {
+          if (!r.frames.length) return [{ type: 'text', text: 'No iframes found on page' }]
+          const lines = r.frames.map(f =>
+            `[${f.index}] src="${f.src||''}" name="${f.name||''}" bounds=(${f.bounds.x},${f.bounds.y} ${f.bounds.width}x${f.bounds.height}) center=(${f.centerX},${f.centerY}) selector="${f.selector}"`
+          )
+          return [{ type: 'text', text: lines.join('\n') }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_click_at': {
+        const r = await callHttp('/click-at', { x: args.x, y: args.y })
+        return [{ type: 'text', text: r.ok ? `Clicked at (${r.x},${r.y})` : `Failed: ${r.error}` }]
       }
       case 'browser_drag': {
         const r = await callHttp('/drag', {

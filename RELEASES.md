@@ -7,6 +7,17 @@
 
 ---
 
+## v0.7.26 (2026-06-03)
+
+### 新功能
+- **Ctrl+Shift+E/R 切换会话**：快速在多个终端标签页/分屏间切换，E 切上一个，R 切下一个
+- **浏览器 MCP iframe 支持**：新增 `browser_get_frames`（列出所有 iframe 坐标）、`browser_click_at`（坐标点击，可穿透 Cloudflare Turnstile/reCAPTCHA 等跨域 iframe）；`browser_eval` 新增 `frameSelector` 支持同源 iframe 内注入 JS
+
+### 修复
+- **元素拾取器文本截断**：注入草稿前剥离 base64 data URL，修复外嵌输入框和经典终端均出现的截断问题
+
+---
+
 ## v0.7.25 (2026-06-02)
 
 ### 修复

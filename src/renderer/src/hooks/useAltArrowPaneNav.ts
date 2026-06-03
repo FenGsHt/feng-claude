@@ -14,6 +14,25 @@ export function useAltArrowPaneNav(enabled: boolean): void {
     if (!enabled) return
 
     const onKeyDown = (e: KeyboardEvent): void => {
+      // Ctrl+Shift+E/R：在 sessions 列表中切换上一个/下一个会话（标签页 or 分屏均适用）
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'e' || k === 'r') {
+          e.preventDefault()
+          e.stopPropagation()
+          if (!activeSessionId) return
+          const sessions = useSessionStore.getState().sessions
+          const idx = sessions.findIndex((s) => s.id === activeSessionId)
+          if (idx < 0 || sessions.length < 2) return
+          const next = k === 'e'
+            ? sessions[(idx - 1 + sessions.length) % sessions.length]
+            : sessions[(idx + 1) % sessions.length]
+          setActiveSession(next.id)
+          queueMicrotask(() => focusTerminal(next.id))
+          return
+        }
+      }
+
       if (!e.altKey || e.ctrlKey || e.metaKey) return
 
       let dir: PaneDirection | null = null

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.26] - 2026-06-03
+
+### 新功能 | New Features
+- **Ctrl+Shift+E/R 切换会话**：在多个终端会话（标签页或分屏）间快速切换，E 切上一个，R 切下一个
+- **浏览器 MCP 新增 iframe 支持**：`browser_get_frames` 列出所有 iframe 及其坐标；`browser_click_at` 按坐标点击（穿透跨域 iframe，如 Cloudflare Turnstile/reCAPTCHA）；`browser_eval` 新增 `frameSelector` 参数支持同源 iframe 内执行 JS
+
+### 修复 | Bug Fixes
+- **元素拾取器 HTML 截断**：outerHTML 截断前先剥离 base64 data URL（替换为 `[base64]`），避免内嵌图片耗尽 600 字符限额导致文本截断，同时修复经典终端路径的 PTY 粘贴截断
+
 ## [0.7.25] - 2026-06-02
 
 ### 修复 | Bug Fixes

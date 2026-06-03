@@ -775,7 +775,7 @@ new Promise((resolve) => {
       selector: getSelector(el),
       path: getPath(el),
       text: (el.innerText || '').trim().slice(0, 300),
-      html: el.outerHTML.slice(0, 600),
+      html: el.outerHTML.replace(/data:[a-zA-Z0-9+/]+;base64,[A-Za-z0-9+/=]+/g, '[base64]').slice(0, 600),
       bounds: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
     })
   }
@@ -1149,6 +1149,51 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // GET /frames — 枚举页面内所有 iframe，返回 src/name/bounds（用于定位 cross-origin iframe）
+        if (path === '/frames' && req.method === 'GET') {
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const frames = await wc.executeJavaScript(`
+              Array.from(document.querySelectorAll('iframe')).map((f, i) => {
+                const r = f.getBoundingClientRect()
+                return {
+                  index: i,
+                  src: f.src || null,
+                  name: f.name || f.id || null,
+                  selector: f.id ? '#' + f.id : (f.name ? 'iframe[name="' + f.name + '"]' : 'iframe:nth-of-type(' + (i+1) + ')'),
+                  bounds: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
+                  centerX: Math.round(r.x + r.width / 2),
+                  centerY: Math.round(r.y + r.height / 2)
+                }
+              })
+            `)
+            res.writeHead(200); res.end(JSON.stringify({ frames }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /click-at — 按页面坐标点击（穿透 cross-origin iframe，如 Turnstile/reCAPTCHA）
+        // body: { x, y, button? }
+        if (path === '/click-at' && req.method === 'POST') {
+          const body = await readBody(req)
+          const x = Math.round(Number(body?.x) || 0)
+          const y = Math.round(Number(body?.y) || 0)
+          if (!body?.x && body?.x !== 0) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing x/y' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+            wc.sendInputEvent({ type: 'mouseMove', x, y } as Electron.MouseInputEvent)
+            await delay(30 + Math.random() * 30)
+            wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 } as Electron.MouseInputEvent)
+            await delay(60 + Math.random() * 60)
+            wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 } as Electron.MouseInputEvent)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true, x, y }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
         if (path === '/click' && req.method === 'POST') {
           const body = await readBody(req)
           const selector = (body?.selector as string) ?? ''
@@ -1240,7 +1285,12 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             return
           }
           try {
-            const result = await webContents.executeJavaScript(js)
+            const frameSelector = (body?.frameSelector as string) ?? ''
+            // [2026-06-03] frameSelector 指定同源 iframe 时，通过 contentDocument 在其上下文执行
+            const wrappedJs = frameSelector
+              ? `(function(){const f=document.querySelector(${JSON.stringify(frameSelector)});if(!f||!f.contentDocument)throw new Error('iframe not found or cross-origin: '+${JSON.stringify(frameSelector)});with(f.contentDocument.defaultView){return(function(){${js}})()}})()`
+              : js
+            const result = await webContents.executeJavaScript(wrappedJs)
             res.writeHead(200)
             res.end(JSON.stringify({ result: typeof result === 'string' ? result : JSON.stringify(result) }))
           } catch (e) {
