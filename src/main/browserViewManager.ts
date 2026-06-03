@@ -1162,13 +1162,10 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             return
           }
           try {
-            await webContents.executeJavaScript(`
-              (function() {
-                const el = document.querySelector('${selector.replace(/'/g, "\\'")}' );
-                if (el) { el.click(); return true; }
-                return false;
-              })()
-            `)
+            const found = await webContents.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(el){el.click();return true;}return false;})()`
+            )
+            if (!found) { res.writeHead(404); res.end(JSON.stringify({ error: `Element not found: ${selector}` })); return }
             res.writeHead(200); res.end(JSON.stringify({ success: true }))
           } catch (e) {
             res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))
@@ -1190,19 +1187,10 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             return
           }
           try {
-            await webContents.executeJavaScript(`
-              (function() {
-                const el = document.querySelector('${selector.replace(/'/g, "\\'")}' );
-                if (el) {
-                  el.focus();
-                  el.value = '${text.replace(/'/g, "\\'")}' ;
-                  el.dispatchEvent(new Event('input', { bubbles: true }));
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                  return true;
-                }
-                return false;
-              })()
-            `)
+            const found = await webContents.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(el){el.focus();el.value=${JSON.stringify(text)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;}return false;})()`
+            )
+            if (!found) { res.writeHead(404); res.end(JSON.stringify({ error: `Element not found: ${selector}` })); return }
             res.writeHead(200); res.end(JSON.stringify({ success: true }))
           } catch (e) {
             res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))

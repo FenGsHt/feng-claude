@@ -314,11 +314,13 @@ async function handleTool(name, args) {
       }
       case 'browser_click': {
         const r = await callHttp('/click', { selector: args.selector })
-        return [{ type: 'text', text: r.success ? `Clicked ${args.selector}` : `Failed: ${r.error}` }]
+        if (r.error) return [{ type: 'text', text: `Failed: ${r.error}` }]
+        return [{ type: 'text', text: `Clicked ${args.selector}` }]
       }
       case 'browser_type': {
         const r = await callHttp('/type', { selector: args.selector, text: args.text })
-        return [{ type: 'text', text: r.success ? `Typed into ${args.selector}` : `Failed: ${r.error}` }]
+        if (r.error) return [{ type: 'text', text: `Failed: ${r.error}` }]
+        return [{ type: 'text', text: `Typed into ${args.selector}` }]
       }
       case 'browser_get_url': {
         const r = await callHttp('/url')
