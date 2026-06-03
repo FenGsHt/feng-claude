@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.27] - 2026-06-03
+
+### 修复 | Bug Fixes
+- **元素拾取器完整输出**：移除 outerHTML 和 innerText 的截断限制，原样输出完整内容（含 base64 图片数据）
+
 ## [0.7.26] - 2026-06-03
 
 ### 新功能 | New Features

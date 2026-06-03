@@ -774,8 +774,8 @@ new Promise((resolve) => {
       classes: Array.from(el.classList),
       selector: getSelector(el),
       path: getPath(el),
-      text: (el.innerText || '').trim().slice(0, 300),
-      html: el.outerHTML.replace(/data:[a-zA-Z0-9+/]+;base64,[A-Za-z0-9+/=]+/g, '[base64]').slice(0, 600),
+      text: (el.innerText || '').trim(),
+      html: el.outerHTML,
       bounds: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
     })
   }
