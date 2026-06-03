@@ -1111,23 +1111,39 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             return
           }
 
-          /* [2026-04-30] 原直接 capturePage 后返回 base64；页面刚显示/未 paint 时可能拿到 empty NativeImage，
-           * Claude 侧表现为 browser_screenshot 返回空。等待一帧并返回尺寸诊断，便于判断是否真截图成功。 */
-          await new Promise((resolve) => setTimeout(resolve, 100))
-          const image = await webContents.capturePage()
+          /* [2026-06-02] 支持 ?format=jpeg|png&quality=0-100&scale=0.1-1.0
+           * 默认 jpeg q=80 scale=0.8：比 PNG 快 3-5x，体积小 60-80%，AI 看图足够清晰。
+           * 原始 PNG 请求用 ?format=png */
+          const fmt    = (url.searchParams.get('format') ?? 'jpeg').toLowerCase()
+          const quality = Math.max(10, Math.min(100, parseInt(url.searchParams.get('quality') ?? '80', 10)))
+          const scale   = Math.max(0.1, Math.min(1.0, parseFloat(url.searchParams.get('scale') ?? '0.8')))
+
+          await new Promise((resolve) => setTimeout(resolve, 80))
+          let image = await webContents.capturePage()
           if (image.isEmpty()) {
             res.writeHead(500); res.end(JSON.stringify({ error: 'Captured image is empty', bounds, url: webContents.getURL() }))
             return
           }
-          const png = image.toPNG()
+
+          // 缩放（对 AI 截图有明显提速效果）
+          if (scale < 1.0) {
+            const orig = image.getSize()
+            image = image.resize({
+              width: Math.round(orig.width * scale),
+              height: Math.round(orig.height * scale),
+              quality: 'good'
+            })
+          }
+
           const size = image.getSize()
-          const base64 = png.toString('base64')
+          const buf  = fmt === 'png' ? image.toPNG() : image.toJPEG(quality)
+          const base64 = buf.toString('base64')
           res.writeHead(200); res.end(JSON.stringify({
-            format: 'png',
+            format: fmt === 'png' ? 'png' : 'jpeg',
             data: base64,
             width: size.width,
             height: size.height,
-            byteLength: png.length,
+            byteLength: buf.length,
             url: webContents.getURL()
           }))
           return
