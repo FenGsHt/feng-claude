@@ -1505,6 +1505,115 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // POST /drag — 模拟真人拖拽（贝塞尔曲线 + 随机抖动），适用于滑块等场景
+        // body: { fromSelector?, toSelector?, fromX?, fromY?, toX?, toY?, steps?, durationMs? }
+        if (path === '/drag' && req.method === 'POST') {
+          const body = await readBody(req)
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            // 获取起终点坐标
+            const getCenter = async (sel: string | undefined, fx: number | undefined, fy: number | undefined) => {
+              if (sel) {
+                const r = await wc.executeJavaScript(
+                  `(function(){const el=document.querySelector(${JSON.stringify(sel)});if(!el)return null;const b=el.getBoundingClientRect();return{x:b.left+b.width/2,y:b.top+b.height/2}})()`
+                )
+                return r
+              }
+              return { x: fx ?? 0, y: fy ?? 0 }
+            }
+            const from = await getCenter(body?.fromSelector as string, Number(body?.fromX), Number(body?.fromY))
+            const to   = await getCenter(body?.toSelector as string,   Number(body?.toX),   Number(body?.toY))
+            if (!from || !to) { res.writeHead(404); res.end(JSON.stringify({ error: 'Element not found' })); return }
+
+            const steps = Math.max(20, Math.min(200, Number(body?.steps) || 60))
+            const durationMs = Math.max(200, Math.min(5000, Number(body?.durationMs) || 800))
+            const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+            // 生成带随机抖动的贝塞尔曲线路径（模拟人手抖）
+            const cx1 = from.x + (to.x - from.x) * 0.3 + (Math.random() - 0.5) * 30
+            const cy1 = from.y + (Math.random() - 0.5) * 20
+            const cx2 = from.x + (to.x - from.x) * 0.7 + (Math.random() - 0.5) * 20
+            const cy2 = to.y + (Math.random() - 0.5) * 20
+
+            const bezier = (t: number, p0: number, p1: number, p2: number, p3: number) =>
+              Math.pow(1-t,3)*p0 + 3*Math.pow(1-t,2)*t*p1 + 3*(1-t)*t*t*p2 + Math.pow(t,3)*p3
+
+            // mousedown at start
+            wc.sendInputEvent({ type: 'mouseMove', x: Math.round(from.x), y: Math.round(from.y) } as Electron.MouseInputEvent)
+            await delay(30 + Math.random() * 40)
+            wc.sendInputEvent({ type: 'mouseDown', x: Math.round(from.x), y: Math.round(from.y), button: 'left', clickCount: 1 } as Electron.MouseInputEvent)
+            await delay(40 + Math.random() * 30)
+
+            // 沿贝塞尔曲线移动
+            const stepDelay = durationMs / steps
+            for (let i = 1; i <= steps; i++) {
+              const t = i / steps
+              // ease-in-out 速度曲线（慢→快→慢）
+              const eased = t < 0.5 ? 2*t*t : -1+(4-2*t)*t
+              const x = bezier(eased, from.x, cx1, cx2, to.x) + (Math.random()-0.5)*2
+              const y = bezier(eased, from.y, cy1, cy2, to.y) + (Math.random()-0.5)*1.5
+              wc.sendInputEvent({ type: 'mouseMove', x: Math.round(x), y: Math.round(y) } as Electron.MouseInputEvent)
+              await delay(stepDelay * (0.8 + Math.random() * 0.4))
+            }
+
+            // mouseup at end
+            await delay(30 + Math.random() * 30)
+            wc.sendInputEvent({ type: 'mouseUp', x: Math.round(to.x), y: Math.round(to.y), button: 'left', clickCount: 1 } as Electron.MouseInputEvent)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true, from, to, steps }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /click-human — 真实鼠标事件点击（非 JS click()，带 mousedown+up+随机延迟）
+        if (path === '/click-human' && req.method === 'POST') {
+          const body = await readBody(req)
+          const selector = (body?.selector as string) ?? ''
+          if (!selector) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            const rect = await wc.executeJavaScript(
+              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`
+            )
+            if (!rect) { res.writeHead(404); res.end(JSON.stringify({ error: 'Element not found' })); return }
+            const x = Math.round(rect.x + (Math.random()-0.5)*4)
+            const y = Math.round(rect.y + (Math.random()-0.5)*4)
+            const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+            wc.sendInputEvent({ type: 'mouseMove', x, y } as Electron.MouseInputEvent)
+            await delay(30 + Math.random()*30)
+            wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 } as Electron.MouseInputEvent)
+            await delay(60 + Math.random()*80)
+            wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 } as Electron.MouseInputEvent)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true, x, y }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /type-human — 逐字符模拟真人输入（随机间隔、先 focus）
+        if (path === '/type-human' && req.method === 'POST') {
+          const body = await readBody(req)
+          const { selector, text, minDelay = 40, maxDelay = 140 } = body as Record<string, unknown>
+          if (!selector || typeof text !== 'string') { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing selector or text' })); return }
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+          try {
+            // 先 focus 元素
+            await wc.executeJavaScript(`document.querySelector(${JSON.stringify(selector)})?.focus()`)
+            const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+            for (const ch of text as string) {
+              wc.sendInputEvent({ type: 'keyDown', keyCode: ch } as Electron.KeyboardInputEvent)
+              wc.sendInputEvent({ type: 'char', keyCode: ch } as Electron.KeyboardInputEvent)
+              wc.sendInputEvent({ type: 'keyUp', keyCode: ch } as Electron.KeyboardInputEvent)
+              const ms = Number(minDelay) + Math.random() * (Number(maxDelay) - Number(minDelay))
+              // 偶尔短暂停顿（模拟思考）
+              await delay(Math.random() < 0.05 ? ms * 4 : ms)
+            }
+            res.writeHead(200); res.end(JSON.stringify({ ok: true, length: (text as string).length }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
         // POST /open-office-preview — trigger Office preview panel from MCP
         if (path === '/open-office-preview' && req.method === 'POST') {
           const body = await readBody(req)

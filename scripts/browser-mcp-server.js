@@ -222,6 +222,47 @@ const TOOLS = [
     name: 'browser_get_forms',
     description: 'Enumerate all forms and their input fields on the current page. Useful before filling out forms.',
     inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_drag',
+    description: 'Simulate a realistic human-like drag (Bezier curve path with random jitter and ease-in-out timing). Useful for sliders, drag-and-drop, and CAPTCHA slider challenges.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fromSelector: { type: 'string', description: 'CSS selector of drag start element (optional)' },
+        toSelector:   { type: 'string', description: 'CSS selector of drag end element (optional)' },
+        fromX: { type: 'number', description: 'Start X coordinate (used if no fromSelector)' },
+        fromY: { type: 'number', description: 'Start Y coordinate (used if no fromSelector)' },
+        toX:   { type: 'number', description: 'End X coordinate (used if no toSelector)' },
+        toY:   { type: 'number', description: 'End Y coordinate (used if no toSelector)' },
+        steps:      { type: 'number', description: 'Number of intermediate mouse-move steps (default 60, more = smoother)' },
+        durationMs: { type: 'number', description: 'Total drag duration in ms (default 800)' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'browser_click_human',
+    description: 'Click an element using real mouse events (mousedown + random delay + mouseup) with slight position jitter, more realistic than browser_click.',
+    inputSchema: {
+      type: 'object',
+      properties: { selector: { type: 'string', description: 'CSS selector of element to click' } },
+      required: ['selector']
+    }
+  },
+  {
+    name: 'browser_type_human',
+    description: 'Type text character by character with random delays (mimics human typing speed). More realistic than browser_type for sites that detect instant input.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector:  { type: 'string', description: 'CSS selector of input element' },
+        text:      { type: 'string', description: 'Text to type' },
+        minDelay:  { type: 'number', description: 'Min ms between keystrokes (default 40)' },
+        maxDelay:  { type: 'number', description: 'Max ms between keystrokes (default 140)' }
+      },
+      required: ['selector', 'text']
+    }
   }
 ]
 
@@ -388,6 +429,22 @@ async function handleTool(name, args) {
           return [{ type: 'text', text: lines.join('\n\n') }]
         }
         return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_drag': {
+        const r = await callHttp('/drag', {
+          fromSelector: args.fromSelector, toSelector: args.toSelector,
+          fromX: args.fromX, fromY: args.fromY, toX: args.toX, toY: args.toY,
+          steps: args.steps, durationMs: args.durationMs
+        })
+        return [{ type: 'text', text: r.ok ? `Dragged from (${r.from?.x},${r.from?.y}) to (${r.to?.x},${r.to?.y}) in ${r.steps} steps` : `Failed: ${r.error}` }]
+      }
+      case 'browser_click_human': {
+        const r = await callHttp('/click-human', { selector: args.selector })
+        return [{ type: 'text', text: r.ok ? `Human-clicked ${args.selector} at (${r.x},${r.y})` : `Failed: ${r.error}` }]
+      }
+      case 'browser_type_human': {
+        const r = await callHttp('/type-human', { selector: args.selector, text: args.text, minDelay: args.minDelay, maxDelay: args.maxDelay })
+        return [{ type: 'text', text: r.ok ? `Typed ${r.length} chars into ${args.selector}` : `Failed: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
