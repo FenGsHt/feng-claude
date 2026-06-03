@@ -492,6 +492,9 @@ function parseTranscriptEntries(line: string): ClaudeTranscriptEntry[] {
       if (!text) text = extractUserMessageText(msg)
       if (!text) text = extractUserMessageText(entry as Record<string, unknown>)
       if (!text) text = fallbackUserTextFromJsonlEntry(entry)
+      // [2026-06-02] 过滤 CC 注入的本地命令元数据（<local-command-caveat>、<command-name> 等）
+      // 这些是 CC 向 Claude 解释本地命令执行情况的系统消息，不是用户真实输入，不应显示为气泡
+      if (text && isLocalCommandMetadata(text)) return out
       if (text) out.push({ kind: 'user', text, messageId })
       return out
     }
@@ -720,6 +723,16 @@ function extractUserMessageText(msg: Record<string, unknown> | undefined): strin
     }
   }
   return parts.join('\n').trim()
+}
+
+/** [2026-06-02] CC 注入到 user 消息里的本地命令元数据标记，不应作为用户气泡显示 */
+function isLocalCommandMetadata(text: string): boolean {
+  const t = text.trimStart()
+  return t.startsWith('<local-command-caveat>') ||
+         t.startsWith('<command-name>') ||
+         t.startsWith('<command-message>') ||
+         // 多行版本：整条消息以这些标签开头（CC 有时把多个标签合并）
+         /^<(local-command-caveat|command-name|command-message|command-args)[\s>]/.test(t)
 }
 
 function fallbackUserTextFromJsonlEntry(entry: Record<string, unknown>): string {
