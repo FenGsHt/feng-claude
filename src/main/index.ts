@@ -163,6 +163,10 @@ function createWindow(): BrowserWindow {
       event.preventDefault()
       void startElementPicker()
     }
+    // [2026-06-03] 拦截 Ctrl+Shift+R，阻止 Electron 默认 hard-reload 菜单加速器；由 renderer useAltArrowPaneNav 处理会话切换
+    if (input.control && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'r') {
+      event.preventDefault()
+    }
     // [2026-05-01] 在主进程拦截 Ctrl+Shift+C，绕过 Electron 菜单加速器
     if (input.control && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {
       event.preventDefault()
