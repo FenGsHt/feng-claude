@@ -209,6 +209,32 @@ const TOOLS = [
     }
   },
   {
+    name: 'browser_capture_resources',
+    description: 'Navigate to a URL and capture ALL network resources (HTML, CSS, JS, images, fonts, JSON) to a local directory using CDP. Generates a manifest.json mapping original URLs to local file paths. Use this as the first step when cloning a website — run before browser_screenshot_diff or any code generation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Target URL to capture resources from' },
+        outputDir: { type: 'string', description: 'Absolute path to local directory where files will be saved' },
+        waitMs: { type: 'number', description: 'Extra milliseconds to wait after page load for lazy resources (default 3000, max 15000)' }
+      },
+      required: ['url', 'outputDir']
+    }
+  },
+  {
+    name: 'browser_screenshot_diff',
+    description: 'Compare two PNG screenshots pixel-by-pixel. Returns similarity score (0-100%), diff stats, and a diff image with differences highlighted in red. Independent of browser state — works on any two base64 PNG images. Designed for iterative website cloning: screenshot original → screenshot clone → compare → patch → repeat.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        imageA: { type: 'string', description: 'Base64 PNG string (e.g. from browser_screenshot data field) — the reference/original image' },
+        imageB: { type: 'string', description: 'Base64 PNG string — the image to compare against the reference' },
+        threshold: { type: 'number', description: 'Per-channel difference threshold 0-255 (default 10). Higher = more tolerant of minor color differences.' }
+      },
+      required: ['imageA', 'imageB']
+    }
+  },
+  {
     name: 'browser_screenshot_element',
     description: 'Capture a screenshot of only a specific element (cropped). More efficient than a full page screenshot when focusing on a component.',
     inputSchema: {
@@ -374,7 +400,11 @@ async function handleTool(name, args) {
       }
       case 'browser_eval_in_frame': {
         const r = await callHttp('/eval-in-frame', { frameUrl: args.frameUrl, javascript: args.javascript })
-        return [{ type: 'text', text: r.result !== undefined ? String(r.result) : `Failed: ${r.error}` }]
+        if (r.result !== undefined) return [{ type: 'text', text: String(r.result) }]
+        const msg = r.availableFrameUrls
+          ? `Failed: ${r.error}\nAvailable frames:\n${r.availableFrameUrls.join('\n')}`
+          : `Failed: ${r.error}`
+        return [{ type: 'text', text: msg }]
       }
       case 'browser_show': {
         await callHttp('/show')
@@ -420,7 +450,8 @@ async function handleTool(name, args) {
       }
       case 'browser_scroll': {
         const r = await callHttp('/scroll', { selector: args.selector, deltaY: args.deltaY, x: args.x, y: args.y, behavior: args.behavior || 'smooth' })
-        return [{ type: 'text', text: r.ok ? `Scrolled${args.selector ? ` to ${args.selector}` : ` to (${args.x||0},${args.y||0})`}` : `Failed: ${r.error}` }]
+        const desc = args.selector ? ` to ${args.selector}` : args.deltaY !== undefined ? ` by deltaY=${args.deltaY}` : ` to (${args.x||0},${args.y||0})`
+        return [{ type: 'text', text: r.ok ? `Scrolled${desc}` : `Failed: ${r.error}` }]
       }
       case 'browser_key': {
         const r = await callHttp('/key', { key: args.key, modifiers: args.modifiers || [] })
@@ -437,6 +468,24 @@ async function handleTool(name, args) {
       case 'browser_check': {
         const r = await callHttp('/check', { selector: args.selector, checked: args.checked })
         return [{ type: 'text', text: r.ok ? `Checkbox ${args.selector} is now ${r.checked ? 'checked' : 'unchecked'}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_capture_resources': {
+        const r = await callHttp('/capture-resources', { url: args.url, outputDir: args.outputDir, waitMs: args.waitMs })
+        if (r.saved !== undefined) {
+          return [{ type: 'text', text: `Captured ${r.saved} files (${r.skipped} skipped) → ${r.outputDir}\nmanifest.json written with ${Object.keys(r.manifest || {}).length} URL mappings` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_screenshot_diff': {
+        const r = await callHttp('/screenshot-compare', { imageA: args.imageA, imageB: args.imageB, threshold: args.threshold })
+        if (r.similarity !== undefined) {
+          const txt = `Similarity: ${r.similarity}% | Diff pixels: ${r.diffPixels}/${r.totalPixels} (${r.diffPercent}%) | Size: ${r.width}x${r.height}`
+          return [
+            { type: 'text', text: txt },
+            { type: 'image', data: r.diffImage, mimeType: 'image/png' }
+          ]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       case 'browser_screenshot_element': {
         const path = `/screenshot-element?selector=${encodeURIComponent(args.selector)}${args.quality ? `&quality=${args.quality}` : ''}`

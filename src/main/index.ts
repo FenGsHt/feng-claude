@@ -20,6 +20,7 @@ import {
   migrateLegacyClaudeSessionDirOnce
 } from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
+import { installBuiltinSkills } from './builtinSkills'
 import { existsSync, copyFileSync, mkdirSync } from 'fs'
 import { getConfigDir } from './configDir'
 import { listMcpServers as listMcpServersForMigration } from './mcpManager'
@@ -234,6 +235,7 @@ app.whenReady().then(() => {
   // [2026-04-28] token-data.json 也需迁移到 getConfigDir()（打包版）
   migrateLegacyTokenDataOnce()
   migrateLegacyScrollbackOnce()
+  installBuiltinSkills()
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
   setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)

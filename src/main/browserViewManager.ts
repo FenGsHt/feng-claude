@@ -1,7 +1,10 @@
-import { BrowserWindow, ipcMain, screen, WebContentsView, WebPreferences } from 'electron'
+import { BrowserWindow, ipcMain, screen, WebContentsView, WebPreferences, app } from 'electron'
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http'
 import { URL } from 'url'
 import { WebSocketServer, WebSocket } from 'ws'
+import { PNG } from 'pngjs'
+import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { join, dirname, extname, basename } from 'path'
 
 interface BrowserPanelState {
   view: WebContentsView | null
@@ -30,6 +33,21 @@ const state: BrowserPanelState = {
   devToolsRatio: 0.4,
   devToolsVisible: false,
   toolsPanelWidth: 0
+}
+
+// ── 浏览器 URL 持久化 ───────────────────────────────────────────────────────
+function browserStateFile(): string {
+  return join(app.getPath('userData'), 'browser-state.json')
+}
+function loadLastBrowserUrl(): string {
+  try {
+    const data = JSON.parse(readFileSync(browserStateFile(), 'utf-8'))
+    return typeof data?.lastUrl === 'string' ? data.lastUrl : ''
+  } catch { return '' }
+}
+function saveLastBrowserUrl(url: string): void {
+  if (!url || url.startsWith('data:') || url === 'about:blank') return
+  try { writeFileSync(browserStateFile(), JSON.stringify({ lastUrl: url }), 'utf-8') } catch { /* ignore */ }
 }
 
 const DEFAULT_PORT = 3100
@@ -323,14 +341,16 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
       }
     })
 
-    // URL 变化时更新导航栏地址
+    // URL 变化时更新导航栏地址并持久化
     view.webContents.on('did-navigate', (_, navUrl) => {
       updateNavUrl(navUrl)
       updateNavBackForward()
+      saveLastBrowserUrl(navUrl)
     })
     view.webContents.on('did-navigate-in-page', (_, navUrl) => {
       updateNavUrl(navUrl)
       updateNavBackForward()
+      saveLastBrowserUrl(navUrl)
     })
 
     view.webContents.on('console-message', (_event: Electron.Event, level: number, message: string, _line: number, _sourceId: string) => {
@@ -366,7 +386,8 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
   if (url) {
     state.view.webContents.loadURL(url).catch(() => {})
   } else if (!state.view.webContents.getURL()) {
-    state.view.webContents.loadURL('https://www.bing.com').catch(() => {})
+    const last = loadLastBrowserUrl()
+    state.view.webContents.loadURL(last || 'https://www.bing.com').catch(() => {})
   }
 
   state.visible = true
@@ -1318,11 +1339,12 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           try {
             try { wc.debugger.attach('1.3') } catch { /* already attached */ }
 
-            type FrameNode = { frame: { id: string; url: string }; childFrames?: FrameNode[] }
+            type FrameNode = { frame: { id: string; url: string; securityOrigin?: string }; childFrames?: FrameNode[] }
             const { frameTree } = await wc.debugger.sendCommand('Page.getFrameTree', {}) as { frameTree: FrameNode }
 
+            // 先按 URL 匹配，URL 为 about:blank 等无效时再按 securityOrigin 匹配
             function findFrameId(node: FrameNode): string | null {
-              if (node.frame.url.includes(frameUrl)) return node.frame.id
+              if (node.frame.url.includes(frameUrl) || node.frame.securityOrigin?.includes(frameUrl)) return node.frame.id
               for (const child of (node.childFrames ?? [])) {
                 const found = findFrameId(child)
                 if (found) return found
@@ -1330,9 +1352,14 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
               return null
             }
 
+            function collectUrls(node: FrameNode): string[] {
+              return [`url=${node.frame.url} origin=${node.frame.securityOrigin ?? ''}`, ...(node.childFrames ?? []).flatMap(collectUrls)]
+            }
+
             const frameId = findFrameId(frameTree)
             if (!frameId) {
-              res.writeHead(404); res.end(JSON.stringify({ error: `No frame matching "${frameUrl}" found` }))
+              const available = collectUrls(frameTree)
+              res.writeHead(404); res.end(JSON.stringify({ error: `No frame matching "${frameUrl}" found`, availableFrameUrls: available }))
               return
             }
 
@@ -1362,6 +1389,126 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
                 ? (typeof value === 'string' ? value : JSON.stringify(value))
                 : (evalResult.result?.description ?? 'undefined'),
               frameId
+            }))
+          } catch (e) {
+            res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))
+          }
+          return
+        }
+
+        // POST /capture-resources — CDP 抓取页面所有网络资源存到本地
+        // body: { url: string, outputDir: string, waitMs?: number }
+        if (path === '/capture-resources' && req.method === 'POST') {
+          const body = await readBody(req)
+          const targetUrl = (body?.url as string) ?? ''
+          const outputDir = (body?.outputDir as string) ?? ''
+          if (!targetUrl || !outputDir) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Missing url or outputDir' })); return
+          }
+          const waitMs = Math.min(Number(body?.waitMs ?? 3000), 15000)
+          const wc = getBrowserViewWebContents()
+          if (!wc) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return
+          }
+          try {
+            try { wc.debugger.attach('1.3') } catch { /* already attached */ }
+
+            // 收集 requestId → { url, mimeType, status }
+            type ReqInfo = { url: string; mimeType: string; status: number }
+            const requests = new Map<string, ReqInfo>()
+            const onMsg = (_evt: Electron.Event, method: string, params: Record<string, unknown>) => {
+              if (method === 'Network.responseReceived') {
+                const resp = params.response as Record<string, unknown>
+                requests.set(params.requestId as string, {
+                  url: resp.url as string,
+                  mimeType: (resp.mimeType as string) ?? '',
+                  status: (resp.status as number) ?? 0
+                })
+              }
+            }
+            wc.debugger.on('message', onMsg)
+
+            await wc.debugger.sendCommand('Network.enable', {})
+            await wc.debugger.sendCommand('Page.enable', {})
+
+            // 导航到目标页面
+            const navDone = new Promise<void>(resolve => {
+              const h = (_e: Electron.Event, method: string) => {
+                if (method === 'Page.loadEventFired') {
+                  wc.debugger.removeListener('message', h)
+                  resolve()
+                }
+              }
+              wc.debugger.on('message', h)
+              setTimeout(resolve, 12000)
+            })
+            await wc.debugger.sendCommand('Page.navigate', { url: targetUrl })
+            await navDone
+            // 额外等待懒加载资源
+            await new Promise(r => setTimeout(r, waitMs))
+            wc.debugger.removeListener('message', onMsg)
+
+            // 下载所有 response body
+            mkdirSync(outputDir, { recursive: true })
+            const manifest: Record<string, string> = {}
+            const saved: string[] = []
+            const skipped: string[] = []
+
+            // 文件名去重
+            const usedNames = new Set<string>()
+            function uniqueName(name: string): string {
+              if (!usedNames.has(name)) { usedNames.add(name); return name }
+              const ext = extname(name)
+              const base = basename(name, ext)
+              let i = 2
+              while (usedNames.has(`${base}_${i}${ext}`)) i++
+              const n = `${base}_${i}${ext}`
+              usedNames.add(n)
+              return n
+            }
+
+            for (const [requestId, info] of requests) {
+              if (info.status < 200 || info.status >= 300) continue
+              // 按 MIME 类型分类
+              const mime = info.mimeType.split(';')[0].trim()
+              let subdir = 'other'
+              if (mime.includes('html')) subdir = '.'
+              else if (mime.includes('css')) subdir = 'css'
+              else if (mime.includes('javascript') || mime.includes('ecmascript')) subdir = 'js'
+              else if (mime.startsWith('image/')) subdir = 'images'
+              else if (mime.includes('font')) subdir = 'fonts'
+              else if (mime.includes('json')) subdir = 'data'
+              else if (mime.includes('svg')) subdir = 'images'
+
+              try {
+                const rb = await wc.debugger.sendCommand('Network.getResponseBody', { requestId }) as { body: string; base64Encoded: boolean }
+                const urlObj = new URL(info.url)
+                let rawName = basename(urlObj.pathname) || 'index'
+                if (!extname(rawName)) {
+                  if (subdir === 'css') rawName += '.css'
+                  else if (subdir === 'js') rawName += '.js'
+                  else if (subdir === '.') rawName += '.html'
+                }
+                const finalName = uniqueName(subdir === '.' ? rawName : `${subdir}/${rawName}`)
+                const destPath = join(outputDir, finalName)
+                mkdirSync(dirname(destPath), { recursive: true })
+                const content = rb.base64Encoded ? Buffer.from(rb.body, 'base64') : Buffer.from(rb.body, 'utf-8')
+                writeFileSync(destPath, content)
+                manifest[info.url] = finalName
+                saved.push(finalName)
+              } catch {
+                skipped.push(info.url)
+              }
+            }
+
+            // 写入 manifest
+            writeFileSync(join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8')
+
+            res.writeHead(200); res.end(JSON.stringify({
+              saved: saved.length,
+              skipped: skipped.length,
+              outputDir,
+              manifest
             }))
           } catch (e) {
             res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))
@@ -1548,6 +1695,73 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             res.writeHead(200); res.end(JSON.stringify({
               format: 'jpeg', data: buf.toString('base64'),
               width: rect.width, height: rect.height, selector
+            }))
+          } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+          return
+        }
+
+        // POST /screenshot-compare — 像素级对比两张 PNG，返回相似度和差异高亮图
+        // 独立于浏览器状态，不需要浏览器打开
+        if (path === '/screenshot-compare' && req.method === 'POST') {
+          const body = await readBody(req)
+          const b64A = (body?.imageA as string) ?? ''
+          const b64B = (body?.imageB as string) ?? ''
+          if (!b64A || !b64B) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Missing imageA or imageB' })); return
+          }
+          const threshold = Math.max(0, Math.min(255, Number(body?.threshold ?? 10)))
+          try {
+            const decodePNG = (b64: string): Promise<PNG> =>
+              new Promise((resolve, reject) => {
+                const buf = Buffer.from(b64, 'base64')
+                const png = new PNG()
+                png.parse(buf, (err, data) => err ? reject(err) : resolve(data))
+              })
+
+            const [imgA, imgB] = await Promise.all([decodePNG(b64A), decodePNG(b64B)])
+            const w = Math.min(imgA.width, imgB.width)
+            const h = Math.min(imgA.height, imgB.height)
+            const totalPixels = w * h
+
+            const diff = new PNG({ width: w, height: h })
+            let diffPixels = 0
+
+            for (let y = 0; y < h; y++) {
+              for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4
+                const iA = (y * imgA.width + x) * 4
+                const iB = (y * imgB.width + x) * 4
+                const dr = Math.abs(imgA.data[iA] - imgB.data[iB])
+                const dg = Math.abs(imgA.data[iA + 1] - imgB.data[iB + 1])
+                const db = Math.abs(imgA.data[iA + 2] - imgB.data[iB + 2])
+                if (dr + dg + db > threshold) {
+                  diffPixels++
+                  diff.data[i] = 255; diff.data[i + 1] = 60; diff.data[i + 2] = 60; diff.data[i + 3] = 220
+                } else {
+                  diff.data[i] = imgA.data[iA]
+                  diff.data[i + 1] = imgA.data[iA + 1]
+                  diff.data[i + 2] = imgA.data[iA + 2]
+                  diff.data[i + 3] = Math.round(imgA.data[iA + 3] * 0.35)
+                }
+              }
+            }
+
+            const diffBuf = await new Promise<Buffer>((resolve, reject) => {
+              const chunks: Buffer[] = []
+              diff.pack().on('data', (c: Buffer) => chunks.push(c)).on('end', () => resolve(Buffer.concat(chunks))).on('error', reject)
+            })
+
+            const diffPercent = parseFloat(((diffPixels / totalPixels) * 100).toFixed(2))
+            const similarity = parseFloat((100 - diffPercent).toFixed(2))
+
+            res.writeHead(200); res.end(JSON.stringify({
+              similarity,
+              diffPercent,
+              diffPixels,
+              totalPixels,
+              diffImage: diffBuf.toString('base64'),
+              width: w,
+              height: h
             }))
           } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
           return

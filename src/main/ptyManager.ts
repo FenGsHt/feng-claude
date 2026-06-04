@@ -950,6 +950,44 @@ export class PtyManager {
     socket.on('error', () => { try { socket.destroy() } catch { /* ignore */ } })
   }
 
+  // [2026-06-04] ConPTY 单次写入缓冲约 4KB，超出会截断；分块写入避免丢字
+  private static readonly PASTE_CHUNK = 2048
+
+  private writeRaw(session: { daemonSocket?: import('net').Socket | null; ptyProcess?: import('node-pty').IPty | null }, data: string): void {
+    if (session.daemonSocket) {
+      session.daemonSocket.write(JSON.stringify({ t: 'i', d: data }) + '\n')
+    } else {
+      try {
+        session.ptyProcess?.write(data)
+      } catch (e) {
+        if (e instanceof Error && (e as any).code === 'EPIPE') return
+        throw e
+      }
+    }
+  }
+
+  private writeChunked(session: { daemonSocket?: import('net').Socket | null; ptyProcess?: import('node-pty').IPty | null }, data: string): void {
+    const CHUNK = PtyManager.PASTE_CHUNK
+    const BP_START = '\x1b[200~'
+    const BP_END = '\x1b[201~'
+
+    // Bracketed paste：每块独立包裹，避免 shell 收到破损的 BP 序列
+    const isBP = data.startsWith(BP_START) && data.endsWith(BP_END)
+    const inner = isBP ? data.slice(BP_START.length, data.length - BP_END.length) : data
+
+    const chunks: string[] = []
+    for (let i = 0; i < inner.length; i += CHUNK) {
+      const part = inner.slice(i, i + CHUNK)
+      chunks.push(isBP ? BP_START + part + BP_END : part)
+    }
+
+    this.writeRaw(session, chunks[0])
+    for (let i = 1; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      setTimeout(() => { this.writeRaw(session, chunk) }, i * 15)
+    }
+  }
+
   sendInput(
     sessionId: string,
     data: string
@@ -960,20 +998,13 @@ export class PtyManager {
       return { ok: false, bytes, reason: 'session_not_found' }
     }
     try {
-      if (session.daemonSocket) {
-        session.daemonSocket.write(JSON.stringify({ t: 'i', d: data }) + '\n')
-        return { ok: true, via: 'daemon', bytes }
+      const via: 'daemon' | 'pty' = session.daemonSocket ? 'daemon' : 'pty'
+      if (data.length > PtyManager.PASTE_CHUNK) {
+        this.writeChunked(session, data)
+      } else {
+        this.writeRaw(session, data)
       }
-      try {
-        session.ptyProcess?.write(data)
-      } catch (writeErr) {
-        // [2026-05-13] 忽略 EPIPE（PTY 进程已退出但写入队列还有残余）
-        if (writeErr instanceof Error && (writeErr as any).code === 'EPIPE') {
-          return { ok: false, bytes, reason: 'pty_exited' }
-        }
-        throw writeErr
-      }
-      return { ok: true, via: 'pty', bytes }
+      return { ok: true, via, bytes }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       return { ok: false, bytes, reason }

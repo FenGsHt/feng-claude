@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.31] - 2026-06-04
+
+### 新功能 | New Features
+- **调试浏览器记忆上次 URL**：关闭软件后重新打开，自动恢复到上次浏览的页面
+- **`browser_capture_resources`**：一键抓取目标网站所有资源（HTML/CSS/JS/图片/字体），存到本地目录，生成 manifest.json 映射表，为网站复刻提供完整素材
+- **`clone-website` 内置 skill**：app 启动时自动安装，包含完整网站复刻工作流（资源抓取→组件生成→视觉对比→多页面→动效）
+- **`browser_screenshot_diff`**：像素级截图对比工具，返回相似度百分比和红色差异高亮图
+- **Tab 切换自动滚动**：Tab 过多时，激活的 Tab 自动滚入可视区
+
+### 修复 | Bug Fixes
+- **长文本粘贴截断**：PTY 写入按 2048 字符分块，每块间隔 15ms，避免 ConPTY 缓冲溢出丢字
+- **文本编辑器 Esc 误关闭**：Esc 键不再关闭编辑器，只关闭 picker/查找栏等子面板
+
 ## [0.7.30] - 2026-06-04
 
 ### 新功能 | New Features

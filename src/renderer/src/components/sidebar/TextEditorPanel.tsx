@@ -367,10 +367,9 @@ export function TextEditorPanel(): React.ReactElement | null {
       if (e.key === 'Escape') {
         e.preventDefault()
         if (pickerOpen)        { setPickerOpen(false); return }
-        if (mode === 'image')  { close(); return }
         if (findOpen)          { setFindOpen(false); textareaRef.current?.focus(); return }
         if (showSplitMenu)     { setShowSplitMenu(false); return }
-        if (confirmingDiscard) { cancelDiscard() } else { tryAction({ type: 'close' }) }
+        if (confirmingDiscard) { cancelDiscard() }
         return
       }
       if (pickerOpen) {

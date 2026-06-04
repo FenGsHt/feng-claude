@@ -373,6 +373,13 @@ export function TabBar(): React.ReactElement {
     void restartSession(sessionId, undefined, cleared)
   }
 
+  // 切换 session 时将激活 tab 滚入可视区
+  useEffect(() => {
+    if (!activeSessionId || !scrollRef.current) return
+    const activeTab = scrollRef.current.querySelector('.tab-active') as HTMLElement | null
+    activeTab?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+  }, [activeSessionId])
+
   // Scroll tabs with mouse wheel
   const handleWheel = (e: React.WheelEvent) => {
     if (scrollRef.current) {
