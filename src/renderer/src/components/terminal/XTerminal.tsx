@@ -101,8 +101,7 @@ function getOrCreateTerminal(sessionId: string): { term: Terminal; fitAddon: Fit
     theme: DARK_THEME,
     // [2026-04-23] 原 5000；resize/fit 时 xterm 重算缓冲更重，打包后易触发 task queue deadline 警告，略降 scrollback
     scrollback: 2000,
-    allowProposedApi: true,
-    convertEol: true
+    allowProposedApi: true
   })
 
   const fitAddon = new FitAddon()

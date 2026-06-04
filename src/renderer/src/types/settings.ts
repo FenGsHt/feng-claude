@@ -198,6 +198,8 @@ export interface ClaudeSettings {
     shell?: string
     /** 空控制台会话用 tmux 包裹，实现关闭后再打开可恢复 */
     useTmux?: boolean
+    /** [2026-06-04] Windows：使用 ConPTY 替代 WinPTY；ConPTY 对 TUI 应用（lazygit/vim）显示更好，但部分环境有 AttachConsole 兼容性问题 */
+    useConpty?: boolean
   }
   /** [2026-05-02] 语音识别配置 */
   speech?: {

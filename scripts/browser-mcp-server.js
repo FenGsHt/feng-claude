@@ -479,7 +479,8 @@ async function handleTool(name, args) {
       case 'browser_screenshot_diff': {
         const r = await callHttp('/screenshot-compare', { imageA: args.imageA, imageB: args.imageB, threshold: args.threshold })
         if (r.similarity !== undefined) {
-          const txt = `Similarity: ${r.similarity}% | Diff pixels: ${r.diffPixels}/${r.totalPixels} (${r.diffPercent}%) | Size: ${r.width}x${r.height}`
+          const sizeNote = r.sizeMatch ? '' : ` | ⚠ Size mismatch — missing ${r.missingPixels} pixels`
+          const txt = `Similarity: ${r.similarity}% | Diff pixels: ${r.diffPixels}/${r.totalPixels} (${r.diffPercent}%)${sizeNote} | Compare area: ${r.width}x${r.height}`
           return [
             { type: 'text', text: txt },
             { type: 'image', data: r.diffImage, mimeType: 'image/png' }

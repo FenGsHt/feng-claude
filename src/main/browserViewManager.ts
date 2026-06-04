@@ -1719,49 +1719,66 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
               })
 
             const [imgA, imgB] = await Promise.all([decodePNG(b64A), decodePNG(b64B)])
-            const w = Math.min(imgA.width, imgB.width)
-            const h = Math.min(imgA.height, imgB.height)
-            const totalPixels = w * h
+            const cmpW = Math.min(imgA.width, imgB.width)
+            const cmpH = Math.min(imgA.height, imgB.height)
+            // 总像素用较大图的面积，缺失部分算 diff
+            const maxW = Math.max(imgA.width, imgB.width)
+            const maxH = Math.max(imgA.height, imgB.height)
+            const totalPixels = maxW * maxH
+            const missingPixels = totalPixels - cmpW * cmpH
 
-            const diff = new PNG({ width: w, height: h })
-            let diffPixels = 0
+            const diff = new PNG({ width: cmpW, height: cmpH })
+            let rawDiffPixels = 0
+            let weightedDiff = 0
 
-            for (let y = 0; y < h; y++) {
-              for (let x = 0; x < w; x++) {
-                const i = (y * w + x) * 4
+            for (let y = 0; y < cmpH; y++) {
+              for (let x = 0; x < cmpW; x++) {
+                const i = (y * cmpW + x) * 4
                 const iA = (y * imgA.width + x) * 4
                 const iB = (y * imgB.width + x) * 4
-                const dr = Math.abs(imgA.data[iA] - imgB.data[iB])
-                const dg = Math.abs(imgA.data[iA + 1] - imgB.data[iB + 1])
-                const db = Math.abs(imgA.data[iA + 2] - imgB.data[iB + 2])
+                const rA = imgA.data[iA], gA = imgA.data[iA + 1], bA = imgA.data[iA + 2]
+                const rB = imgB.data[iB], gB = imgB.data[iB + 1], bB = imgB.data[iB + 2]
+                const dr = Math.abs(rA - rB)
+                const dg = Math.abs(gA - gB)
+                const db = Math.abs(bA - bB)
+                // 判断是否是近似纯色背景像素（饱和度低、亮度高或低）
+                const maxC = Math.max(rA, gA, bA)
+                const minC = Math.min(rA, gA, bA)
+                const isBg = (maxC - minC) < 20 // 低饱和度 ≈ 背景
+                const weight = isBg ? 1 : 3    // 内容区差异权重 ×3
                 if (dr + dg + db > threshold) {
-                  diffPixels++
+                  rawDiffPixels++
+                  weightedDiff += weight
                   diff.data[i] = 255; diff.data[i + 1] = 60; diff.data[i + 2] = 60; diff.data[i + 3] = 220
                 } else {
-                  diff.data[i] = imgA.data[iA]
-                  diff.data[i + 1] = imgA.data[iA + 1]
-                  diff.data[i + 2] = imgA.data[iA + 2]
+                  weightedDiff += 0
+                  diff.data[i] = rA; diff.data[i + 1] = gA; diff.data[i + 2] = bA
                   diff.data[i + 3] = Math.round(imgA.data[iA + 3] * 0.35)
                 }
               }
             }
+
+            // 加权总分：缺失部分按内容权重算（保守取 ×2）
+            const weightedTotal = cmpW * cmpH * 1 + missingPixels * 2 + rawDiffPixels * 2
+            const weightedScore = weightedDiff + missingPixels * 2
+            const diffPercent = parseFloat(((weightedScore / weightedTotal) * 100).toFixed(2))
+            const similarity = parseFloat((100 - diffPercent).toFixed(2))
 
             const diffBuf = await new Promise<Buffer>((resolve, reject) => {
               const chunks: Buffer[] = []
               diff.pack().on('data', (c: Buffer) => chunks.push(c)).on('end', () => resolve(Buffer.concat(chunks))).on('error', reject)
             })
 
-            const diffPercent = parseFloat(((diffPixels / totalPixels) * 100).toFixed(2))
-            const similarity = parseFloat((100 - diffPercent).toFixed(2))
-
             res.writeHead(200); res.end(JSON.stringify({
               similarity,
               diffPercent,
-              diffPixels,
+              diffPixels: rawDiffPixels,
+              missingPixels,
               totalPixels,
               diffImage: diffBuf.toString('base64'),
-              width: w,
-              height: h
+              width: cmpW,
+              height: cmpH,
+              sizeMatch: imgA.width === imgB.width && imgA.height === imgB.height
             }))
           } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
           return

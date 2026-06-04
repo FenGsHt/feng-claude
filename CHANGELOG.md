@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.32] - 2026-06-04
+
+### 修复 | Bug Fixes
+- **TUI 应用显示异常（lazygit/vim 光标乱跳）**：移除 xterm.js `convertEol: true`，该选项将 `\n` 强制转为 `\r\n`，导致 TUI 应用光标定位错误、残影
+- **Windows ConPTY 支持**：设置页新增「ConPTY 模式」开关，可改善 TUI 应用兼容性（重启会话生效）
+- **截图对比相似度虚高**：对比算法改为使用较大图的总面积，缺失部分计入差异；内容区差异权重 ×3，减少背景像素稀释
+- **文本编辑器 Esc 误关闭**：Esc 不再关闭编辑器，只关闭子面板（picker/查找栏等）
+
 ## [0.7.31] - 2026-06-04
 
 ### 新功能 | New Features
