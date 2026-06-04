@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.29] - 2026-06-04
+
+### 修复 | Bug Fixes
+- **Alt+R 切换会话无效**：移除主进程对 Alt+R 的 `before-input-event` 拦截，恢复按键传达到 renderer
+
 ## [0.7.28] - 2026-06-04
 
 ### 新功能 | New Features
