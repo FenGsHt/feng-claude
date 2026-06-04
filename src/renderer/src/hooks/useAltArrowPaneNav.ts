@@ -14,8 +14,8 @@ export function useAltArrowPaneNav(enabled: boolean): void {
     if (!enabled) return
 
     const onKeyDown = (e: KeyboardEvent): void => {
-      // Ctrl+Shift+E/R：在 sessions 列表中切换上一个/下一个会话（标签页 or 分屏均适用）
-      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+      // Alt+E/R：在 sessions 列表中切换上一个/下一个会话（标签页 or 分屏均适用）
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
         const k = e.key.toLowerCase()
         if (k === 'e' || k === 'r') {
           e.preventDefault()

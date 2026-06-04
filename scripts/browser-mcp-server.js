@@ -75,6 +75,18 @@ const TOOLS = [
     }
   },
   {
+    name: 'browser_eval_in_frame',
+    description: 'Execute JavaScript inside a cross-origin iframe using CDP isolated world. Works where browser_eval+frameSelector fails due to cross-origin restrictions. Use browser_get_frames first to find the frame URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        frameUrl: { type: 'string', description: 'Partial URL string to match the target iframe (e.g. "cloudflare.com" or "recaptcha")' },
+        javascript: { type: 'string', description: 'JS code to execute inside the frame' }
+      },
+      required: ['frameUrl', 'javascript']
+    }
+  },
+  {
     name: 'browser_show',
     description: 'Show the embedded browser in the app window',
     inputSchema: { type: 'object', properties: {}, required: [] }
@@ -353,6 +365,10 @@ async function handleTool(name, args) {
       }
       case 'browser_eval': {
         const r = await callHttp('/eval', { javascript: args.javascript, frameSelector: args.frameSelector })
+        return [{ type: 'text', text: r.result !== undefined ? String(r.result) : `Failed: ${r.error}` }]
+      }
+      case 'browser_eval_in_frame': {
+        const r = await callHttp('/eval-in-frame', { frameUrl: args.frameUrl, javascript: args.javascript })
         return [{ type: 'text', text: r.result !== undefined ? String(r.result) : `Failed: ${r.error}` }]
       }
       case 'browser_show': {

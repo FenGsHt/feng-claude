@@ -347,6 +347,20 @@ function ensureTokenlessTelegramStateDir(absDir: string): void {
   }
 }
 
+/** [2026-06-03] 判断该 session 是否会尝试启用 Telegram channel（不实际创建目录） */
+function preparedWouldEnableTelegram(
+  _sessionId: string,
+  settings: ClaudeSettings,
+  requested?: TelegramChannelSessionConfig,
+  shellOnly?: boolean
+): boolean {
+  if (shellOnly) return false
+  const config = requested ?? (settings.telegramChannel ? defaultTelegramFromGlobal(settings.telegramChannel) : undefined)
+  if (!config?.enabled) return false
+  const token = (config.botToken ?? settings.telegramChannel?.defaultBotToken)?.trim()
+  return !!token
+}
+
 function prepareTelegramChannel(
   sessionId: string,
   settings: ClaudeSettings,
@@ -571,10 +585,17 @@ export class PtyManager {
   private sessions = new Map<string, PtySession>()
   private win: BrowserWindow
   private settingsStore: SettingsStore
+  /** [2026-06-03] 同时只允许一个 session 持有 Telegram channel，防止多个 Claude 进程争抢同一 bot 消息 */
+  private telegramOwnerSessionId: string | null = null
 
   constructor(win: BrowserWindow, settingsStore: SettingsStore) {
     this.win = win
     this.settingsStore = settingsStore
+  }
+
+  /** 当前持有 Telegram channel 的 sessionId（供 IPC 查询） */
+  getTelegramOwnerSessionId(): string | null {
+    return this.telegramOwnerSessionId
   }
 
   async createSession(
@@ -603,7 +624,19 @@ export class PtyManager {
     const isWindows = process.platform === 'win32'
     const customShell = s.terminal?.shell?.trim()
     const shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash'))
-    const preparedTelegram = prepareTelegramChannel(sessionId, s, telegramChannel, shellOnly)
+
+    // [2026-06-03] Telegram 单会话锁：已有其他 session 持有 bot，则本 session 用隔离目录，避免多进程争抢同一 Telegram bot
+    let effectiveTelegramChannel = telegramChannel
+    if (preparedWouldEnableTelegram(sessionId, s, telegramChannel, shellOnly)) {
+      if (this.telegramOwnerSessionId && this.telegramOwnerSessionId !== sessionId && this.sessions.has(this.telegramOwnerSessionId)) {
+        console.log('[telegram-channel] session', sessionId, 'blocked — owner is', this.telegramOwnerSessionId)
+        effectiveTelegramChannel = { ...(telegramChannel ?? defaultTelegramFromGlobal(s.telegramChannel!)!), enabled: false }
+      } else {
+        this.telegramOwnerSessionId = sessionId
+        console.log('[telegram-channel] session', sessionId, 'acquired Telegram owner lock')
+      }
+    }
+    const preparedTelegram = prepareTelegramChannel(sessionId, s, effectiveTelegramChannel, shellOnly)
 
     // [2026-05-09] 清空 Telegram 积压队列，防止旧消息在 bot 启动后被重新投递导致「Interrupted」级联
     if (preparedTelegram.launchEnabled && preparedTelegram.env?.TELEGRAM_BOT_TOKEN) {
@@ -778,6 +811,7 @@ export class PtyManager {
           exitCode
         })
       }
+      if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
       this.sessions.delete(sessionId)
     })
 
@@ -823,6 +857,7 @@ export class PtyManager {
     // No running daemon — spawn a new one
     const scriptPath = resolveDaemonScript()
     if (!scriptPath) {
+      if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
       this.sessions.delete(sessionId)
       throw new Error('[pty-daemon] Script not found; cannot create persistent session')
     }
@@ -855,12 +890,14 @@ export class PtyManager {
 
     const state = await waitForDaemonState(statePath)
     if (!state) {
+      if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
       this.sessions.delete(sessionId)
       throw new Error('[pty-daemon] Timed out waiting for daemon to start')
     }
 
     const socket = await tryConnectDaemon(state.pipe)
     if (!socket) {
+      if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
       this.sessions.delete(sessionId)
       throw new Error('[pty-daemon] Daemon started but could not connect to pipe')
     }
@@ -892,7 +929,8 @@ export class PtyManager {
             if (!this.win.isDestroyed()) {
               this.win.webContents.send(IPC.PTY_STATUS, { sessionId, status: 'exited', exitCode: msg.code ?? 0 })
             }
-            this.sessions.delete(sessionId)
+            if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
+      this.sessions.delete(sessionId)
           }
         } catch { /* bad JSON */ }
       }
@@ -904,7 +942,8 @@ export class PtyManager {
         if (!this.win.isDestroyed()) {
           this.win.webContents.send(IPC.PTY_STATUS, { sessionId, status: 'error', exitCode: -1 })
         }
-        this.sessions.delete(sessionId)
+        if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
+      this.sessions.delete(sessionId)
       }
     })
 
@@ -970,6 +1009,7 @@ export class PtyManager {
           }
         }
       }
+      if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
       this.sessions.delete(sessionId)
     }
   }

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.28] - 2026-06-04
+
+### 新功能 | New Features
+- **`browser_eval_in_frame`**：通过 CDP isolated world 在跨域 iframe 内执行 JS，突破同源限制；用 `frameUrl` 匹配目标 frame，无需 CSS 选择器
+- **Alt+E/R 切换会话**：快捷键从 Ctrl+Shift+E/R 改为 Alt+E/R，切换上一个/下一个终端会话
+
+### 修复 | Bug Fixes
+- **Telegram 多会话路由混乱**：新增 owner 锁，同时打开多个 CC 终端时只有第一个获得 Telegram bot 控制权，避免消息随机分发到不同会话
+
 ## [0.7.27] - 2026-06-03
 
 ### 修复 | Bug Fixes

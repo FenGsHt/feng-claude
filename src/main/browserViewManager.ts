@@ -1299,6 +1299,75 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // POST /eval-in-frame — CDP isolated world，支持跨域 iframe
+        // body: { frameUrl: string (partial URL match), javascript: string }
+        if (path === '/eval-in-frame' && req.method === 'POST') {
+          const body = await readBody(req)
+          const frameUrl = (body?.frameUrl as string) ?? ''
+          const js = (body?.javascript as string) ?? ''
+          if (!frameUrl || !js) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Missing frameUrl or javascript' }))
+            return
+          }
+          const wc = getBrowserViewWebContents()
+          if (!wc) {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' }))
+            return
+          }
+          try {
+            try { wc.debugger.attach('1.3') } catch { /* already attached */ }
+
+            type FrameNode = { frame: { id: string; url: string }; childFrames?: FrameNode[] }
+            const { frameTree } = await wc.debugger.sendCommand('Page.getFrameTree', {}) as { frameTree: FrameNode }
+
+            function findFrameId(node: FrameNode): string | null {
+              if (node.frame.url.includes(frameUrl)) return node.frame.id
+              for (const child of (node.childFrames ?? [])) {
+                const found = findFrameId(child)
+                if (found) return found
+              }
+              return null
+            }
+
+            const frameId = findFrameId(frameTree)
+            if (!frameId) {
+              res.writeHead(404); res.end(JSON.stringify({ error: `No frame matching "${frameUrl}" found` }))
+              return
+            }
+
+            // grantUniversalAccess 让 isolated world 可以访问跨域 frame 的 DOM
+            const { executionContextId } = await wc.debugger.sendCommand('Page.createIsolatedWorld', {
+              frameId,
+              worldName: 'mcp-frame-eval',
+              grantUniversalAccess: true
+            }) as { executionContextId: number }
+
+            const evalResult = await wc.debugger.sendCommand('Runtime.evaluate', {
+              expression: js,
+              contextId: executionContextId,
+              returnByValue: true,
+              awaitPromise: true
+            }) as { result: { value?: unknown; description?: string }; exceptionDetails?: { text: string } }
+
+            if (evalResult.exceptionDetails) {
+              res.writeHead(500); res.end(JSON.stringify({ error: evalResult.exceptionDetails.text }))
+              return
+            }
+
+            const value = evalResult.result?.value
+            res.writeHead(200)
+            res.end(JSON.stringify({
+              result: value !== undefined
+                ? (typeof value === 'string' ? value : JSON.stringify(value))
+                : (evalResult.result?.description ?? 'undefined'),
+              frameId
+            }))
+          } catch (e) {
+            res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))
+          }
+          return
+        }
+
         if (path === '/show') {
           if (!state.mainWin) {
             res.writeHead(500); res.end(JSON.stringify({ visible: false, error: 'No main window is registered for embedded browser' }))
