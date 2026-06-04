@@ -138,6 +138,11 @@ export function focusTerminal(sessionId: string): void {
   terminals.get(sessionId)?.term.focus()
 }
 
+/** 返回 xterm 内部 textarea，用于触发 IME 激活（click+focus） */
+export function getTerminalTextarea(sessionId: string): HTMLTextAreaElement | null {
+  return (terminals.get(sessionId)?.term.textarea as HTMLTextAreaElement) ?? null
+}
+
 /** [2026-05-07] 浮窗挂载同一 xterm 时，布局稳定前 fit 可能吃到 0 尺寸；显式唤醒重绘 */
 export function wakeTerminal(sessionId: string): void {
   const entry = terminals.get(sessionId)

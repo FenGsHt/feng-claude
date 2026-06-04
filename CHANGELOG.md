@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.33] - 2026-06-04
+
+### 修复 | Bug Fixes
+- **元素拾取器 HTML 输出过长**：改为只输出开头标签（含 class/id），不再输出完整 outerHTML
+- **拾取后中文 IME 失效**：聚焦 CC 终端后额外触发 `click()`，正确激活 Windows IME，不再需要手动输入字符唤醒
+
 ## [0.7.32] - 2026-06-04
 
 ### 修复 | Bug Fixes
