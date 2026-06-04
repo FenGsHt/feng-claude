@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.34] - 2026-06-04
+
+### 修复 | Bug Fixes
+- **拾取后中文 IME 概率失效**：增加 `compositionend` 事件派发清空拾取器遗留的 IME pending 状态；延迟加长至 150ms；350ms 处二次 click+focus 兜底，消除概率性需要退格才能输入中文的问题
+
 ## [0.7.33] - 2026-06-04
 
 ### 修复 | Bug Fixes

@@ -301,10 +301,19 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         window.electronAPI.sendInput(sess.id, ref)
         focusTerminal(sess.id)
         // [2026-06-04] click() 触发 Windows IME 激活，避免聚焦后中文输入失效
+        // [2026-06-04] compositionend 清空拾取器遗留的 IME pending 状态（避免需要退格才能输中文）
         setTimeout(() => {
           const ta = getTerminalTextarea(sess.id)
-          if (ta) { ta.click(); ta.focus() }
-        }, 80)
+          if (ta) {
+            ta.click(); ta.focus()
+            ta.dispatchEvent(new CompositionEvent('compositionend', { data: '', bubbles: true, cancelable: false }))
+          }
+        }, 150)
+        // 二次保险：150ms 后再 click+focus，覆盖 IME attach 时序不确定的情况
+        setTimeout(() => {
+          const ta = getTerminalTextarea(sess.id)
+          if (ta && document.activeElement !== ta) { ta.click(); ta.focus() }
+        }, 350)
       } else {
         // 外嵌输入框注入后，等主窗口 webContents focus 完成再聚焦（多帧保险）
         setTimeout(() => focusEmbedInput(sess.id), 50)
