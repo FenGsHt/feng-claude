@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.30] - 2026-06-04
+
+### 新功能 | New Features
+- **`browser_scroll` 新增 `deltaY` 参数**：相对滚动（正数向下，负数向上），可触发懒加载内容（如 Discourse 论坛分页）
+- **`browser_get_text` 新增 `maxLength` 参数**：默认上限从 8000 提升至 30000 字符，可自定义
+
 ## [0.7.29] - 2026-06-04
 
 ### 修复 | Bug Fixes

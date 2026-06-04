@@ -1264,8 +1264,9 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             const js = selector
               ? `(document.querySelector('${selector.replace(/'/g, "\\'")}' )?.innerText) ?? ''`
               : 'document.body?.innerText ?? ""'
+            const maxLength = Number(url.searchParams.get('maxLength')) || 30000
             const text = await webContents.executeJavaScript(js)
-            res.writeHead(200); res.end(JSON.stringify({ text: String(text).slice(0, 8000) }))
+            res.writeHead(200); res.end(JSON.stringify({ text: String(text).slice(0, maxLength) }))
           } catch (e) {
             res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))
           }
@@ -1438,16 +1439,21 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
-        // POST /scroll — 滚动到元素或坐标 { selector? x? y? behavior? }
+        // POST /scroll — 滚动到元素或坐标，或相对滚动 { selector? x? y? deltaY? behavior? }
         if (path === '/scroll' && req.method === 'POST') {
           const body = await readBody(req)
           const wc = getBrowserViewWebContents()
           if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
           try {
-            const { selector, x, y, behavior = 'smooth' } = body as Record<string, unknown>
-            const js = selector
-              ? `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return false;el.scrollIntoView({behavior:${JSON.stringify(behavior)},block:'center'});return true})()`
-              : `window.scrollTo({left:${Number(x)||0},top:${Number(y)||0},behavior:${JSON.stringify(behavior)}});true`
+            const { selector, x, y, deltaY, behavior = 'smooth' } = body as Record<string, unknown>
+            let js: string
+            if (selector) {
+              js = `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return false;el.scrollIntoView({behavior:${JSON.stringify(behavior)},block:'center'});return true})()`
+            } else if (deltaY !== undefined) {
+              js = `window.scrollBy({left:0,top:${Number(deltaY)},behavior:${JSON.stringify(behavior)}});true`
+            } else {
+              js = `window.scrollTo({left:${Number(x)||0},top:${Number(y)||0},behavior:${JSON.stringify(behavior)}});true`
+            }
             const ok = await wc.executeJavaScript(js)
             res.writeHead(200); res.end(JSON.stringify({ ok: !!ok }))
           } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }

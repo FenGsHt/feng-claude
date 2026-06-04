@@ -55,10 +55,13 @@ const TOOLS = [
   },
   {
     name: 'browser_get_text',
-    description: 'Get page text, optionally filtered by CSS selector',
+    description: 'Get page text, optionally filtered by CSS selector. Default limit is 30000 chars; pass maxLength to get more or less.',
     inputSchema: {
       type: 'object',
-      properties: { selector: { type: 'string', description: 'CSS selector (optional)' } },
+      properties: {
+        selector: { type: 'string', description: 'CSS selector (optional)' },
+        maxLength: { type: 'number', description: 'Max characters to return (default 30000)' }
+      },
       required: []
     }
   },
@@ -147,13 +150,14 @@ const TOOLS = [
   },
   {
     name: 'browser_scroll',
-    description: 'Scroll the page to a CSS selector or to specific x/y coordinates.',
+    description: 'Scroll the page. Use deltaY for relative scrolling (positive=down, negative=up) — useful for triggering lazy-loaded content. Use selector to scroll an element into view. Use x/y for absolute position.',
     inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector to scroll into view (optional)' },
-        x: { type: 'number', description: 'Horizontal scroll position in pixels (used if no selector)' },
-        y: { type: 'number', description: 'Vertical scroll position in pixels (used if no selector)' },
+        deltaY: { type: 'number', description: 'Relative vertical scroll in pixels, e.g. 800 scrolls down one screen. Use this to trigger lazy-loaded content.' },
+        x: { type: 'number', description: 'Absolute horizontal scroll position (used if no selector/deltaY)' },
+        y: { type: 'number', description: 'Absolute vertical scroll position (used if no selector/deltaY)' },
         behavior: { type: 'string', description: '"smooth" (default) or "instant"' }
       },
       required: []
@@ -359,7 +363,8 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: r.url || 'No page loaded' }]
       }
       case 'browser_get_text': {
-        const path = args.selector ? `/text?selector=${encodeURIComponent(args.selector)}` : '/text'
+        let path = args.selector ? `/text?selector=${encodeURIComponent(args.selector)}` : '/text'
+        if (args.maxLength) path += `${path.includes('?') ? '&' : '?'}maxLength=${args.maxLength}`
         const r = await callHttp(path)
         return [{ type: 'text', text: r.text || '' }]
       }
@@ -414,7 +419,7 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: r.html ?? `Failed: ${r.error}` }]
       }
       case 'browser_scroll': {
-        const r = await callHttp('/scroll', { selector: args.selector, x: args.x, y: args.y, behavior: args.behavior || 'smooth' })
+        const r = await callHttp('/scroll', { selector: args.selector, deltaY: args.deltaY, x: args.x, y: args.y, behavior: args.behavior || 'smooth' })
         return [{ type: 'text', text: r.ok ? `Scrolled${args.selector ? ` to ${args.selector}` : ` to (${args.x||0},${args.y||0})`}` : `Failed: ${r.error}` }]
       }
       case 'browser_key': {
