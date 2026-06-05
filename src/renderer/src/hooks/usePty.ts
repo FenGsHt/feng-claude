@@ -61,7 +61,17 @@ function applyTranscriptStatusBlock(sessionId: string): void {
   if (!fence) return
   const sig = fence[0]
   if (lastAppliedStatusBlock.get(sessionId) === sig) return // 同一块，跳过
-  const updates = parseTodoStatusBlock(text)
+  const parsed = parseTodoStatusBlock(text)
+  if (parsed.length === 0) return
+  // 把序号（或 id）解析成条目 id：序号经本会话 workdir 的有序映射，uuid 直接用
+  const wd = useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir ?? ''
+  const order = useTodoListStore.getState().lastRunOrderByWorkdir[wd] ?? []
+  const updates = parsed
+    .map((p) => {
+      const id = /^\d+$/.test(p.ref) ? order[parseInt(p.ref, 10) - 1] : p.ref
+      return id ? { id, status: p.status, note: p.note } : null
+    })
+    .filter((u): u is { id: string; status: typeof parsed[number]['status']; note?: string } => u !== null)
   if (updates.length > 0) {
     useTodoListStore.getState().applyStatusById(updates)
     lastAppliedStatusBlock.set(sessionId, sig)

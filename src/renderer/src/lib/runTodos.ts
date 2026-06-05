@@ -39,23 +39,23 @@ export async function runTodoList(
   const pending = list.items.filter((t) => t.status === 'pending')
   if (pending.length === 0) return false
 
-  // 1) 写入项目文件，供 Claude 执行中重读/勾选；并确保不会被误提交
+  // 1) 写入项目文件作为兼容兜底；并确保不会被误提交
   await ensureGitignored(workdir, '.feng-todos.md')
   await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(list.items))
-  // 记录该 workdir 本次运行的清单，供 idle 自动回读
-  useTodoListStore.getState().setLastRun(workdir, listId)
+  // 记录本次运行清单 + 发给 Claude 的有序 id（序号→id 映射，供解析状态块）
+  useTodoListStore.getState().setLastRun(workdir, listId, pending.map((t) => t.id))
 
-  // 2) 组装 prompt 并自动发送。状态回传靠「回复末尾的状态块」，比让 Claude 编辑文件可靠。
-  const lines = pending.map((t) => `- [${t.id}] ${t.text}`).join('\n')
+  // 2) 组装 prompt 并自动发送。用「序号」而非内部 id，避免 Claude 把 id 当成任务系统的 ID 去查找。
+  const lines = pending.map((t, i) => `${i + 1}. ${t.text}`).join('\n')
   const prompt =
-    `请依次完成下面清单「${list.name}」的待办（每条前方括号里是它的 id）：\n${lines}\n\n` +
-    `全部处理完后，必须在回复的最后输出一个状态块，逐项用 id 汇报结果（这是必须的交付物，不要省略）：\n` +
+    `请依次完成下面清单「${list.name}」的待办：\n${lines}\n\n` +
+    `全部处理完后，必须在回复的最后输出一个状态块，按上面的序号逐项汇报结果（这是必须的交付物，不要省略；序号只是行号，不要当作任何系统里的 ID）：\n` +
     '```todo-status\n' +
-    `<id> = done            # 已完成\n` +
-    `<id> = failed: 原因     # 无法完成（受阻/缺前置条件）\n` +
-    `<id> = clarify: 疑问    # 需求不清，需要我补充说明\n` +
+    `1 = done            # 已完成\n` +
+    `2 = failed: 原因     # 无法完成（受阻/缺前置条件）\n` +
+    `3 = clarify: 疑问    # 需求不清，需要我补充说明\n` +
     '```\n' +
-    `只列出上面这些条目，每行一个 id。`
+    `每行一个序号，只列出上面这些条目。`
   submitEmbedSessionInput(sessionId, prompt)
   return true
 }
@@ -81,12 +81,18 @@ export async function answerTodoClarification(
   if (!list) return false
   await ensureGitignored(workdir, '.feng-todos.md')
   await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(list.items))
-  useTodoListStore.getState().setLastRun(workdir, listId)
+  // 本次只涉及这一条：序号 1 → 该条目 id
+  useTodoListStore.getState().setLastRun(workdir, listId, [todoId])
 
   const qLine = question ? `你之前的疑问是：${question}\n` : ''
   const prompt =
     `关于待办「${text}」：\n${qLine}用户补充说明：${trimmed}\n` +
-    `请据此继续完成该项，完成后在 .feng-todos.md 把它改为 [x]；若仍有疑问可再改为 [?] 并更新 clarify 备注。`
+    `请据此继续完成该项。完成后在回复末尾输出状态块汇报结果：\n` +
+    '```todo-status\n' +
+    `1 = done            # 已完成\n` +
+    `1 = clarify: 疑问    # 仍需澄清\n` +
+    '```\n' +
+    `（序号 1 即这条；只输出一行。）`
   submitEmbedSessionInput(sessionId, prompt)
   return true
 }
