@@ -21,7 +21,7 @@ import {
 } from '../store/ptyAlternateScreenStore'
 import { stripAnsi } from '../lib/stripAnsi'
 import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
-import { syncTodosFromFile } from '../store/todoListStore'
+import { syncTodosFromFile, parseTodoStatusBlock, useTodoListStore } from '../store/todoListStore'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -249,9 +249,23 @@ export function usePty(): void {
         clearPtyAlternateScreenSession(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
-        /* [2026-06-05] Claude 一轮结束：回读 .feng-todos.md 勾选状态，自动刷新侧边栏待办 */
-        const wd = useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir
-        if (wd) void syncTodosFromFile(wd)
+        /* [2026-06-05] Claude 一轮结束：优先解析回复末尾的 todo-status 状态块刷新待办；
+         *   无状态块时回退到读 .feng-todos.md（兼容 Claude 真去编辑文件的情况）。 */
+        {
+          const entries = useTranscriptStore.getState().bySession[sessionId] ?? []
+          const replyText = entries
+            .filter((e) => e.kind === 'assistant')
+            .slice(-12)
+            .map((e) => e.text)
+            .join('\n')
+          const updates = parseTodoStatusBlock(replyText)
+          if (updates.length > 0) {
+            useTodoListStore.getState().applyStatusById(updates)
+          } else {
+            const wd = useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir
+            if (wd) void syncTodosFromFile(wd)
+          }
+        }
       }
       /* [2026-05-07] waiting_input = Claude Code 等待用户确认（如 MCP 权限弹窗）→ 自动打开浮窗以便用户交互 */
       if (status === 'waiting_input') {

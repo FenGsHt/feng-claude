@@ -45,15 +45,17 @@ export async function runTodoList(
   // 记录该 workdir 本次运行的清单，供 idle 自动回读
   useTodoListStore.getState().setLastRun(workdir, listId)
 
-  // 2) 组装 prompt 并自动发送
-  const lines = pending.map((t, i) => `${i + 1}. ${t.text}`).join('\n')
+  // 2) 组装 prompt 并自动发送。状态回传靠「回复末尾的状态块」，比让 Claude 编辑文件可靠。
+  const lines = pending.map((t) => `- [${t.id}] ${t.text}`).join('\n')
   const prompt =
-    `请依次完成下面的待办清单「${list.name}」，并在 .feng-todos.md 中实时更新每项状态：\n` +
-    `- 完成：把该行的 [ ] 改为 [x]\n` +
-    `- 无法完成（受阻/缺前置条件）：改为 [!]，并在该行 \`<!-- id:... -->\` 注释里追加 \` failed:简短原因\`\n` +
-    `- 需求不清、无从下手：改为 [?]，并在该行 \`<!-- id:... -->\` 注释里追加 \` clarify:你的具体疑问\`（例如 \`<!-- id:abc clarify:指的是哪个环境？需要支持哪些字段？ -->\`）\n` +
-    `保持每行的文本和 \`<!-- id:... -->\` 注释不变，只改状态标记和追加备注，不要删除任何条目。\n\n` +
-    `待办清单（也已写入 @.feng-todos.md）：\n${lines}`
+    `请依次完成下面清单「${list.name}」的待办（每条前方括号里是它的 id）：\n${lines}\n\n` +
+    `全部处理完后，必须在回复的最后输出一个状态块，逐项用 id 汇报结果（这是必须的交付物，不要省略）：\n` +
+    '```todo-status\n' +
+    `<id> = done            # 已完成\n` +
+    `<id> = failed: 原因     # 无法完成（受阻/缺前置条件）\n` +
+    `<id> = clarify: 疑问    # 需求不清，需要我补充说明\n` +
+    '```\n' +
+    `只列出上面这些条目，每行一个 id。`
   submitEmbedSessionInput(sessionId, prompt)
   return true
 }

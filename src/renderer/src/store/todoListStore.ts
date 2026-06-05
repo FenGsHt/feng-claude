@@ -45,6 +45,8 @@ interface TodoListStore {
   setLastRun: (workdir: string, listId: string) => void
   /** 用 .feng-todos.md 解析出的条目回写某清单（优先按 id、回退按文本匹配，保守合并） */
   syncFromMarkdown: (listId: string, parsed: TodoItem[]) => void
+  /** 按条目 id 跨所有清单更新状态（来自 Claude 回复里的状态块） */
+  applyStatusById: (updates: Array<{ id: string; status: TodoStatus; note?: string }>) => void
 }
 
 function genId(): string {
@@ -185,6 +187,21 @@ export const useTodoListStore = create<TodoListStore>()(
               return merged
             })
           }
+        }),
+
+      applyStatusById: (updates) =>
+        set((s) => {
+          if (!updates.length) return {}
+          const byId = new Map(updates.map((u) => [u.id, u]))
+          return {
+            lists: s.lists.map((l) => ({
+              ...l,
+              items: l.items.map((it) => {
+                const u = byId.get(it.id)
+                return u ? { ...it, status: u.status, note: u.note } : it
+              })
+            }))
+          }
         })
     }),
     {
@@ -226,6 +243,48 @@ export const useTodoListStore = create<TodoListStore>()(
 const META_RE = /\s*<!--\s*(.*?)\s*-->\s*$/
 // 向后兼容：旧格式 `<!-- failed: 原因 -->`（无 id）
 const LEGACY_FAILED_RE = /^(?:failed|失败|原因|reason)\s*[:：]?\s*(.*)$/i
+
+/**
+ * [2026-06-05] 解析 Claude 回复里的状态块，按 id 汇报每项结果。比让 Claude 编辑文件可靠。
+ * 形如：
+ *   ```todo-status
+ *   a206ff1f = done
+ *   <id> = failed: 原因
+ *   <id> = clarify: 疑问
+ *   ```
+ * 找不到围栏块时，退而在全文里扫 `<id> = <status>` 行。
+ */
+export function parseTodoStatusBlock(text: string): Array<{ id: string; status: TodoStatus; note?: string }> {
+  if (!text) return []
+  const fence = text.match(/```+\s*todo-status\s*\r?\n([\s\S]*?)```/i)
+  const body = fence ? fence[1] : text
+  const lineRe =
+    /^\s*[-*]?\s*\[?([0-9a-fA-F][0-9a-fA-F-]{4,})\]?\s*[=:：]\s*(done|failed|clarify|pending|完成|失败|需澄清)\b\s*[:：\-]?\s*(.*?)\s*$/i
+  const out: Array<{ id: string; status: TodoStatus; note?: string }> = []
+  const seen = new Set<string>()
+  for (const raw of body.split(/\r?\n/)) {
+    const m = raw.match(lineRe)
+    if (!m) continue
+    const id = m[1]
+    if (seen.has(id)) continue
+    seen.add(id)
+    const sraw = m[2].toLowerCase()
+    const status: TodoStatus =
+      sraw === 'done' || sraw === '完成'
+        ? 'done'
+        : sraw === 'failed' || sraw === '失败'
+          ? 'failed'
+          : sraw === 'clarify' || sraw === '需澄清'
+            ? 'needs_clarify'
+            : 'pending'
+    out.push({
+      id,
+      status,
+      note: (status === 'failed' || status === 'needs_clarify') && m[3] ? m[3] : undefined
+    })
+  }
+  return out
+}
 
 /** TodoItem[] → .feng-todos.md 文本。每行带隐藏 id；失败附原因、需澄清附疑问。 */
 export function todosToMarkdown(items: TodoItem[]): string {
