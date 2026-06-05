@@ -257,57 +257,58 @@ function ListCard({
           </button>
         )}
         {/* run all (reset every item to pending, then run) — 二次点击确认 */}
-        {items.length > 0 && (
-          <button
-            onClick={() => {
-              if (confirm === 'runAll') {
+        {items.length > 0 &&
+          (confirm === 'runAll' ? (
+            <button
+              onClick={() => {
                 disarm()
                 resetAll(list.id)
                 void runTodoList(activeSessionId, list.id)
-              } else {
-                arm('runAll')
-              }
-            }}
-            title={
-              !targetName
-                ? t.todolist.noActiveSession
-                : confirm === 'runAll'
-                  ? t.todolist.confirmRunAll
-                  : `${t.todolist.runAllTitle} → ${targetName}`
-            }
-            disabled={!targetName}
-            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              confirm === 'runAll'
-                ? 'text-sky-300 bg-sky-500/30 ring-1 ring-sky-400/60'
-                : 'text-sky-400 hover:bg-sky-500/20'
-            }`}
-          >
-            {/* 双三角：全部重跑 */}
-            <svg width="11" height="11" viewBox="0 0 12 11" fill="none">
-              <path d="M1.5 1.5l4 4-4 4v-8z" fill="currentColor" />
-              <path d="M6.5 1.5l4 4-4 4v-8z" fill="currentColor" />
-            </svg>
-          </button>
-        )}
+              }}
+              title={t.todolist.confirmRunAll}
+              className="shrink-0 h-5 px-1.5 flex items-center gap-1 rounded text-[10px] font-medium text-sky-200 bg-sky-500/30 ring-1 ring-sky-400/70 hover:bg-sky-500/45 transition-colors"
+            >
+              <svg width="9" height="9" viewBox="0 0 12 11" fill="none">
+                <path d="M1.5 1.5l4 4-4 4v-8z" fill="currentColor" />
+                <path d="M6.5 1.5l4 4-4 4v-8z" fill="currentColor" />
+              </svg>
+              {t.todolist.confirmShort}
+            </button>
+          ) : (
+            <button
+              onClick={() => arm('runAll')}
+              title={targetName ? `${t.todolist.runAllTitle} → ${targetName}` : t.todolist.noActiveSession}
+              disabled={!targetName}
+              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {/* 双三角：全部重跑 */}
+              <svg width="11" height="11" viewBox="0 0 12 11" fill="none">
+                <path d="M1.5 1.5l4 4-4 4v-8z" fill="currentColor" />
+                <path d="M6.5 1.5l4 4-4 4v-8z" fill="currentColor" />
+              </svg>
+            </button>
+          ))}
         {/* delete list — 二次点击确认 */}
-        <button
-          onClick={() => {
-            if (confirm === 'delete') {
+        {confirm === 'delete' ? (
+          <button
+            onClick={() => {
               disarm()
               deleteList(list.id)
-            } else {
-              arm('delete')
-            }
-          }}
-          title={confirm === 'delete' ? t.todolist.confirmDelete : t.todolist.deleteList}
-          className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors text-xs ${
-            confirm === 'delete'
-              ? 'text-red-300 bg-red-600/40 ring-1 ring-red-400/60'
-              : 'text-claude-muted hover:bg-red-600/20 hover:text-red-400'
-          }`}
-        >
-          {confirm === 'delete' ? '?' : '✕'}
-        </button>
+            }}
+            title={t.todolist.confirmDelete}
+            className="shrink-0 h-5 px-1.5 flex items-center gap-1 rounded text-[10px] font-medium text-red-200 bg-red-600/40 ring-1 ring-red-400/70 hover:bg-red-600/60 transition-colors"
+          >
+            ✕ {t.todolist.confirmShort}
+          </button>
+        ) : (
+          <button
+            onClick={() => arm('delete')}
+            title={t.todolist.deleteList}
+            className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-claude-muted hover:bg-red-600/20 hover:text-red-400 transition-colors text-xs"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* status chips when collapsed */}

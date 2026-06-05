@@ -47,8 +47,9 @@ export const zh = {
     noActiveSession: '无活跃会话 — 运行前请先点击一个终端',
     runAllTitle: '全部重跑（忽略已完成，所有项重置为待办后执行）',
     running: '运行中',
-    confirmDelete: '再次点击确认删除该清单',
-    confirmRunAll: '再次点击确认全部重跑（将清空当前进度）'
+    confirmShort: '确认',
+    confirmDelete: '点击确认删除该清单',
+    confirmRunAll: '点击确认全部重跑（将清空当前进度）'
   },
   // Common actions
   common: {

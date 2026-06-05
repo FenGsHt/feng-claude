@@ -47,8 +47,9 @@ export const en: Translations = {
     noActiveSession: 'No active session — click a terminal first',
     runAllTitle: 'Run all (reset every item to pending, then run)',
     running: 'running',
-    confirmDelete: 'Click again to confirm deleting this list',
-    confirmRunAll: 'Click again to confirm run-all (clears current progress)'
+    confirmShort: 'Confirm',
+    confirmDelete: 'Click to confirm deleting this list',
+    confirmRunAll: 'Click to confirm run-all (clears current progress)'
   },
   common: {
     save: 'Save',
