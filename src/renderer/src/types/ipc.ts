@@ -84,6 +84,9 @@ export const IPC = {
   TOKEN_DATA_GET: 'token-data:get',
   TOKEN_DATA_SET: 'token-data:set',
 
+  KV_GET: 'kv:get',
+  KV_SET: 'kv:set',
+
   MCP_LIST: 'mcp:list',
   MCP_ADD: 'mcp:add',
   MCP_REMOVE: 'mcp:remove',

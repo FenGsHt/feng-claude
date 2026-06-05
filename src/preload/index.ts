@@ -198,6 +198,11 @@ const electronAPI = {
     get: (): Promise<unknown> => ipcRenderer.invoke(IPC.TOKEN_DATA_GET),
     set: (data: unknown): Promise<void> => ipcRenderer.invoke(IPC.TOKEN_DATA_SET, data)
   },
+  kv: {
+    get: (key: string): Promise<string | null> => ipcRenderer.invoke(IPC.KV_GET, key),
+    set: (key: string, value: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke(IPC.KV_SET, { key, value })
+  },
 
   mcp: {
     list: (): Promise<McpEntry[]> => ipcRenderer.invoke(IPC.MCP_LIST),

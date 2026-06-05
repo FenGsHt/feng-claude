@@ -1,6 +1,7 @@
 /** [2026-06-05] 全局可复用的命名待办清单：可建多个，每个可独立编辑并一键交给 Claude 执行。 */
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import { ipcPersistStorage } from '../lib/ipcPersistStorage'
 
 export type TodoStatus = 'pending' | 'done' | 'failed' | 'needs_clarify'
 
@@ -207,6 +208,7 @@ export const useTodoListStore = create<TodoListStore>()(
     {
       name: 'todolist-store',
       version: 3,
+      storage: createJSONStorage(() => ipcPersistStorage),
       partialize: (s) => ({ lists: s.lists, lastRunByWorkdir: s.lastRunByWorkdir }),
       // v1(done) / v2(byWorkdir + status) → v3(lists)
       migrate: (persisted) => {

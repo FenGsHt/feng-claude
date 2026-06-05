@@ -16,6 +16,7 @@ import type { TestManager } from './testManager'
 import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
 import { getTokenData, setTokenData } from './tokenDataStore'
+import { getKv, setKv } from './kvStore'
 import { listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, updateMcpServer } from './mcpManager'
 import { getOfficeCLICurrentStatus, checkAndUpdateOfficeCLI, getOfficeCLIPath } from './officeCliManager'
 import { SKILL_DEFINITIONS } from '../renderer/src/lib/petSkills'
@@ -669,6 +670,12 @@ export function registerIpcHandlers(
   // ── Token data persistence ────────────────────────────────────
   ipcMain.handle(IPC.TOKEN_DATA_GET, async () => getTokenData())
   ipcMain.handle(IPC.TOKEN_DATA_SET, async (_e, data: unknown) => setTokenData(data))
+
+  ipcMain.handle(IPC.KV_GET, async (_e, key: string) => getKv(key))
+  ipcMain.handle(IPC.KV_SET, async (_e, { key, value }: { key: string; value: string }) => {
+    setKv(key, value)
+    return { ok: true }
+  })
 
   // ── Window controls ──────────────────────────────────────────
   ipcMain.on(IPC.APP_MINIMIZE, (e) => {

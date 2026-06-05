@@ -1,7 +1,8 @@
 /** [2026-06-05] 触发器：定时/倒计时/重复间隔后，向当前活跃会话发指令或跑某个待办清单。
  *  定义持久化；计时仅应用运行期有效（重启后重新计时，过去的定时不补触发）。 */
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import { ipcPersistStorage } from '../lib/ipcPersistStorage'
 
 export type TriggerTiming =
   | { mode: 'countdown'; seconds: number } // 一次性：启动后 N 秒
@@ -104,6 +105,7 @@ export const useTriggerStore = create<TriggerStore>()(
     {
       name: 'trigger-store',
       version: 1,
+      storage: createJSONStorage(() => ipcPersistStorage),
       // 持久化定义与启用状态；nextFireAt 运行期重算
       partialize: (s) => ({
         triggers: s.triggers.map((t) => ({
@@ -114,7 +116,11 @@ export const useTriggerStore = create<TriggerStore>()(
           enabled: t.enabled,
           createdAt: t.createdAt
         }))
-      })
+      }),
+      // 异步存储：水合完成后再按当前时间为已启用触发器排程（mount 时的 rearmAll 早于水合）
+      onRehydrateStorage: () => (state) => {
+        state?.rearmAll(Date.now())
+      }
     }
   )
 )

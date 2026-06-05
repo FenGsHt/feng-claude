@@ -126,6 +126,18 @@ export function injectMockElectronAPI(): void {
         get: async () => null,
         set: async () => {}
       },
+      kv: {
+        get: async (key: string) => {
+          try { return localStorage.getItem(`kv:${key}`) } catch { return null }
+        },
+        set: async (key: string, value: string) => {
+          try {
+            if (value === '') localStorage.removeItem(`kv:${key}`)
+            else localStorage.setItem(`kv:${key}`, value)
+          } catch { /* ignore */ }
+          return { ok: true }
+        }
+      },
       officeCli: {
         getStatus: async () => ({
           installed: false, version: null, latestVersion: null,
