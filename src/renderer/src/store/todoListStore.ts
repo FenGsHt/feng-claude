@@ -240,20 +240,33 @@ export function todosToMarkdown(items: TodoItem[]): string {
   return `# Todo List\n\n${lines.join('\n')}\n`
 }
 
+/** 解析文件内容后，定位它对应的清单 id：优先 lastRun，其次按条目 id 重叠最多的清单。 */
+function resolveListForParsed(workdir: string, parsedIds: Set<string>): string | undefined {
+  const store = useTodoListStore.getState()
+  const last = store.lastRunByWorkdir[workdir]
+  if (last && store.lists.some((l) => l.id === last)) return last
+  let best: { id: string; overlap: number } | undefined
+  for (const l of store.lists) {
+    const overlap = l.items.reduce((n, it) => n + (parsedIds.has(it.id) ? 1 : 0), 0)
+    if (overlap > 0 && (!best || overlap > best.overlap)) best = { id: l.id, overlap }
+  }
+  return best?.id
+}
+
 /**
- * [2026-06-05] idle 时回读某 workdir 上次运行的清单文件 .feng-todos.md，刷新对应清单。
- * 仅在该 workdir 有「上次运行清单」记录时才读盘。
+ * [2026-06-05] 回读 workdir 下 .feng-todos.md，刷新对应清单状态。
+ * 不再硬依赖 lastRunByWorkdir：先按它，找不到则按条目 id 重叠定位清单（重启后仍可用）。
  */
 export async function syncTodosFromFile(workdir: string): Promise<void> {
   if (!workdir) return
-  const store = useTodoListStore.getState()
-  const listId = store.lastRunByWorkdir[workdir]
-  if (!listId || !store.lists.some((l) => l.id === listId)) return
   try {
     const res = await window.electronAPI.readTextFile(`${workdir}/.feng-todos.md`)
-    if (res.success && res.content !== undefined) {
-      store.syncFromMarkdown(listId, parseMarkdownTodos(res.content))
-    }
+    if (!res.success || res.content === undefined) return
+    const parsed = parseMarkdownTodos(res.content)
+    if (parsed.length === 0) return
+    const parsedIds = new Set(parsed.map((p) => p.id))
+    const listId = resolveListForParsed(workdir, parsedIds)
+    if (listId) useTodoListStore.getState().syncFromMarkdown(listId, parsed)
   } catch {
     /* 文件不存在或读取失败：忽略 */
   }

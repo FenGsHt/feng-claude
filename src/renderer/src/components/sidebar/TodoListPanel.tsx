@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
-import { useTodoListStore, type TodoItem, type TodoList } from '../../store/todoListStore'
+import { useTodoListStore, parseMarkdownTodos, type TodoItem, type TodoList } from '../../store/todoListStore'
 import { runTodoList, answerTodoClarification } from '../../lib/runTodos'
 import { useI18n } from '../../i18n'
 
@@ -111,6 +111,8 @@ function ListCard({
   const clearDone = useTodoListStore((s) => s.clearDone)
   const retryFailed = useTodoListStore((s) => s.retryFailed)
   const resetAll = useTodoListStore((s) => s.resetAll)
+  const syncFromMarkdown = useTodoListStore((s) => s.syncFromMarkdown)
+  const workdir = useSessionStore((s) => s.sessions.find((x) => x.id === s.activeSessionId)?.workdir ?? '')
 
   const [draft, setDraft] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -151,6 +153,13 @@ function ListCard({
     if (editId) editTodo(list.id, editId, editText)
     setEditId(null)
     setEditText('')
+  }
+  const handleSync = async (): Promise<void> => {
+    if (!workdir) return
+    const res = await window.electronAPI.readTextFile(`${workdir}/.feng-todos.md`)
+    if (res.success && res.content !== undefined) {
+      syncFromMarkdown(list.id, parseMarkdownTodos(res.content))
+    }
   }
   const sendReply = (todoId: string, text: string, question: string | undefined): void => {
     const answer = (replyText[todoId] ?? '').trim()
@@ -365,6 +374,13 @@ function ListCard({
                 {clarifyCount > 0 && <span className="text-sky-400/80">? {clarifyCount}</span>}
               </span>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => void handleSync()}
+                  title={t.todolist.syncHint}
+                  className="px-1.5 py-0.5 rounded text-[10px] text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
+                >
+                  {t.todolist.syncFromFile}
+                </button>
                 {failedCount > 0 && (
                   <button
                     onClick={() => {
