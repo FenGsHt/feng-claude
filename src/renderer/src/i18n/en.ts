@@ -45,7 +45,10 @@ export const en: Translations = {
     deleteList: 'Delete list',
     runTarget: 'Run target ',
     noActiveSession: 'No active session — click a terminal first',
-    runAllTitle: 'Run all (reset every item to pending, then run)'
+    runAllTitle: 'Run all (reset every item to pending, then run)',
+    running: 'running',
+    confirmDelete: 'Click again to confirm deleting this list',
+    confirmRunAll: 'Click again to confirm run-all (clears current progress)'
   },
   common: {
     save: 'Save',

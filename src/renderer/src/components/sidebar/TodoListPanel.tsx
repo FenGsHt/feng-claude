@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTodoListStore, type TodoItem, type TodoList } from '../../store/todoListStore'
 import { runTodoList, answerTodoClarification } from '../../lib/runTodos'
@@ -8,8 +8,19 @@ export function TodoListPanel(): React.ReactElement {
   const { t } = useI18n()
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const activeSession = useSessionStore((s) => s.sessions.find((x) => x.id === s.activeSessionId))
+  const sessions = useSessionStore((s) => s.sessions)
   const lists = useTodoListStore((s) => s.lists)
+  const lastRunByWorkdir = useTodoListStore((s) => s.lastRunByWorkdir)
   const createList = useTodoListStore((s) => s.createList)
+
+  // 运行中的清单：某会话 status==='running' 且其 workdir 上次运行的就是该清单
+  const runningListIds = new Set<string>()
+  for (const sess of sessions) {
+    if (sess.status === 'running') {
+      const lid = lastRunByWorkdir[sess.workdir]
+      if (lid) runningListIds.add(lid)
+    }
+  }
 
   const targetName = activeSession
     ? activeSession.title || activeSession.workdir.split(/[/\\]/).filter(Boolean).pop() || activeSession.workdir
@@ -75,6 +86,7 @@ export function TodoListPanel(): React.ReactElement {
               list={list}
               activeSessionId={activeSessionId}
               targetName={targetName}
+              isRunning={runningListIds.has(list.id)}
               expanded={expanded[list.id] ?? false}
               onToggleExpand={() =>
                 setExpanded((m) => ({ ...m, [list.id]: !(m[list.id] ?? false) }))
@@ -91,12 +103,14 @@ function ListCard({
   list,
   activeSessionId,
   targetName,
+  isRunning,
   expanded,
   onToggleExpand
 }: {
   list: TodoList
   activeSessionId: string | null
   targetName: string | null
+  isRunning: boolean
   expanded: boolean
   onToggleExpand: () => void
 }): React.ReactElement {
@@ -118,6 +132,18 @@ function ListCard({
   const [editId, setEditId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [replyText, setReplyText] = useState<Record<string, string>>({})
+  // 二次点击确认：防止误删清单 / 误触发「全部重跑」清空进度
+  const [confirm, setConfirm] = useState<null | 'delete' | 'runAll'>(null)
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const arm = (which: 'delete' | 'runAll'): void => {
+    setConfirm(which)
+    if (confirmTimer.current) clearTimeout(confirmTimer.current)
+    confirmTimer.current = setTimeout(() => setConfirm(null), 2500)
+  }
+  const disarm = (): void => {
+    setConfirm(null)
+    if (confirmTimer.current) clearTimeout(confirmTimer.current)
+  }
 
   const items = list.items
   const doneCount = items.filter((x) => x.status === 'done').length
@@ -204,6 +230,14 @@ function ListCard({
           </span>
         )}
 
+        {/* running indicator */}
+        {isRunning && (
+          <span className="shrink-0 flex items-center gap-1 text-[10px] text-amber-400" title={t.todolist.running}>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {t.todolist.running}
+          </span>
+        )}
+
         {/* progress */}
         <span className="shrink-0 text-[10px] text-claude-muted tabular-nums">
           {doneCount}/{items.length}
@@ -222,16 +256,31 @@ function ListCard({
             </svg>
           </button>
         )}
-        {/* run all (reset every item to pending, then run) */}
+        {/* run all (reset every item to pending, then run) — 二次点击确认 */}
         {items.length > 0 && (
           <button
             onClick={() => {
-              resetAll(list.id)
-              void runTodoList(activeSessionId, list.id)
+              if (confirm === 'runAll') {
+                disarm()
+                resetAll(list.id)
+                void runTodoList(activeSessionId, list.id)
+              } else {
+                arm('runAll')
+              }
             }}
-            title={targetName ? `${t.todolist.runAllTitle} → ${targetName}` : t.todolist.noActiveSession}
+            title={
+              !targetName
+                ? t.todolist.noActiveSession
+                : confirm === 'runAll'
+                  ? t.todolist.confirmRunAll
+                  : `${t.todolist.runAllTitle} → ${targetName}`
+            }
             disabled={!targetName}
-            className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              confirm === 'runAll'
+                ? 'text-sky-300 bg-sky-500/30 ring-1 ring-sky-400/60'
+                : 'text-sky-400 hover:bg-sky-500/20'
+            }`}
           >
             {/* 双三角：全部重跑 */}
             <svg width="11" height="11" viewBox="0 0 12 11" fill="none">
@@ -240,13 +289,24 @@ function ListCard({
             </svg>
           </button>
         )}
-        {/* delete list */}
+        {/* delete list — 二次点击确认 */}
         <button
-          onClick={() => deleteList(list.id)}
-          title={t.todolist.deleteList}
-          className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-claude-muted hover:bg-red-600/20 hover:text-red-400 transition-colors text-xs"
+          onClick={() => {
+            if (confirm === 'delete') {
+              disarm()
+              deleteList(list.id)
+            } else {
+              arm('delete')
+            }
+          }}
+          title={confirm === 'delete' ? t.todolist.confirmDelete : t.todolist.deleteList}
+          className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors text-xs ${
+            confirm === 'delete'
+              ? 'text-red-300 bg-red-600/40 ring-1 ring-red-400/60'
+              : 'text-claude-muted hover:bg-red-600/20 hover:text-red-400'
+          }`}
         >
-          ✕
+          {confirm === 'delete' ? '?' : '✕'}
         </button>
       </div>
 
