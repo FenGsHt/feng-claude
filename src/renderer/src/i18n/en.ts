@@ -31,7 +31,11 @@ export const en: Translations = {
     failed: 'failed',
     retryHint: 'Could not complete — click to reset to pending and retry',
     retryFailed: 'Retry failed',
-    retryFailedTitle: 'Reset failed items to pending and resend to Claude'
+    retryFailedTitle: 'Reset failed items to pending and resend to Claude',
+    clarify: 'needs clarify',
+    clarifyHint: 'Claude needs more detail — add it below',
+    replyPlaceholder: 'Add details…',
+    replySend: 'Reply'
   },
   common: {
     save: 'Save',

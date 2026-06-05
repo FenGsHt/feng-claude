@@ -2,13 +2,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type TodoStatus = 'pending' | 'done' | 'failed'
+export type TodoStatus = 'pending' | 'done' | 'failed' | 'needs_clarify'
 
 export interface TodoItem {
   id: string
   text: string
   status: TodoStatus
-  /** 无法完成时的原因（status==='failed' 时有意义） */
+  /** failed: 无法完成的原因；needs_clarify: AI 的疑问/澄清请求 */
   note?: string
   createdAt: number
 }
@@ -79,7 +79,9 @@ export const useTodoListStore = create<TodoListStore>()(
             byWorkdir: {
               ...s.byWorkdir,
               [workdir]: list.map((t) =>
-                t.id === id ? { ...t, status, note: status === 'failed' ? note : undefined } : t
+                t.id === id
+                  ? { ...t, status, note: status === 'failed' || status === 'needs_clarify' ? note : undefined }
+                  : t
               )
             }
           }
@@ -178,11 +180,14 @@ const META_RE = /\s*<!--\s*(.*?)\s*-->\s*$/
 // 向后兼容：旧格式 `<!-- failed: 原因 -->`（无 id）
 const LEGACY_FAILED_RE = /^(?:failed|失败|原因|reason)\s*[:：]?\s*(.*)$/i
 
-/** TodoItem[] → .feng-todos.md 文本。每行带隐藏 id；失败项附原因。 */
+/** TodoItem[] → .feng-todos.md 文本。每行带隐藏 id；失败附原因、需澄清附疑问。 */
 export function todosToMarkdown(items: TodoItem[]): string {
   const lines = items.map((t) => {
-    const marker = t.status === 'done' ? 'x' : t.status === 'failed' ? '!' : ' '
-    const meta = `id:${t.id}` + (t.status === 'failed' && t.note ? ` failed:${t.note}` : '')
+    const marker =
+      t.status === 'done' ? 'x' : t.status === 'failed' ? '!' : t.status === 'needs_clarify' ? '?' : ' '
+    let meta = `id:${t.id}`
+    if (t.status === 'failed' && t.note) meta += ` failed:${t.note}`
+    else if (t.status === 'needs_clarify' && t.note) meta += ` clarify:${t.note}`
     return `- [${marker}] ${t.text} <!-- ${meta} -->`
   })
   return `# Todo List\n\n${lines.join('\n')}\n`
@@ -208,13 +213,13 @@ export async function syncTodosFromFile(workdir: string): Promise<void> {
 
 /**
  * .feng-todos.md 文本 → TodoItem[]。
- * 解析 `- [ ]/[x]/[!]/[-]` 行；`!`、`-` 视为失败。
- * 行尾 `<!-- id:XXX failed:原因 -->`（或旧的 `<!-- failed:原因 -->`）提取 id 与 note。
+ * 标记：[x]=完成，[!]/[-]=失败，[?]=需澄清，其余=待办。
+ * 行尾 `<!-- id:XXX failed:原因 -->` / `<!-- id:XXX clarify:疑问 -->`（或旧的 `<!-- failed:原因 -->`）提取 id 与 note。
  */
 export function parseMarkdownTodos(md: string): TodoItem[] {
   const out: TodoItem[] = []
   for (const raw of md.split(/\r?\n/)) {
-    const m = raw.match(/^\s*-\s*\[([ xX!\-])\]\s+(.+?)\s*$/)
+    const m = raw.match(/^\s*-\s*\[([ xX!?\-])\]\s+(.+?)\s*$/)
     if (!m) continue
     const marker = m[1].toLowerCase()
     let text = m[2]
@@ -232,17 +237,24 @@ export function parseMarkdownTodos(md: string): TodoItem[] {
     if (meta.trim()) {
       const idM = meta.match(/\bid:(\S+)/)
       if (idM) id = idM[1]
-      const failM = meta.match(/\bfailed\s*[:：]?\s*(.*)$/i)
-      if (failM) note = failM[1].trim() || undefined
+      const noteM = meta.match(/\b(?:failed|clarify)\s*[:：]?\s*(.*)$/i)
+      if (noteM) note = noteM[1].trim() || undefined
       // 旧格式：整段就是 failed/原因（无 id）
-      if (!idM && !failM) {
+      if (!idM && !noteM) {
         const legacy = meta.trim().match(LEGACY_FAILED_RE)
         if (legacy) note = legacy[1].trim() || undefined
       }
     }
 
-    const status: TodoStatus = marker === 'x' ? 'done' : marker === '!' || marker === '-' ? 'failed' : 'pending'
-    out.push({ id: id ?? genId(), text, status, note: status === 'failed' ? note : undefined, createdAt: Date.now() })
+    const status: TodoStatus =
+      marker === 'x' ? 'done' : marker === '!' || marker === '-' ? 'failed' : marker === '?' ? 'needs_clarify' : 'pending'
+    out.push({
+      id: id ?? genId(),
+      text,
+      status,
+      note: status === 'failed' || status === 'needs_clarify' ? note : undefined,
+      createdAt: Date.now()
+    })
   }
   return out
 }

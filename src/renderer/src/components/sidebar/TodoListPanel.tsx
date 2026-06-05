@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTodoListStore, parseMarkdownTodos } from '../../store/todoListStore'
-import { runTodosForSession } from '../../lib/runTodos'
+import { runTodosForSession, answerTodoClarification } from '../../lib/runTodos'
 import { useI18n } from '../../i18n'
 
 export function TodoListPanel(): React.ReactElement {
@@ -21,6 +21,7 @@ export function TodoListPanel(): React.ReactElement {
   const [draft, setDraft] = useState('')
   const [editId, setEditId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [replyText, setReplyText] = useState<Record<string, string>>({})
 
   if (!workdir) {
     return (
@@ -50,8 +51,20 @@ export function TodoListPanel(): React.ReactElement {
     }
   }
 
+  const sendReply = (todoId: string, text: string, question: string | undefined): void => {
+    const answer = (replyText[todoId] ?? '').trim()
+    if (!answer) return
+    void answerTodoClarification(activeSessionId, workdir, todoId, text, question, answer)
+    setReplyText((m) => {
+      const next = { ...m }
+      delete next[todoId]
+      return next
+    })
+  }
+
   const doneCount = todos.filter((x) => x.status === 'done').length
   const failedCount = todos.filter((x) => x.status === 'failed').length
+  const clarifyCount = todos.filter((x) => x.status === 'needs_clarify').length
   const pendingCount = todos.filter((x) => x.status === 'pending').length
 
   return (
@@ -99,6 +112,13 @@ export function TodoListPanel(): React.ReactElement {
                 >
                   ⚠
                 </button>
+              ) : todo.status === 'needs_clarify' ? (
+                <span
+                  title={t.todolist.clarifyHint}
+                  className="mt-0.5 shrink-0 w-3.5 h-3.5 flex items-center justify-center text-[11px] leading-none text-sky-400"
+                >
+                  ?
+                </span>
               ) : (
                 <input
                   type="checkbox"
@@ -133,7 +153,9 @@ export function TodoListPanel(): React.ReactElement {
                         ? 'line-through text-claude-muted/60'
                         : todo.status === 'failed'
                           ? 'text-red-300/90'
-                          : 'text-claude-text'
+                          : todo.status === 'needs_clarify'
+                            ? 'text-sky-300/90'
+                            : 'text-claude-text'
                     }`}
                     onDoubleClick={() => {
                       setEditId(todo.id)
@@ -147,6 +169,39 @@ export function TodoListPanel(): React.ReactElement {
                     <p className="mt-0.5 text-[10px] text-amber-500/80 break-words leading-snug">
                       ⚠ {todo.note}
                     </p>
+                  )}
+                  {todo.status === 'needs_clarify' && (
+                    <div className="mt-1 rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-1">
+                      {todo.note && (
+                        <p className="text-[10px] text-sky-300/90 break-words leading-snug">
+                          💬 {todo.note}
+                        </p>
+                      )}
+                      <div className="mt-1 flex gap-1">
+                        <input
+                          type="text"
+                          value={replyText[todo.id] ?? ''}
+                          onChange={(e) =>
+                            setReplyText((m) => ({ ...m, [todo.id]: e.target.value }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              sendReply(todo.id, todo.text, todo.note)
+                            }
+                          }}
+                          placeholder={t.todolist.replyPlaceholder}
+                          className="flex-1 min-w-0 bg-claude-bg border border-sky-500/40 rounded px-1.5 py-0.5 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-sky-400/70"
+                        />
+                        <button
+                          onClick={() => sendReply(todo.id, todo.text, todo.note)}
+                          title={t.todolist.replySend}
+                          className="shrink-0 px-2 rounded text-[10px] bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition-colors"
+                        >
+                          {t.todolist.replySend}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -202,6 +257,9 @@ export function TodoListPanel(): React.ReactElement {
             {doneCount}/{todos.length}
             {failedCount > 0 && (
               <span className="ml-1.5 text-red-400/80">· {failedCount} {t.todolist.failed}</span>
+            )}
+            {clarifyCount > 0 && (
+              <span className="ml-1.5 text-sky-400/80">· {clarifyCount} {t.todolist.clarify}</span>
             )}
           </span>
           <div className="flex items-center gap-1">

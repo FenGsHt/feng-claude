@@ -44,9 +44,37 @@ export async function runTodosForSession(sessionId: string | null | undefined): 
   const prompt =
     `请依次完成下面的待办清单，并在 .feng-todos.md 中实时更新每项状态：\n` +
     `- 完成：把该行的 [ ] 改为 [x]\n` +
-    `- 无法完成（受阻/缺前置条件）：把 [ ] 改为 [!]，并在该行已有的 \`<!-- id:... -->\` 注释里追加 \` failed:简短原因\`（例如 \`<!-- id:abc failed:缺少生产环境凭证 -->\`）\n` +
-    `保持每行的文本和 \`<!-- id:... -->\` 注释不变，只改状态标记和追加原因，不要删除任何条目。\n\n` +
+    `- 无法完成（受阻/缺前置条件）：改为 [!]，并在该行 \`<!-- id:... -->\` 注释里追加 \` failed:简短原因\`\n` +
+    `- 需求不清、无从下手：改为 [?]，并在该行 \`<!-- id:... -->\` 注释里追加 \` clarify:你的具体疑问\`（例如 \`<!-- id:abc clarify:指的是哪个环境？需要支持哪些字段？ -->\`）\n` +
+    `保持每行的文本和 \`<!-- id:... -->\` 注释不变，只改状态标记和追加备注，不要删除任何条目。\n\n` +
     `待办清单（也已写入 @.feng-todos.md）：\n${list}`
+  submitEmbedSessionInput(sessionId, prompt)
+  return true
+}
+
+/**
+ * 用户对某条「需澄清」待办补充说明后：把该项重置为待办、回写文件，并把
+ * 「原待办 + AI 疑问 + 用户答复」组装成 prompt 发回当前会话让 Claude 继续。
+ */
+export async function answerTodoClarification(
+  sessionId: string | null | undefined,
+  workdir: string,
+  todoId: string,
+  text: string,
+  question: string | undefined,
+  answer: string
+): Promise<boolean> {
+  const trimmed = answer.trim()
+  if (!sessionId || !workdir || !trimmed) return false
+  // 重置为待办（清掉疑问），并回写文件
+  useTodoListStore.getState().setStatus(workdir, todoId, 'pending')
+  const all = useTodoListStore.getState().byWorkdir[workdir] ?? []
+  await ensureGitignored(workdir, '.feng-todos.md')
+  await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(all))
+  const qLine = question ? `你之前的疑问是：${question}\n` : ''
+  const prompt =
+    `关于待办「${text}」：\n${qLine}用户补充说明：${trimmed}\n` +
+    `请据此继续完成该项，完成后在 .feng-todos.md 把它改为 [x]；若仍有疑问可再改为 [?] 并更新 clarify 备注。`
   submitEmbedSessionInput(sessionId, prompt)
   return true
 }

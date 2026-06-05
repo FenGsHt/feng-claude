@@ -31,7 +31,11 @@ export const zh = {
     failed: '失败',
     retryHint: '无法完成 — 点击重置为待办以重试',
     retryFailed: '重试失败',
-    retryFailedTitle: '把失败项重置为待办并重新发给 Claude'
+    retryFailedTitle: '把失败项重置为待办并重新发给 Claude',
+    clarify: '需澄清',
+    clarifyHint: 'AI 需求不清，请在下方补充说明',
+    replyPlaceholder: '补充说明…',
+    replySend: '回复'
   },
   // Common actions
   common: {
