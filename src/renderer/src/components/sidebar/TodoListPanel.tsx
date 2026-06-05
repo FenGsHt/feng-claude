@@ -8,19 +8,8 @@ export function TodoListPanel(): React.ReactElement {
   const { t } = useI18n()
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const activeSession = useSessionStore((s) => s.sessions.find((x) => x.id === s.activeSessionId))
-  const sessions = useSessionStore((s) => s.sessions)
   const lists = useTodoListStore((s) => s.lists)
-  const lastRunByWorkdir = useTodoListStore((s) => s.lastRunByWorkdir)
   const createList = useTodoListStore((s) => s.createList)
-
-  // 运行中的清单：某会话 status==='running' 且其 workdir 上次运行的就是该清单
-  const runningListIds = new Set<string>()
-  for (const sess of sessions) {
-    if (sess.status === 'running') {
-      const lid = lastRunByWorkdir[sess.workdir]
-      if (lid) runningListIds.add(lid)
-    }
-  }
 
   const targetName = activeSession
     ? activeSession.title || activeSession.workdir.split(/[/\\]/).filter(Boolean).pop() || activeSession.workdir
@@ -86,7 +75,6 @@ export function TodoListPanel(): React.ReactElement {
               list={list}
               activeSessionId={activeSessionId}
               targetName={targetName}
-              isRunning={runningListIds.has(list.id)}
               expanded={expanded[list.id] ?? false}
               onToggleExpand={() =>
                 setExpanded((m) => ({ ...m, [list.id]: !(m[list.id] ?? false) }))
@@ -103,14 +91,12 @@ function ListCard({
   list,
   activeSessionId,
   targetName,
-  isRunning,
   expanded,
   onToggleExpand
 }: {
   list: TodoList
   activeSessionId: string | null
   targetName: string | null
-  isRunning: boolean
   expanded: boolean
   onToggleExpand: () => void
 }): React.ReactElement {
@@ -227,14 +213,6 @@ function ListCard({
             title={t.todolist.renameHint}
           >
             {list.name}
-          </span>
-        )}
-
-        {/* running indicator */}
-        {isRunning && (
-          <span className="shrink-0 flex items-center gap-1 text-[10px] text-amber-400" title={t.todolist.running}>
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            {t.todolist.running}
           </span>
         )}
 
