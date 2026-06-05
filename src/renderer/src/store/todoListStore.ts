@@ -1,4 +1,4 @@
-/** [2026-06-05] 按项目（workdir）隔离的待办清单，可一键交给 Claude 执行。 */
+/** [2026-06-05] 全局可复用的命名待办清单：可建多个，每个可独立编辑并一键交给 Claude 执行。 */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -13,20 +13,36 @@ export interface TodoItem {
   createdAt: number
 }
 
+export interface TodoList {
+  id: string
+  name: string
+  items: TodoItem[]
+  createdAt: number
+}
+
 interface TodoListStore {
-  byWorkdir: Record<string, TodoItem[]>
-  addTodo: (workdir: string, text: string) => void
-  /** 复选框：pending ↔ done 互切（失败项点一下回到 pending 以便重试） */
-  toggleTodo: (workdir: string, id: string) => void
-  setStatus: (workdir: string, id: string, status: TodoStatus, note?: string) => void
-  editTodo: (workdir: string, id: string, text: string) => void
-  deleteTodo: (workdir: string, id: string) => void
-  /** 清除已完成项（不动失败项） */
-  clearDone: (workdir: string) => void
+  lists: TodoList[]
+  /** workdir → 该目录上次运行的清单 id，用于 idle 时自动回读 .feng-todos.md */
+  lastRunByWorkdir: Record<string, string>
+
+  createList: (name: string) => string
+  renameList: (listId: string, name: string) => void
+  deleteList: (listId: string) => void
+
+  addTodo: (listId: string, text: string) => void
+  /** 复选框：pending ↔ done 互切 */
+  toggleTodo: (listId: string, itemId: string) => void
+  setStatus: (listId: string, itemId: string, status: TodoStatus, note?: string) => void
+  editTodo: (listId: string, itemId: string, text: string) => void
+  deleteTodo: (listId: string, itemId: string) => void
+  /** 清除已完成项（不动失败/需澄清项） */
+  clearDone: (listId: string) => void
   /** 把所有失败项重置为待办（便于重试） */
-  retryFailed: (workdir: string) => void
-  /** 用 .feng-todos.md 解析出的清单回写（优先按 id、回退按文本匹配，保守合并） */
-  syncFromMarkdown: (workdir: string, parsed: TodoItem[]) => void
+  retryFailed: (listId: string) => void
+
+  setLastRun: (workdir: string, listId: string) => void
+  /** 用 .feng-todos.md 解析出的条目回写某清单（优先按 id、回退按文本匹配，保守合并） */
+  syncFromMarkdown: (listId: string, parsed: TodoItem[]) => void
 }
 
 function genId(): string {
@@ -37,145 +53,167 @@ function genId(): string {
   }
 }
 
+/** 在指定清单上做不可变更新 */
+function mapList(
+  lists: TodoList[],
+  listId: string,
+  fn: (list: TodoList) => TodoList
+): TodoList[] {
+  return lists.map((l) => (l.id === listId ? fn(l) : l))
+}
+
+function mapItems(
+  lists: TodoList[],
+  listId: string,
+  fn: (items: TodoItem[]) => TodoItem[]
+): TodoList[] {
+  return mapList(lists, listId, (l) => ({ ...l, items: fn(l.items) }))
+}
+
 export const useTodoListStore = create<TodoListStore>()(
   persist(
     (set) => ({
-      byWorkdir: {},
+      lists: [],
+      lastRunByWorkdir: {},
 
-      addTodo: (workdir, text) =>
+      createList: (name) => {
+        const id = genId()
+        const trimmed = name.trim() || '未命名清单'
+        set((s) => ({ lists: [...s.lists, { id, name: trimmed, items: [], createdAt: Date.now() }] }))
+        return id
+      },
+
+      renameList: (listId, name) =>
         set((s) => {
-          const trimmed = text.trim()
-          if (!workdir || !trimmed) return {}
-          const list = s.byWorkdir[workdir] ?? []
-          return {
-            byWorkdir: {
-              ...s.byWorkdir,
-              [workdir]: [...list, { id: genId(), text: trimmed, status: 'pending' as TodoStatus, createdAt: Date.now() }]
-            }
-          }
+          const trimmed = name.trim()
+          if (!trimmed) return {}
+          return { lists: mapList(s.lists, listId, (l) => ({ ...l, name: trimmed })) }
         }),
 
-      toggleTodo: (workdir, id) =>
-        set((s) => {
-          const list = s.byWorkdir[workdir]
-          if (!list) return {}
-          return {
-            byWorkdir: {
-              ...s.byWorkdir,
-              [workdir]: list.map((t) =>
-                t.id === id
-                  ? { ...t, status: t.status === 'done' ? 'pending' : 'done', note: undefined }
-                  : t
-              )
-            }
-          }
-        }),
+      deleteList: (listId) => set((s) => ({ lists: s.lists.filter((l) => l.id !== listId) })),
 
-      setStatus: (workdir, id, status, note) =>
+      addTodo: (listId, text) =>
         set((s) => {
-          const list = s.byWorkdir[workdir]
-          if (!list) return {}
-          return {
-            byWorkdir: {
-              ...s.byWorkdir,
-              [workdir]: list.map((t) =>
-                t.id === id
-                  ? { ...t, status, note: status === 'failed' || status === 'needs_clarify' ? note : undefined }
-                  : t
-              )
-            }
-          }
-        }),
-
-      editTodo: (workdir, id, text) =>
-        set((s) => {
-          const list = s.byWorkdir[workdir]
-          if (!list) return {}
           const trimmed = text.trim()
           if (!trimmed) return {}
           return {
-            byWorkdir: {
-              ...s.byWorkdir,
-              [workdir]: list.map((t) => (t.id === id ? { ...t, text: trimmed } : t))
-            }
+            lists: mapItems(s.lists, listId, (items) => [
+              ...items,
+              { id: genId(), text: trimmed, status: 'pending' as TodoStatus, createdAt: Date.now() }
+            ])
           }
         }),
 
-      deleteTodo: (workdir, id) =>
+      toggleTodo: (listId, itemId) =>
+        set((s) => ({
+          lists: mapItems(s.lists, listId, (items) =>
+            items.map((t) =>
+              t.id === itemId
+                ? { ...t, status: t.status === 'done' ? 'pending' : 'done', note: undefined }
+                : t
+            )
+          )
+        })),
+
+      setStatus: (listId, itemId, status, note) =>
+        set((s) => ({
+          lists: mapItems(s.lists, listId, (items) =>
+            items.map((t) =>
+              t.id === itemId
+                ? { ...t, status, note: status === 'failed' || status === 'needs_clarify' ? note : undefined }
+                : t
+            )
+          )
+        })),
+
+      editTodo: (listId, itemId, text) =>
         set((s) => {
-          const list = s.byWorkdir[workdir]
-          if (!list) return {}
+          const trimmed = text.trim()
+          if (!trimmed) return {}
           return {
-            byWorkdir: { ...s.byWorkdir, [workdir]: list.filter((t) => t.id !== id) }
+            lists: mapItems(s.lists, listId, (items) =>
+              items.map((t) => (t.id === itemId ? { ...t, text: trimmed } : t))
+            )
           }
         }),
 
-      clearDone: (workdir) =>
-        set((s) => {
-          const list = s.byWorkdir[workdir]
-          if (!list) return {}
-          return {
-            byWorkdir: { ...s.byWorkdir, [workdir]: list.filter((t) => t.status !== 'done') }
-          }
-        }),
+      deleteTodo: (listId, itemId) =>
+        set((s) => ({
+          lists: mapItems(s.lists, listId, (items) => items.filter((t) => t.id !== itemId))
+        })),
 
-      retryFailed: (workdir) =>
-        set((s) => {
-          const list = s.byWorkdir[workdir]
-          if (!list) return {}
-          return {
-            byWorkdir: {
-              ...s.byWorkdir,
-              [workdir]: list.map((t) =>
-                t.status === 'failed' ? { ...t, status: 'pending' as TodoStatus, note: undefined } : t
-              )
-            }
-          }
-        }),
+      clearDone: (listId) =>
+        set((s) => ({
+          lists: mapItems(s.lists, listId, (items) => items.filter((t) => t.status !== 'done'))
+        })),
 
-      syncFromMarkdown: (workdir, parsed) =>
+      retryFailed: (listId) =>
+        set((s) => ({
+          lists: mapItems(s.lists, listId, (items) =>
+            items.map((t) =>
+              t.status === 'failed' ? { ...t, status: 'pending' as TodoStatus, note: undefined } : t
+            )
+          )
+        })),
+
+      setLastRun: (workdir, listId) =>
+        set((s) => ({ lastRunByWorkdir: { ...s.lastRunByWorkdir, [workdir]: listId } })),
+
+      syncFromMarkdown: (listId, parsed) =>
         set((s) => {
-          if (!workdir) return {}
-          const existing = s.byWorkdir[workdir] ?? []
-          // 保守合并：优先按 id 匹配（文本被改写也能对上），回退按文本；保留所有 store 项，文件新项才追加。
-          // 不删除 store 中、文件里没有的项 —— 避免误删「点击开始后新增、尚未写入文件」的待办。
           const findInFile = (e: TodoItem): TodoItem | undefined =>
             parsed.find((p) => p.id === e.id) ?? parsed.find((p) => p.text === e.text)
-          const merged: TodoItem[] = existing.map((e) => {
-            const fromFile = findInFile(e)
-            return fromFile ? { ...e, status: fromFile.status, note: fromFile.note } : e
-          })
-          for (const p of parsed) {
-            if (!existing.some((e) => e.id === p.id || e.text === p.text)) merged.push(p)
+          return {
+            lists: mapItems(s.lists, listId, (existing) => {
+              // 保守合并：优先按 id 匹配（文本被改写也能对上），回退按文本；保留所有 store 项，文件新项才追加。
+              const merged: TodoItem[] = existing.map((e) => {
+                const fromFile = findInFile(e)
+                return fromFile ? { ...e, status: fromFile.status, note: fromFile.note } : e
+              })
+              for (const p of parsed) {
+                if (!existing.some((e) => e.id === p.id || e.text === p.text)) merged.push(p)
+              }
+              return merged
+            })
           }
-          return { byWorkdir: { ...s.byWorkdir, [workdir]: merged } }
         })
     }),
     {
       name: 'todolist-store',
-      version: 2,
-      partialize: (s) => ({ byWorkdir: s.byWorkdir }),
-      // v1(done:boolean) → v2(status/note)
+      version: 3,
+      partialize: (s) => ({ lists: s.lists, lastRunByWorkdir: s.lastRunByWorkdir }),
+      // v1(done) / v2(byWorkdir + status) → v3(lists)
       migrate: (persisted) => {
-        const state = persisted as { byWorkdir?: Record<string, Array<Record<string, unknown>>> }
-        if (state?.byWorkdir) {
+        const state = (persisted ?? {}) as {
+          lists?: TodoList[]
+          byWorkdir?: Record<string, Array<Record<string, unknown>>>
+          lastRunByWorkdir?: Record<string, string>
+        }
+        if (!state.lists && state.byWorkdir) {
+          const lists: TodoList[] = []
           for (const wd of Object.keys(state.byWorkdir)) {
-            state.byWorkdir[wd] = (state.byWorkdir[wd] ?? []).map((t) => ({
+            const items = (state.byWorkdir[wd] ?? []).map((t) => ({
               id: (t.id as string) ?? genId(),
               text: (t.text as string) ?? '',
               status: (t.status as TodoStatus) ?? (t.done ? 'done' : 'pending'),
               note: t.note as string | undefined,
               createdAt: (t.createdAt as number) ?? Date.now()
             }))
+            const name = wd.split(/[/\\]/).filter(Boolean).pop() ?? wd
+            lists.push({ id: genId(), name, items, createdAt: Date.now() })
           }
+          state.lists = lists
+          delete state.byWorkdir
         }
+        if (!state.lists) state.lists = []
+        if (!state.lastRunByWorkdir) state.lastRunByWorkdir = {}
         return state as unknown as TodoListStore
       }
     }
   )
 )
 
-// 行尾元数据注释：始终带稳定 id，失败时附原因（id 在前、failed 在末尾以便贪婪匹配原因）
+// 行尾元数据注释：始终带稳定 id，失败/需澄清时附备注（id 在前、failed/clarify 在末尾以便贪婪匹配）
 const META_RE = /\s*<!--\s*(.*?)\s*-->\s*$/
 // 向后兼容：旧格式 `<!-- failed: 原因 -->`（无 id）
 const LEGACY_FAILED_RE = /^(?:failed|失败|原因|reason)\s*[:：]?\s*(.*)$/i
@@ -194,17 +232,18 @@ export function todosToMarkdown(items: TodoItem[]): string {
 }
 
 /**
- * [2026-06-05] 从项目根的 .feng-todos.md 回读状态到 store。
- * 仅在该项目已有待办时才读盘（避免每次 idle 都无谓读文件）。
+ * [2026-06-05] idle 时回读某 workdir 上次运行的清单文件 .feng-todos.md，刷新对应清单。
+ * 仅在该 workdir 有「上次运行清单」记录时才读盘。
  */
 export async function syncTodosFromFile(workdir: string): Promise<void> {
   if (!workdir) return
   const store = useTodoListStore.getState()
-  if ((store.byWorkdir[workdir] ?? []).length === 0) return
+  const listId = store.lastRunByWorkdir[workdir]
+  if (!listId || !store.lists.some((l) => l.id === listId)) return
   try {
     const res = await window.electronAPI.readTextFile(`${workdir}/.feng-todos.md`)
     if (res.success && res.content !== undefined) {
-      store.syncFromMarkdown(workdir, parseMarkdownTodos(res.content))
+      store.syncFromMarkdown(listId, parseMarkdownTodos(res.content))
     }
   } catch {
     /* 文件不存在或读取失败：忽略 */

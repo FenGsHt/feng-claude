@@ -35,7 +35,14 @@ export const zh = {
     clarify: '需澄清',
     clarifyHint: 'AI 需求不清，请在下方补充说明',
     replyPlaceholder: '补充说明…',
-    replySend: '回复'
+    replySend: '回复',
+    newList: '新建',
+    newListPlaceholder: '新建清单名称…',
+    noLists: '还没有清单，新建一个开始',
+    expand: '展开',
+    collapse: '收起',
+    renameHint: '双击重命名',
+    deleteList: '删除清单'
   },
   // Common actions
   common: {

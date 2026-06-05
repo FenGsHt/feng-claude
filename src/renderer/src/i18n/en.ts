@@ -35,7 +35,14 @@ export const en: Translations = {
     clarify: 'needs clarify',
     clarifyHint: 'Claude needs more detail — add it below',
     replyPlaceholder: 'Add details…',
-    replySend: 'Reply'
+    replySend: 'Reply',
+    newList: 'New',
+    newListPlaceholder: 'New list name…',
+    noLists: 'No lists yet — create one to start',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    renameHint: 'Double-click to rename',
+    deleteList: 'Delete list'
   },
   common: {
     save: 'Save',

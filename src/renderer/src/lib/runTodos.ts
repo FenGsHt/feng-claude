@@ -1,4 +1,4 @@
-/** [2026-06-05] 把指定会话项目的待办交给 Claude 执行 —— 标题栏/面板/pane 头部共用。 */
+/** [2026-06-05] 把某个命名清单交给当前会话的 Claude 执行 —— 面板/ pane 头部共用。 */
 import { useSessionStore } from '../store/sessionStore'
 import { useTodoListStore, todosToMarkdown } from '../store/todoListStore'
 import { submitEmbedSessionInput } from '../components/terminal/XTerminal'
@@ -19,35 +19,41 @@ async function ensureGitignored(workdir: string, entry: string): Promise<void> {
   }
 }
 
-/**
- * 把指定会话所属项目的未完成待办写入 .feng-todos.md 并自动发送给 Claude。
- * 无会话 / 无待办时改为打开待办面板，返回 false。
- */
-export async function runTodosForSession(sessionId: string | null | undefined): Promise<boolean> {
+/** 解析当前活跃会话的 workdir（无会话返回 null） */
+function activeWorkdir(sessionId: string | null | undefined): string | null {
   const session = useSessionStore.getState().sessions.find((s) => s.id === sessionId)
-  if (!sessionId || !session) {
-    navigateToTodoListTab()
-    return false
-  }
-  const workdir = session.workdir
-  const all = useTodoListStore.getState().byWorkdir[workdir] ?? []
-  const pending = all.filter((t) => t.status === 'pending')
-  if (pending.length === 0) {
-    navigateToTodoListTab()
-    return false
-  }
-  // 1) 写入项目文件，供 Claude 执行中重读/勾选；并确保不会被误提交进用户仓库
+  return session?.workdir ?? null
+}
+
+/**
+ * 把指定清单的未完成待办写入当前会话项目的 .feng-todos.md 并自动发送给 Claude。
+ * 无会话 / 无待办时返回 false（不发送）。
+ */
+export async function runTodoList(
+  sessionId: string | null | undefined,
+  listId: string
+): Promise<boolean> {
+  const workdir = activeWorkdir(sessionId)
+  const list = useTodoListStore.getState().lists.find((l) => l.id === listId)
+  if (!sessionId || !workdir || !list) return false
+  const pending = list.items.filter((t) => t.status === 'pending')
+  if (pending.length === 0) return false
+
+  // 1) 写入项目文件，供 Claude 执行中重读/勾选；并确保不会被误提交
   await ensureGitignored(workdir, '.feng-todos.md')
-  await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(all))
+  await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(list.items))
+  // 记录该 workdir 本次运行的清单，供 idle 自动回读
+  useTodoListStore.getState().setLastRun(workdir, listId)
+
   // 2) 组装 prompt 并自动发送
-  const list = pending.map((t, i) => `${i + 1}. ${t.text}`).join('\n')
+  const lines = pending.map((t, i) => `${i + 1}. ${t.text}`).join('\n')
   const prompt =
-    `请依次完成下面的待办清单，并在 .feng-todos.md 中实时更新每项状态：\n` +
+    `请依次完成下面的待办清单「${list.name}」，并在 .feng-todos.md 中实时更新每项状态：\n` +
     `- 完成：把该行的 [ ] 改为 [x]\n` +
     `- 无法完成（受阻/缺前置条件）：改为 [!]，并在该行 \`<!-- id:... -->\` 注释里追加 \` failed:简短原因\`\n` +
     `- 需求不清、无从下手：改为 [?]，并在该行 \`<!-- id:... -->\` 注释里追加 \` clarify:你的具体疑问\`（例如 \`<!-- id:abc clarify:指的是哪个环境？需要支持哪些字段？ -->\`）\n` +
     `保持每行的文本和 \`<!-- id:... -->\` 注释不变，只改状态标记和追加备注，不要删除任何条目。\n\n` +
-    `待办清单（也已写入 @.feng-todos.md）：\n${list}`
+    `待办清单（也已写入 @.feng-todos.md）：\n${lines}`
   submitEmbedSessionInput(sessionId, prompt)
   return true
 }
@@ -58,23 +64,32 @@ export async function runTodosForSession(sessionId: string | null | undefined): 
  */
 export async function answerTodoClarification(
   sessionId: string | null | undefined,
-  workdir: string,
+  listId: string,
   todoId: string,
   text: string,
   question: string | undefined,
   answer: string
 ): Promise<boolean> {
   const trimmed = answer.trim()
+  const workdir = activeWorkdir(sessionId)
   if (!sessionId || !workdir || !trimmed) return false
   // 重置为待办（清掉疑问），并回写文件
-  useTodoListStore.getState().setStatus(workdir, todoId, 'pending')
-  const all = useTodoListStore.getState().byWorkdir[workdir] ?? []
+  useTodoListStore.getState().setStatus(listId, todoId, 'pending')
+  const list = useTodoListStore.getState().lists.find((l) => l.id === listId)
+  if (!list) return false
   await ensureGitignored(workdir, '.feng-todos.md')
-  await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(all))
+  await window.electronAPI.writeTextFile(`${workdir}/.feng-todos.md`, todosToMarkdown(list.items))
+  useTodoListStore.getState().setLastRun(workdir, listId)
+
   const qLine = question ? `你之前的疑问是：${question}\n` : ''
   const prompt =
     `关于待办「${text}」：\n${qLine}用户补充说明：${trimmed}\n` +
     `请据此继续完成该项，完成后在 .feng-todos.md 把它改为 [x]；若仍有疑问可再改为 [?] 并更新 clarify 备注。`
   submitEmbedSessionInput(sessionId, prompt)
   return true
+}
+
+/** pane 头部按钮：当前没有清单可运行时打开面板 */
+export function openTodoPanel(): void {
+  navigateToTodoListTab()
 }
