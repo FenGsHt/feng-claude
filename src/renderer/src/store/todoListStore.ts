@@ -39,6 +39,8 @@ interface TodoListStore {
   clearDone: (listId: string) => void
   /** 把所有失败项重置为待办（便于重试） */
   retryFailed: (listId: string) => void
+  /** 把清单内所有项（含已完成）重置为待办（用于整单重跑） */
+  resetAll: (listId: string) => void
 
   setLastRun: (workdir: string, listId: string) => void
   /** 用 .feng-todos.md 解析出的条目回写某清单（优先按 id、回退按文本匹配，保守合并） */
@@ -153,6 +155,13 @@ export const useTodoListStore = create<TodoListStore>()(
             items.map((t) =>
               t.status === 'failed' ? { ...t, status: 'pending' as TodoStatus, note: undefined } : t
             )
+          )
+        })),
+
+      resetAll: (listId) =>
+        set((s) => ({
+          lists: mapItems(s.lists, listId, (items) =>
+            items.map((t) => ({ ...t, status: 'pending' as TodoStatus, note: undefined }))
           )
         })),
 

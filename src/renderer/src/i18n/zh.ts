@@ -42,7 +42,10 @@ export const zh = {
     expand: '展开',
     collapse: '收起',
     renameHint: '双击重命名',
-    deleteList: '删除清单'
+    deleteList: '删除清单',
+    runTarget: '运行目标 ',
+    noActiveSession: '无活跃会话 — 运行前请先点击一个终端',
+    runAllTitle: '全部重跑（忽略已完成，所有项重置为待办后执行）'
   },
   // Common actions
   common: {

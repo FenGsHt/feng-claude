@@ -42,7 +42,10 @@ export const en: Translations = {
     expand: 'Expand',
     collapse: 'Collapse',
     renameHint: 'Double-click to rename',
-    deleteList: 'Delete list'
+    deleteList: 'Delete list',
+    runTarget: 'Run target ',
+    noActiveSession: 'No active session — click a terminal first',
+    runAllTitle: 'Run all (reset every item to pending, then run)'
   },
   common: {
     save: 'Save',

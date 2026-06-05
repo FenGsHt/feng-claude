@@ -7,8 +7,13 @@ import { useI18n } from '../../i18n'
 export function TodoListPanel(): React.ReactElement {
   const { t } = useI18n()
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const activeSession = useSessionStore((s) => s.sessions.find((x) => x.id === s.activeSessionId))
   const lists = useTodoListStore((s) => s.lists)
   const createList = useTodoListStore((s) => s.createList)
+
+  const targetName = activeSession
+    ? activeSession.title || activeSession.workdir.split(/[/\\]/).filter(Boolean).pop() || activeSession.workdir
+    : null
 
   const [newName, setNewName] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -46,6 +51,18 @@ export function TodoListPanel(): React.ReactElement {
         </button>
       </div>
 
+      {/* 运行目标提示：清单全局通用，运行发给「当前活跃终端」，此处明示避免发错 */}
+      <div className="px-2.5 pb-1">
+        {targetName ? (
+          <p className="text-[10px] text-claude-muted truncate" title={activeSession?.workdir}>
+            {t.todolist.runTarget}
+            <span className="text-amber-400/90">▶ {targetName}</span>
+          </p>
+        ) : (
+          <p className="text-[10px] text-red-400/80">{t.todolist.noActiveSession}</p>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto py-1">
         {lists.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-claude-muted text-xs px-3 text-center">
@@ -57,6 +74,7 @@ export function TodoListPanel(): React.ReactElement {
               key={list.id}
               list={list}
               activeSessionId={activeSessionId}
+              targetName={targetName}
               expanded={expanded[list.id] ?? false}
               onToggleExpand={() =>
                 setExpanded((m) => ({ ...m, [list.id]: !(m[list.id] ?? false) }))
@@ -72,11 +90,13 @@ export function TodoListPanel(): React.ReactElement {
 function ListCard({
   list,
   activeSessionId,
+  targetName,
   expanded,
   onToggleExpand
 }: {
   list: TodoList
   activeSessionId: string | null
+  targetName: string | null
   expanded: boolean
   onToggleExpand: () => void
 }): React.ReactElement {
@@ -90,6 +110,7 @@ function ListCard({
   const deleteTodo = useTodoListStore((s) => s.deleteTodo)
   const clearDone = useTodoListStore((s) => s.clearDone)
   const retryFailed = useTodoListStore((s) => s.retryFailed)
+  const resetAll = useTodoListStore((s) => s.resetAll)
 
   const [draft, setDraft] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -188,15 +209,34 @@ function ListCard({
           {doneCount}/{items.length}
         </span>
 
-        {/* run */}
+        {/* run pending */}
         {pendingCount > 0 && (
           <button
             onClick={() => void runTodoList(activeSessionId, list.id)}
-            title={t.todolist.startTitle}
-            className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-amber-400 hover:bg-amber-500/20 transition-colors"
+            title={targetName ? `${t.todolist.startTitle} → ${targetName}` : t.todolist.noActiveSession}
+            disabled={!targetName}
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg width="10" height="10" viewBox="0 0 11 11" fill="none">
               <path d="M2.5 1.5l6 4-6 4v-8z" fill="currentColor" />
+            </svg>
+          </button>
+        )}
+        {/* run all (reset every item to pending, then run) */}
+        {items.length > 0 && (
+          <button
+            onClick={() => {
+              resetAll(list.id)
+              void runTodoList(activeSessionId, list.id)
+            }}
+            title={targetName ? `${t.todolist.runAllTitle} → ${targetName}` : t.todolist.noActiveSession}
+            disabled={!targetName}
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {/* 双三角：全部重跑 */}
+            <svg width="11" height="11" viewBox="0 0 12 11" fill="none">
+              <path d="M1.5 1.5l4 4-4 4v-8z" fill="currentColor" />
+              <path d="M6.5 1.5l4 4-4 4v-8z" fill="currentColor" />
             </svg>
           </button>
         )}
