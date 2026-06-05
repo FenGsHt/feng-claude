@@ -33,10 +33,18 @@ import { syncTodosFromFile } from '../store/todoListStore'
 
 // idle 转为通知前的延迟：等待 12s 覆盖大多数工具执行时间，期间若重新变 running 则取消
 const NOTIFY_DELAY_MS = 12_000
+// [2026-06-05] 全局冷却：同一项目多会话（多标签/分屏）会被广播多次 idle；冷却内只显示一条，兜底防连弹
+const NOTIFY_GLOBAL_COOLDOWN_MS = 15_000
+let lastNotifyShownAt = 0
 const lastTokenTime = new Map<string, number>()
 const notifyTimers = new Map<string, ReturnType<typeof setTimeout>>()
-// 每轮任务最多发一次通知；用户发新消息后才重置，避免工具调用链触发多次
+// 每轮任务最多发一次通知；按 workdir（项目）去重，避免同项目多会话各弹一次
 const notifiedThisTurn = new Set<string>()
+
+/** sessionId → 去重键（同项目用 workdir，找不到回退到 sessionId） */
+function notifyKeyOf(sessionId: string): string {
+  return useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir || sessionId
+}
 const runtimeStatusTailBySession = new Map<string, string>()
 const runtimeStatusTouchAtBySession = new Map<string, number>()
 
@@ -111,15 +119,20 @@ function shouldKeepEmbedLoadingForTranscript(
 
 function notifyTaskDone(sessionId: string): void {
   if (!lastTokenTime.has(sessionId)) return
-  if (notifiedThisTurn.has(sessionId)) return  // 本轮已通知，等用户发新消息才重置
+  const key = notifyKeyOf(sessionId)
+  if (notifiedThisTurn.has(key)) return  // 本项目本轮已通知，等用户发新消息才重置
   const existing = notifyTimers.get(sessionId)
   if (existing) clearTimeout(existing)
   const timer = setTimeout(() => {
     notifyTimers.delete(sessionId)
-    if (notifiedThisTurn.has(sessionId)) return  // 二次校验
-    notifiedThisTurn.add(sessionId)
+    if (notifiedThisTurn.has(key)) return  // 二次校验（期间其他同项目会话可能已通知）
+    notifiedThisTurn.add(key)
+    // 全局冷却：短时间内已弹过则跳过，仅抑制本次显示，不影响去重标记
+    const now = Date.now()
+    if (now - lastNotifyShownAt < NOTIFY_GLOBAL_COOLDOWN_MS) return
     window.electronAPI.settings.get().then((s) => {
       if (s.enableNotifications === false) return
+      lastNotifyShownAt = Date.now()
       window.electronAPI?.showNotification('Feng Claude', 'Task completed')
     }).catch(() => {})
   }, NOTIFY_DELAY_MS)
@@ -133,7 +146,7 @@ function cancelNotify(sessionId: string): void {
 
 /** 用户发新消息时调用，重置本轮通知状态 */
 function resetNotifyTurn(sessionId: string): void {
-  notifiedThisTurn.delete(sessionId)
+  notifiedThisTurn.delete(notifyKeyOf(sessionId))
   cancelNotify(sessionId)
 }
 
