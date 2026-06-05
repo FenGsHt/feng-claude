@@ -45,6 +45,28 @@ const notifiedThisTurn = new Set<string>()
 function notifyKeyOf(sessionId: string): string {
   return useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir || sessionId
 }
+
+/** [2026-06-05] 已应用过的 todo-status 块（按会话）——防止同一块被反复应用覆盖用户后续改动 */
+const lastAppliedStatusBlock = new Map<string, string>()
+
+/** 从会话最近的助手转录里解析 todo-status 块并按 id 更新待办；同一块只应用一次。 */
+function applyTranscriptStatusBlock(sessionId: string): void {
+  const entries = useTranscriptStore.getState().bySession[sessionId] ?? []
+  const text = entries
+    .filter((e) => e.kind === 'assistant')
+    .slice(-12)
+    .map((e) => e.text)
+    .join('\n')
+  const fence = text.match(/```+\s*todo-status[\s\S]*?```/i)
+  if (!fence) return
+  const sig = fence[0]
+  if (lastAppliedStatusBlock.get(sessionId) === sig) return // 同一块，跳过
+  const updates = parseTodoStatusBlock(text)
+  if (updates.length > 0) {
+    useTodoListStore.getState().applyStatusById(updates)
+    lastAppliedStatusBlock.set(sessionId, sig)
+  }
+}
 const runtimeStatusTailBySession = new Map<string, string>()
 const runtimeStatusTouchAtBySession = new Map<string, number>()
 
@@ -249,19 +271,12 @@ export function usePty(): void {
         clearPtyAlternateScreenSession(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
-        /* [2026-06-05] Claude 一轮结束：优先解析回复末尾的 todo-status 状态块刷新待办；
+        /* [2026-06-05] Claude 一轮结束：解析回复末尾的 todo-status 状态块刷新待办（同一块只应用一次）；
          *   无状态块时回退到读 .feng-todos.md（兼容 Claude 真去编辑文件的情况）。 */
         {
-          const entries = useTranscriptStore.getState().bySession[sessionId] ?? []
-          const replyText = entries
-            .filter((e) => e.kind === 'assistant')
-            .slice(-12)
-            .map((e) => e.text)
-            .join('\n')
-          const updates = parseTodoStatusBlock(replyText)
-          if (updates.length > 0) {
-            useTodoListStore.getState().applyStatusById(updates)
-          } else {
+          const before = lastAppliedStatusBlock.get(sessionId)
+          applyTranscriptStatusBlock(sessionId)
+          if (lastAppliedStatusBlock.get(sessionId) === before) {
             const wd = useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir
             if (wd) void syncTodosFromFile(wd)
           }
@@ -336,6 +351,11 @@ export function usePty(): void {
           useEmbedAwaitingReplyStore.getState().markPending(sessionId)
         }
         useTranscriptStore.getState().append(sessionId, entries)
+      }
+      /* [2026-06-05] 转录里一出现 todo-status 状态块就立刻解析并按 id 更新待办，
+       *   不必等 idle、也无需用户手动「从文件同步」。仅增量批次含状态块时才扫，避免无谓解析。 */
+      if (replace !== true && entries.some((e) => e.kind === 'assistant' && /todo-status/i.test(e.text))) {
+        applyTranscriptStatusBlock(sessionId)
       }
     })
 
