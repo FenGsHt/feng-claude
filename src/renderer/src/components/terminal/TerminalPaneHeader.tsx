@@ -6,6 +6,8 @@ import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
 import { injectEmbedDraft, focusEmbedInput } from '../../lib/embedDraftBridge'
 import { SplitWorkdirDialog } from './SplitWorkdirDialog'
 import { openTextEditor } from '../sidebar/sidebarNav'
+import { runTodosForSession } from '../../lib/runTodos'
+import { useTodoListStore } from '../../store/todoListStore'
 import { WorktreeDialog } from './WorktreeDialog'
 import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
@@ -129,6 +131,12 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const history = useSessionStore((s) => s.history)
   const sessions = useSessionStore((s) => s.sessions)
   const tokenUsage = useTokenUsageStore((s) => s.bySession[sessionId])
+  // [2026-06-05] 本 pane 项目的未完成待办数 —— >0 时显示「执行待办」按钮
+  const pendingTodoCount = useTodoListStore((s) => {
+    const wd = sess?.workdir
+    if (!wd) return 0
+    return (s.byWorkdir[wd] ?? []).filter((todo) => todo.status === 'pending').length
+  })
 
   const [splitMode, setSplitMode] = useState<CreateSessionMode | null>(null)
   const [showWorktreeDialog, setShowWorktreeDialog] = useState(false)
@@ -446,6 +454,21 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
               warning
             >
               <MergeIcon />
+            </HeaderBtn>
+          )}
+          {/* [2026-06-05] 执行本项目待办：把未完成项发给本会话的 Claude */}
+          {pendingTodoCount > 0 && (
+            <HeaderBtn
+              title={`让 Claude 执行 ${pendingTodoCount} 项待办`}
+              onClick={() => void runTodosForSession(sessionId)}
+              accent
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M1.5 2.5l1.1 1.1L4.2 1.9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M5.5 3h4M5.5 6h2.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                <path d="M4.6 8.3l2.3 1.4V6.9L4.6 8.3z" fill="currentColor"/>
+                <path d="M1.5 6l1.1 1.1L4.2 5.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </HeaderBtn>
           )}
           {/* [2026-05-27] 刷新终端画面（TUI 应用切回后乱码时手动补救） */}

@@ -3,6 +3,7 @@ import type { Translations } from './zh'
 export const en: Translations = {
   sidebar: {
     files: 'Files',
+    todolist: 'Todos',
     history: 'History',
     commands: 'Commands',
     stats: 'Stats',
@@ -15,6 +16,20 @@ export const en: Translations = {
     test: 'Test',
     devlog: 'Logs',
     office: 'Office'
+  },
+  todolist: {
+    empty: 'No todos yet — add one to start',
+    add: 'Add',
+    placeholder: 'Enter a todo…',
+    noSession: 'Open a session first',
+    clearDone: 'Clear done',
+    syncFromFile: 'Sync from file',
+    syncHint: 'Read checkbox state from .feng-todos.md',
+    editHint: 'Double-click to edit',
+    start: 'Run with Claude',
+    startTitle: 'Send this project’s todos to Claude to work through',
+    failed: 'failed',
+    retryHint: 'Could not complete — click to reset to pending and retry'
   },
   common: {
     save: 'Save',

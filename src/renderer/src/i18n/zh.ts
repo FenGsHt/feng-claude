@@ -2,6 +2,7 @@ export const zh = {
   // Sidebar tabs
   sidebar: {
     files: '文件',
+    todolist: '待办',
     history: '历史',
     commands: '命令',
     stats: '统计',
@@ -14,6 +15,21 @@ export const zh = {
     test: '测试',
     devlog: '日志',
     office: 'Office'
+  },
+  // TodoList 面板
+  todolist: {
+    empty: '暂无待办，添加一条开始',
+    add: '添加',
+    placeholder: '输入待办事项…',
+    noSession: '请先打开一个会话',
+    clearDone: '清除已完成',
+    syncFromFile: '从文件同步',
+    syncHint: '读取 .feng-todos.md 的勾选状态',
+    editHint: '双击编辑',
+    start: '让 Claude 执行',
+    startTitle: '把当前项目的待办发送给 Claude 逐项执行',
+    failed: '失败',
+    retryHint: '无法完成 — 点击重置为待办以重试'
   },
   // Common actions
   common: {

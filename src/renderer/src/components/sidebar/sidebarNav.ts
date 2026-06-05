@@ -6,7 +6,7 @@
 import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
 import { useTextEditorStore } from '../../store/textEditorStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'devlog'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'todolist' | 'devlog'
 
 let setActiveTab: ((tab: Tab) => void) | null = null
 
@@ -18,6 +18,7 @@ export function navigateToSettingsTab(): void { setActiveTab?.('settings') }
 export function navigateToPetTab(): void { setActiveTab?.('pet') }
 export function navigateToDevLogTab(): void { setActiveTab?.('devlog') }
 export function navigateToFilesTab(): void { setActiveTab?.('files') }
+export function navigateToTodoListTab(): void { setActiveTab?.('todolist') }
 
 /** [2026-05-12] Office 预览右侧面板。直接通过 store 打开。 */
 export function openOfficePreview(filePath: string): void {

@@ -21,6 +21,7 @@ import {
 } from '../store/ptyAlternateScreenStore'
 import { stripAnsi } from '../lib/stripAnsi'
 import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
+import { syncTodosFromFile } from '../store/todoListStore'
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -235,6 +236,9 @@ export function usePty(): void {
         clearPtyAlternateScreenSession(sessionId)
         /* [2026-05-07] 原只有 slash echo 结束会清浮窗；AskUserQuestion 等通用 TUI 完成后也要同步关闭需求状态。 */
         useNativeTerminalRequestStore.getState().clearNativeTerminal(sessionId)
+        /* [2026-06-05] Claude 一轮结束：回读 .feng-todos.md 勾选状态，自动刷新侧边栏待办 */
+        const wd = useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir
+        if (wd) void syncTodosFromFile(wd)
       }
       /* [2026-05-07] waiting_input = Claude Code 等待用户确认（如 MCP 权限弹窗）→ 自动打开浮窗以便用户交互 */
       if (status === 'waiting_input') {
