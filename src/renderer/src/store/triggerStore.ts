@@ -62,15 +62,10 @@ export const useTriggerStore = create<TriggerStore>()(
       triggers: [],
 
       addTrigger: (t) =>
-        set((s) => {
-          const now = Date.now()
-          return {
-            triggers: [
-              ...s.triggers,
-              { ...t, id: genId(), enabled: true, nextFireAt: computeNextFire(t.timing, now), createdAt: now }
-            ]
-          }
-        }),
+        set((s) => ({
+          // 默认不启动：用户点「启动」后才按设定方式开始计时
+          triggers: [...s.triggers, { ...t, id: genId(), enabled: false, createdAt: Date.now() }]
+        })),
 
       deleteTrigger: (id) => set((s) => ({ triggers: s.triggers.filter((x) => x.id !== id) })),
 

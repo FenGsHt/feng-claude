@@ -68,6 +68,8 @@ export const zh = {
     enable: '启用',
     disable: '停用',
     delete: '删除',
+    start: '启动（按设定方式开始计时）',
+    stop: '停止',
     runNow: '立即运行',
     nextFire: '距下次触发',
     firing: '触发中…',

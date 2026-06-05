@@ -7,7 +7,6 @@ import {
   type TriggerAction
 } from '../../store/triggerStore'
 import { useTodoListStore } from '../../store/todoListStore'
-import { fireTriggerAction } from '../../lib/runTrigger'
 import { useI18n } from '../../i18n'
 
 type TimingMode = TriggerTiming['mode']
@@ -224,14 +223,28 @@ function TriggerCard({ trig, now }: { trig: Trigger; now: number }): React.React
   return (
     <div className="mx-1.5 mb-1.5 rounded-lg border border-claude-border bg-claude-bg/40 px-2 py-1.5">
       <div className="flex items-center gap-1.5">
-        {/* enable toggle */}
-        <input
-          type="checkbox"
-          checked={trig.enabled}
-          onChange={(e) => setEnabled(trig.id, e.target.checked)}
-          className="shrink-0 accent-amber-500 cursor-pointer"
-          title={trig.enabled ? t.trigger.disable : t.trigger.enable}
-        />
+        {/* 启动 / 停止：按设定方式开始计时，时间到才执行（非立即执行） */}
+        <button
+          onClick={() => setEnabled(trig.id, !trig.enabled)}
+          title={trig.enabled ? t.trigger.stop : t.trigger.start}
+          className={`shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${
+            trig.enabled
+              ? 'text-amber-400 bg-amber-500/15 hover:bg-amber-500/25'
+              : 'text-claude-muted hover:bg-claude-border/60 hover:text-amber-400'
+          }`}
+        >
+          {trig.enabled ? (
+            // stop（方块）
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+              <rect x="1" y="1" width="7" height="7" rx="1" fill="currentColor" />
+            </svg>
+          ) : (
+            // start（三角）
+            <svg width="10" height="10" viewBox="0 0 11 11" fill="none">
+              <path d="M2.5 1.5l6 4-6 4v-8z" fill="currentColor" />
+            </svg>
+          )}
+        </button>
         <span className="flex-1 min-w-0 truncate text-[12px] font-medium text-claude-text" title={trig.name}>
           {trig.name}
         </span>
@@ -240,16 +253,6 @@ function TriggerCard({ trig, now }: { trig: Trigger; now: number }): React.React
             {remaining}
           </span>
         )}
-        {/* 立即运行（不影响排程） */}
-        <button
-          onClick={() => fireTriggerAction(trig)}
-          title={t.trigger.runNow}
-          className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-amber-400 hover:bg-amber-500/20 transition-colors"
-        >
-          <svg width="10" height="10" viewBox="0 0 11 11" fill="none">
-            <path d="M2.5 1.5l6 4-6 4v-8z" fill="currentColor" />
-          </svg>
-        </button>
         <button
           onClick={() => deleteTrigger(trig.id)}
           title={t.trigger.delete}

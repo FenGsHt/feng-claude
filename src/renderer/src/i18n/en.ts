@@ -67,6 +67,8 @@ export const en: Translations = {
     enable: 'Enable',
     disable: 'Disable',
     delete: 'Delete',
+    start: 'Start (begin timing as configured)',
+    stop: 'Stop',
     runNow: 'Run now',
     nextFire: 'Until next fire',
     firing: 'firing…',
