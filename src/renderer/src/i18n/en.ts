@@ -29,7 +29,9 @@ export const en: Translations = {
     start: 'Run with Claude',
     startTitle: 'Send this project’s todos to Claude to work through',
     failed: 'failed',
-    retryHint: 'Could not complete — click to reset to pending and retry'
+    retryHint: 'Could not complete — click to reset to pending and retry',
+    retryFailed: 'Retry failed',
+    retryFailedTitle: 'Reset failed items to pending and resend to Claude'
   },
   common: {
     save: 'Save',

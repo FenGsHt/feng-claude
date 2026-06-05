@@ -29,7 +29,9 @@ export const zh = {
     start: '让 Claude 执行',
     startTitle: '把当前项目的待办发送给 Claude 逐项执行',
     failed: '失败',
-    retryHint: '无法完成 — 点击重置为待办以重试'
+    retryHint: '无法完成 — 点击重置为待办以重试',
+    retryFailed: '重试失败',
+    retryFailedTitle: '把失败项重置为待办并重新发给 Claude'
   },
   // Common actions
   common: {

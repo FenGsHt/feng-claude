@@ -15,6 +15,7 @@ export function TodoListPanel(): React.ReactElement {
   const editTodo = useTodoListStore((s) => s.editTodo)
   const deleteTodo = useTodoListStore((s) => s.deleteTodo)
   const clearDone = useTodoListStore((s) => s.clearDone)
+  const retryFailed = useTodoListStore((s) => s.retryFailed)
   const syncFromMarkdown = useTodoListStore((s) => s.syncFromMarkdown)
 
   const [draft, setDraft] = useState('')
@@ -160,19 +161,37 @@ export function TodoListPanel(): React.ReactElement {
         )}
       </div>
 
-      {/* Run with Claude */}
-      {pendingCount > 0 && (
-        <div className="shrink-0 px-2 pt-1.5">
-          <button
-            onClick={() => void runTodosForSession(activeSessionId)}
-            title={t.todolist.startTitle}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors"
-          >
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-              <path d="M2.5 1.5l6 4-6 4v-8z" fill="currentColor" />
-            </svg>
-            {t.todolist.start}
-          </button>
+      {/* Run with Claude / retry failed */}
+      {(pendingCount > 0 || failedCount > 0) && (
+        <div className="shrink-0 px-2 pt-1.5 flex gap-1">
+          {pendingCount > 0 && (
+            <button
+              onClick={() => void runTodosForSession(activeSessionId)}
+              title={t.todolist.startTitle}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M2.5 1.5l6 4-6 4v-8z" fill="currentColor" />
+              </svg>
+              {t.todolist.start}
+            </button>
+          )}
+          {failedCount > 0 && (
+            <button
+              onClick={() => {
+                retryFailed(workdir)
+                void runTodosForSession(activeSessionId)
+              }}
+              title={t.todolist.retryFailedTitle}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded text-[11px] font-medium bg-red-500/12 text-red-400 hover:bg-red-500/22 transition-colors"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M9.5 5.5A4 4 0 1 1 8 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                <path d="M8 1v2h-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {t.todolist.retryFailed}
+            </button>
+          )}
         </div>
       )}
 
