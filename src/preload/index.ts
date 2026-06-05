@@ -199,9 +199,14 @@ const electronAPI = {
     set: (data: unknown): Promise<void> => ipcRenderer.invoke(IPC.TOKEN_DATA_SET, data)
   },
   kv: {
-    get: (key: string): Promise<string | null> => ipcRenderer.invoke(IPC.KV_GET, key),
-    set: (key: string, value: string): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.KV_SET, { key, value })
+    // 同步：供 zustand persist 同步水合（避免异步竞态清空已存数据）
+    get: (key: string): string | null => {
+      const v = ipcRenderer.sendSync(IPC.KV_GET, key)
+      return typeof v === 'string' ? v : null
+    },
+    set: (key: string, value: string): void => {
+      ipcRenderer.sendSync(IPC.KV_SET, { key, value })
+    }
   },
 
   mcp: {

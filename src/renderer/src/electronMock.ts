@@ -127,15 +127,14 @@ export function injectMockElectronAPI(): void {
         set: async () => {}
       },
       kv: {
-        get: async (key: string) => {
+        get: (key: string): string | null => {
           try { return localStorage.getItem(`kv:${key}`) } catch { return null }
         },
-        set: async (key: string, value: string) => {
+        set: (key: string, value: string): void => {
           try {
             if (value === '') localStorage.removeItem(`kv:${key}`)
             else localStorage.setItem(`kv:${key}`, value)
           } catch { /* ignore */ }
-          return { ok: true }
         }
       },
       officeCli: {

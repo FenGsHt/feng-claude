@@ -671,10 +671,13 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.TOKEN_DATA_GET, async () => getTokenData())
   ipcMain.handle(IPC.TOKEN_DATA_SET, async (_e, data: unknown) => setTokenData(data))
 
-  ipcMain.handle(IPC.KV_GET, async (_e, key: string) => getKv(key))
-  ipcMain.handle(IPC.KV_SET, async (_e, { key, value }: { key: string; value: string }) => {
+  // [2026-06-06] 同步读写：让 renderer 的 zustand persist 同步水合，避免异步水合竞态把已存数据清空
+  ipcMain.on(IPC.KV_GET, (e, key: string) => {
+    e.returnValue = getKv(key)
+  })
+  ipcMain.on(IPC.KV_SET, (e, { key, value }: { key: string; value: string }) => {
     setKv(key, value)
-    return { ok: true }
+    e.returnValue = true
   })
 
   // ── Window controls ──────────────────────────────────────────
