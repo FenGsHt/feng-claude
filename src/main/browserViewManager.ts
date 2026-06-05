@@ -385,9 +385,12 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
 
   if (url) {
     state.view.webContents.loadURL(url).catch(() => {})
-  } else if (!state.view.webContents.getURL()) {
-    const last = loadLastBrowserUrl()
-    state.view.webContents.loadURL(last || 'https://www.bing.com').catch(() => {})
+  } else {
+    const currentUrl = state.view.webContents.getURL()
+    if (!currentUrl || currentUrl === 'about:blank') {
+      const last = loadLastBrowserUrl()
+      state.view.webContents.loadURL(last || 'https://www.bing.com').catch(() => {})
+    }
   }
 
   state.visible = true

@@ -3,6 +3,7 @@ import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type Token
 import { fmtTokens } from '../../lib/formatTokens'
 import { useI18n } from '../../i18n'
 import type { ClaudeSettings } from '../../types/settings'
+import { OFFICIAL_PROFILE_ID } from '../../types/settings'
 
 function fmtCost(usd: number): string {
   if (usd < 0.001) return '<$0.001'
@@ -159,7 +160,11 @@ export function TokenUsageWidget(): React.ReactElement {
   }, [])
 
   // Fallback: single pricing for global aggregates (migration / no per-profile data)
-  const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
+  // [2026-06-05] 官方配置 (__official__) 不在 profiles 数组中，不能 fallback 到 profiles[0]
+  const isOfficialActive = settings?.activeProfileId === OFFICIAL_PROFILE_ID
+  const activeProfile = isOfficialActive
+    ? null
+    : (settings?.profiles.find(p => p.id === settings?.activeProfileId) ?? settings?.profiles[0])
   const singlePricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
   // [2026-04-28] Compute costs using each profile's own pricing.

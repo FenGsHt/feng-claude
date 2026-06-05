@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useFocusWindow } from '../../hooks/useFocusWindow'
 import type { ClaudeSettings, ApiProfile, FallbackConfig, TelegramBotPreset } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
+import { useGlobalTokenStore } from '../../store/globalTokenStore'
 import { useI18n, useLangStore } from '../../i18n'
 import { useThemeStore } from '../../store/themeStore'
 import type { TelegramChannelCheckResult, UpdateStatusPayload } from '../../types/ipc'
@@ -929,51 +930,18 @@ export function SettingsPanel(): React.ReactElement {
         </Field>
       </div>
 
-      {/* Pricing - per profile */}
-      {activeProfile && (
-        <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
-          <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
-            {lang === 'zh' ? '费用估算' : 'Pricing'} <span className="normal-case font-normal">($ / M tokens)</span>
-          </div>
-
-          {(
-            [
-              ['inputPerM', lang === 'zh' ? '输入' : 'Input', '$3.00'],
-              ['outputPerM', lang === 'zh' ? '输出' : 'Output', '$15.00'],
-              ['cacheCreatePerM', lang === 'zh' ? '缓存写入' : 'Cache Write', '$3.75'],
-              ['cacheReadPerM', lang === 'zh' ? '缓存读取' : 'Cache Read', '$0.30'],
-            ] as [keyof typeof SETTINGS_DEFAULT_PRICING, string, string][]
-          ).map(([key, label, placeholder]) => (
-            <Field key={key} label={label} hint={`default: ${placeholder}`}>
-              <div className="flex items-center gap-1">
-                <span className="text-claude-muted text-xs">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={activeProfile.pricing?.[key] ?? SETTINGS_DEFAULT_PRICING[key]}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0
-                    const newPricing = { ...activeProfile.pricing ?? SETTINGS_DEFAULT_PRICING, [key]: val }
-                    handleProfileChange('pricing', newPricing)
-                  }}
-                  className="field-input flex-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newPricing = { ...activeProfile.pricing ?? SETTINGS_DEFAULT_PRICING, [key]: SETTINGS_DEFAULT_PRICING[key] }
-                    handleProfileChange('pricing', newPricing)
-                  }}
-                  title="Reset to default"
-                  className="shrink-0 text-[9px] text-claude-muted hover:text-claude-text px-1"
-                >
-                  ↺
-                </button>
-              </div>
-            </Field>
-          ))}
-        </div>
+      {/* Pricing - per profile (custom) or global (official) */}
+      {(activeProfile || isOfficialActive) && (
+        <OfficialOrProfilePricing
+          isOfficial={isOfficialActive}
+          activeProfile={activeProfile ?? undefined}
+          lang={lang}
+          onProfilePricingChange={(key, val) => {
+            if (!activeProfile) return
+            const newPricing = { ...activeProfile.pricing ?? SETTINGS_DEFAULT_PRICING, [key]: val }
+            handleProfileChange('pricing', newPricing)
+          }}
+        />
       )}
 
       {/* [2026-04-28] 宠物专用 API 配置 */}
@@ -1469,6 +1437,81 @@ function ProfileEditor({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function OfficialOrProfilePricing({
+  isOfficial,
+  activeProfile,
+  lang,
+  onProfilePricingChange
+}: {
+  isOfficial: boolean
+  activeProfile?: import('../../types/settings').ApiProfile
+  lang: string
+  onProfilePricingChange: (key: keyof typeof SETTINGS_DEFAULT_PRICING, val: number) => void
+}): React.ReactElement {
+  const globalPricing = useGlobalTokenStore((s) => s.pricing)
+  const setPricing = useGlobalTokenStore((s) => s.setPricing)
+
+  const pricing = isOfficial
+    ? globalPricing
+    : (activeProfile?.pricing ?? SETTINGS_DEFAULT_PRICING)
+
+  const fields: [keyof typeof SETTINGS_DEFAULT_PRICING, string, string][] = [
+    ['inputPerM', lang === 'zh' ? '输入' : 'Input', '$3.00'],
+    ['outputPerM', lang === 'zh' ? '输出' : 'Output', '$15.00'],
+    ['cacheCreatePerM', lang === 'zh' ? '缓存写入' : 'Cache Write', '$3.75'],
+    ['cacheReadPerM', lang === 'zh' ? '缓存读取' : 'Cache Read', '$0.30'],
+  ]
+
+  return (
+    <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
+      <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+        {lang === 'zh' ? '费用估算' : 'Pricing'} <span className="normal-case font-normal">($ / M tokens)</span>
+        {isOfficial && (
+          <span className="ml-1 normal-case font-normal text-claude-muted/70">
+            — {lang === 'zh' ? '全局默认，适用于官方配置' : 'global default, applies to official config'}
+          </span>
+        )}
+      </div>
+      {fields.map(([key, label, placeholder]) => (
+        <Field key={key} label={label} hint={`default: ${placeholder}`}>
+          <div className="flex items-center gap-1">
+            <span className="text-claude-muted text-xs">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={pricing[key]}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value) || 0
+                if (isOfficial) {
+                  setPricing({ ...globalPricing, [key]: val })
+                } else {
+                  onProfilePricingChange(key, val)
+                }
+              }}
+              className="field-input flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (isOfficial) {
+                  setPricing({ ...globalPricing, [key]: SETTINGS_DEFAULT_PRICING[key] })
+                } else {
+                  onProfilePricingChange(key, SETTINGS_DEFAULT_PRICING[key])
+                }
+              }}
+              title="Reset to default"
+              className="shrink-0 text-[9px] text-claude-muted hover:text-claude-text px-1"
+            >
+              ↺
+            </button>
+          </div>
+        </Field>
+      ))}
     </div>
   )
 }
