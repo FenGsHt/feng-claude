@@ -8,6 +8,22 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.35': {
+    titleZh: 'Feng Claude 0.7.35 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.35",
+    bulletsZh: [
+      '新增「待办」侧边栏：可建多个全局可复用的命名清单，独立增删/编辑/折叠/重命名',
+      '一键交给 Claude：▶ 运行未完成项 / ▶▶ 全部重跑；写入项目 .feng-todos.md 并发给当前会话',
+      '四种状态：待办/完成/失败(带原因)/需澄清(AI 反问，面板内联回复后发回继续)',
+      '每轮结束自动回读文件刷新进度；运行目标提示、运行中标识、删除/重跑二次确认',
+    ],
+    bulletsEn: [
+      'New "Todos" sidebar: multiple global reusable named lists; add/edit/collapse/rename independently',
+      'One-click to Claude: ▶ run pending / ▶▶ run all; writes .feng-todos.md and sends to the active session',
+      'Four states: pending/done/failed(with reason)/needs-clarify(AI asks back, reply inline to continue)',
+      'Auto-sync progress from file each turn; run-target hint, running indicator, confirm on delete/run-all',
+    ]
+  },
   '0.7.25': {
     titleZh: 'Feng Claude 0.7.25',
     titleEn: 'Feng Claude 0.7.25',
