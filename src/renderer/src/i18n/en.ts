@@ -4,6 +4,7 @@ export const en: Translations = {
   sidebar: {
     files: 'Files',
     todolist: 'Todos',
+    trigger: 'Triggers',
     history: 'History',
     commands: 'Commands',
     stats: 'Stats',
@@ -50,6 +51,25 @@ export const en: Translations = {
     confirmShort: 'Confirm',
     confirmDelete: 'Click to confirm deleting this list',
     confirmRunAll: 'Click to confirm run-all (clears current progress)'
+  },
+  trigger: {
+    title: 'Triggers',
+    namePlaceholder: 'Name (optional)…',
+    mode: { countdown: 'Countdown', at: 'At time', interval: 'Repeat' },
+    action: { command: 'Command', todolist: 'Todo list' },
+    minutesLater: 'min later',
+    everyMinutes: 'min interval',
+    commandPlaceholder: 'Command to send to Claude…',
+    pickList: 'Pick a list…',
+    noLists: 'No todo lists yet — create one in the Todos panel first',
+    create: 'Create trigger',
+    empty: 'No triggers yet',
+    enable: 'Enable',
+    disable: 'Disable',
+    delete: 'Delete',
+    nextFire: 'Until next fire',
+    firing: 'firing…',
+    listGone: 'list deleted'
   },
   common: {
     save: 'Save',

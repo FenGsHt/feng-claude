@@ -6,7 +6,7 @@
 import { useOfficePreviewPanelStore } from '../../store/officePreviewPanelStore'
 import { useTextEditorStore } from '../../store/textEditorStore'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'todolist' | 'devlog'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'todolist' | 'trigger' | 'devlog'
 
 let setActiveTab: ((tab: Tab) => void) | null = null
 

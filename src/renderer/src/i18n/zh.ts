@@ -3,6 +3,7 @@ export const zh = {
   sidebar: {
     files: '文件',
     todolist: '待办',
+    trigger: '触发器',
     history: '历史',
     commands: '命令',
     stats: '统计',
@@ -50,6 +51,26 @@ export const zh = {
     confirmShort: '确认',
     confirmDelete: '点击确认删除该清单',
     confirmRunAll: '点击确认全部重跑（将清空当前进度）'
+  },
+  // 触发器面板
+  trigger: {
+    title: '触发器',
+    namePlaceholder: '名称（可选）…',
+    mode: { countdown: '倒计时', at: '定时刻', interval: '重复' },
+    action: { command: '指令', todolist: '待办清单' },
+    minutesLater: '分钟后',
+    everyMinutes: '分钟一次',
+    commandPlaceholder: '要发送给 Claude 的指令…',
+    pickList: '选择清单…',
+    noLists: '还没有待办清单，请先在「待办」面板创建',
+    create: '创建触发器',
+    empty: '还没有触发器',
+    enable: '启用',
+    disable: '停用',
+    delete: '删除',
+    nextFire: '距下次触发',
+    firing: '触发中…',
+    listGone: '清单已删除'
   },
   // Common actions
   common: {

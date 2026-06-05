@@ -5,6 +5,7 @@ import { OnboardingOverlay, isOnboardingComplete } from './components/onboarding
 import { WhatsNewDialog } from './components/layout/WhatsNewDialog'
 import { navigateToSettingsTab } from './components/sidebar/Sidebar'
 import { usePty } from './hooks/usePty'
+import { useTriggerScheduler } from './hooks/useTriggerScheduler'
 import { useWorkspacePersistence } from './hooks/useWorkspacePersistence'
 import { useTheme } from './hooks/useTheme'
 import { useSessionStore } from './store/sessionStore'
@@ -15,6 +16,7 @@ import { fallbackWhatsNewCopy, getWhatsNewCopy } from './lib/whatsNewCatalog'
 export default function App(): React.ReactElement {
   useTheme()
   usePty()
+  useTriggerScheduler()
 
   const [bootstrapped, setBootstrapped] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)

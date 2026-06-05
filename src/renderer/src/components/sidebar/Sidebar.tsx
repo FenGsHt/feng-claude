@@ -13,13 +13,14 @@ import { PetWidget } from './PetWidget'
 import { PetPanel } from './PetPanel'
 import { DevLogPanel } from './DevLogPanel'
 import { TodoListPanel } from './TodoListPanel'
+import { TriggerPanel } from './TriggerPanel'
 import { useFileTree } from '../../hooks/useFileTree'
 import { useSessionStore } from '../../store/sessionStore'
 import { useI18n } from '../../i18n'
 import { registerSidebarTabSwitcher } from './sidebarNav'
 import { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToFilesTab, navigateToTodoListTab } from './sidebarNav'
 
-type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'todolist' | 'test' | 'devlog'
+type Tab = 'files' | 'history' | 'commands' | 'settings' | 'stats' | 'plugins' | 'guide' | 'mcp' | 'skills' | 'pet' | 'todolist' | 'trigger' | 'test' | 'devlog'
 
 // Re-export nav helpers for external callers
 export { navigateToSettingsTab, navigateToPetTab, navigateToDevLogTab, navigateToFilesTab, navigateToTodoListTab }
@@ -47,6 +48,16 @@ function IconTodoList(): React.ReactElement {
       <path d="M2 3.5l1.2 1.2L5 2.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M2 8l1.2 1.2L5 7.3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M7.5 4h5.5M7.5 8.5h5.5M2.5 12.5h10.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconTrigger(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="7.5" cy="8" r="5" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M7.5 5.5V8l1.8 1.2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.5 1.5h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
     </svg>
   )
 }
@@ -187,6 +198,7 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
   const TABS: TabConfig[] = [
     { id: 'files', label: t.sidebar.files, icon: <IconFiles /> },
     { id: 'todolist', label: t.sidebar.todolist, icon: <IconTodoList /> },
+    { id: 'trigger', label: t.sidebar.trigger, icon: <IconTrigger /> },
     { id: 'history', label: t.sidebar.history, icon: <IconHistory /> },
     { id: 'commands', label: t.sidebar.commands, icon: <IconCommands /> },
     { id: 'stats', label: t.sidebar.stats, icon: <IconStats /> },
@@ -258,6 +270,8 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
             />
           ) : activeTab === 'todolist' ? (
             <TodoListPanel />
+          ) : activeTab === 'trigger' ? (
+            <TriggerPanel />
           ) : activeTab === 'history' ? (
             <div className="overflow-y-auto h-full">
               <HistoryPanel />
