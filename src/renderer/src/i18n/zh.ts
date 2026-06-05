@@ -68,6 +68,7 @@ export const zh = {
     enable: '启用',
     disable: '停用',
     delete: '删除',
+    runNow: '立即运行',
     nextFire: '距下次触发',
     firing: '触发中…',
     listGone: '清单已删除'

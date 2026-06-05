@@ -7,6 +7,7 @@ import {
   type TriggerAction
 } from '../../store/triggerStore'
 import { useTodoListStore } from '../../store/todoListStore'
+import { fireTriggerAction } from '../../lib/runTrigger'
 import { useI18n } from '../../i18n'
 
 type TimingMode = TriggerTiming['mode']
@@ -239,6 +240,16 @@ function TriggerCard({ trig, now }: { trig: Trigger; now: number }): React.React
             {remaining}
           </span>
         )}
+        {/* 立即运行（不影响排程） */}
+        <button
+          onClick={() => fireTriggerAction(trig)}
+          title={t.trigger.runNow}
+          className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-amber-400 hover:bg-amber-500/20 transition-colors"
+        >
+          <svg width="10" height="10" viewBox="0 0 11 11" fill="none">
+            <path d="M2.5 1.5l6 4-6 4v-8z" fill="currentColor" />
+          </svg>
+        </button>
         <button
           onClick={() => deleteTrigger(trig.id)}
           title={t.trigger.delete}
