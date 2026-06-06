@@ -8,6 +8,22 @@ export interface WhatsNewCopy {
 }
 
 const ENTRIES: Record<string, WhatsNewCopy> = {
+  '0.7.36': {
+    titleZh: 'Feng Claude 0.7.36 更新摘要',
+    titleEn: "What's new in Feng Claude 0.7.36",
+    bulletsZh: [
+      '新增「触发器」侧边栏：倒计时/定时刻/重复间隔后，自动向当前会话发指令或跑待办清单',
+      '待办状态自动回传：Claude 回复末尾输出状态块，GUI 实时解析更新，无需手动同步',
+      '修复待办/触发器重开即丢：改存稳定路径 + 同步读写，消除水合竞态',
+      '修复「Task completed」通知狂弹：按项目去重 + 全局冷却',
+    ],
+    bulletsEn: [
+      'New Triggers sidebar: fire a command or run a todolist into the active session after a countdown / at a time / on an interval',
+      'Todo status auto-sync: Claude emits a status block at the end of its reply; the GUI parses it live — no manual sync',
+      'Fix todolists/triggers vanishing on restart: stable-path storage + synchronous hydration (no race)',
+      'Fix "Task completed" notification spam: dedupe per project + global cooldown',
+    ]
+  },
   '0.7.35': {
     titleZh: 'Feng Claude 0.7.35 更新摘要',
     titleEn: "What's new in Feng Claude 0.7.35",
