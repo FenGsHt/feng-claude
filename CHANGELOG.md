@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.37] - 2026-06-09
+
+### macOS 兼容性 | macOS Compatibility
+- **双架构构建**：dmg 同时产出 Apple Silicon (arm64) 与 Intel (x64)，此前默认仅出 runner 架构包导致 Intel Mac 无法运行
+- **快捷键支持 Cmd 键**：主进程拦截的 Ctrl+Shift+D（浏览器）/ Q（拾取器）/ C（复制）此前硬编码只认 Ctrl，Mac 按 Cmd 全部失效；现 Mac 上接受 Cmd（其他平台不变）
+- **未签名分发说明**：`identity: null` 显式声明未签名；下载 dmg 后首次打开需「右键 → 打开」或 `xattr -cr` 清除隔离属性（无 Apple 开发者证书前无法做到双击直接打开）
+
+### 改进 | Improvements
+- **ConPTY 默认开启（Windows）**：未显式设置时默认使用 ConPTY，改善 lazygit/vim 等 TUI 应用显示；如遇异常可在设置中关闭（`FENG_USE_CONPTY=0` 可强制关）
+
 ## [0.7.36] - 2026-06-06
 
 ### 新功能 | New Features

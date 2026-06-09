@@ -7,6 +7,18 @@
 
 ---
 
+## v0.7.37 (2026-06-09)
+
+### macOS 兼容性
+- **双架构构建**：dmg 同时产出 Apple Silicon (arm64) 与 Intel (x64)
+- **快捷键支持 Cmd 键**：Ctrl+Shift+D/Q/C 在 Mac 上可用 Cmd 触发
+- **未签名分发**：下载 dmg 后首次打开需「右键 → 打开」或 `xattr -cr`
+
+### 改进
+- **ConPTY 默认开启（Windows）**：默认使用 ConPTY 改善 TUI 显示，可在设置中关闭
+
+---
+
 ## v0.7.36 (2026-06-06)
 
 ### 新功能 | New Features

@@ -1198,17 +1198,17 @@ export function SettingsPanel(): React.ReactElement {
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-xs text-claude-text">ConPTY 模式（Windows）</div>
-              <div className="text-[10px] text-claude-muted">改善 lazygit / vim 等 TUI 应用显示；若出现终端异常可关闭。需重启会话生效。</div>
+              <div className="text-[10px] text-claude-muted">默认开启，改善 lazygit / vim 等 TUI 应用显示；若出现终端异常可关闭。需重启会话生效。</div>
             </div>
             <button
               onClick={() => {
-                const next = !(form.terminal?.useConpty ?? false)
+                const next = !(form.terminal?.useConpty ?? true)
                 setForm(prev => ({ ...prev, terminal: { ...prev.terminal, useConpty: next } }))
                 setSaved(false)
               }}
-              className={`relative w-8 h-4 shrink-0 rounded-full transition-colors ${form.terminal?.useConpty ? 'bg-amber-500' : 'bg-claude-border'}`}
+              className={`relative w-8 h-4 shrink-0 rounded-full transition-colors ${(form.terminal?.useConpty ?? true) ? 'bg-amber-500' : 'bg-claude-border'}`}
             >
-              <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${form.terminal?.useConpty ? 'left-4' : 'left-0.5'}`} />
+              <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${(form.terminal?.useConpty ?? true) ? 'left-4' : 'left-0.5'}`} />
             </button>
           </div>
         )}

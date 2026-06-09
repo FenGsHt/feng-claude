@@ -154,18 +154,20 @@ function createWindow(): BrowserWindow {
   registerBrowserViewIpc()
 
   win.webContents.on('before-input-event', (event, input) => {
-    // Ctrl+Shift+D — toggle embedded browser
-    if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'd') {
+    // [2026-06-09] Mac 上接受 Cmd（meta）；其他平台 meta 是 Win 键，仍只认 Ctrl
+    const cmdOrCtrl = input.control || (process.platform === 'darwin' && input.meta)
+    // Ctrl/Cmd+Shift+D — toggle embedded browser
+    if (input.type === 'keyDown' && cmdOrCtrl && input.shift && input.key.toLowerCase() === 'd') {
       event.preventDefault()
       toggleBrowserView(win)
     }
-    // Ctrl+Shift+Q — element picker
-    if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
+    // Ctrl/Cmd+Shift+Q — element picker
+    if (input.type === 'keyDown' && cmdOrCtrl && input.shift && input.key.toLowerCase() === 'q') {
       event.preventDefault()
       void startElementPicker()
     }
-    // [2026-05-01] 在主进程拦截 Ctrl+Shift+C，绕过 Electron 菜单加速器
-    if (input.control && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {
+    // [2026-05-01] 在主进程拦截 Ctrl/Cmd+Shift+C，绕过 Electron 菜单加速器
+    if (cmdOrCtrl && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {
       event.preventDefault()
       win.webContents.send('terminal:copy-selection')
     }

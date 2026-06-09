@@ -33,8 +33,14 @@ nsis:
   uninstallDisplayName: '${productName}'
   createDesktopShortcut: always
 mac:
+  # [2026-06-09] 同时构建 Apple Silicon (arm64) 与 Intel (x64)，否则默认仅出 runner 架构包
   target:
-    - dmg
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  # 未签名分发：Gatekeeper 仍会拦，用户需「右键打开」或 `xattr -cr <App>`
+  identity: null
 linux:
   target:
     - AppImage
