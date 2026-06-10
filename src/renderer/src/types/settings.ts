@@ -246,12 +246,12 @@ export function createDefaultProfile(name: string, id: string): ApiProfile {
   }
 }
 
-/** [2026-04-28] 默认费用估算 */
+/** [2026-04-28] 默认费用估算（人民币，Anthropic USD × 7）— Sonnet 4.6 定价 */
 export const DEFAULT_PRICING = {
-  inputPerM: 3,
-  outputPerM: 15,
-  cacheCreatePerM: 3.75,
-  cacheReadPerM: 0.30
+  inputPerM: 21,
+  outputPerM: 105,
+  cacheCreatePerM: 26.25,
+  cacheReadPerM: 2.10
 }
 
 const DEFAULT_PROFILE_ID = 'default'

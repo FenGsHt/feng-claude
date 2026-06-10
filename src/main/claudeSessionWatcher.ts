@@ -43,6 +43,8 @@ interface ParsedUsage {
   output: number
   cacheCreate: number
   cacheRead: number
+  /** [2026-06-09] 模型标识，如 "claude-sonnet-4-20250514"、"claude-opus-4-20250514" */
+  model?: string
 }
 
 function usageSum(u: ParsedUsage): number {
@@ -293,6 +295,7 @@ export class ClaudeSessionWatcher {
               output: usage.output,
               cacheCreate: usage.cacheCreate,
               cacheRead: usage.cacheRead,
+              model: usage.model,
               reset: false,
               isPrimary: i === 0
             })
@@ -405,16 +408,19 @@ function coerceUsageRecord(raw: unknown): ParsedUsage | null {
 function parseUsageFromAssistantJsonlEntry(entry: Record<string, unknown>): ParsedUsage | null {
   if (String(entry.type ?? '') !== 'assistant') return null
   const msg = entry.message
+  let model: string | undefined
   if (msg && typeof msg === 'object') {
     const m = msg as Record<string, unknown>
+    // [2026-06-09] 提取模型标识（如 "claude-sonnet-4-20250514"）
+    if (typeof m.model === 'string' && m.model) model = m.model
     if (m.usage != null) {
       const u = coerceUsageRecord(m.usage)
-      if (u) return u
+      if (u) return { ...u, model }
     }
   }
   if (entry.usage != null) {
     const u = coerceUsageRecord(entry.usage)
-    if (u) return u
+    if (u) return { ...u, model }
   }
   return null
 }

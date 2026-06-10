@@ -3,6 +3,7 @@ import { useFocusWindow } from '../../hooks/useFocusWindow'
 import type { ClaudeSettings, ApiProfile, FallbackConfig, TelegramBotPreset } from '../../types/settings'
 import { DEFAULT_SETTINGS, createDefaultProfile, DEFAULT_PRICING as SETTINGS_DEFAULT_PRICING, OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
+import { useSessionStore } from '../../store/sessionStore'
 import { useI18n, useLangStore } from '../../i18n'
 import { useThemeStore } from '../../store/themeStore'
 import type { TelegramChannelCheckResult, UpdateStatusPayload } from '../../types/ipc'
@@ -176,6 +177,14 @@ export function SettingsPanel(): React.ReactElement {
       setForm(prev => ({ ...prev, activeProfileId: profileId }))
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
+      // [2026-06-09] 切换后同步更新所有已有 session 的 profileId，
+      // 防止 token 统计继续记到旧 profile（旧定价）上
+      const { sessions, updateSessionProfileId } = useSessionStore.getState()
+      for (const s of sessions) {
+        if (s.profileId !== profileId) {
+          updateSessionProfileId(s.id, profileId)
+        }
+      }
     }
   }
 
@@ -1460,16 +1469,16 @@ function OfficialOrProfilePricing({
     : (activeProfile?.pricing ?? SETTINGS_DEFAULT_PRICING)
 
   const fields: [keyof typeof SETTINGS_DEFAULT_PRICING, string, string][] = [
-    ['inputPerM', lang === 'zh' ? '输入' : 'Input', '$3.00'],
-    ['outputPerM', lang === 'zh' ? '输出' : 'Output', '$15.00'],
-    ['cacheCreatePerM', lang === 'zh' ? '缓存写入' : 'Cache Write', '$3.75'],
-    ['cacheReadPerM', lang === 'zh' ? '缓存读取' : 'Cache Read', '$0.30'],
+    ['inputPerM', lang === 'zh' ? '输入' : 'Input', '¥21.00'],
+    ['outputPerM', lang === 'zh' ? '输出' : 'Output', '¥105.00'],
+    ['cacheCreatePerM', lang === 'zh' ? '缓存写入' : 'Cache Write', '¥26.25'],
+    ['cacheReadPerM', lang === 'zh' ? '缓存读取' : 'Cache Read', '¥2.10'],
   ]
 
   return (
     <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
       <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
-        {lang === 'zh' ? '费用估算' : 'Pricing'} <span className="normal-case font-normal">($ / M tokens)</span>
+        {lang === 'zh' ? '费用估算' : 'Pricing'} <span className="normal-case font-normal">(¥ / M tokens)</span>
         {isOfficial && (
           <span className="ml-1 normal-case font-normal text-claude-muted/70">
             — {lang === 'zh' ? '全局默认，适用于官方配置' : 'global default, applies to official config'}
@@ -1479,7 +1488,7 @@ function OfficialOrProfilePricing({
       {fields.map(([key, label, placeholder]) => (
         <Field key={key} label={label} hint={`default: ${placeholder}`}>
           <div className="flex items-center gap-1">
-            <span className="text-claude-muted text-xs">$</span>
+            <span className="text-claude-muted text-xs">¥</span>
             <input
               type="number"
               min="0"

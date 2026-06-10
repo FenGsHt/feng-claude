@@ -301,7 +301,7 @@ export function usePty(): void {
 
     // ── JSONL token usage (sole accurate source) ──────────────
     const unsubTokens = window.electronAPI.onTokenUsageUpdate((payload) => {
-      const { sessionId, input, output, cacheCreate, cacheRead, reset, isPrimary } = payload
+      const { sessionId, input, output, cacheCreate, cacheRead, model, reset, isPrimary } = payload
       lastTokenTime.set(sessionId, Date.now())
 
       if (input > 0 || output > 0) {
@@ -334,7 +334,7 @@ export function usePty(): void {
           output,
           cacheCreate: cacheCreate ?? 0,
           cacheRead: cacheRead ?? 0
-        }, profileId)
+        }, profileId, model)
       }
     })
 

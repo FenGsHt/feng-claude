@@ -1,14 +1,41 @@
 import React, { useState, useEffect } from 'react'
-import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals } from '../../store/globalTokenStore'
+import { useGlobalTokenStore, tokenSum, computeCost, DEFAULT_PRICING, type TokenTotals, type Pricing } from '../../store/globalTokenStore'
 import { fmtTokens } from '../../lib/formatTokens'
 import { useI18n } from '../../i18n'
 import type { ClaudeSettings } from '../../types/settings'
 import { OFFICIAL_PROFILE_ID } from '../../types/settings'
 
+// [2026-06-09] 模型定价映射（¥/M tokens，Anthropic USD × 7）— 用于 per-model 费用计算
+// 来源: https://platform.claude.com/docs/en/about-claude/pricing
+const MODEL_PRICING: Record<string, Pricing> = {
+  'opus':    { inputPerM: 35,  outputPerM: 175, cacheCreatePerM: 43.75, cacheReadPerM: 3.50 },
+  'sonnet':  { inputPerM: 21,  outputPerM: 105, cacheCreatePerM: 26.25, cacheReadPerM: 2.10 },
+  'haiku':   { inputPerM: 7,   outputPerM: 35,  cacheCreatePerM: 8.75,  cacheReadPerM: 0.70 },
+  'fable':   { inputPerM: 70,  outputPerM: 350, cacheCreatePerM: 87.50, cacheReadPerM: 7.00 },
+}
+
+/** 从模型 ID（如 "claude-sonnet-4-20250514"）提取定价 key */
+function modelToPricingKey(modelId: string): string {
+  const lower = modelId.toLowerCase()
+  if (lower.includes('opus')) return 'opus'
+  if (lower.includes('haiku')) return 'haiku'
+  return 'sonnet' // 默认按 sonnet 计费
+}
+
+/** 模型 ID → 短显示名 */
+function modelDisplayName(modelId: string): string {
+  const lower = modelId.toLowerCase()
+  if (lower.includes('opus')) return 'Opus'
+  if (lower.includes('haiku')) return 'Haiku'
+  if (lower.includes('sonnet')) return 'Sonnet'
+  // 取最后一段作为 fallback
+  return modelId.split('-').pop() ?? modelId
+}
+
 function fmtCost(usd: number): string {
-  if (usd < 0.001) return '<$0.001'
-  if (usd < 1) return `$${usd.toFixed(3)}`
-  return `$${usd.toFixed(2)}`
+  if (usd < 0.001) return '<¥0.001'
+  if (usd < 1) return `¥${usd.toFixed(3)}`
+  return `¥${usd.toFixed(2)}`
 }
 
 // ── 等级系统（300 级，幂次曲线，满级 = 1 万亿 token）──────
@@ -144,6 +171,8 @@ export function TokenUsageWidget(): React.ReactElement {
   const globalPricing = useGlobalTokenStore((s) => s.pricing)
   const perProfile = useGlobalTokenStore((s) => s.perProfile)
   const dailyHistoryPerProfile = useGlobalTokenStore((s) => s.dailyHistoryPerProfile)
+  const perModel = useGlobalTokenStore((s) => s.perModel)
+  const dailyHistoryPerModel = useGlobalTokenStore((s) => s.dailyHistoryPerModel)
   const hideDetailedTokens = useGlobalTokenStore((s) => s.hideDetailedTokens)
   const setBudget = useGlobalTokenStore((s) => s.setBudget)
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
@@ -195,6 +224,21 @@ export function TokenUsageWidget(): React.ReactElement {
   const hasPerProfileData = Object.keys(perProfile).length > 0
   const todayPerProfileTotals = dailyHistoryPerProfile[todayDate] ?? {}
   const hasTodayPerProfileData = Object.keys(todayPerProfileTotals).length > 0
+
+  // [2026-06-09] Per-model cost computation — 使用各模型自己的定价
+  const hasPerModelData = Object.keys(perModel).length > 0
+  const todayPerModelTotals = dailyHistoryPerModel[todayDate] ?? {}
+  const hasTodayPerModelData = Object.keys(todayPerModelTotals).length > 0
+
+  function computePerModelCost(totals: Record<string, TokenTotals>): number {
+    let cost = 0
+    for (const [modelId, t] of Object.entries(totals)) {
+      const key = modelToPricingKey(modelId)
+      const p = MODEL_PRICING[key] ?? singlePricing
+      cost += computeCost(t, p)
+    }
+    return cost
+  }
 
   const todayCost = hasTodayPerProfileData
     ? computePerProfileCost(todayPerProfileTotals, today)
@@ -353,6 +397,39 @@ export function TokenUsageWidget(): React.ReactElement {
 
       {/* Budget progress bar — uses total when budget set, otherwise hidden */}
       {!hideDetailedTokens && <BudgetBar used={budget > 0 ? totalUsed : todayUsed} budget={budget} />}
+
+      {/* [2026-06-09] Per-model breakdown（官方配置下自动路由的模型细分） */}
+      {hasPerModelData && !hideDetailedTokens && (() => {
+        // 按 token 总量降序排列
+        const sorted = Object.entries(perModel)
+          .map(([id, t]) => ({ id, t, total: tokenSum(t) }))
+          .filter(e => e.total > 0)
+          .sort((a, b) => b.total - a.total)
+        if (sorted.length < 1) return null
+        const totalModelCost = computePerModelCost(perModel)
+        return (
+          <div className="mt-1.5 pt-1 border-t border-claude-border/40">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[9px] text-claude-muted/70 uppercase tracking-wider">Models</span>
+              <span className="font-mono text-[9px] text-amber-400/80">{fmtCost(totalModelCost)}</span>
+            </div>
+            {sorted.map(({ id, t: mt }) => {
+              const key = modelToPricingKey(id)
+              const p = MODEL_PRICING[key] ?? singlePricing
+              const cost = computeCost(mt, p)
+              return (
+                <div key={id} className="flex items-center justify-between text-[9px] py-px">
+                  <span className="text-claude-muted/80">{modelDisplayName(id)}</span>
+                  <span className="font-mono tabular-nums text-claude-muted/70">
+                    {fmtTokens(mt.input)}↑ {fmtTokens(mt.output)}↓
+                    <span className="text-amber-400/70 ml-1">{fmtCost(cost)}</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -231,6 +231,8 @@ export interface TokenUsageUpdatePayload {
   output: number
   cacheCreate: number
   cacheRead: number
+  /** [2026-06-09] 模型标识，如 "claude-sonnet-4-20250514" */
+  model?: string
   /** true = new claude conversation detected; renderer should reset counter first */
   reset: boolean
   /** [2026-06-01] 同一 projectDir 多 session 时，只有主 session 的 isPrimary=true，

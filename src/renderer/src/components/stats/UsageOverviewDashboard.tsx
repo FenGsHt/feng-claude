@@ -33,9 +33,9 @@ function formatK(n: number): string {
 }
 
 function formatCost(usd: number): string {
-  if (usd < 0.001) return '<$0.001'
-  if (usd < 1) return `$${usd.toFixed(3)}`
-  return `$${usd.toFixed(2)}`
+  if (usd < 0.001) return '<¥0.001'
+  if (usd < 1) return `¥${usd.toFixed(3)}`
+  return `¥${usd.toFixed(2)}`
 }
 
 function dayDiffDays(a: string, b: string): number {

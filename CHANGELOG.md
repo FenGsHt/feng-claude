@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.38] - 2026-06-09
+
+### 新功能 | New Features
+- **Per-model token 细分**：从 JSONL 提取 `message.model`，按 Opus/Sonnet/Haiku 分别统计 token 用量和费用，各模型使用独立定价（Opus 4.8: ¥35/¥175, Sonnet 4.6: ¥21/¥105, Haiku 4.5: ¥7/¥35）
+- **货币改为人民币**：所有费用显示从 `$` 改为 `¥`
+
+### 修复 | Bug Fixes
+- **配置切换后 token 统计错误**：切换 profile 时同步更新所有已有 session 的 profileId，token 不再记到旧配置
+- **Opus 定价过时**：从已废弃的 Opus 4（$15/$75）更新为 Opus 4.8（$5/$25）
+
 ## [0.7.37] - 2026-06-09
 
 ### macOS 兼容性 | macOS Compatibility

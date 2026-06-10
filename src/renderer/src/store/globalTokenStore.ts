@@ -70,7 +70,13 @@ export interface PerProfileUsage {
   perProfile: Record<string, TokenTotals>
 }
 
-interface PersistedTokenData extends PerProfileUsage {
+/** [2026-06-09] Per-model token usage stats（官方配置下自动路由的模型细分） */
+export interface PerModelUsage {
+  /** modelId (如 "claude-sonnet-4-20250514") → cumulative totals */
+  perModel: Record<string, TokenTotals>
+}
+
+interface PersistedTokenData extends PerProfileUsage, PerModelUsage {
   total: TokenTotals
   today: TokenTotals
   todayDate: string
@@ -78,6 +84,8 @@ interface PersistedTokenData extends PerProfileUsage {
   dailyHistory: Record<string, TokenTotals>
   /** [2026-04-28] Daily history per profile: date → profileId → totals */
   dailyHistoryPerProfile: Record<string, Record<string, TokenTotals>>
+  /** [2026-06-09] Daily history per model: date → modelId → totals */
+  dailyHistoryPerModel: Record<string, Record<string, TokenTotals>>
   pricing: Pricing
   /** 屏蔽详细 token 数字，只显示等级 */
   hideDetailedTokens: boolean
@@ -88,7 +96,7 @@ interface GlobalTokenStore extends PersistedTokenData {
   _hydrated: boolean
 
   /** [2026-04-28] Ingest token delta with optional profileId for per-profile tracking */
-  ingest: (delta: TokenTotals, profileId?: string) => void
+  ingest: (delta: TokenTotals, profileId?: string, model?: string) => void
   setBudget: (n: number) => void
   resetTotal: () => void
   setPricing: (p: Pricing) => void
@@ -117,7 +125,9 @@ function saveImmediately(state: PersistedTokenData): void {
     budget: state.budget,
     dailyHistory: Object.fromEntries(Object.entries(state.dailyHistory).map(([k, v]) => [k, sanitize(v)])),
     dailyHistoryPerProfile: Object.fromEntries(Object.entries(state.dailyHistoryPerProfile).map(([k, profiles]) => [k, Object.fromEntries(Object.entries(profiles).map(([pid, v]) => [pid, sanitize(v)]))])),
+    dailyHistoryPerModel: Object.fromEntries(Object.entries(state.dailyHistoryPerModel ?? {}).map(([k, models]) => [k, Object.fromEntries(Object.entries(models).map(([mid, v]) => [mid, sanitize(v)]))])),
     perProfile: Object.fromEntries(Object.entries(state.perProfile).map(([k, v]) => [k, sanitize(v)])),
+    perModel: Object.fromEntries(Object.entries(state.perModel ?? {}).map(([k, v]) => [k, sanitize(v)])),
     pricing: state.pricing,
     hideDetailedTokens: state.hideDetailedTokens
   }
@@ -132,7 +142,9 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
   budget: 0,
   dailyHistory: {},
   dailyHistoryPerProfile: {},
+  dailyHistoryPerModel: {},
   perProfile: {},
+  perModel: {},
   pricing: { ...DEFAULT_PRICING },
   hideDetailedTokens: false,
   _hydrated: false,
@@ -146,8 +158,10 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
         const sanitizedTotal = sanitize(d.total)
         const sanitizedToday = sanitize(d.today)
         const sanitizedPerProfile = Object.fromEntries(Object.entries(d.perProfile ?? {}).map(([k, v]) => [k, sanitize(v)]))
+        const sanitizedPerModel = Object.fromEntries(Object.entries(d.perModel ?? {}).map(([k, v]) => [k, sanitize(v)]))
         const sanitizedDailyHistory = Object.fromEntries(Object.entries(d.dailyHistory ?? {}).map(([k, v]) => [k, sanitize(v)]))
         const sanitizedDailyPerProfile = Object.fromEntries(Object.entries(d.dailyHistoryPerProfile ?? {}).map(([k, profiles]) => [k, Object.fromEntries(Object.entries(profiles ?? {}).map(([pid, v]) => [pid, sanitize(v)]))]))
+        const sanitizedDailyPerModel = Object.fromEntries(Object.entries(d.dailyHistoryPerModel ?? {}).map(([k, models]) => [k, Object.fromEntries(Object.entries(models ?? {}).map(([mid, v]) => [mid, sanitize(v)]))]))
 
         // [2026-04-28] Recover total/input/output from perProfile if they were corrupted to 0
         const now = todayStr()
@@ -185,7 +199,9 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           budget: d.budget ?? 0,
           dailyHistory: recoveredDailyHistory,
           dailyHistoryPerProfile: sanitizedDailyPerProfile,
+          dailyHistoryPerModel: sanitizedDailyPerModel,
           perProfile: sanitizedPerProfile,
+          perModel: sanitizedPerModel,
           pricing: d.pricing ?? { ...DEFAULT_PRICING },
           hideDetailedTokens: d.hideDetailedTokens ?? false,
           _hydrated: true
@@ -201,7 +217,9 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
             budget: d.budget ?? 0,
             dailyHistory: recoveredDailyHistory,
             dailyHistoryPerProfile: sanitizedDailyPerProfile,
+            dailyHistoryPerModel: sanitizedDailyPerModel,
             perProfile: sanitizedPerProfile,
+            perModel: sanitizedPerModel,
             pricing: d.pricing ?? { ...DEFAULT_PRICING },
             hideDetailedTokens: d.hideDetailedTokens ?? false
           })
@@ -223,8 +241,8 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
               const todayDate = state.todayDate ?? todayStr()
               const dailyHistory = Object.fromEntries(Object.entries(state.dailyHistory ?? {}).map(([k, v]) => [k, sanitize(v)]))
               const pricing = state.pricing ?? { ...DEFAULT_PRICING }
-              set({ total, today, todayDate, budget, dailyHistory, pricing, dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
-              await window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile: {}, perProfile: {}, pricing })
+              set({ total, today, todayDate, budget, dailyHistory, pricing, dailyHistoryPerProfile: {}, dailyHistoryPerModel: {}, perProfile: {}, perModel: {}, _hydrated: true })
+              await window.electronAPI.tokenData?.set({ total, today, todayDate, budget, dailyHistory, dailyHistoryPerProfile: {}, dailyHistoryPerModel: {}, perProfile: {}, perModel: {}, pricing })
               migrated = true
               console.log('[tokenStore] migrated from localStorage to IPC')
             }
@@ -236,16 +254,16 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
           localStorage.removeItem(lsKey)
         }
         if (!migrated) {
-          set({ dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
+          set({ dailyHistoryPerProfile: {}, dailyHistoryPerModel: {}, perProfile: {}, perModel: {}, _hydrated: true })
         }
       }
     } catch (e) {
       console.error('[tokenStore] hydrate failed:', e)
-      set({ dailyHistoryPerProfile: {}, perProfile: {}, _hydrated: true })
+      set({ dailyHistoryPerProfile: {}, dailyHistoryPerModel: {}, perProfile: {}, perModel: {}, _hydrated: true })
     }
   },
 
-  ingest: (delta, profileId) =>
+  ingest: (delta, profileId, model) =>
     set((s) => {
       // [2026-04-28] Guard against NaN from corrupted JSONL data
       const safe: TokenTotals = {
@@ -255,7 +273,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
         cacheRead: Number.isFinite(delta.cacheRead) ? delta.cacheRead : 0,
       }
       const sum = safe.input + safe.output + safe.cacheCreate + safe.cacheRead
-      console.log('[Token] ingest — delta:', safe, 'sum:', sum, 'profileId:', profileId, '_hydrated:', s._hydrated)
+      console.log('[Token] ingest — delta:', safe, 'sum:', sum, 'profileId:', profileId, 'model:', model, '_hydrated:', s._hydrated)
 
       const now = todayStr()
       const isSameDay = s.todayDate === now
@@ -272,24 +290,37 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
         perProfile[profileId] = add(perProfile[profileId] ?? { ...ZERO }, safe)
       }
 
+      // [2026-06-09] Track per-model usage（官方配置下自动路由的模型细分）
+      const perModel = { ...s.perModel }
+      if (model) {
+        perModel[model] = add(perModel[model] ?? { ...ZERO }, safe)
+      }
+
       // [2026-04-28] Track daily history per profile
       const dailyHistoryPerProfile = { ...s.dailyHistoryPerProfile }
       if (profileId) {
         const dayProfiles = { ...dailyHistoryPerProfile[now] }
         dayProfiles[profileId] = add(dayProfiles[profileId] ?? { ...ZERO }, safe)
         dailyHistoryPerProfile[now] = dayProfiles
-        // Keep only last 30 days
-        const dateKeys = Object.keys(dailyHistoryPerProfile).sort().slice(-30)
-        const trimmedDailyPerProfile = Object.fromEntries(dateKeys.map((k) => [k, dailyHistoryPerProfile[k]]))
-        const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, dailyHistoryPerProfile: trimmedDailyPerProfile, perProfile }
-        if (s._hydrated) scheduleSave({ ...s, ...next })
-        console.log('[Token] ingest next — today:', next.today, 'total:', next.total, 'perProfile:', next.perProfile)
-        return next
       }
 
-      const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, perProfile }
+      // [2026-06-09] Track daily history per model
+      const dailyHistoryPerModel = { ...s.dailyHistoryPerModel }
+      if (model) {
+        const dayModels = { ...dailyHistoryPerModel[now] }
+        dayModels[model] = add(dayModels[model] ?? { ...ZERO }, safe)
+        dailyHistoryPerModel[now] = dayModels
+      }
+
+      // Keep only last 30 days
+      const dateKeysProfile = Object.keys(dailyHistoryPerProfile).sort().slice(-30)
+      const trimmedDailyPerProfile = Object.fromEntries(dateKeysProfile.map((k) => [k, dailyHistoryPerProfile[k]]))
+      const dateKeysModel = Object.keys(dailyHistoryPerModel).sort().slice(-30)
+      const trimmedDailyPerModel = Object.fromEntries(dateKeysModel.map((k) => [k, dailyHistoryPerModel[k]]))
+
+      const next = { total: add(s.total, safe), today, todayDate: now, dailyHistory, dailyHistoryPerProfile: trimmedDailyPerProfile, dailyHistoryPerModel: trimmedDailyPerModel, perProfile, perModel }
       if (s._hydrated) scheduleSave({ ...s, ...next })
-      console.log('[Token] ingest next (no profile) — today:', next.today, 'total:', next.total)
+      console.log('[Token] ingest next — today:', next.today, 'total:', next.total, 'perProfile:', next.perProfile, 'perModel:', next.perModel)
       return next
     }),
 
@@ -302,7 +333,7 @@ export const useGlobalTokenStore = create<GlobalTokenStore>()((set, get) => ({
   },
 
   resetTotal: () => {
-    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr(), perProfile: {}, dailyHistory: {}, dailyHistoryPerProfile: {} }
+    const next = { total: { ...ZERO }, today: { ...ZERO }, todayDate: todayStr(), perProfile: {}, perModel: {}, dailyHistory: {}, dailyHistoryPerProfile: {}, dailyHistoryPerModel: {} }
     set(next)
     const s = get()
     // [2026-04-27] User-initiated action: save immediately
