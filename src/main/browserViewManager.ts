@@ -3,8 +3,9 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'http'
 import { URL } from 'url'
 import { WebSocketServer, WebSocket } from 'ws'
 import { PNG } from 'pngjs'
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname, extname, basename } from 'path'
+import { handleCloneRoute } from './cloneManager'
 
 interface BrowserPanelState {
   view: WebContentsView | null
@@ -68,6 +69,9 @@ interface ConsoleLogEntry {
 }
 
 const consoleLogs: ConsoleLogEntry[] = []
+
+// local static servers created by /serve-local, keyed by dir
+const localServers = new Map<string, Server>()
 
 function levelToString(level: number): string {
   switch (level) {

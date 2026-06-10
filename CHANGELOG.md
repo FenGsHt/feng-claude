@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.39] - 2026-06-10
+
+### 新功能 | New Features
+- **clone-website MCP 工具**：新增 5 个内置 MCP 工具（`browser_site_pages` / `browser_clone_page` / `browser_serve_local` / `browser_patch_element` / `browser_wire_navigation`），复刻网站从手工指令变为工具调用，支持多页面、CSS全量导出、URL自动重写、导航链接自动修复
+- **clone-website skill 更新**：skill 文件改为 5 步工具调用流程 + Agent 审查模式说明；`builtinSkills.ts` 改为 `forceUpdate: true`，每次启动自动覆盖更新
+
+### 改进 | Improvements
+- **MODELS 区块可折叠**：per-model token 细分区块支持点击折叠/展开（▶ 箭头动画）
+- **MODELS 显示 cacheRead**：每个模型行新增 `⚡` 缓存命中显示，与今日/累计行保持一致
+- **MODELS 计价修正**：非官方配置时 MODELS 区块使用 profile 自定义价格，不再强制走官方模型定价导致与上方汇总对不上
+
+### 重构 | Refactor
+- **cloneManager.ts**：clone 相关 HTTP 端点从 `browserViewManager.ts` 抽离到独立模块，`browserViewManager.ts` 从 ~2300 行降至 ~2010 行
+
 ## [0.7.38] - 2026-06-09
 
 ### 新功能 | New Features

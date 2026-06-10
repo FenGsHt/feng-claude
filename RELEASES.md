@@ -7,6 +7,24 @@
 
 ---
 
+## v0.7.39 (2026-06-10)
+
+### 新功能
+- **clone-website MCP 工具**：5 个新内置工具一键复刻网站，支持多页面、CSS全量导出、URL自动重写、导航链接修复
+  - `browser_site_pages` — 发现站点所有页面
+  - `browser_clone_page` — 完整克隆（资源捕获 + CSS + DOM + URL重写）
+  - `browser_serve_local` — 内置静态服务器预览
+  - `browser_patch_element` — 提取元素计算样式 → 即粘即用 `<style>` 补丁
+  - `browser_wire_navigation` — 批量修复所有页面内部导航链接
+- **clone-website skill 升级**：5 步工具调用流程，支持 Agent 审查模式；每次启动自动覆盖更新至最新版
+
+### 改进
+- **MODELS 可折叠**：per-model 细分区块支持折叠/展开
+- **MODELS 显示缓存命中**：每个模型行显示 `⚡` cacheRead 数据
+- **MODELS 计价修正**：非官方配置时使用 profile 自定义价格
+
+---
+
 ## v0.7.38 (2026-06-09)
 
 ### 新功能

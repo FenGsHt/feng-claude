@@ -177,6 +177,7 @@ export function TokenUsageWidget(): React.ReactElement {
   const setBudget = useGlobalTokenStore((s) => s.setBudget)
   const resetTotal = useGlobalTokenStore((s) => s.resetTotal)
   const setHideDetailedTokens = useGlobalTokenStore((s) => s.setHideDetailedTokens)
+  const [modelsExpanded, setModelsExpanded] = useState(true)
 
 
   // [2026-04-28] Get profile pricing map — re-fetch on broadcast changes
@@ -230,12 +231,15 @@ export function TokenUsageWidget(): React.ReactElement {
   const todayPerModelTotals = dailyHistoryPerModel[todayDate] ?? {}
   const hasTodayPerModelData = Object.keys(todayPerModelTotals).length > 0
 
+  function modelPricing(modelId: string): Pricing {
+    if (isOfficialActive) return MODEL_PRICING[modelToPricingKey(modelId)] ?? singlePricing
+    return singlePricing
+  }
+
   function computePerModelCost(totals: Record<string, TokenTotals>): number {
     let cost = 0
     for (const [modelId, t] of Object.entries(totals)) {
-      const key = modelToPricingKey(modelId)
-      const p = MODEL_PRICING[key] ?? singlePricing
-      cost += computeCost(t, p)
+      cost += computeCost(t, modelPricing(modelId))
     }
     return cost
   }
@@ -409,19 +413,27 @@ export function TokenUsageWidget(): React.ReactElement {
         const totalModelCost = computePerModelCost(perModel)
         return (
           <div className="mt-1.5 pt-1 border-t border-claude-border/40">
-            <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[9px] text-claude-muted/70 uppercase tracking-wider">Models</span>
+            <button
+              className="flex items-center justify-between w-full mb-0.5 group"
+              onClick={() => setModelsExpanded(v => !v)}
+            >
+              <span className="text-[9px] text-claude-muted/70 uppercase tracking-wider flex items-center gap-0.5">
+                <span className="transition-transform duration-150 inline-block" style={{ transform: modelsExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                Models
+              </span>
               <span className="font-mono text-[9px] text-amber-400/80">{fmtCost(totalModelCost)}</span>
-            </div>
-            {sorted.map(({ id, t: mt }) => {
-              const key = modelToPricingKey(id)
-              const p = MODEL_PRICING[key] ?? singlePricing
+            </button>
+            {modelsExpanded && sorted.map(({ id, t: mt }) => {
+              const p = modelPricing(id)
               const cost = computeCost(mt, p)
               return (
                 <div key={id} className="flex items-center justify-between text-[9px] py-px">
                   <span className="text-claude-muted/80">{modelDisplayName(id)}</span>
                   <span className="font-mono tabular-nums text-claude-muted/70">
                     {fmtTokens(mt.input)}↑ {fmtTokens(mt.output)}↓
+                    {mt.cacheRead > 0 && (
+                      <span className="text-sky-400/60 ml-0.5">{fmtTokens(mt.cacheRead)}⚡</span>
+                    )}
                     <span className="text-amber-400/70 ml-1">{fmtCost(cost)}</span>
                   </span>
                 </div>

@@ -325,6 +325,66 @@ const TOOLS = [
       },
       required: ['selector', 'text']
     }
+  },
+  {
+    name: 'browser_site_pages',
+    description: 'Discover all internal pages of a website by combining sitemap.xml and in-page link extraction. Returns a list of pages with their URL, slug, and suggested local filename. Use this as the FIRST step when cloning a multi-page site.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Any URL on the target site (homepage recommended)' }
+      },
+      required: ['url']
+    }
+  },
+  {
+    name: 'browser_clone_page',
+    description: 'Fully clone a single page in one call: captures all network resources, exports complete CSS (including JS-injected styles), copies the rendered DOM, rewrites all URLs to local paths, and wires internal navigation links. Returns paths to the generated HTML and CSS files. Run browser_site_pages first to get the pageMap for navigation wiring.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url:       { type: 'string', description: 'Page URL to clone' },
+        outputDir: { type: 'string', description: 'Absolute path to output directory (shared across all pages of a site)' },
+        pageMap:   { type: 'object', description: 'Map of original URL → local filename for navigation wiring, e.g. {"https://example.com/": "index.html", "https://example.com/about": "about.html"}. Get this from browser_site_pages.' },
+        waitMs:    { type: 'number', description: 'Extra wait after page load for JS/lazy content (default 4000, max 15000)' }
+      },
+      required: ['url', 'outputDir']
+    }
+  },
+  {
+    name: 'browser_serve_local',
+    description: 'Start a local static HTTP server to preview cloned HTML files. Returns the server URL. Multiple calls with different dirs start separate servers. Use this before browser_screenshot to compare clone vs original.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dir:  { type: 'string', description: 'Absolute path to the directory containing cloned HTML files' },
+        port: { type: 'number', description: 'Port to listen on (default: auto-assign free port)' }
+      },
+      required: ['dir']
+    }
+  },
+  {
+    name: 'browser_patch_element',
+    description: 'Extract the complete computed styles of an element from the CURRENT page and return a ready-to-paste <style> block including ::before and ::after pseudo-elements. Use this as the review/patch step: navigate to the ORIGINAL page, call this tool, then paste the returned stylePatch into the clone HTML to fix visual differences.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector of the element to extract styles from' }
+      },
+      required: ['selector']
+    }
+  },
+  {
+    name: 'browser_wire_navigation',
+    description: 'Rewrite all internal navigation href links across every HTML file in a directory to point to local cloned files instead of original URLs. Run this after all pages are cloned to make navigation work between local files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dir:     { type: 'string', description: 'Absolute path to directory containing cloned HTML files' },
+        pageMap: { type: 'object', description: 'Map of original URL → local filename, same as passed to browser_clone_page' }
+      },
+      required: ['dir', 'pageMap']
+    }
   }
 ]
 
@@ -553,6 +613,44 @@ async function handleTool(name, args) {
       case 'browser_type_human': {
         const r = await callHttp('/type-human', { selector: args.selector, text: args.text, minDelay: args.minDelay, maxDelay: args.maxDelay })
         return [{ type: 'text', text: r.ok ? `Typed ${r.length} chars into ${args.selector}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_site_pages': {
+        const r = await callHttp('/site-pages', { url: args.url })
+        if (r.pages) {
+          const lines = r.pages.map(p => `  ${p.filename}  ←  ${p.url}`)
+          const mapStr = JSON.stringify(Object.fromEntries(r.pages.map(p => [p.url, p.filename])), null, 2)
+          return [{ type: 'text', text: `Found ${r.pages.length} pages (origin: ${r.origin}):\n${lines.join('\n')}\n\nPage map (pass as pageMap to browser_clone_page):\n${mapStr}` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_clone_page': {
+        const r = await callHttp('/clone-page', { url: args.url, outputDir: args.outputDir, pageMap: args.pageMap || {}, waitMs: args.waitMs })
+        if (r.htmlFile) {
+          const crossNote = r.crossOriginCss?.length ? `\nCross-origin CSS fetched: ${r.crossOriginCss.length} sheets` : ''
+          return [{ type: 'text', text: `Cloned: ${r.htmlFile}\nCSS: ${r.cssFile} (${r.cssRuleCount} rule blocks)\nResources: ${r.resources} files saved → ${r.outputDir}${crossNote}\n\nNext: browser_serve_local to preview, then browser_screenshot + browser_screenshot_diff` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_serve_local': {
+        const r = await callHttp('/serve-local', { dir: args.dir, port: args.port })
+        if (r.url) {
+          return [{ type: 'text', text: `Local server started: ${r.url}\nServing: ${r.dir}\n\nUse browser_navigate("${r.url}/index.html") to preview` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_patch_element': {
+        const r = await callHttp('/patch-element', { selector: args.selector })
+        if (r.stylePatch) {
+          return [{ type: 'text', text: `Element: ${r.selector}\nRect: ${JSON.stringify(r.rect)}\n\nPaste this into clone HTML <head> to patch:\n\n<style>\n${r.stylePatch}\n</style>` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_wire_navigation': {
+        const r = await callHttp('/wire-navigation', { dir: args.dir, pageMap: args.pageMap })
+        if (r.updated !== undefined) {
+          return [{ type: 'text', text: `Navigation wired in ${r.updated}/${r.files?.length} HTML files\nFiles: ${r.files?.join(', ')}` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
