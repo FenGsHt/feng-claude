@@ -234,9 +234,13 @@ async function handleClonePage(req: IncomingMessage, res: ServerResponse, getWC:
     html = html.replace(new RegExp(`href="(${origin2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*)"`, 'g'), (_m, u) => {
       return Object.values(pageMap).some(f => u === f) ? `href="${u}"` : `href="#"`
     })
+    // Rewrite <link href="..."> through manifest (catches relative paths like /static/css/...)
+    html = html.replace(/(<link[^>]*\s)href="([^"]*)"/gi, (_m, pre, v) => `${pre}href="${remapUrl(v)}"`)
     html = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, (tag) => {
+      // Keep CDN font/icon links
       if (tag.includes('fonts.googleapis') || tag.includes('fonts.bunny') || tag.includes('cdnjs') || tag.includes('unpkg') || tag.includes('jsdelivr')) return tag
-      if (tag.match(/href="(?!https?:\/\/)/)) return tag
+      // Keep local paths (already rewritten by remapUrl above, so they won't have https://)
+      if (!tag.includes('href="https://') && !tag.includes("href='https://")) return tag
       return `<!-- removed: ${tag.replace(/-->/g, '- ->')} -->`
     })
     html = html.replace(/<\/head>/i, `  <link rel="stylesheet" href="${cssFile}">\n</head>`)
