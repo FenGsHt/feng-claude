@@ -346,7 +346,23 @@ const TOOLS = [
         url:       { type: 'string', description: 'Page URL to clone' },
         outputDir: { type: 'string', description: 'Absolute path to output directory (shared across all pages of a site)' },
         pageMap:   { type: 'object', description: 'Map of original URL → local filename for navigation wiring, e.g. {"https://example.com/": "index.html", "https://example.com/about": "about.html"}. Get this from browser_site_pages.' },
-        waitMs:    { type: 'number', description: 'Extra wait after page load for JS/lazy content (default 4000, max 15000)' }
+        waitMs:    { type: 'number', description: 'Extra wait after page load for JS/lazy content (default 4000, max 15000)' },
+        interactMs: { type: 'number', description: 'Extra ms to keep recording API responses after scroll (default 0, max 20000). Increase for SPAs so more XHR/fetch responses get archived for replay.' }
+      },
+      required: ['url', 'outputDir']
+    }
+  },
+  {
+    name: 'browser_clone_site',
+    description: 'Clone an ENTIRE website in one call: discovers all pages, clones each (resources + CSS + rendered DOM + URL rewrite), records API responses for offline replay (SPA tabs/modals/routing work in the clone), starts a local preview server, computes per-page visual similarity vs the original, and wires navigation links. Returns a summary table. This replaces the manual site_pages → clone_page → serve_local → screenshot/diff sequence. Takes ~10-20s per page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url:       { type: 'string', description: 'Homepage URL of the site to clone' },
+        outputDir: { type: 'string', description: 'Absolute path to output directory' },
+        maxPages:  { type: 'number', description: 'Max pages to clone (default 10, max 30). Use multiple calls with the same outputDir for larger sites.' },
+        waitMs:    { type: 'number', description: 'Extra wait per page after load (default 4000, max 15000)' },
+        interactMs: { type: 'number', description: 'Extra ms per page to record API responses (default 0, max 20000). Set 3000+ for SPAs.' }
       },
       required: ['url', 'outputDir']
     }
@@ -365,11 +381,12 @@ const TOOLS = [
   },
   {
     name: 'browser_patch_element',
-    description: 'Extract the complete computed styles of an element from the CURRENT page and return a ready-to-paste <style> block including ::before and ::after pseudo-elements. Use this as the review/patch step: navigate to the ORIGINAL page, call this tool, then paste the returned stylePatch into the clone HTML to fix visual differences.',
+    description: 'Extract the complete computed styles of an element from the CURRENT page as a <style> block including ::before and ::after pseudo-elements. Use as the review/patch step: navigate to the ORIGINAL page, call this tool with applyTo set to the clone HTML file path — the patch is written into the file automatically (re-calling with the same selector replaces the previous patch instead of stacking). Omit applyTo to just get the style block text.',
     inputSchema: {
       type: 'object',
       properties: {
-        selector: { type: 'string', description: 'CSS selector of the element to extract styles from' }
+        selector: { type: 'string', description: 'CSS selector of the element to extract styles from' },
+        applyTo:  { type: 'string', description: 'Absolute path to the clone HTML file. If set, the style patch is inserted into its <head> automatically.' }
       },
       required: ['selector']
     }
@@ -637,10 +654,21 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       case 'browser_clone_page': {
-        const r = await callHttp('/clone-page', { url: args.url, outputDir: args.outputDir, pageMap: args.pageMap || {}, waitMs: args.waitMs })
+        const r = await callHttp('/clone-page', { url: args.url, outputDir: args.outputDir, pageMap: args.pageMap || {}, waitMs: args.waitMs, interactMs: args.interactMs })
         if (r.htmlFile) {
           const crossNote = r.crossOriginCss?.length ? `\nCross-origin CSS fetched: ${r.crossOriginCss.length} sheets` : ''
-          return [{ type: 'text', text: `Cloned: ${r.htmlFile}\nCSS: ${r.cssFile} (${r.cssRuleCount} rule blocks)\nResources: ${r.resources} files saved → ${r.outputDir}${crossNote}\n\nNext: browser_serve_local to preview, then browser_screenshot + browser_screenshot_diff` }]
+          const apiNote = r.apiResponses ? `\nAPI responses archived for replay: ${r.apiResponses}` : ''
+          return [{ type: 'text', text: `Cloned: ${r.htmlFile}\nCSS: ${r.cssFile} (${r.cssRuleCount} rule blocks)\nResources: ${r.resources} files saved → ${r.outputDir}${crossNote}${apiNote}\n\nNext: browser_serve_local to preview, then browser_screenshot + browser_screenshot_diff` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_clone_site': {
+        const r = await callHttp('/clone-site', { url: args.url, outputDir: args.outputDir, maxPages: args.maxPages, waitMs: args.waitMs, interactMs: args.interactMs })
+        if (r.pages) {
+          const rows = r.pages.map(p => `  ${p.htmlFile}  sim=${p.similarity === null ? '?' : p.similarity + '%'}  res=${p.resources}  api=${p.apiResponses}  ←  ${p.url}`)
+          const failRows = (r.failed || []).map(f => `  FAILED  ${f.url}  (${f.error})`)
+          return [{ type: 'text', text:
+            `Site cloned → ${r.outputDir}\nPreview server: ${r.serverUrl}\nNavigation wired in ${r.navUpdated} files\n\nPages (${r.pages.length}):\n${rows.join('\n')}${failRows.length ? '\n' + failRows.join('\n') : ''}\n\nNext: for pages with sim < 92%, navigate to the original page and use browser_patch_element(selector, applyTo: "<outputDir>/<file>.html") to fix differences, then re-screenshot.` }]
         }
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
@@ -652,7 +680,10 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       case 'browser_patch_element': {
-        const r = await callHttp('/patch-element', { selector: args.selector })
+        const r = await callHttp('/patch-element', { selector: args.selector, applyTo: args.applyTo })
+        if (r.applied) {
+          return [{ type: 'text', text: `Element: ${r.selector}\nRect: ${JSON.stringify(r.rect)}\n\nPatch applied to: ${r.file}\nRe-screenshot the clone to verify.` }]
+        }
         if (r.stylePatch) {
           return [{ type: 'text', text: `Element: ${r.selector}\nRect: ${JSON.stringify(r.rect)}\n\nPaste this into clone HTML <head> to patch:\n\n<style>\n${r.stylePatch}\n</style>` }]
         }

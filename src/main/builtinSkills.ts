@@ -14,188 +14,116 @@ const BUILTIN_SKILLS: BuiltinSkill[] = [
     forceUpdate: true,
     content: `---
 name: clone-website
-description: Clone a website (single or multi-page) with pixel-accurate fidelity using built-in MCP tools. Invoke when asked to replicate, copy, or clone a website's appearance.
+description: Clone a website (single or multi-page) with pixel-accurate fidelity and working interactions using built-in MCP tools. Invoke when asked to replicate, copy, or clone a website's appearance.
 metadata:
   type: workflow
 ---
 
 # Website Cloning Workflow
 
-**Tools handle the heavy lifting. Your job: call tools → diff → patch → repeat.**
+**One tool call clones the whole site. Then: diff → patch → verify interactions.**
 
 ---
 
-## Detect Site Type First
+## Step 1: Clone the Entire Site (one call)
 
-Before cloning, check if the site is a SPA:
-
-\\\`\\\`\\\`
-browser_navigate(url: "<target URL>", waitMs: 3000)
-browser_eval(javascript: "JSON.stringify({ framework: window.__vue_app__ ? 'Vue' : window.React ? 'React' : 'static', apiCalls: performance.getEntriesByType('resource').filter(r => r.initiatorType === 'fetch' || r.initiatorType === 'xmlhttprequest').length })")
-\\\`\\\`\\\`
-
-| Result | Strategy |
-|--------|----------|
-| framework = "static", apiCalls = 0 | Normal Clone (Steps 1-5) |
-| framework = Vue/React/Angular, apiCalls > 0 | SPA Screenshot Archive (Step 0) |
-
----
-
-## Step 0: SPA Screenshot Archive (Vue/React/Angular)
-
-SPAs fetch data from APIs at runtime — use screenshot archiving instead of clone.
-
-\\\`\\\`\\\`
-browser_navigate(url: "<page URL>", waitMs: 5000)
-browser_screenshot_full(
-  outputPath: "<output_dir>/<pagename>.png",
-  scrollDelay: 500
-)
-\\\`\\\`\\\`
-
-For each page/state: navigate → interact to reach desired state → \`browser_screenshot_full\`.
-
-Discover routes: \`browser_eval("JSON.stringify([...document.querySelectorAll('nav a, [class*=nav] a')].map(a=>a.href))")\`
-
-**Do NOT use \`browser_clone_page\` on SPAs.**
-
----
-
-## Step 1: Discover Pages
-
-\\\`\\\`\\\`
-browser_site_pages(url: "<homepage URL>")
-\\\`\\\`\\\`
-
-Returns a page list + \`pageMap\`. Save the pageMap — it's needed in every \`browser_clone_page\` call.
-
-If the site has only one page, pageMap is just \`{ "<url>": "index.html" }\`.
-
----
-
-## Step 2: Clone Each Page
-
-For **every** page in the list, call:
-
-\\\`\\\`\\\`
-browser_clone_page(
-  url: "<page URL>",
+\`\`\`
+browser_clone_site(
+  url: "<homepage URL>",
   outputDir: "<absolute_path>/clone-<domain>",
-  pageMap: { "<url1>": "index.html", "<url2>": "about.html", ... },
-  waitMs: 5000
+  maxPages: 10,
+  waitMs: 5000,
+  interactMs: 5000   ← for SPAs (Vue/React); 0 for static sites
 )
-\\\`\\\`\\\`
+\`\`\`
 
-**All pages share one \`outputDir\`.** Do not use separate dirs per page.
+This single call does everything: discovers pages → clones each (resources + CSS + rendered DOM + URL rewrite) → **records API responses for offline replay** → starts a preview server → computes per-page similarity → wires navigation.
 
-Returns: \`{ htmlFile, cssFile, cssRuleCount, resources }\`
+**SPA note:** With \`interactMs >= 5000\`, XHR/fetch responses are archived into \`api-archive.json\` and a \`replay-shim.js\` is injected — tabs, modals, and client-side routing work in the clone (for requests that fired during cloning). Login flows and POST writes cannot be replayed.
 
----
+Check the returned summary table:
+- \`sim\` per page (similarity %)
+- \`api\` per page (archived API responses)
+- preview server URL
 
-## Step 3: Serve & Take Reference Screenshots
-
-Start local server (once, reuse for all pages):
-
-\\\`\\\`\\\`
-browser_serve_local(dir: "<outputDir>")
-\\\`\\\`\\\`
-
-For each page:
-
-1. Screenshot the **original**:
-   \\\`\\\`\\\`
-   browser_navigate(url: "<original page URL>")
-   browser_screenshot()
-   \\\`\\\`\\\`
-
-2. Screenshot the **clone**:
-   \\\`\\\`\\\`
-   browser_navigate(url: "http://localhost:<port>/<pagename>.html")
-   browser_screenshot()
-   \\\`\\\`\\\`
-
-3. Diff:
-   \\\`\\\`\\\`
-   browser_screenshot_diff(imageA: <ref>, imageB: <clone>, threshold: 15)
-   \\\`\\\`\\\`
+Sites with > 10 pages: call again with the same \`outputDir\` and higher \`maxPages\`, or clone remaining pages individually with \`browser_clone_page\` (same \`outputDir\`, pass the returned \`pageMap\`).
 
 ---
 
-## Step 4: Patch Visual Differences (Review Loop)
+## Step 2: Patch Pages with sim < 92%
 
-For each **red region** in the diff image:
+For each low-similarity page:
 
-1. Navigate to the **original** page
-2. Extract the element's full computed styles:
-   \\\`\\\`\\\`
-   browser_patch_element(selector: "<CSS selector of mismatched element>")
-   \\\`\\\`\\\`
-   Returns a ready-to-paste \`<style>\` block with all computed properties + \`::before\`/\`::after\`.
+1. Diff to locate problems:
+   \`\`\`
+   browser_navigate(url: "<original page URL>") → browser_screenshot
+   browser_navigate(url: "<serverUrl>/<page>.html") → browser_screenshot
+   browser_screenshot_diff(imageA, imageB, threshold: 15)
+   \`\`\`
 
-3. Paste the \`<style>\` block into \`<head>\` of the clone HTML file.
+2. For each red region, navigate to the **original** page, then:
+   \`\`\`
+   browser_patch_element(
+     selector: "<CSS selector of mismatched element>",
+     applyTo: "<outputDir>/<page>.html"
+   )
+   \`\`\`
+   The computed-style patch is **written into the clone file automatically** (re-calling with the same selector replaces the previous patch, no stacking).
 
-4. Re-screenshot clone + re-diff to verify.
+3. Re-screenshot clone → re-diff.
 
-**Repeat until similarity >= 92% or 6 iterations.**
-
-### Iteration exit rules
+### Exit rules per page
 
 | Condition | Action |
 |-----------|--------|
-| similarity >= **92%** | Page DONE |
-| similarity >= **85%** AND iterations >= 3 | Accept (diminishing returns) |
-| iterations >= **6** | Best-effort, move on |
+| similarity >= 92% | Page DONE |
+| similarity >= 85% AND iterations >= 3 | Accept (diminishing returns) |
+| iterations >= 6 | Best-effort, move on |
 | only text content differs | Done |
 
-After each diff output:
-\\\`\\\`\\\`
-Page: [name] | Iter: [n/6] | Similarity: [X]% | Status: [continuing/DONE]
-\\\`\\\`\\\`
+After each diff: \`Page: [name] | Iter: [n/6] | Similarity: [X]% | Status: [...]\`
 
 ---
 
-## Step 5: Wire Navigation (After ALL Pages Cloned)
+## Step 3: Verify Interactions
 
-\\\`\\\`\\\`
-browser_wire_navigation(
-  dir: "<outputDir>",
-  pageMap: { same map from Step 1 }
-)
-\\\`\\\`\\\`
+In the clone (preview server URL):
+1. Click nav links → pages should switch
+2. Click tabs / open modals / expand sections → should work via replayed API data
+3. Check console (\`browser_console\`) for errors
 
-Then verify by clicking through nav links in the local browser.
+If an interaction fails because its API call wasn't recorded: go back to the **original** site, trigger that interaction, then re-run \`browser_clone_page\` on that page with \`interactMs: 8000\` (same \`outputDir\` — the API archive merges across runs).
+
+---
+
+## Fallback: Screenshot Archive
+
+For states that can't be replayed (post-login, form submissions), archive them visually:
+
+\`\`\`
+browser_navigate(url) → interact to reach the state →
+browser_screenshot_full(outputPath: "<outputDir>/states/<name>.png", scrollDelay: 500)
+\`\`\`
 
 ---
 
 ## Agent Review Mode (Optional — for complex sites)
 
-After Step 4 produces a diff, spawn a **review sub-agent** with:
-- The diff image (base64)
-- The original page URL
-- The clone HTML file path
-
-The review agent:
-1. Reads the diff image, identifies the 3 worst-diverging regions
-2. Calls \`browser_navigate\` to original, then \`browser_patch_element\` for each region
-3. Returns a list of \`<style>\` patches to apply
-
-Apply all patches, then re-diff in the main agent.
+After Step 2 produces a diff, spawn a review sub-agent with the diff image, original URL, and clone file path. It identifies the 3 worst regions and calls \`browser_patch_element(selector, applyTo)\` for each. Then re-diff in the main agent.
 
 ---
 
 ## Final Summary
 
-\\\`\\\`\\\`
+\`\`\`
 ## Clone Complete
 
-| Page | File | Similarity | Iterations | Status |
-|------|------|-----------|------------|--------|
-| Home | index.html | 94% | 2 | Done |
-| About | about.html | 87% | 6 | best-effort |
+| Page | File | Similarity | API replay | Interactions |
+|------|------|-----------|------------|--------------|
+| Home | index.html | 94% | 12 responses | tabs/modals OK |
 
-Output: <outputDir>
-Pages: N | Resources: N files | CSS rules: N
-\\\`\\\`\\\`
+Output: <outputDir>   Preview: <serverUrl>
+\`\`\`
 
 **Stop after this summary.**`
   }
