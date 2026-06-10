@@ -3,6 +3,7 @@ import { URL } from 'url'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, createReadStream } from 'fs'
 import { join, dirname, extname, basename } from 'path'
 import type { WebContents } from 'electron'
+import { PNG } from 'pngjs'
 
 type GetWC = () => WebContents | null
 
@@ -382,6 +383,89 @@ async function handleWireNavigation(req: IncomingMessage, res: ServerResponse): 
   } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
 }
 
+// ── /screenshot-full — 全页截图（分段滚动拼接）──────────────────────────────
+
+async function handleScreenshotFull(req: IncomingMessage, res: ServerResponse, getWC: GetWC): Promise<void> {
+  const body = await readBody(req)
+  const outputPath = (body?.outputPath as string) ?? ''    // optional: save to disk
+  const scrollDelay = Math.min(Number(body?.scrollDelay ?? 300), 2000)
+  const maxHeight = Math.min(Number(body?.maxHeight ?? 30000), 60000)
+
+  const wc = getWC()
+  if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+  try {
+    // Get page dimensions
+    const dims: { scrollWidth: number; scrollHeight: number; viewportWidth: number; viewportHeight: number } =
+      await wc.executeJavaScript(`
+        JSON.stringify({
+          scrollWidth: document.documentElement.scrollWidth,
+          scrollHeight: Math.min(document.documentElement.scrollHeight, ${maxHeight}),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight
+        })
+      `).then(r => JSON.parse(r as string))
+
+    const { scrollHeight, viewportHeight, viewportWidth } = dims
+
+    // Scroll to top first
+    await wc.executeJavaScript('window.scrollTo(0,0)')
+    await new Promise(r => setTimeout(r, 200))
+
+    // Capture slices by scrolling
+    const slices: Buffer[] = []
+    let currentY = 0
+    while (currentY < scrollHeight) {
+      await wc.executeJavaScript(`window.scrollTo(0, ${currentY})`)
+      await new Promise(r => setTimeout(r, scrollDelay))
+      const img = await wc.capturePage()
+      slices.push(img.toPNG())
+      currentY += viewportHeight
+    }
+
+    // Scroll back to top
+    await wc.executeJavaScript('window.scrollTo(0,0)')
+
+    // Stitch slices vertically using pngjs
+    const decoded = slices.map(buf => PNG.sync.read(buf))
+    const sliceW = decoded[0]?.width ?? viewportWidth
+    const totalH = Math.min(scrollHeight, decoded.reduce((s, d) => s + d.height, 0))
+    const out = new PNG({ width: sliceW, height: totalH })
+
+    let destY = 0
+    for (let i = 0; i < decoded.length; i++) {
+      const slice = decoded[i]!
+      // last slice: only copy the remaining rows to avoid overlap
+      const remaining = totalH - destY
+      const rowsToCopy = Math.min(slice.height, remaining)
+      // For all slices except the last, skip the last few px that overlap with next slice
+      // (browser may have sub-pixel rounding, copy full rows)
+      for (let row = 0; row < rowsToCopy; row++) {
+        const srcOff = row * slice.width * 4
+        const dstOff = (destY + row) * out.width * 4
+        slice.data.copy(out.data, dstOff, srcOff, srcOff + sliceW * 4)
+      }
+      destY += rowsToCopy
+      if (destY >= totalH) break
+    }
+
+    const pngBuf = PNG.sync.write(out)
+    const base64 = pngBuf.toString('base64')
+
+    if (outputPath) {
+      mkdirSync(dirname(outputPath), { recursive: true })
+      writeFileSync(outputPath, pngBuf)
+    }
+
+    res.writeHead(200); res.end(JSON.stringify({
+      data: base64,
+      width: sliceW,
+      height: totalH,
+      slices: slices.length,
+      savedTo: outputPath || null
+    }))
+  } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 /**
@@ -394,10 +478,11 @@ export async function handleCloneRoute(
   getWC: GetWC,
   localServers: Map<string, Server>
 ): Promise<boolean> {
-  if (path === '/site-pages'     && req.method === 'POST') { await handleSitePages(req, res, getWC);                 return true }
-  if (path === '/clone-page'     && req.method === 'POST') { await handleClonePage(req, res, getWC);                 return true }
-  if (path === '/serve-local'    && req.method === 'POST') { await handleServeLocal(req, res, localServers);         return true }
-  if (path === '/patch-element'  && req.method === 'POST') { await handlePatchElement(req, res, getWC);              return true }
-  if (path === '/wire-navigation'&& req.method === 'POST') { await handleWireNavigation(req, res);                   return true }
+  if (path === '/site-pages'       && req.method === 'POST') { await handleSitePages(req, res, getWC);               return true }
+  if (path === '/clone-page'       && req.method === 'POST') { await handleClonePage(req, res, getWC);               return true }
+  if (path === '/serve-local'      && req.method === 'POST') { await handleServeLocal(req, res, localServers);       return true }
+  if (path === '/patch-element'    && req.method === 'POST') { await handlePatchElement(req, res, getWC);            return true }
+  if (path === '/wire-navigation'  && req.method === 'POST') { await handleWireNavigation(req, res);                 return true }
+  if (path === '/screenshot-full'  && req.method === 'POST') { await handleScreenshotFull(req, res, getWC);          return true }
   return false
 }

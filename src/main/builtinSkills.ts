@@ -25,6 +25,42 @@ metadata:
 
 ---
 
+## Detect Site Type First
+
+Before cloning, check if the site is a SPA:
+
+\\\`\\\`\\\`
+browser_navigate(url: "<target URL>", waitMs: 3000)
+browser_eval(javascript: "JSON.stringify({ framework: window.__vue_app__ ? 'Vue' : window.React ? 'React' : 'static', apiCalls: performance.getEntriesByType('resource').filter(r => r.initiatorType === 'fetch' || r.initiatorType === 'xmlhttprequest').length })")
+\\\`\\\`\\\`
+
+| Result | Strategy |
+|--------|----------|
+| framework = "static", apiCalls = 0 | Normal Clone (Steps 1-5) |
+| framework = Vue/React/Angular, apiCalls > 0 | SPA Screenshot Archive (Step 0) |
+
+---
+
+## Step 0: SPA Screenshot Archive (Vue/React/Angular)
+
+SPAs fetch data from APIs at runtime — use screenshot archiving instead of clone.
+
+\\\`\\\`\\\`
+browser_navigate(url: "<page URL>", waitMs: 5000)
+browser_screenshot_full(
+  outputPath: "<output_dir>/<pagename>.png",
+  scrollDelay: 500
+)
+\\\`\\\`\\\`
+
+For each page/state: navigate → interact to reach desired state → \`browser_screenshot_full\`.
+
+Discover routes: \`browser_eval("JSON.stringify([...document.querySelectorAll('nav a, [class*=nav] a')].map(a=>a.href))")\`
+
+**Do NOT use \`browser_clone_page\` on SPAs.**
+
+---
+
 ## Step 1: Discover Pages
 
 \\\`\\\`\\\`

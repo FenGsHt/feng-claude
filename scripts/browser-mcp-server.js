@@ -375,6 +375,19 @@ const TOOLS = [
     }
   },
   {
+    name: 'browser_screenshot_full',
+    description: 'Capture a full-page screenshot by scrolling through the entire page and stitching slices into one tall PNG. Works on any page including SPAs — captures the rendered visual state, not source code. Returns base64 PNG. Use outputPath to save directly to disk (recommended for large pages).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        outputPath:  { type: 'string',  description: 'Absolute file path to save the PNG (e.g. "C:/Users/.../page.png"). Recommended for full pages to avoid large base64 in context.' },
+        scrollDelay: { type: 'number',  description: 'ms to wait after each scroll before capturing (default 300). Increase for pages with scroll animations.' },
+        maxHeight:   { type: 'number',  description: 'Max total page height in px to capture (default 30000, max 60000).' }
+      },
+      required: []
+    }
+  },
+  {
     name: 'browser_wire_navigation',
     description: 'Rewrite all internal navigation href links across every HTML file in a directory to point to local cloned files instead of original URLs. Run this after all pages are cloned to make navigation work between local files.',
     inputSchema: {
@@ -642,6 +655,17 @@ async function handleTool(name, args) {
         const r = await callHttp('/patch-element', { selector: args.selector })
         if (r.stylePatch) {
           return [{ type: 'text', text: `Element: ${r.selector}\nRect: ${JSON.stringify(r.rect)}\n\nPaste this into clone HTML <head> to patch:\n\n<style>\n${r.stylePatch}\n</style>` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_screenshot_full': {
+        const r = await callHttp('/screenshot-full', { outputPath: args.outputPath, scrollDelay: args.scrollDelay, maxHeight: args.maxHeight })
+        if (r.data !== undefined) {
+          const saved = r.savedTo ? `\nSaved to: ${r.savedTo}` : ''
+          const meta = `Full-page screenshot: ${r.width}x${r.height}px (${r.slices} slices)${saved}`
+          const result = [{ type: 'text', text: meta }]
+          if (!args.outputPath) result.push({ type: 'image', data: r.data, mimeType: 'image/png' })
+          return result
         }
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }

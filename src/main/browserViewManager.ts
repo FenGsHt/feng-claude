@@ -1965,6 +1965,9 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // Clone-related routes delegated to cloneManager
+        if (await handleCloneRoute(path, req, res, getBrowserViewWebContents, localServers)) return
+
         // POST /open-office-preview — trigger Office preview panel from MCP
         if (path === '/open-office-preview' && req.method === 'POST') {
           const body = await readBody(req)
