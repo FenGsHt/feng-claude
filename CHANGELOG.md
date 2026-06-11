@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.41] - 2026-06-11
+
+### 修复 | Bug Fixes
+- **累计费用漏算历史 token**：per-model 追踪功能上线前的旧会话 token 存在 `total` 但不在 `perModel`，`computePerModelCost` 遗漏这部分导致累计严重偏低；现加 `globalRef` 参数，差额用 `singlePricing` 补足，与 `computePerProfileCost` 逻辑一致
+
 ## [0.7.40] - 2026-06-11
 
 ### 修复 | Bug Fixes
