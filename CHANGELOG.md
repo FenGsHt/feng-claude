@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.42] - 2026-06-11
+
+### 修复 | Bug Fixes
+- **第三方模型被错误按 Sonnet 计费**：`modelToPricingKey` 对非 Claude 官方模型（如 `qwen3.7-plus`）默认返回 `'sonnet'`，导致走官方 Sonnet 定价；现改为只有以 `claude-` 开头的模型才走 `MODEL_PRICING`，第三方模型一律用 `singlePricing`（设置里的自定义价格）
+- **Fable/Mythos 模型计价缺失**：`modelToPricingKey` 未识别 `fable`/`mythos` 模型 ID，被按 Sonnet 价格计费；现已补上
+- **MODELS 模型名显示过短**：`modelDisplayName` 对第三方模型只取最后一段（如 `qwen3.7-plus` → `plus`），现改为第三方模型显示完整 modelId；官方模型显示版本号（如 `Opus 4.8`、`Fable 5`）
+
 ## [0.7.41] - 2026-06-11
 
 ### 修复 | Bug Fixes

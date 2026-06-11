@@ -14,22 +14,42 @@ const MODEL_PRICING: Record<string, Pricing> = {
   'fable':   { inputPerM: 70,  outputPerM: 350, cacheCreatePerM: 87.50, cacheReadPerM: 7.00 },
 }
 
-/** 从模型 ID（如 "claude-sonnet-4-20250514"）提取定价 key */
-function modelToPricingKey(modelId: string): string {
+/** 从模型 ID（如 "claude-sonnet-4-20250514"）提取定价 key；第三方模型返回 null */
+function modelToPricingKey(modelId: string): string | null {
   const lower = modelId.toLowerCase()
+  // 只识别 Claude 官方模型
+  if (!lower.startsWith('claude-')) return null
   if (lower.includes('opus')) return 'opus'
+  if (lower.includes('fable') || lower.includes('mythos')) return 'fable'
   if (lower.includes('haiku')) return 'haiku'
-  return 'sonnet' // 默认按 sonnet 计费
+  if (lower.includes('sonnet')) return 'sonnet'
+  return null
 }
 
-/** 模型 ID → 短显示名 */
+/** 模型 ID → 短显示名（如 "claude-opus-4-8" → "Opus 4.8"，第三方显示全名） */
 function modelDisplayName(modelId: string): string {
   const lower = modelId.toLowerCase()
-  if (lower.includes('opus')) return 'Opus'
-  if (lower.includes('haiku')) return 'Haiku'
-  if (lower.includes('sonnet')) return 'Sonnet'
-  // 取最后一段作为 fallback
-  return modelId.split('-').pop() ?? modelId
+
+  let family = ''
+  if (lower.includes('opus')) family = 'opus'
+  else if (lower.includes('fable')) family = 'fable'
+  else if (lower.includes('mythos')) family = 'mythos'
+  else if (lower.includes('haiku')) family = 'haiku'
+  else if (lower.includes('sonnet')) family = 'sonnet'
+
+  // 第三方模型 → 显示完整 modelId
+  if (!family) return modelId
+
+  const displayName = family.charAt(0).toUpperCase() + family.slice(1)
+
+  // 提取版本号: "claude-opus-4-8" → "4.8", "claude-fable-5" → "5"
+  const versionMatch = lower.match(new RegExp(`${family}-(\\d+)(?:-(\\d+))?`))
+  if (versionMatch) {
+    const minor = versionMatch[2] ? `.${versionMatch[2]}` : ''
+    return `${displayName} ${versionMatch[1]}${minor}`
+  }
+
+  return displayName
 }
 
 function fmtCost(usd: number): string {
@@ -232,8 +252,9 @@ export function TokenUsageWidget(): React.ReactElement {
   const hasTodayPerModelData = Object.keys(todayPerModelTotals).length > 0
 
   function modelPricing(modelId: string): Pricing {
-    if (isOfficialActive) return MODEL_PRICING[modelToPricingKey(modelId)] ?? singlePricing
-    return singlePricing
+    if (!isOfficialActive) return singlePricing
+    const key = modelToPricingKey(modelId)
+    return key ? (MODEL_PRICING[key] ?? singlePricing) : singlePricing
   }
 
   // globalRef: the authoritative token total (today/total); untracked tokens use singlePricing
