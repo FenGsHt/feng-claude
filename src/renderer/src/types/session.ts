@@ -34,6 +34,9 @@ export interface Session {
   ptyPid?: number
   /** [2026-04-28] 该 session 使用的 API profile ID（null 表示使用全局激活的 profile）*/
   profileId?: string | null
+  /** [2026-06-11] 启动时该 profile 的名称快照；标签徽章用它而非实时读设置，
+   *  否则在设置里改名/换模型后会错误地改动已运行 session 的徽章 */
+  profileName?: string
   /** [2026-05-06] 纯 Shell 会话：不自动启动 Claude Code */
   shellOnly?: boolean
   /** [2026-05-08] 官方 Telegram Channel：每会话独立 token/stateDir */

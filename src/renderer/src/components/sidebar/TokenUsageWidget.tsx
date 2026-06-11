@@ -251,8 +251,10 @@ export function TokenUsageWidget(): React.ReactElement {
   const todayPerModelTotals = dailyHistoryPerModel[todayDate] ?? {}
   const hasTodayPerModelData = Object.keys(todayPerModelTotals).length > 0
 
+  // [2026-06-11] 按模型 ID 本身判断定价，而非 profile 是否官方：
+  // 中转站等自定义 profile 也可能调用真正的 Claude 官方模型（Opus/Sonnet），
+  // 这些应走官方定价表；只有非 claude-* 的第三方模型才用 singlePricing。
   function modelPricing(modelId: string): Pricing {
-    if (!isOfficialActive) return singlePricing
     const key = modelToPricingKey(modelId)
     return key ? (MODEL_PRICING[key] ?? singlePricing) : singlePricing
   }

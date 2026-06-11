@@ -1235,8 +1235,25 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
             return
           }
           try {
+            // [2026-06-11] 派发完整 pointer/mouse 事件序列，而非裸 el.click()。
+            // Vue/React 的事件处理器多绑定在 mousedown/pointerdown/click 上，
+            // 裸 .click() 只触发原生 click，常常不触发框架 handler（弹窗关不掉等）。
             const found = await webContents.executeJavaScript(
-              `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(el){el.click();return true;}return false;})()`
+              `(function(){
+                const el=document.querySelector(${JSON.stringify(selector)});
+                if(!el)return false;
+                el.scrollIntoView({block:'center',inline:'center'});
+                const r=el.getBoundingClientRect();
+                const cx=r.left+r.width/2, cy=r.top+r.height/2;
+                const opts={bubbles:true,cancelable:true,view:window,clientX:cx,clientY:cy,button:0};
+                try{el.dispatchEvent(new PointerEvent('pointerdown',opts));}catch(e){}
+                el.dispatchEvent(new MouseEvent('mousedown',opts));
+                try{el.dispatchEvent(new PointerEvent('pointerup',opts));}catch(e){}
+                el.dispatchEvent(new MouseEvent('mouseup',opts));
+                el.dispatchEvent(new MouseEvent('click',opts));
+                if(typeof el.click==='function'){try{el.click();}catch(e){}}
+                return true;
+              })()`
             )
             if (!found) { res.writeHead(404); res.end(JSON.stringify({ error: `Element not found: ${selector}` })); return }
             res.writeHead(200); res.end(JSON.stringify({ success: true }))

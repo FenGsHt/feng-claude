@@ -217,7 +217,41 @@ async function clonePageCore(
     })()
   `)
   // extra time to let lazy API calls fire (record-replay coverage)
-  if (interactMs > 0) await new Promise(r => setTimeout(r, Math.min(interactMs, 20000)))
+  if (interactMs > 0) {
+    // [2026-06-11] 自动遍历点击导航/分类/Tab 元素，触发各自的懒加载 API，
+    // 让 api-archive.json 覆盖到「克隆时没主动点过」的分类（如 Slots），
+    // 否则离线回放时这些页面会因为没有录到响应而空白。
+    try {
+      await wc.executeJavaScript(`
+        (async () => {
+          const SEL = [
+            'nav a','nav button',
+            '[class*="tab" i]','[class*="category" i]','[class*="nav" i]',
+            '[role="tab"]','[class*="menu" i] a','[class*="menu" i] button',
+            '.el-tabs__item','.van-tab','.ant-tabs-tab'
+          ].join(',')
+          const seen = new Set()
+          const els = [...document.querySelectorAll(SEL)].filter(el => {
+            const r = el.getBoundingClientRect()
+            if (r.width < 4 || r.height < 4) return false   // 隐藏/折叠项跳过
+            const key = (el.textContent || '').trim().slice(0, 30) + '@' + Math.round(r.x) + ',' + Math.round(r.y)
+            if (seen.has(key)) return false
+            seen.add(key); return true
+          }).slice(0, 25)   // 上限，避免无限点击
+          for (const el of els) {
+            try {
+              el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+              el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+              el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+              el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            } catch (e) {}
+            await new Promise(r => setTimeout(r, 350))   // 给 API 请求发出的时间
+          }
+        })()
+      `)
+    } catch { /* interaction best-effort */ }
+    await new Promise(r => setTimeout(r, Math.min(interactMs, 20000)))
+  }
   await new Promise(r => setTimeout(r, 1000))
   wc.debugger.removeListener('message', onMsg)
 
@@ -533,18 +567,50 @@ async function startLocalServer(dir: string, port: number, localServers: Map<str
     try { localServers.get(key)!.close() } catch { /* ignore */ }
     localServers.delete(key)
   }
+
+  // [2026-06-11] 用 manifest 反查「原始 URL pathname → 本地文件」。
+  // 这样 JS bundle 运行时请求 /static/css/vendor-xxx.css 等原始路径也能命中，
+  // 无需在保存时重写 JS 内部路径字符串（重写是此前一类 bug 的根源）。
+  const pathnameMap: Record<string, string> = {}
+  try {
+    const manifest: Record<string, string> = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf-8'))
+    for (const [origUrl, localFile] of Object.entries(manifest)) {
+      try {
+        const p = new URL(origUrl).pathname
+        // 同一 pathname 可能多次出现（不同 query），保留首个映射即可
+        if (!pathnameMap[p]) pathnameMap[p] = localFile
+        // 同时记录 basename，兜底 /static/editor/foo.png ↔ images/foo.png
+        const base = p.split('/').pop()
+        if (base && !pathnameMap['*/' + base]) pathnameMap['*/' + base] = localFile
+      } catch { /* skip non-absolute keys */ }
+    }
+  } catch { /* no manifest — fall back to direct file serving only */ }
+
   const srv = createServer((req2, res2) => {
     const reqPath = decodeURIComponent(new URL(req2.url ?? '/', 'http://localhost').pathname)
     let filePath = join(dir, reqPath === '/' ? 'index.html' : reqPath)
     if (!existsSync(filePath) && existsSync(filePath + '.html')) filePath += '.html'
     if (!existsSync(filePath)) {
-      // SPA fallback: history-router paths resolve to index.html
-      const indexPath = join(dir, 'index.html')
-      const acceptsHtml = (req2.headers.accept ?? '').includes('text/html')
-      if (acceptsHtml && !extname(reqPath) && existsSync(indexPath)) {
-        filePath = indexPath
+      // 1) manifest pathname 精确命中（如 /static/css/vendor-xxx.css）
+      const mapped = pathnameMap[reqPath]
+      if (mapped && existsSync(join(dir, mapped))) {
+        filePath = join(dir, mapped)
       } else {
-        res2.writeHead(404); res2.end('Not found'); return
+        // 2) manifest basename 兜底（路径前缀不同但文件名一致）
+        const base = reqPath.split('/').pop()
+        const byBase = base ? pathnameMap['*/' + base] : undefined
+        if (byBase && existsSync(join(dir, byBase))) {
+          filePath = join(dir, byBase)
+        } else {
+          // 3) SPA fallback: history-router paths resolve to index.html
+          const indexPath = join(dir, 'index.html')
+          const acceptsHtml = (req2.headers.accept ?? '').includes('text/html')
+          if (acceptsHtml && !extname(reqPath) && existsSync(indexPath)) {
+            filePath = indexPath
+          } else {
+            res2.writeHead(404); res2.end('Not found'); return
+          }
+        }
       }
     }
     const ext2 = extname(filePath).toLowerCase()

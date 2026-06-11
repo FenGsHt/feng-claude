@@ -313,6 +313,8 @@ export function TabBar(): React.ReactElement {
 
   // Get profile name for a session
   const getProfileName = (sess: Session): string => {
+    // [2026-06-11] 优先用启动时快照，避免设置里改名/换模型后改动已运行 session 的徽章
+    if (sess.profileName) return sess.profileName
     if (!settings) return ''
     // [2026-04-28] If session has no profileId, show active profile name
     const profileId = sess.profileId ?? settings.activeProfileId

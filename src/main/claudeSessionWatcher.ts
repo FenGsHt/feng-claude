@@ -21,6 +21,21 @@ function workdirToProjectDirName(workdir: string): string {
   return workdir.replace(/[:\\/_]/g, '-')
 }
 
+/**
+ * [2026-06-11] 判断某 workdir 是否存在 Claude Code 对话历史（projects/<name> 下有 .jsonl）。
+ * 用于决定首启是否带 `--continue`：无历史时带 `--continue` 会报
+ * "No conversation found to continue" 并退回空 shell。
+ */
+export function hasClaudeConversationHistory(claudeConfigDir: string, workdir: string): boolean {
+  try {
+    const projectDir = join(claudeConfigDir, 'projects', workdirToProjectDirName(workdir))
+    if (!existsSync(projectDir)) return false
+    return collectJsonlFilesFromProjectDir(projectDir).length > 0
+  } catch {
+    return false
+  }
+}
+
 interface ClaudeJSONLEntry {
   type: string
   /** [2026-05-06] 部分 Claude Code 版本把 usage 放在根上，与 message 并列 */

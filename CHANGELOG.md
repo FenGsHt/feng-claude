@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.43] - 2026-06-11
+
+### 修复 | Bug Fixes
+- **官方定价按模型 ID 判断**：原先「profile 非官方 → 所有模型用 singlePricing」，导致中转站 profile 里调用的真 Claude 模型（Opus/Sonnet）也被按单价计算；现改为按模型 ID 判断（`claude-*` 走官方定价表，第三方走 singlePricing），同一 profile 混用也各自算对
+- **标签徽章模型名快照**：徽章原先实时读设置，在设置里改名/换模型后会错误地改动已运行 session 的徽章；现在启动时快照 profile 名称到 session，设置变更不再影响运行中的会话
+- **新目录卡在 `--continue`**：无对话历史的目录启动时仍带 `--continue`，报 "No conversation found to continue" 后停在空 shell；现改为启动前主动检查 `~/.claude/projects/<目录>` 是否有历史，无则不带 `--continue`
+
+### clone-website 工具链改进
+- **本地 server 按原始路径 serve**：读 manifest 建立「原始 URL pathname → 本地文件」映射，JS bundle 运行时请求 `/static/css/...`、`/static/editor/...` 等原始路径也能命中（pathname 精确 + basename 兜底），无需重写 JS 内部路径
+- **API 录制自动遍历点击**：克隆时在 interactMs 窗口内自动点击导航/分类/Tab 元素，触发各自的懒加载 API 并录入 api-archive.json，离线回放时未主动点过的分类不再空白
+- **`browser_click` 派发完整事件序列**：从裸 `el.click()` 改为 pointerdown→mousedown→mouseup→click（带真实坐标），正确触发 Vue/React 绑在 mousedown 上的事件处理器
+
 ## [0.7.42] - 2026-06-11
 
 ### 修复 | Bug Fixes

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Session, HistoryRecord } from '../types/session'
-import type { TelegramChannelSessionConfig } from '../types/settings'
+import type { TelegramChannelSessionConfig, ClaudeSettings } from '../types/settings'
+import { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../types/settings'
 import type { PaneNode, CreateSessionMode } from '../types/paneLayout'
 import {
   collectLeafSessionIds,
@@ -19,6 +20,13 @@ import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeT
 import type { PersistedWorkspace } from '../types/workspace'
 import { persistedPaneToLive, persistedSlotsValid } from '../lib/workspaceSerialize'
 import type { SessionCreateOk, SessionCreateErr } from '../types/ipc'
+
+/** [2026-06-11] 由 profileId 解析显示名（用于启动时快照到 session.profileName） */
+function resolveProfileName(settings: ClaudeSettings, profileId?: string | null): string | undefined {
+  const id = profileId ?? settings.activeProfileId
+  if (id === OFFICIAL_PROFILE_ID) return OFFICIAL_PROFILE.name
+  return settings.profiles.find((p) => p.id === id)?.name
+}
 
 /** Debounce timers for notifyTerminalCommittedLine — avoids concurrent history writes per session */
 const notifyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -219,10 +227,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const resolvedWorkdir = result.workdir ?? workdir
     // [2026-04-28] Always use returned profileId (IPC returns active profile if not specified)
     const sessionProfileId = result.profileId
+    // [2026-06-11] 启动时快照 profile 名称，标签徽章用它而非实时读设置
+    const launchSettings = await window.electronAPI.settings.get().catch(() => null)
+    const sessionProfileName = launchSettings
+      ? resolveProfileName(launchSettings, sessionProfileId)
+      : undefined
     // [2026-05-11] 新 session 默认继承当前活跃 session 的外嵌/终端模式
     const defaultEmbedMode = get().activeSessionId
       ? get().sessions.find((s) => s.id === get().activeSessionId)?.embedMode ?? false
-      : await window.electronAPI.settings.get().then((s) => s.embedClaudeOutputBeta === true).catch(() => false)
+      : (launchSettings?.embedClaudeOutputBeta === true)
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -233,6 +246,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       updatedAt: Date.now(),
       ptyPid: result.pid,
       profileId: sessionProfileId ?? undefined,
+      profileName: sessionProfileName,
       shellOnly: shellOnly || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel,
       embedMode: defaultEmbedMode || undefined
@@ -444,6 +458,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       return
     }
     const resolvedWorkdir = result.workdir ?? workdir
+    // [2026-06-11] restart 是显式切换配置/重启的路径，按当前设置快照 profile 名称
+    const restartSettings = await window.electronAPI.settings.get().catch(() => null)
+    const restartProfileName = restartSettings
+      ? resolveProfileName(restartSettings, result.profileId ?? targetProfileId)
+      : sess.profileName
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -453,7 +472,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       createdAt,
       updatedAt: Date.now(),
       ptyPid: result.pid,
-      profileId: targetProfileId,
+      profileId: result.profileId ?? targetProfileId,
+      profileName: restartProfileName,
       shellOnly: sess.shellOnly,
       telegramChannel: result.telegramChannel ?? telegramChannel
     }
@@ -482,6 +502,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   restoreWorkspace: async (pw: PersistedWorkspace) => {
     useTokenUsageStore.getState().resetAll()
     resetAllTokenUsageParsing()
+
+    // [2026-06-11] 一次性读设置，用于快照各 session 的 profile 名称
+    const restoreSettings = await window.electronAPI.settings.get().catch(() => null)
 
     const sessions: Session[] = []
     // [2026-04-28] Restore sessions with their saved profileIds
@@ -520,6 +543,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           updatedAt: Date.now(),
           ptyPid: result.pid,
           profileId: result.profileId ?? profileId,
+          profileName: restoreSettings
+            ? resolveProfileName(restoreSettings, result.profileId ?? profileId)
+            : undefined,
           shellOnly: shellOnly || undefined,
           telegramChannel: result.telegramChannel ?? telegramChannel,
           embedMode: pw.embedModeSlots?.[i] ?? undefined

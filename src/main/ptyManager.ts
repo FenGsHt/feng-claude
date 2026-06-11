@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS } from './settingsStore'
 import { getConfigDir } from './configDir'
 import { getProxyPort } from './apiProxyServer'
 import { getBrowserServerPort } from './browserViewManager'
+import { hasClaudeConversationHistory } from './claudeSessionWatcher'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
 
@@ -608,6 +609,13 @@ export class PtyManager {
     telegramChannel?: TelegramChannelSessionConfig
   ): Promise<{ pid: number; telegramChannel?: TelegramChannelSessionConfig }> {
     const s = settings ?? this.settingsStore.get()
+    // [2026-06-11] 仅当该目录确有 Claude 对话历史时才 --continue：
+    // 无历史时带 --continue 会报 "No conversation found to continue" 并退回空 shell
+    // （依赖事后检测降级，但叠加 --channels/--add-dir 等启动行时降级时序不稳定）。
+    const effectiveResume = !!resume && hasClaudeConversationHistory(join(homedir(), '.claude'), workdir)
+    if (resume && !effectiveResume) {
+      console.log('[PTY] resume requested but no conversation history for', workdir, '— launching without --continue')
+    }
     // [2026-06-01] 代理仅对全局激活配置生效：代理服务器只读 activeProfileId，
     // 非全局配置的 session 直接使用 profile 自身的 baseUrl，避免多配置时 baseUrl 被全局覆盖。
     const isGlobalActiveProfile = profile.id === s.activeProfileId || profile.isOfficial === true
@@ -683,7 +691,7 @@ export class PtyManager {
       firstAutoLaunchAt: 0,
       scrollbackChunks: [],
       scrollbackSize: 0,
-      usedContinue: !!resume,
+      usedContinue: effectiveResume,
       continueFallbackDone: false,
       telegramChannelLaunchEnabled: preparedTelegram.launchEnabled,
       telegramStateDirAbs: preparedTelegram.stateDirAbs,
@@ -695,7 +703,7 @@ export class PtyManager {
       setTimeout(() => {
         session.firstAutoLaunchAt = Date.now()
         ptyProcess.write(claudeLaunchLine(s, isWindows, {
-          continueSession: !!resume,
+          continueSession: effectiveResume,
           telegramChannelEnabled: session.telegramChannelLaunchEnabled,
           telegramStateDirAbs: session.telegramStateDirAbs,
           ptyShell: session.ptyShell
