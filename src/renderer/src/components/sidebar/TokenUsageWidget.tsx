@@ -244,12 +244,17 @@ export function TokenUsageWidget(): React.ReactElement {
     return cost
   }
 
-  const todayCost = hasTodayPerProfileData
-    ? computePerProfileCost(todayPerProfileTotals, today)
-    : computeCost(today, singlePricing)
-  const totalCost = hasPerProfileData
-    ? computePerProfileCost(perProfile, total)
-    : computeCost(total, singlePricing)
+  // Per-model pricing is most accurate when model data is available (Opus ≠ Sonnet ≠ Haiku)
+  const todayCost = hasTodayPerModelData
+    ? computePerModelCost(todayPerModelTotals)
+    : hasTodayPerProfileData
+      ? computePerProfileCost(todayPerProfileTotals, today)
+      : computeCost(today, singlePricing)
+  const totalCost = hasPerModelData
+    ? computePerModelCost(perModel)
+    : hasPerProfileData
+      ? computePerProfileCost(perProfile, total)
+      : computeCost(total, singlePricing)
 
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetDraft, setBudgetDraft] = useState('')
