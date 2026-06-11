@@ -402,15 +402,16 @@ export function TokenUsageWidget(): React.ReactElement {
       {/* Budget progress bar — uses total when budget set, otherwise hidden */}
       {!hideDetailedTokens && <BudgetBar used={budget > 0 ? totalUsed : todayUsed} budget={budget} />}
 
-      {/* [2026-06-09] Per-model breakdown（官方配置下自动路由的模型细分） */}
-      {hasPerModelData && !hideDetailedTokens && (() => {
+      {/* [2026-06-09] Per-model breakdown — 显示今日数据 */}
+      {(hasTodayPerModelData || hasPerModelData) && !hideDetailedTokens && (() => {
+        const modelTotals = hasTodayPerModelData ? todayPerModelTotals : perModel
         // 按 token 总量降序排列
-        const sorted = Object.entries(perModel)
+        const sorted = Object.entries(modelTotals)
           .map(([id, t]) => ({ id, t, total: tokenSum(t) }))
           .filter(e => e.total > 0)
           .sort((a, b) => b.total - a.total)
         if (sorted.length < 1) return null
-        const totalModelCost = computePerModelCost(perModel)
+        const totalModelCost = computePerModelCost(modelTotals)
         return (
           <div className="mt-1.5 pt-1 border-t border-claude-border/40">
             <button
