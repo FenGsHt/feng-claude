@@ -194,6 +194,7 @@ async function clonePageCore(
   }
   wc.debugger.on('message', onMsg)
   await wc.debugger.sendCommand('Network.enable', {})
+  await wc.debugger.sendCommand('Network.setCacheDisabled', { cacheDisabled: true })
   await wc.debugger.sendCommand('Page.enable', {})
 
   const navDone = new Promise<void>(resolve => {
@@ -389,8 +390,21 @@ async function clonePageCore(
     })
 
     html = html.replace(/<\/head>/i, `  <link rel="stylesheet" href="${cssFile}">\n</head>`)
-    // replay shim must load before any app JS
-    html = html.replace(/<head([^>]*)>/i, `<head$1>\n  <script src="replay-shim.js"></script>`)
+
+    // Route-fix: restore original URL before SPA router reads it.
+    // When serving "about.html" locally, window.location.pathname is "/about.html" which
+    // doesn't match any SPA route → router re-renders to homepage/404, clobbering the clone.
+    // replaceState runs synchronously before any app JS, so the SPA sees the correct path.
+    const originalPath = (() => {
+      try {
+        const u = new URL(targetUrl)
+        return u.pathname + (u.search || '')
+      } catch { return '/' }
+    })()
+    const routeFixScript = `<script>(function(){try{if(window.history&&window.location.pathname!==${JSON.stringify(originalPath)}){history.replaceState(null,'',${JSON.stringify(originalPath)})}}catch(e){}})()</script>`
+
+    // inject order: 1) route-fix (inline), 2) replay shim — both before any app JS
+    html = html.replace(/<head([^>]*)>/i, `<head$1>\n  ${routeFixScript}\n  <script src="replay-shim.js"></script>`)
 
     const htmlFile = `${pageName}.html`
     writeFileSync(join(outputDir, htmlFile), html, 'utf-8')
