@@ -236,22 +236,37 @@ export function TokenUsageWidget(): React.ReactElement {
     return singlePricing
   }
 
-  function computePerModelCost(totals: Record<string, TokenTotals>): number {
+  // globalRef: the authoritative token total (today/total); untracked tokens use singlePricing
+  function computePerModelCost(totals: Record<string, TokenTotals>, globalRef?: TokenTotals): number {
     let cost = 0
+    let sumInput = 0, sumOutput = 0, sumCC = 0, sumCR = 0
     for (const [modelId, t] of Object.entries(totals)) {
       cost += computeCost(t, modelPricing(modelId))
+      sumInput += t.input; sumOutput += t.output; sumCC += t.cacheCreate; sumCR += t.cacheRead
+    }
+    if (globalRef) {
+      const untracked: TokenTotals = {
+        input: Math.max(0, globalRef.input - sumInput),
+        output: Math.max(0, globalRef.output - sumOutput),
+        cacheCreate: Math.max(0, globalRef.cacheCreate - sumCC),
+        cacheRead: Math.max(0, globalRef.cacheRead - sumCR)
+      }
+      if (untracked.input + untracked.output + untracked.cacheCreate + untracked.cacheRead > 0) {
+        cost += computeCost(untracked, singlePricing)
+      }
     }
     return cost
   }
 
-  // Per-model pricing is most accurate when model data is available (Opus ≠ Sonnet ≠ Haiku)
+  // Per-model pricing is most accurate when model data is available (Opus ≠ Sonnet ≠ Haiku).
+  // Pass globalRef so untracked tokens (ingested before per-model tracking) are included at singlePricing.
   const todayCost = hasTodayPerModelData
-    ? computePerModelCost(todayPerModelTotals)
+    ? computePerModelCost(todayPerModelTotals, today)
     : hasTodayPerProfileData
       ? computePerProfileCost(todayPerProfileTotals, today)
       : computeCost(today, singlePricing)
   const totalCost = hasPerModelData
-    ? computePerModelCost(perModel)
+    ? computePerModelCost(perModel, total)
     : hasPerProfileData
       ? computePerProfileCost(perProfile, total)
       : computeCost(total, singlePricing)
