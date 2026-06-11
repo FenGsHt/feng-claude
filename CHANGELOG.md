@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.40] - 2026-06-11
+
+### 修复 | Bug Fixes
+- **clone-website：其他页面内容被覆盖**：SPA（Vue/React）克隆后访问非首页时，内置 JS Bundle 重新初始化 Router 覆盖捕获内容；现在在 `<head>` 最顶部注入路由修复脚本，SPA 初始化前用 `history.replaceState` 恢复原始路径，各页面正确渲染
+- **clone-website：批量新增 `browser_clone_site`**：一次调用完成发现→克隆→预览→相似度→导航接线，支持 SPA API 录制回放（XHR/fetch 存档 + replay-shim）；`browser_patch_element` 加 `applyTo` 参数自动写入克隆文件
+- **MODELS 费用改用今日数据**：MODELS 区块改为显示今日各模型用量（而非累计）
+- **今日/累计费用与 MODELS 对齐**：今日和累计费用改用 per-model 独立定价（Opus ≠ Sonnet），不再用固定单价低估 Opus 费用
+- **CDP 缓存禁用**：多页批量克隆时强制禁用浏览器缓存，确保所有页面资源均触发 CDP 事件
+
 ## [0.7.39] - 2026-06-10
 
 ### 新功能 | New Features
