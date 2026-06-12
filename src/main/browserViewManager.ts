@@ -136,6 +136,8 @@ const TITLEBAR_H = 32
 const NAVBAR_H = 60   // [2026-06-12] 两行：标签条(26) + 控制行(34)
 const HISTORY_PANEL_H = 250  // 历史面板展开时覆盖在浏览器内容上方的高度
 let historyPanelH = 0        // 0 = 关闭，HISTORY_PANEL_H = 打开
+const SAVE_BAR_H = 34        // 录制命名条高度
+let saveBarH = 0             // 0 = 关闭，SAVE_BAR_H = 打开
 
 // ── 浏览历史 ────────────────────────────────────────────────────────────────
 interface HistoryEntry { url: string; title: string; ts: number }
@@ -256,13 +258,13 @@ function setBounds(win: BrowserWindow): void {
     state.view.setBounds({ x: viewX, y: contentY, width: viewW, height: contentH })
   }
 
-  // 导航栏（历史面板打开时向下延伸覆盖浏览器内容，不挤压内容区）
+  // 导航栏（历史面板/命名条打开时向下延伸覆盖浏览器内容，不挤压内容区）
   if (state.navView) {
     state.navView.setBounds({
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H + historyPanelH
+      height: NAVBAR_H + historyPanelH + saveBarH
     })
   }
 }
@@ -386,6 +388,36 @@ button:active { background: #333; }
 button.active { color: #f59e0b; border-color: #f59e0b; }
 #record-btn.recording { color: #ef4444; border-color: #ef4444; }
 button:disabled { opacity: 0.3; cursor: default; }
+/* 录制命名条（替代 window.prompt，Electron 不支持原生 prompt）。
+   展开时撑高 navView，占控制行下方独立一行，不覆盖控制行。 */
+#save-bar {
+  display: none;
+  position: absolute;
+  left: 0; right: 0; top: 60px; height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #1a1a1a;
+  border-left: 1px solid #333;
+  border-bottom: 1px solid #333;
+  z-index: 30;
+}
+#save-bar.show { display: flex; }
+#save-bar span { font-size: 12px; color: #ef4444; white-space: nowrap; }
+#save-name {
+  flex: 1;
+  background: #111;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  outline: none;
+  height: 24px;
+}
+#save-name:focus { border-color: #ef4444; }
+#save-ok, #save-cancel { font-size: 12px; padding: 2px 10px; white-space: nowrap; }
+#save-ok { color: #4ade80; border-color: #4ade80; }
 #url-input {
   flex: 1;
   background: #111;
@@ -426,6 +458,12 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
     <button id="close-btn" title="关闭浏览器">×</button>
   </div>
+  <div id="save-bar">
+    <span>保存 routine：</span>
+    <input id="save-name" type="text" placeholder="输入名称回车保存" />
+    <button id="save-ok" title="保存">保存</button>
+    <button id="save-cancel" title="取消（保留录制）">取消</button>
+  </div>
   <div id="history-panel"></div>
 <script>
   const $ = id => document.getElementById(id)
@@ -445,21 +483,42 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
   let recording = false
+  function showSaveBar() {
+    $('save-bar').classList.add('show')
+    ipcRenderer.send('browser-nav:save-bar', { open: true })
+    $('save-name').focus()
+  }
+  function hideSaveBar() {
+    $('save-bar').classList.remove('show'); $('save-name').value = ''
+    ipcRenderer.send('browser-nav:save-bar', { open: false })
+  }
+  function commitSave() {
+    const name = $('save-name').value.trim()
+    if (name) { ipcRenderer.send('browser-nav:record-stop', name); hideSaveBar() }
+    else $('save-name').focus()
+  }
   $('record-btn').addEventListener('click', () => {
     if (!recording) {
       ipcRenderer.send('browser-nav:record-start')
     } else {
-      const name = window.prompt('保存 routine 名称：', '')
-      if (name && name.trim()) ipcRenderer.send('browser-nav:record-stop', name.trim())
-      else ipcRenderer.send('browser-nav:record-cancel')
+      // Electron 不支持 window.prompt，用内联命名条命名后再 stop
+      showSaveBar()
     }
   })
+  $('save-ok').addEventListener('click', commitSave)
+  $('save-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') commitSave()
+    else if (e.key === 'Escape') hideSaveBar()
+  })
+  // 取消：放弃此次录制（清空录制态，按钮回到 ⏺）
+  $('save-cancel').addEventListener('click', () => { ipcRenderer.send('browser-nav:record-cancel'); hideSaveBar() })
   ipcRenderer.on('browser-nav:recording', (_, d) => {
     recording = !!d.active
     const btn = $('record-btn')
     btn.classList.toggle('recording', recording)
     btn.textContent = recording ? ('⏹ ' + (d.count || 0)) : '⏺'
     btn.title = recording ? '停止并保存（已录 ' + (d.count||0) + ' 步）' : '录制操作（routine）'
+    if (!recording) hideSaveBar()
   })
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
   $('tab-new').addEventListener('click', () => ipcRenderer.send('browser-nav:tab-new'))
@@ -1549,6 +1608,12 @@ export function registerBrowserViewIpc(): void {
     browserHistory = []
     saveBrowserHistory()
     pushHistoryToNav()
+  })
+
+  // 录制命名条开/关：撑高 navView 占独立一行
+  ipcMain.on('browser-nav:save-bar', (_event, { open }: { open: boolean }) => {
+    saveBarH = open ? SAVE_BAR_H : 0
+    if (state.mainWin) setBounds(state.mainWin)
   })
 
   ipcMain.handle('browser-view:toggle', (event) => {
