@@ -462,6 +462,19 @@ const TOOLS = [
       required: ['name']
     }
   }
+  ,
+  {
+    name: 'browser_routine_run',
+    description: 'Replay a recorded routine in this session\'s active debug-browser tab. Executes the saved steps (navigate/click/type/select/sleep/wait_for/evaluate) without per-step reasoning. Pass params for any ${var} placeholders (e.g. {"username":"admin","password":"x"}). Returns ok, any variables captured by evaluate steps, and on failure the error + failedStepIndex.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Routine name (from browser_routine_list)' },
+        params: { type: 'object', description: 'Values for ${var} placeholders (optional)' }
+      },
+      required: ['name']
+    }
+  }
 ]
 
 async function callHttp(path, body) {
@@ -788,6 +801,16 @@ async function handleTool(name, args) {
       case 'browser_routine_delete': {
         const r = await callHttp('/routine/delete', { name: args.name })
         return [{ type: 'text', text: r.ok ? `Deleted routine ${args.name}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_routine_run': {
+        const r = await callHttp('/routine/run', { name: args.name, params: args.params || {} })
+        if (r.ok) {
+          const vars = r.variables && Object.keys(r.variables).length
+            ? `\nVariables: ${JSON.stringify(r.variables)}` : ''
+          return [{ type: 'text', text: `Routine "${args.name}" completed.${vars}` }]
+        }
+        const at = r.failedStepIndex !== undefined ? ` (step ${r.failedStepIndex})` : ''
+        return [{ type: 'text', text: `Routine failed${at}: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
