@@ -666,6 +666,7 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
     // [2026-06-12] 录制中：记录导航并在新页面重注入 recorder（导航清空了注入脚本）
     if (routineMgr.isRecording(sid)) {
       routineMgr.recordNavigate(sid, navUrl)
+      if (sid === foregroundSessionId) pushRecordingState(sid)
       view.webContents.executeJavaScript(routineMgr.RECORDER_JS).catch(() => {})
     }
   })
@@ -706,7 +707,10 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
     // [2026-06-12] 录制事件通道：带前缀的日志转给 routine 录制器，且不进 console buffer（不污染 /console）
     if (message.startsWith(routineMgr.WING_EVT_PREFIX)) {
       if (routineMgr.isRecording(sid)) {
-        try { routineMgr.recordEvent(sid, JSON.parse(message.slice(routineMgr.WING_EVT_PREFIX.length))) } catch { /* ignore */ }
+        try {
+          routineMgr.recordEvent(sid, JSON.parse(message.slice(routineMgr.WING_EVT_PREFIX.length)))
+          if (sid === foregroundSessionId) pushRecordingState(sid)
+        } catch { /* ignore */ }
       }
       return
     }
@@ -990,6 +994,15 @@ export function getBrowserViewWebContents(): Electron.WebContents | null {
 function injectRecorder(sid: string): void {
   const wc = getActiveTab(sid)?.view.webContents
   if (wc) wc.executeJavaScript(routineMgr.RECORDER_JS).catch(() => {})
+}
+
+/** [2026-06-12] 把前台 session 录制态推给导航栏（按钮红点 + 步数）。 */
+function pushRecordingState(sid: string): void {
+  if (!state.navView?.webContents) return
+  state.navView.webContents.send('browser-nav:recording', {
+    active: routineMgr.isRecording(sid),
+    count: routineMgr.recordingStepCount(sid)
+  })
 }
 
 function ensureBrowserVisible(): boolean {
@@ -1484,6 +1497,7 @@ export function setForegroundSession(sessionId: string): void {
   updateNavUrl(state.view?.webContents.getURL() ?? '')
   updateNavBackForward()
   notifyBrowserState()
+  pushRecordingState(sessionId)
 }
 
 /** 销毁某 session 的全部 tab（终端关闭时调用），释放内存。 */
@@ -1561,6 +1575,25 @@ export function registerBrowserViewIpc(): void {
     else if (action === 'devtools') toggleDevTools()
     else if (action === 'close') hideBrowserView()
     else if (action === 'pick') void startElementPicker()
+  })
+  ipcMain.on('browser-nav:record-start', () => {
+    if (!foregroundSessionId) return
+    const wc = getActiveTab(foregroundSessionId)?.view.webContents
+    routineMgr.startRecording(foregroundSessionId, wc?.getURL())
+    injectRecorder(foregroundSessionId)
+    pushRecordingState(foregroundSessionId)
+  })
+  ipcMain.on('browser-nav:record-stop', (_event, name: string) => {
+    if (!foregroundSessionId) return
+    const wd = sessionWorkdirs.get(foregroundSessionId)
+    if (wd && name) routineMgr.stopRecording(foregroundSessionId, wd, name)
+    else routineMgr.cancelRecording(foregroundSessionId)
+    pushRecordingState(foregroundSessionId)
+  })
+  ipcMain.on('browser-nav:record-cancel', () => {
+    if (!foregroundSessionId) return
+    routineMgr.cancelRecording(foregroundSessionId)
+    pushRecordingState(foregroundSessionId)
   })
 
   ipcMain.on('browser-nav:navigate', (_event, url: string) => {
