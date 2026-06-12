@@ -38,5 +38,11 @@ try {
   assert(M.deleteRoutine(wd, 'nope') === false, 'deleteRoutine missing -> false')
 } finally { rmSync(wd, { recursive: true, force: true }) }
 
+// resolveStep
+const rs1 = M.resolveStep({ type: 'type', selector: '#u', value: '${username}' }, { username: 'admin' })
+assert(rs1.value === 'admin' && rs1.selector === '#u', 'resolveStep substitutes value')
+const rs2 = M.resolveStep({ type: 'navigate', url: 'http://x/${env}' }, {})
+assert(rs2.url === 'http://x/', 'resolveStep missing param -> empty')
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)
