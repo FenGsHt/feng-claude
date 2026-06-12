@@ -415,6 +415,52 @@ const TOOLS = [
       },
       required: ['dir', 'pageMap']
     }
+  },
+  {
+    name: 'browser_tab_list',
+    description: 'List the debug-browser tabs belonging to THIS terminal session. Each session has its own isolated set of tabs; you only see and control your own. Returns id, title, url, and which tab is active.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_tab_new',
+    description: 'Open a new tab in this session\'s debug browser and make it active. All subsequent browser_* actions (navigate/screenshot/click/...) target the active tab.',
+    inputSchema: {
+      type: 'object',
+      properties: { url: { type: 'string', description: 'Optional URL to load in the new tab' } },
+      required: []
+    }
+  },
+  {
+    name: 'browser_tab_select',
+    description: 'Switch the active tab of this session\'s debug browser. Get tab ids from browser_tab_list.',
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'string', description: 'Tab id from browser_tab_list' } },
+      required: ['tabId']
+    }
+  },
+  {
+    name: 'browser_tab_close',
+    description: 'Close a tab in this session\'s debug browser. If it was active, the adjacent tab becomes active.',
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'string', description: 'Tab id from browser_tab_list' } },
+      required: ['tabId']
+    }
+  },
+  {
+    name: 'browser_routine_list',
+    description: 'List recorded browser routines for THIS terminal session\'s project (stored in {workdir}/.claude/browser-routines). Returns each routine\'s name, description, params (template ${var} placeholders to pass to browser_routine_run), and step count. Routines automate repeated UI sequences (login, close dialogs, navigation) without per-step LLM reasoning.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_routine_delete',
+    description: 'Delete a recorded routine by name from this project.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Routine name' } },
+      required: ['name']
+    }
   }
 ]
 
@@ -427,7 +473,12 @@ async function callHttp(path, body) {
       port: url.port,
       path: url.pathname + url.search,
       method: body ? 'POST' : 'GET',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': data ? Buffer.byteLength(data) : 0 }
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': data ? Buffer.byteLength(data) : 0,
+        // [2026-06-12] 标识当前终端 session，使内嵌浏览器按 session 隔离调试 tab
+        'X-Feng-Session': process.env.FENG_CLAUDE_SESSION_ID || ''
+      }
     }
     const req = http.request(options, (res) => {
       let d = ''
@@ -454,6 +505,26 @@ async function handleTool(name, args) {
       case 'browser_navigate': {
         const r = await callHttp('/navigate', { url: args.url })
         return [{ type: 'text', text: r.success ? `Navigated to ${r.url}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_tab_list': {
+        const r = await callHttp('/tabs')
+        const tabs = r.tabs || []
+        if (!tabs.length) return [{ type: 'text', text: 'No tabs open in this session.' }]
+        const lines = tabs.map(t => `${t.active ? '* ' : '  '}${t.id}  ${t.title || '(untitled)'}  ${t.url}`)
+        return [{ type: 'text', text: `Tabs (${tabs.length}):\n${lines.join('\n')}` }]
+      }
+      case 'browser_tab_new': {
+        const r = await callHttp('/tabs/new', { url: args.url || '' })
+        if (r.error) return [{ type: 'text', text: `Failed: ${r.error}` }]
+        return [{ type: 'text', text: `Opened tab ${r.tabId} (now active). ${(r.tabs||[]).length} tab(s) total.` }]
+      }
+      case 'browser_tab_select': {
+        const r = await callHttp('/tabs/select', { tabId: args.tabId })
+        return [{ type: 'text', text: r.ok ? `Switched to tab ${args.tabId}` : `Failed: ${r.error}` }]
+      }
+      case 'browser_tab_close': {
+        const r = await callHttp('/tabs/close', { tabId: args.tabId })
+        return [{ type: 'text', text: r.ok ? `Closed tab ${args.tabId}. ${(r.tabs||[]).length} tab(s) left.` : `Failed: ${r.error}` }]
       }
       case 'browser_screenshot': {
         const r = await callHttp('/screenshot')
@@ -706,6 +777,17 @@ async function handleTool(name, args) {
           return [{ type: 'text', text: `Navigation wired in ${r.updated}/${r.files?.length} HTML files\nFiles: ${r.files?.join(', ')}` }]
         }
         return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_routine_list': {
+        const r = await callHttp('/routine/list')
+        const rs = r.routines || []
+        if (!rs.length) return [{ type: 'text', text: 'No routines recorded for this project.' }]
+        const lines = rs.map(x => `- ${x.name}  (${x.stepCount} steps)${x.params.length ? `  params: ${x.params.join(', ')}` : ''}${x.description ? `\n    ${x.description}` : ''}`)
+        return [{ type: 'text', text: `Routines (${rs.length}):\n${lines.join('\n')}` }]
+      }
+      case 'browser_routine_delete': {
+        const r = await callHttp('/routine/delete', { name: args.name })
+        return [{ type: 'text', text: r.ok ? `Deleted routine ${args.name}` : `Failed: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
