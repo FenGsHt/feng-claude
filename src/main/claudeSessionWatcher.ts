@@ -60,6 +60,8 @@ interface ParsedUsage {
   cacheRead: number
   /** [2026-06-09] 模型标识，如 "claude-sonnet-4-20250514"、"claude-opus-4-20250514" */
   model?: string
+  /** [2026-06-13] assistant message id；同一 message 多条记录带相同 usage，用于去重 */
+  messageId?: string
 }
 
 function usageSum(u: ParsedUsage): number {
@@ -79,6 +81,8 @@ interface SessionWatch {
    * time so historical content is never re-counted.
    */
   fileByteOffsets: Map<string, number>
+  /** [2026-06-13] 已计入用量的 assistant message id；同一 message 多条记录只计一次，防止 cacheRead 重复累加 */
+  seenMessageIds: Set<string>
   timer: ReturnType<typeof setInterval> | null
   /** Last time we saw token usage — used to detect idle state for notifications */
   lastTokenTime: number | null
@@ -143,6 +147,7 @@ export class ClaudeSessionWatcher {
       projectDir,
       linkedSessionIds: new Set([sessionId]),
       fileByteOffsets: new Map(),
+      seenMessageIds: new Set(),
       timer: null,
       lastTokenTime: null,
       runningNotified: false
@@ -293,7 +298,11 @@ export class ClaudeSessionWatcher {
 
         // Parse assistant message and emit usage directly
         const usage = parseAssistantUsage(line)
-        if (usage && usageSum(usage) > 0) {
+        // [2026-06-13] 同一 message.id 多条记录带相同 usage（content block 拆分），只计首条，避免
+        // cacheRead 等被重复累加（实测一条 message 可重复 2~4 次）。仅去重用量，不影响 tool/transcript。
+        const dupUsage = !!(usage && usage.messageId && sw.seenMessageIds.has(usage.messageId))
+        if (usage && usage.messageId && !dupUsage) sw.seenMessageIds.add(usage.messageId)
+        if (usage && !dupUsage && usageSum(usage) > 0) {
           if (!sw.runningNotified) {
             this.emitStatusForWatch(sw, 'running')
             sw.runningNotified = true
@@ -424,18 +433,21 @@ function parseUsageFromAssistantJsonlEntry(entry: Record<string, unknown>): Pars
   if (String(entry.type ?? '') !== 'assistant') return null
   const msg = entry.message
   let model: string | undefined
+  let messageId: string | undefined
   if (msg && typeof msg === 'object') {
     const m = msg as Record<string, unknown>
     // [2026-06-09] 提取模型标识（如 "claude-sonnet-4-20250514"）
     if (typeof m.model === 'string' && m.model) model = m.model
+    // [2026-06-13] 提取 message id 用于去重（同一 message 会写多条带相同 usage 的记录）
+    if (typeof m.id === 'string' && m.id) messageId = m.id
     if (m.usage != null) {
       const u = coerceUsageRecord(m.usage)
-      if (u) return { ...u, model }
+      if (u) return { ...u, model, messageId }
     }
   }
   if (entry.usage != null) {
     const u = coerceUsageRecord(entry.usage)
-    if (u) return { ...u, model }
+    if (u) return { ...u, model, messageId }
   }
   return null
 }
