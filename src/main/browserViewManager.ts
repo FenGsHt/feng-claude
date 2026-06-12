@@ -967,6 +967,12 @@ export function getBrowserViewWebContents(): Electron.WebContents | null {
   return targetWebContents()
 }
 
+/** [2026-06-12] 向某 session 的 active tab 注入 recorder 脚本。 */
+function injectRecorder(sid: string): void {
+  const wc = getActiveTab(sid)?.view.webContents
+  if (wc) wc.executeJavaScript(routineMgr.RECORDER_JS).catch(() => {})
+}
+
 function ensureBrowserVisible(): boolean {
   if (!state.mainWin) return false
   const sid = currentSessionId()
@@ -1777,6 +1783,27 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           const params = (body?.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {}
           const result = await routineMgr.runRoutine(wc, wd, name, params)
           res.writeHead(result.ok ? 200 : 500); res.end(JSON.stringify(result))
+          return
+        }
+        if (path === '/routine/record/start' && req.method === 'POST') {
+          ensureBrowserVisible()
+          const sid = currentSessionId()
+          if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'No session' })); return }
+          const wc = getActiveTab(sid)?.view.webContents
+          routineMgr.startRecording(sid, wc?.getURL())
+          injectRecorder(sid)
+          res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+          return
+        }
+        if (path === '/routine/record/stop' && req.method === 'POST') {
+          const body = await readBody(req)
+          const sid = currentSessionId()
+          const wd = currentWorkdir()
+          const name = (body?.name as string) ?? ''
+          if (!sid || !wd || !name) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing session/workdir/name' })); return }
+          const result = routineMgr.stopRecording(sid, wd, name)
+          if (!result) { res.writeHead(400); res.end(JSON.stringify({ error: 'Not recording' })); return }
+          res.writeHead(200); res.end(JSON.stringify({ ok: true, ...result }))
           return
         }
 
