@@ -463,11 +463,13 @@ button:disabled { opacity: 0.3; cursor: default; }
   height: 24px;
 }
 #url-input:focus { border-color: #f59e0b; }
-/* 更多菜单（收纳历史/拾取/DevTools 等次要功能） */
+/* 更多菜单（收纳历史等次要功能）。
+   menu 提到 body 层级 + position:fixed，避开 #ctrl-row 的 overflow 裁剪；
+   位置由 JS 按 ⋯ 按钮的 getBoundingClientRect 计算。 */
 #more-wrap { position: relative; flex: none; }
 #more-menu {
   display: none;
-  position: absolute; right: 0; top: 28px;
+  position: fixed; top: 0; left: 0;
   min-width: 130px; padding: 4px;
   background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 40;
@@ -509,10 +511,10 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
     <div id="more-wrap">
       <button id="more-btn" title="更多">⋯</button>
-      <div id="more-menu">
-        <div class="m-item" id="m-history">⏱ 历史记录</div>
-      </div>
     </div>
+  </div>
+  <div id="more-menu">
+    <div class="m-item" id="m-history">⏱ 历史记录</div>
   </div>
   <div id="save-bar">
     <span>保存 routine：</span>
@@ -540,18 +542,43 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
-  // 更多菜单：目前仅收纳历史记录
+  // 更多菜单：目前仅收纳历史记录。menu 用 fixed 定位，按 ⋯ 按钮位置摆放，
+  // 支持 hover 展开 + 点击展开；移出按钮和菜单区域后自动收起。
   let moreOpen = false
-  function toggleMore(force) {
-    moreOpen = force !== undefined ? force : !moreOpen
-    $('more-btn').classList.toggle('active', moreOpen)
-    $('more-menu').classList.toggle('open', moreOpen)
+  let moreHideTimer = null
+  function positionMore() {
+    const r = $('more-btn').getBoundingClientRect()
+    const menu = $('more-menu')
+    menu.style.top = (r.bottom + 2) + 'px'
+    // 右对齐按钮；菜单宽度未知时先显示再校正
+    menu.style.left = Math.max(4, r.right - 130) + 'px'
   }
-  $('more-btn').addEventListener('click', e => { e.stopPropagation(); toggleMore() })
+  function openMore() {
+    if (moreHideTimer) { clearTimeout(moreHideTimer); moreHideTimer = null }
+    moreOpen = true
+    positionMore()
+    $('more-btn').classList.add('active')
+    $('more-menu').classList.add('open')
+  }
+  function closeMore() {
+    moreOpen = false
+    $('more-btn').classList.remove('active')
+    $('more-menu').classList.remove('open')
+  }
+  // 延迟关闭，给鼠标从按钮移到菜单的间隙留缓冲
+  function scheduleClose() {
+    if (moreHideTimer) clearTimeout(moreHideTimer)
+    moreHideTimer = setTimeout(closeMore, 250)
+  }
+  $('more-btn').addEventListener('mouseenter', openMore)
+  $('more-btn').addEventListener('mouseleave', scheduleClose)
+  $('more-btn').addEventListener('click', e => { e.stopPropagation(); moreOpen ? closeMore() : openMore() })
+  $('more-menu').addEventListener('mouseenter', () => { if (moreHideTimer) { clearTimeout(moreHideTimer); moreHideTimer = null } })
+  $('more-menu').addEventListener('mouseleave', scheduleClose)
   document.addEventListener('click', e => {
-    if (moreOpen && !$('more-wrap').contains(e.target)) toggleMore(false)
+    if (moreOpen && !$('more-wrap').contains(e.target) && !$('more-menu').contains(e.target)) closeMore()
   })
-  $('m-history').addEventListener('click', () => { toggleMore(false); toggleHistory() })
+  $('m-history').addEventListener('click', () => { closeMore(); toggleHistory() })
   let recording = false
   function showSaveBar() {
     $('save-bar').classList.add('show')
