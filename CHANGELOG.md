@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.44] - 2026-06-13
+
+### 新功能 | Features
+- **调试浏览器 Routine 录制/回放**：把浏览器里的一串操作（导航/点击/输入/选择）录成项目级 routine（存 `{workdir}/.claude/browser-routines/<name>.json`），AI 或用户可直接回放，免去逐步 LLM 推理。支持 7 种动作（navigate/click/type/select/sleep/wait_for/evaluate）、`${var}` 参数化（同一 routine 配不同账号密码复用成模板）、evaluate 抓数据回传变量、失败步定位
+  - 导航栏新增 ⏺ 录制按钮（红点+步数+内联命名条）、▶ 回放按钮（弹出本项目 routine 列表点击即回放）
+  - 5 个 MCP 工具：`browser_routine_record_start/stop`、`browser_routine_list/run/delete`
+  - 录制走 `console.log('__WING_EVT__')` 通道，不污染 `/console`；导航后自动重注入 recorder
+
+### 修复 | Bug Fixes
+- **Token 计算偏多（重复累加）**：Claude Code 把同一条 assistant message 在 JSONL 里写成多条记录（按 content block / tool_use 拆分），每条带相同的 usage 快照；watcher 逐条累加导致 cacheRead/output 被多算 40~56%、成本虚高。现按 `message.id` 去重，同一 message 只计一次
+- **evaluate 步骤字段名容错**：回放器原只认 `js`/`variable`，写 `javascript`/`expression`/`code`/`var` 会被静默忽略（执行空语句、不回传变量）；现接受全部别名，纯表达式自动加 return，含 return/多语句的当函数体
+- **`window.prompt` 在 Electron 不可用**：录制停止命名原用 `window.prompt`（WebContentsView 直接返回 null 导致录制被静默取消），改为内联命名条
+- **导航栏下拉被裁剪**：navView 物理高度仅 60px，更多菜单/历史/回放面板下拉超出会被 view 边界裁掉，现统一通过 IPC 撑高 navView 显示
+- **多窗口最大化后台浏览器越界**：后台 session 的 tab view 在最大化后保留旧坐标从前台 view 边缘漏出，现 resize 时同步所有后台 tab bounds
+
+### 界面 | UI
+- **导航栏整理**：关闭 × 移到标签条右侧；历史记录收进右侧 ⋯ 更多菜单（悬浮/点击展开）；窄面板时控制行横向滚动而非溢出整页滚动条
+- **浏览历史面板**：分组（今天/昨天/更早）+ 时间显示 + 清除全部
+- **调试浏览器按 session 隔离的多 tab**：每个终端 session 独立一组 tab，互不可见；切终端自动切浏览器；后台 session 仍可截图/操作
+
+### clone-website 工具链改进
+- **SPA 完整克隆提醒**：工具描述补充——SPA 路由组件是懒加载 chunk，只在访问该路由时才下载；只克隆首页会漏掉其余路由的组件 chunk，复刻完整站点须遍历所有路由（用 `browser_clone_site` 或对每个 URL 循环 `browser_clone_page`）
+
 ## [0.7.43] - 2026-06-11
 
 ### 修复 | Bug Fixes

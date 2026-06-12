@@ -5,6 +5,30 @@
 
 ---
 
+## v0.7.44 (2026-06-13)
+
+### 新功能
+- **调试浏览器 Routine 录制/回放**：把浏览器操作录成项目级 routine，AI 或用户直接回放，免去逐步推理。支持 navigate/click/type/select/sleep/wait_for/evaluate 七种动作、`${var}` 参数化、evaluate 抓数据、失败步定位
+  - 导航栏 ⏺ 录制按钮（红点+步数+命名条）、▶ 回放按钮（弹列表点击回放）
+  - 5 个 MCP 工具：record_start/stop、list/run/delete
+
+### 修复
+- **Token 计算偏多**：同一 assistant message 在 JSONL 里多条记录带相同 usage 快照被重复累加，cacheRead/output 多算 40~56%；现按 message.id 去重
+- **evaluate 字段名容错**：回放器接受 js/javascript/expression/code、variable/var，纯表达式自动 return
+- **`window.prompt` 在 Electron 不可用**：录制命名改用内联输入条
+- **导航栏下拉被裁剪**：菜单/面板统一撑高 navView 显示
+- **多窗口最大化后台浏览器越界**：resize 时同步后台 tab 坐标
+
+### 界面
+- **导航栏整理**：关闭按钮移到标签条右侧；历史收进 ⋯ 更多菜单；窄面板控制行横向滚动
+- **浏览历史面板**：分组+时间+清除全部
+- **调试浏览器多 tab 按 session 隔离**：每个终端独立 tab，切终端自动切浏览器，后台仍可截图
+
+### clone-website
+- **SPA 完整克隆提醒**：工具描述补充——只克隆首页会漏掉懒加载的路由组件 chunk，复刻完整站点须遍历所有路由
+
+---
+
 ## v0.7.43 (2026-06-11)
 
 ### 修复
