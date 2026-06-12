@@ -10,7 +10,14 @@ export interface RoutineSummary { name: string; description: string; params: str
 export interface RunResult { ok: boolean; variables: Record<string, unknown>; error?: string; failedStepIndex?: number }
 
 const PARAM_RE = /\$\{([a-zA-Z0-9_]+)\}/g
-const STRING_FIELDS = ['url', 'value', 'js', 'selector'] as const
+// 参与 ${var} 替换 + params 提取的字符串字段（含 evaluate 的字段别名）
+const STRING_FIELDS = ['url', 'value', 'js', 'javascript', 'expression', 'code', 'selector'] as const
+
+/** 返回参数列表里第一个非空字符串（字段别名容错用）。 */
+function firstString(...vals: unknown[]): string {
+  for (const v of vals) if (typeof v === 'string' && v) return v
+  return ''
+}
 
 export function routinesDir(workdir: string): string {
   return join(workdir, '.claude', 'browser-routines')
@@ -163,8 +170,15 @@ export async function runRoutine(
           break
         }
         case 'evaluate': {
-          const result = await wc.executeJavaScript(`(function(){${String(step.js)}})()`)
-          if (typeof step.variable === 'string' && step.variable) variables[step.variable] = result
+          // 字段别名容错：js / javascript / expression / code 任一即可
+          const code = firstString(step.js, step.javascript, step.expression, step.code)
+          if (!code) return { ok: false, variables, error: `evaluate: missing code (use field "js")`, failedStepIndex: i }
+          // 已含 return / 多语句 → 当函数体；纯表达式 → 自动 return
+          const body = /\breturn\b|;|\n/.test(code) ? code : `return (${code})`
+          const result = await wc.executeJavaScript(`(function(){${body}})()`)
+          // 变量名别名：variable / var
+          const varName = firstString(step.variable, step.var)
+          if (varName) variables[varName] = result
           break
         }
         default:

@@ -44,5 +44,16 @@ assert(rs1.value === 'admin' && rs1.selector === '#u', 'resolveStep substitutes 
 const rs2 = M.resolveStep({ type: 'navigate', url: 'http://x/${env}' }, {})
 assert(rs2.url === 'http://x/', 'resolveStep missing param -> empty')
 
+// evaluate 字段别名也参与 ${var} 替换
+const rs3 = M.resolveStep({ type: 'evaluate', expression: 'document.title + "${suffix}"' }, { suffix: '!' })
+assert(rs3.expression === 'document.title + "!"', 'resolveStep substitutes in alias field (expression)')
+
+// extractParams 扫描别名字段
+const r2 = { name: 'e', description: '', createdAt: '', steps: [
+  { type: 'evaluate', javascript: 'return ${a}' },
+  { type: 'evaluate', code: '${b}' }
+]}
+assert(JSON.stringify(M.extractParams(r2)) === JSON.stringify(['a','b']), 'extractParams scans alias fields')
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)
