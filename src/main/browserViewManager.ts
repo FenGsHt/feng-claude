@@ -361,6 +361,20 @@ body {
 .h-title { flex: 1; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h-time  { flex: none; font-size: 10px; color: #555; white-space: nowrap; }
 .h-url   { font-size: 10px; color: #444; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+/* Routine 回放面板（复用历史面板布局） */
+#routine-panel {
+  display: none; flex-direction: column;
+  position: absolute; top: 60px; left: 0; right: 0; height: 250px;
+  background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
+  overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 20;
+}
+#routine-panel.open { display: flex; }
+.r-item { padding: 5px 10px 4px; cursor: pointer; border-bottom: 1px solid #1e1e1e; }
+.r-item:hover { background: #222; }
+.r-row1 { display: flex; align-items: baseline; gap: 6px; }
+.r-name { flex: 1; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-meta { flex: none; font-size: 10px; color: #555; white-space: nowrap; }
+.r-params { font-size: 10px; color: #d08770; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 /* 控制行 */
 #ctrl-row {
   display: flex;
@@ -453,6 +467,7 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="reload-btn" title="刷新">⟳</button>
     <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
     <button id="record-btn" title="录制操作（routine）">⏺</button>
+    <button id="play-btn" title="回放 routine">▶</button>
     <button id="history-btn" title="历史记录">⏱</button>
     <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
     <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
@@ -465,6 +480,7 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="save-cancel" title="取消（保留录制）">取消</button>
   </div>
   <div id="history-panel"></div>
+  <div id="routine-panel"></div>
 <script>
   const $ = id => document.getElementById(id)
   const { ipcRenderer } = require('electron')
@@ -519,6 +535,47 @@ button:disabled { opacity: 0.3; cursor: default; }
     btn.textContent = recording ? ('⏹ ' + (d.count || 0)) : '⏺'
     btn.title = recording ? '停止并保存（已录 ' + (d.count||0) + ' 步）' : '录制操作（routine）'
     if (!recording) hideSaveBar()
+  })
+  // Routine 回放面板
+  let routineOpen = false
+  function toggleRoutine(force) {
+    routineOpen = force !== undefined ? force : !routineOpen
+    $('play-btn').classList.toggle('active', routineOpen)
+    $('routine-panel').classList.toggle('open', routineOpen)
+    ipcRenderer.send('browser-nav:routine-panel', { open: routineOpen })
+  }
+  $('play-btn').addEventListener('click', e => { e.stopPropagation(); toggleRoutine() })
+  document.addEventListener('click', e => {
+    if (routineOpen && !$('routine-panel').contains(e.target) && e.target !== $('play-btn')) toggleRoutine(false)
+  })
+  ipcRenderer.on('browser-nav:routines', (_, d) => {
+    const panel = $('routine-panel')
+    panel.innerHTML = ''
+    const hdr = document.createElement('div'); hdr.className = 'h-header'
+    hdr.appendChild(Object.assign(document.createElement('span'), { textContent: '回放 routine' }))
+    panel.appendChild(hdr)
+    const scroll = document.createElement('div'); scroll.className = 'h-scroll'
+    panel.appendChild(scroll)
+    const items = d.routines || []
+    if (!items.length) {
+      const em = document.createElement('div'); em.className = 'h-empty'; em.textContent = '本项目暂无录制的 routine'
+      scroll.appendChild(em); return
+    }
+    for (const it of items) {
+      const row = document.createElement('div'); row.className = 'r-item'
+      const r1 = document.createElement('div'); r1.className = 'r-row1'
+      const nm = document.createElement('span'); nm.className = 'r-name'; nm.textContent = it.name
+      const meta = document.createElement('span'); meta.className = 'r-meta'; meta.textContent = (it.stepCount || 0) + ' 步'
+      r1.appendChild(nm); r1.appendChild(meta)
+      row.appendChild(r1)
+      if (it.params && it.params.length) {
+        const p = document.createElement('div'); p.className = 'r-params'; p.textContent = '参数: ' + it.params.join(', ')
+        row.appendChild(p)
+      }
+      row.title = (it.params && it.params.length) ? '此 routine 含参数，手动回放将使用空值；带参回放请用 AI 调用' : '点击回放'
+      row.addEventListener('click', () => { ipcRenderer.send('browser-nav:routine-run', it.name); toggleRoutine(false) })
+      scroll.appendChild(row)
+    }
   })
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
   $('tab-new').addEventListener('click', () => ipcRenderer.send('browser-nav:tab-new'))
@@ -1061,6 +1118,15 @@ function pushRecordingState(sid: string): void {
   state.navView.webContents.send('browser-nav:recording', {
     active: routineMgr.isRecording(sid),
     count: routineMgr.recordingStepCount(sid)
+  })
+}
+
+/** [2026-06-13] 把本项目的 routine 列表推给导航栏（回放面板用）。 */
+function pushRoutinesToNav(): void {
+  if (!state.navView?.webContents) return
+  const wd = foregroundSessionId ? sessionWorkdirs.get(foregroundSessionId) : null
+  state.navView.webContents.send('browser-nav:routines', {
+    routines: wd ? routineMgr.listRoutines(wd) : []
   })
 }
 
@@ -1614,6 +1680,18 @@ export function registerBrowserViewIpc(): void {
   ipcMain.on('browser-nav:save-bar', (_event, { open }: { open: boolean }) => {
     saveBarH = open ? SAVE_BAR_H : 0
     if (state.mainWin) setBounds(state.mainWin)
+  })
+
+  // Routine 回放面板：开面板时推送本项目 routine 列表
+  ipcMain.on('browser-nav:routine-panel', (_event, { open }: { open: boolean }) => {
+    if (open) pushRoutinesToNav()
+  })
+  // 手动回放（用户从面板点击）：作用于前台 session 的 active tab，无参数
+  ipcMain.on('browser-nav:routine-run', (_event, name: string) => {
+    if (!foregroundSessionId || !name) return
+    const wd = sessionWorkdirs.get(foregroundSessionId)
+    const wc = getActiveTab(foregroundSessionId)?.view.webContents
+    if (wd && wc) void routineMgr.runRoutine(wc, wd, name, {})
   })
 
   ipcMain.handle('browser-view:toggle', (event) => {
