@@ -8,6 +8,7 @@ import { PNG } from 'pngjs'
 import { readFileSync, writeFile, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname, extname, basename } from 'path'
 import { handleCloneRoute } from './cloneManager'
+import * as routineMgr from './browserRoutineManager'
 
 interface BrowserPanelState {
   view: WebContentsView | null
@@ -65,7 +66,6 @@ export function unregisterSessionWorkdir(sessionId: string): void {
   sessionWorkdirs.delete(sessionId)
 }
 /** 当前请求 session 的项目目录（routine 存取根）。 */
-// @ts-ignore
 function currentWorkdir(): string | null {
   const sid = currentSessionId()
   return sid ? (sessionWorkdirs.get(sid) ?? null) : null
@@ -1738,6 +1738,22 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           return
         }
 
+        // ── [2026-06-12] Routine 录制/回放（按请求 session 隔离，存项目目录）──
+        if (path === '/routine/list' && req.method === 'GET') {
+          const wd = currentWorkdir()
+          if (!wd) { res.writeHead(200); res.end(JSON.stringify({ routines: [] })); return }
+          res.writeHead(200); res.end(JSON.stringify({ routines: routineMgr.listRoutines(wd) }))
+          return
+        }
+        if (path === '/routine/delete' && req.method === 'POST') {
+          const body = await readBody(req)
+          const wd = currentWorkdir()
+          const name = (body?.name as string) ?? ''
+          if (!wd || !name) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing workdir or name' })); return }
+          const ok = routineMgr.deleteRoutine(wd, name)
+          res.writeHead(ok ? 200 : 404); res.end(JSON.stringify(ok ? { ok: true } : { error: 'Routine not found' }))
+          return
+        }
 
         if (path === '/navigate' && req.method === 'POST') {
           const body = await readBody(req)
