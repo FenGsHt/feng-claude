@@ -1754,6 +1754,19 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
           res.writeHead(ok ? 200 : 404); res.end(JSON.stringify(ok ? { ok: true } : { error: 'Routine not found' }))
           return
         }
+        if (path === '/routine/run' && req.method === 'POST') {
+          const body = await readBody(req)
+          const wd = currentWorkdir()
+          const name = (body?.name as string) ?? ''
+          if (!wd || !name) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'Missing workdir or name' })); return }
+          ensureBrowserVisible()
+          const wc = getBrowserViewWebContents()
+          if (!wc) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'Browser not open' })); return }
+          const params = (body?.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {}
+          const result = await routineMgr.runRoutine(wc, wd, name, params)
+          res.writeHead(result.ok ? 200 : 500); res.end(JSON.stringify(result))
+          return
+        }
 
         if (path === '/navigate' && req.method === 'POST') {
           const body = await readBody(req)
