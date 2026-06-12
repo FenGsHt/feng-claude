@@ -176,3 +176,105 @@ export async function runRoutine(
   }
   return { ok: true, variables }
 }
+
+// ── 录制状态机（per session）─────────────────────────────────────────────
+export const WING_EVT_PREFIX = '__WING_EVT__'
+const AUTO_SLEEP_MIN = 800
+const AUTO_SLEEP_MAX = 8000
+
+interface Recording { steps: RoutineStep[]; lastActionAt: number }
+const recordings = new Map<string, Recording>()
+
+export function isRecording(sessionId: string): boolean {
+  return recordings.has(sessionId)
+}
+export function recordingStepCount(sessionId: string): number {
+  return recordings.get(sessionId)?.steps.length ?? 0
+}
+
+/** 开始录制；initialUrl 若提供则作为首个 navigate 步，使回放可从当前页复现。 */
+export function startRecording(sessionId: string, initialUrl?: string): void {
+  const steps: RoutineStep[] = []
+  if (initialUrl && /^https?:/.test(initialUrl)) steps.push({ type: 'navigate', url: initialUrl })
+  recordings.set(sessionId, { steps, lastActionAt: 0 })
+}
+
+function maybeInsertSleep(rec: Recording): void {
+  const now = Date.now()
+  if (rec.steps.length > 0 && rec.lastActionAt > 0) {
+    const gap = now - rec.lastActionAt
+    if (gap >= AUTO_SLEEP_MIN) rec.steps.push({ type: 'sleep', duration: Math.min(gap, AUTO_SLEEP_MAX) })
+  }
+  rec.lastActionAt = now
+}
+
+/** 接收来自页面 recorder 的事件。 */
+export function recordEvent(sessionId: string, evt: { kind: string; selector?: string; value?: string }): void {
+  const rec = recordings.get(sessionId)
+  if (!rec || !evt || !evt.selector) return
+  maybeInsertSleep(rec)
+  if (evt.kind === 'click') rec.steps.push({ type: 'click', selector: evt.selector })
+  else if (evt.kind === 'type') rec.steps.push({ type: 'type', selector: evt.selector, value: evt.value ?? '' })
+  else if (evt.kind === 'select') rec.steps.push({ type: 'select', selector: evt.selector, value: evt.value ?? '' })
+}
+
+/** 记录一次导航（由主进程 did-navigate 调用）。 */
+export function recordNavigate(sessionId: string, url: string): void {
+  const rec = recordings.get(sessionId)
+  if (!rec || !/^https?:/.test(url)) return
+  // 去重：与最近一步 navigate 相同则跳过（loadURL + did-navigate 可能重复）
+  const last = rec.steps[rec.steps.length - 1]
+  if (last && last.type === 'navigate' && last.url === url) return
+  maybeInsertSleep(rec)
+  rec.steps.push({ type: 'navigate', url })
+}
+
+/** 停止并存盘。返回 null 表示当前无录制。 */
+export function stopRecording(sessionId: string, workdir: string, name: string): { path: string; stepCount: number } | null {
+  const rec = recordings.get(sessionId)
+  if (!rec) return null
+  recordings.delete(sessionId)
+  const routine: Routine = {
+    name: sanitizeName(name),
+    description: '',
+    createdAt: new Date().toISOString(),
+    steps: rec.steps
+  }
+  const path = saveRoutine(workdir, routine)
+  return { path, stepCount: rec.steps.length }
+}
+
+/** 取消录制（不存盘）。 */
+export function cancelRecording(sessionId: string): void {
+  recordings.delete(sessionId)
+}
+
+/** 注入到被录制页面的脚本：捕获 click/change/select，经 console.log 上报。
+ *  幂等（window.__wingRec 守卫），导航后需重新注入。 */
+export const RECORDER_JS = `(function(){
+  if (window.__wingRec) return;
+  window.__wingRec = true;
+  function getSelector(el){
+    const parts=[];let cur=el;
+    while(cur && cur!==document.documentElement && cur.tagName){
+      let part=cur.tagName.toLowerCase();
+      if(cur.id){part+='#'+CSS.escape(cur.id);parts.unshift(part);break;}
+      const sib=cur.parentNode?Array.from(cur.parentNode.children).filter(c=>c.tagName===cur.tagName):[];
+      if(sib.length>1){const idx=Array.from(cur.parentNode.children).indexOf(cur)+1;part+=':nth-child('+idx+')';}
+      parts.unshift(part);cur=cur.parentElement;
+    }
+    return parts.join(' > ');
+  }
+  function report(evt){try{console.log('${WING_EVT_PREFIX}'+JSON.stringify(evt));}catch(e){}}
+  document.addEventListener('click',function(e){
+    const el=e.target.closest('a,button,input[type=button],input[type=submit],[role=button],[onclick]')||e.target;
+    if(!el||!el.tagName)return;
+    report({kind:'click',selector:getSelector(el)});
+  },true);
+  document.addEventListener('change',function(e){
+    const el=e.target;if(!el||!el.tagName)return;
+    const tag=el.tagName.toLowerCase();
+    if(tag==='select'){report({kind:'select',selector:getSelector(el),value:el.value});}
+    else if(tag==='input'||tag==='textarea'){report({kind:'type',selector:getSelector(el),value:el.value});}
+  },true);
+})()`
