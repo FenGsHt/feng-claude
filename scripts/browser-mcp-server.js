@@ -328,7 +328,7 @@ const TOOLS = [
   },
   {
     name: 'browser_site_pages',
-    description: 'Discover all internal pages of a website by combining sitemap.xml and in-page link extraction. Returns a list of pages with their URL, slug, and suggested local filename. Use this as the FIRST step when cloning a multi-page site.',
+    description: 'Discover all internal pages/routes of a website by combining sitemap.xml and in-page link extraction. Returns a list of pages with their URL, slug, and suggested local filename. Use this as the FIRST step when cloning a multi-page site. When cloning a COMPLETE site, you must then clone EVERY discovered route — not just the homepage — because SPA route components are lazy-loaded chunks captured only when their route is actually visited. Pass the full list to browser_clone_site, or loop browser_clone_page over each URL.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -339,7 +339,7 @@ const TOOLS = [
   },
   {
     name: 'browser_clone_page',
-    description: 'Fully clone a single page in one call: captures all network resources, exports complete CSS (including JS-injected styles), copies the rendered DOM, rewrites all URLs to local paths, and wires internal navigation links. Returns paths to the generated HTML and CSS files. Run browser_site_pages first to get the pageMap for navigation wiring.',
+    description: 'Fully clone a single page in one call: captures all network resources, exports complete CSS (including JS-injected styles), copies the rendered DOM, rewrites all URLs to local paths, and wires internal navigation links. Returns paths to the generated HTML and CSS files. Run browser_site_pages first to get the pageMap for navigation wiring. IMPORTANT for SPAs (Vue/React/Angular): this only captures resources actually requested while THIS page was open. Route components are lazy-loaded as separate JS chunks that are NOT downloaded until you navigate to that route — cloning only the homepage leaves every other route\'s component chunk missing. To clone a COMPLETE SPA you must visit EACH route (in-app link clicks or browser_navigate to its URL) so its component loads and its chunk is captured. Prefer browser_clone_site, which walks all discovered routes automatically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -354,7 +354,7 @@ const TOOLS = [
   },
   {
     name: 'browser_clone_site',
-    description: 'Clone an ENTIRE website in one call: discovers all pages, clones each (resources + CSS + rendered DOM + URL rewrite), records API responses for offline replay (SPA tabs/modals/routing work in the clone), starts a local preview server, computes per-page visual similarity vs the original, and wires navigation links. Returns a summary table. This replaces the manual site_pages → clone_page → serve_local → screenshot/diff sequence. Takes ~10-20s per page.',
+    description: 'Clone an ENTIRE website in one call: discovers all pages/routes, navigates to and clones EACH one (so every lazy-loaded SPA route component chunk is captured, not just the homepage\'s), records API responses for offline replay (SPA tabs/modals/routing work in the clone), starts a local preview server, computes per-page visual similarity vs the original, and wires navigation links. Returns a summary table. This replaces the manual site_pages → clone_page → serve_local → screenshot/diff sequence. Takes ~10-20s per page. To clone a COMPLETE site, ensure maxPages is high enough to cover ALL discovered routes (default 10, max 30) — re-run with the same outputDir to continue past the cap for larger sites.',
     inputSchema: {
       type: 'object',
       properties: {
