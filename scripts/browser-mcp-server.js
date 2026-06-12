@@ -475,6 +475,21 @@ const TOOLS = [
       required: ['name']
     }
   }
+  ,
+  {
+    name: 'browser_routine_record_start',
+    description: 'Start recording browser actions in this session\'s active tab. Clicks, input/select changes, and navigations are captured. The current page URL is recorded as the first step. Call browser_routine_record_stop with a name to save. Recorded values are stored in plaintext; edit the JSON to replace secrets with ${var} placeholders.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'browser_routine_record_stop',
+    description: 'Stop recording and save the captured steps as a routine in {workdir}/.claude/browser-routines/<name>.json.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Routine name to save as' } },
+      required: ['name']
+    }
+  }
 ]
 
 async function callHttp(path, body) {
@@ -811,6 +826,14 @@ async function handleTool(name, args) {
         }
         const at = r.failedStepIndex !== undefined ? ` (step ${r.failedStepIndex})` : ''
         return [{ type: 'text', text: `Routine failed${at}: ${r.error}` }]
+      }
+      case 'browser_routine_record_start': {
+        const r = await callHttp('/routine/record/start', {})
+        return [{ type: 'text', text: r.ok ? 'Recording started. Perform actions in the browser, then call browser_routine_record_stop.' : `Failed: ${r.error}` }]
+      }
+      case 'browser_routine_record_stop': {
+        const r = await callHttp('/routine/record/stop', { name: args.name })
+        return [{ type: 'text', text: r.ok ? `Saved routine "${args.name}" (${r.stepCount} steps) → ${r.path}` : `Failed: ${r.error}` }]
       }
       default:
         return [{ type: 'text', text: `Unknown tool: ${name}` }]
