@@ -140,6 +140,8 @@ const ROUTINE_PANEL_H = 250  // Routine 回放面板展开高度
 let routinePanelH = 0        // 0 = 关闭，ROUTINE_PANEL_H = 打开
 const SAVE_BAR_H = 34        // 录制命名条高度
 let saveBarH = 0             // 0 = 关闭，SAVE_BAR_H = 打开
+const MORE_MENU_H = 44       // 更多菜单展开高度（单项）
+let moreMenuH = 0            // 0 = 关闭，MORE_MENU_H = 打开
 
 // ── 浏览历史 ────────────────────────────────────────────────────────────────
 interface HistoryEntry { url: string; title: string; ts: number }
@@ -266,7 +268,7 @@ function setBounds(win: BrowserWindow): void {
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H + historyPanelH + routinePanelH + saveBarH
+      height: NAVBAR_H + historyPanelH + routinePanelH + saveBarH + moreMenuH
     })
   }
 }
@@ -464,12 +466,12 @@ button:disabled { opacity: 0.3; cursor: default; }
 }
 #url-input:focus { border-color: #f59e0b; }
 /* 更多菜单（收纳历史等次要功能）。
-   menu 提到 body 层级 + position:fixed，避开 #ctrl-row 的 overflow 裁剪；
-   位置由 JS 按 ⋯ 按钮的 getBoundingClientRect 计算。 */
+   menu 提到 body 层级，绝对定位在 navbar 下方右侧；展开时通过 IPC 撑高
+   navView（与历史/回放面板同机制），否则会被 60px 高的 navView 裁掉。 */
 #more-wrap { position: relative; flex: none; }
 #more-menu {
   display: none;
-  position: fixed; top: 0; left: 0;
+  position: absolute; top: 60px; right: 4px;
   min-width: 130px; padding: 4px;
   background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 40;
@@ -542,28 +544,24 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
-  // 更多菜单：目前仅收纳历史记录。menu 用 fixed 定位，按 ⋯ 按钮位置摆放，
-  // 支持 hover 展开 + 点击展开；移出按钮和菜单区域后自动收起。
+  // 更多菜单：目前仅收纳历史记录。menu 绝对定位在 navbar 下方，展开时发 IPC
+  // 撑高 navView（否则被 60px 高的 view 裁掉）；支持 hover + 点击。
   let moreOpen = false
   let moreHideTimer = null
-  function positionMore() {
-    const r = $('more-btn').getBoundingClientRect()
-    const menu = $('more-menu')
-    menu.style.top = (r.bottom + 2) + 'px'
-    // 右对齐按钮；菜单宽度未知时先显示再校正
-    menu.style.left = Math.max(4, r.right - 130) + 'px'
-  }
   function openMore() {
     if (moreHideTimer) { clearTimeout(moreHideTimer); moreHideTimer = null }
+    if (moreOpen) return
     moreOpen = true
-    positionMore()
     $('more-btn').classList.add('active')
     $('more-menu').classList.add('open')
+    ipcRenderer.send('browser-nav:more-menu', { open: true })
   }
   function closeMore() {
+    if (!moreOpen) return
     moreOpen = false
     $('more-btn').classList.remove('active')
     $('more-menu').classList.remove('open')
+    ipcRenderer.send('browser-nav:more-menu', { open: false })
   }
   // 延迟关闭，给鼠标从按钮移到菜单的间隙留缓冲
   function scheduleClose() {
@@ -1766,6 +1764,11 @@ export function registerBrowserViewIpc(): void {
     routinePanelH = open ? ROUTINE_PANEL_H : 0
     if (state.mainWin) setBounds(state.mainWin)
     if (open) pushRoutinesToNav()
+  })
+  // 更多菜单开/关：撑高 navView 让下拉可见
+  ipcMain.on('browser-nav:more-menu', (_event, { open }: { open: boolean }) => {
+    moreMenuH = open ? MORE_MENU_H : 0
+    if (state.mainWin) setBounds(state.mainWin)
   })
   // 手动回放（用户从面板点击）：作用于前台 session 的 active tab，无参数
   ipcMain.on('browser-nav:routine-run', (_event, name: string) => {
