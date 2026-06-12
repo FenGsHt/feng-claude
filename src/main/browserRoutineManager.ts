@@ -157,7 +157,7 @@ export async function runRoutine(
           break
         }
         case 'wait_for': {
-          const timeout = Math.min(30000, Math.max(100, Number(step.timeout) || 8000))
+          const timeout = Math.min(30000, Math.max(100, (Number(step.timeout) > 0 ? Number(step.timeout) : 8000)))
           const found = await wc.executeJavaScript(waitForJs(String(step.selector), timeout))
           if (!found) return { ok: false, variables, error: `wait_for timeout: ${step.selector}`, failedStepIndex: i }
           break
