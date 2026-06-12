@@ -384,6 +384,7 @@ button {
 button:hover { background: #2a2a2a; color: #fff; }
 button:active { background: #333; }
 button.active { color: #f59e0b; border-color: #f59e0b; }
+#record-btn.recording { color: #ef4444; border-color: #ef4444; }
 button:disabled { opacity: 0.3; cursor: default; }
 #url-input {
   flex: 1;
@@ -419,6 +420,7 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="fwd-btn" title="前进">▶</button>
     <button id="reload-btn" title="刷新">⟳</button>
     <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
+    <button id="record-btn" title="录制操作（routine）">⏺</button>
     <button id="history-btn" title="历史记录">⏱</button>
     <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
     <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
@@ -442,6 +444,23 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('reload-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'reload'))
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
+  let recording = false
+  $('record-btn').addEventListener('click', () => {
+    if (!recording) {
+      ipcRenderer.send('browser-nav:record-start')
+    } else {
+      const name = window.prompt('保存 routine 名称：', '')
+      if (name && name.trim()) ipcRenderer.send('browser-nav:record-stop', name.trim())
+      else ipcRenderer.send('browser-nav:record-cancel')
+    }
+  })
+  ipcRenderer.on('browser-nav:recording', (_, d) => {
+    recording = !!d.active
+    const btn = $('record-btn')
+    btn.classList.toggle('recording', recording)
+    btn.textContent = recording ? ('⏹ ' + (d.count || 0)) : '⏺'
+    btn.title = recording ? '停止并保存（已录 ' + (d.count||0) + ' 步）' : '录制操作（routine）'
+  })
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
   $('tab-new').addEventListener('click', () => ipcRenderer.send('browser-nav:tab-new'))
   $('url-input').addEventListener('keydown', e => {
