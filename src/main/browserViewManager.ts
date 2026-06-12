@@ -505,12 +505,12 @@ button:disabled { opacity: 0.3; cursor: default; }
     <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
     <button id="record-btn" title="录制操作（routine）">⏺</button>
     <button id="play-btn" title="回放 routine">▶</button>
+    <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
+    <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
     <div id="more-wrap">
       <button id="more-btn" title="更多">⋯</button>
       <div id="more-menu">
         <div class="m-item" id="m-history">⏱ 历史记录</div>
-        <div class="m-item" id="m-pick">⊕ 拾取元素</div>
-        <div class="m-item" id="m-devtools">⌘ DevTools</div>
       </div>
     </div>
   </div>
@@ -538,7 +538,9 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('fwd-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'forward'))
   $('reload-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'reload'))
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
-  // 更多菜单：开关 + 三个次要功能项
+  $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
+  $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
+  // 更多菜单：目前仅收纳历史记录
   let moreOpen = false
   function toggleMore(force) {
     moreOpen = force !== undefined ? force : !moreOpen
@@ -550,8 +552,6 @@ button:disabled { opacity: 0.3; cursor: default; }
     if (moreOpen && !$('more-wrap').contains(e.target)) toggleMore(false)
   })
   $('m-history').addEventListener('click', () => { toggleMore(false); toggleHistory() })
-  $('m-pick').addEventListener('click', () => { toggleMore(false); ipcRenderer.send('browser-nav:action', 'pick') })
-  $('m-devtools').addEventListener('click', () => { toggleMore(false); ipcRenderer.send('browser-nav:action', 'devtools') })
   let recording = false
   function showSaveBar() {
     $('save-bar').classList.add('show')
@@ -637,9 +637,9 @@ button:disabled { opacity: 0.3; cursor: default; }
   })
   ipcRenderer.on('browser-nav:url', (_, d) => { $('url-input').value = d.url })
   ipcRenderer.on('browser-nav:nav-state', (_, d) => { $('back-btn').disabled = !d.canGoBack; $('fwd-btn').disabled = !d.canGoForward })
-  ipcRenderer.on('browser-nav:devtools', (_, d) => { $('m-devtools').classList.toggle('active', d.enabled) })
+  ipcRenderer.on('browser-nav:devtools', (_, d) => { $('devtools-btn').classList.toggle('active', d.enabled) })
   ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
-  ipcRenderer.on('browser-nav:pick-active', (_, d) => { $('m-pick').classList.toggle('active', d.active) })
+  ipcRenderer.on('browser-nav:pick-active', (_, d) => { $('pick-btn').classList.toggle('active', d.active) })
   // [2026-06-12] 渲染标签条
   ipcRenderer.on('browser-nav:tabs', (_, d) => {
     const strip = $('tab-strip')
