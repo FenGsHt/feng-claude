@@ -233,14 +233,15 @@ export function recordNavigate(sessionId: string, url: string): void {
 export function stopRecording(sessionId: string, workdir: string, name: string): { path: string; stepCount: number } | null {
   const rec = recordings.get(sessionId)
   if (!rec) return null
-  recordings.delete(sessionId)
   const routine: Routine = {
     name: sanitizeName(name),
     description: '',
     createdAt: new Date().toISOString(),
     steps: rec.steps
   }
+  // 先存盘再删除录制态：saveRoutine 抛错时录制不丢失，可重试 stop
   const path = saveRoutine(workdir, routine)
+  recordings.delete(sessionId)
   return { path, stepCount: rec.steps.length }
 }
 
