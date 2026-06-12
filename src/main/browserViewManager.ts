@@ -644,6 +644,11 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
   view.webContents.on('did-navigate', (_, navUrl) => {
     if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
     addToHistory(navUrl, tab.title)
+    // [2026-06-12] 录制中：记录导航并在新页面重注入 recorder（导航清空了注入脚本）
+    if (routineMgr.isRecording(sid)) {
+      routineMgr.recordNavigate(sid, navUrl)
+      view.webContents.executeJavaScript(routineMgr.RECORDER_JS).catch(() => {})
+    }
   })
   view.webContents.on('did-navigate-in-page', (_, navUrl) => {
     if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
@@ -679,6 +684,13 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
   })
 
   view.webContents.on('console-message', (_event: Electron.Event, level: number, message: string, _line: number, _sourceId: string) => {
+    // [2026-06-12] 录制事件通道：带前缀的日志转给 routine 录制器，且不进 console buffer（不污染 /console）
+    if (message.startsWith(routineMgr.WING_EVT_PREFIX)) {
+      if (routineMgr.isRecording(sid)) {
+        try { routineMgr.recordEvent(sid, JSON.parse(message.slice(routineMgr.WING_EVT_PREFIX.length))) } catch { /* ignore */ }
+      }
+      return
+    }
     const entry: ConsoleLogEntry = { level: levelToString(level), text: message, timestamp: new Date().toISOString() }
     tab.consoleLogs.push(entry)
     if (tab.consoleLogs.length > CONSOLE_BUFFER_MAX) tab.consoleLogs.shift()
