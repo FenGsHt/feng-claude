@@ -694,7 +694,9 @@ button:disabled { opacity: 0.3; cursor: default; }
     ipcRenderer.send('browser-nav:history-panel', { open: histOpen })
   }
   document.addEventListener('click', e => {
-    if (histOpen && !$('history-panel').contains(e.target) && !$('more-wrap').contains(e.target)) toggleHistory(false)
+    // m-history 在 #more-menu 内（已移到 body 层级），需一并豁免，否则点它会先开后立刻关
+    if (histOpen && !$('history-panel').contains(e.target)
+        && !$('more-wrap').contains(e.target) && !$('more-menu').contains(e.target)) toggleHistory(false)
   })
   function fmtTime(ts) {
     if (!ts) return ''
