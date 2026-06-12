@@ -15,7 +15,7 @@ import type { TelegramChannelSessionConfig } from '../renderer/src/types/setting
 import { DEFAULT_SETTINGS } from './settingsStore'
 import { getConfigDir } from './configDir'
 import { getProxyPort } from './apiProxyServer'
-import { getBrowserServerPort } from './browserViewManager'
+import { getBrowserServerPort, registerSessionWorkdir } from './browserViewManager'
 import { hasClaudeConversationHistory } from './claudeSessionWatcher'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
@@ -83,7 +83,7 @@ export function augmentPathWithBunInstallDirs(basePath: string): string {
   return `${bunBin}${sep}${basePath}`
 }
 
-function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = false): Record<string, string> {
+function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = false, sessionId = ''): Record<string, string> {
   const e = { ...(process.env as Record<string, string>) }
   for (const k of PTY_ENV_STRIP) {
     // [2026-05-27] 官方配置保留 CLAUDE_CODE_OAUTH_TOKEN，让 Claude Code 使用自身 OAuth 凭证
@@ -101,6 +101,8 @@ function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = fals
     // 当前实例内嵌浏览器的 HTTP API 端口（动态分配），供 browser-tools MCP 使用
     // 每个 feng-claude 实例端口不同，多实例互不影响
     FENG_CLAUDE_BROWSER_PORT: String(getBrowserServerPort() || 3100),
+    // [2026-06-12] 当前终端 session 的唯一 id，供 browser-tools MCP 按 session 隔离调试浏览器 tab
+    FENG_CLAUDE_SESSION_ID: sessionId,
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     FORCE_COLOR: '3',
@@ -656,11 +658,13 @@ export class PtyManager {
     }
 
     const ptyEnv = {
-      ...buildPtyEnv(claudeEnv, profile.isOfficial === true),
+      ...buildPtyEnv(claudeEnv, profile.isOfficial === true, sessionId),
       // [2026-05-29] 禁止 Claude Code 自动更新（防止降级后被自动升回）
       ...(s.disableAutoUpdate ? { DISABLE_AUTOUPDATER: '1' } : {}),
       ...(preparedTelegram.env ?? {})
     }
+    // [2026-06-12] 登记 session→workdir，供调试浏览器 routine 按项目存取
+    registerSessionWorkdir(sessionId, workdir)
 
     // [2026-05-06] Daemon mode: shell survives Electron restart on all platforms
     if (shellOnly && s.terminal?.useTmux) {

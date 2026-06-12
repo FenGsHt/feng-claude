@@ -1,9 +1,11 @@
 import { BrowserWindow, ipcMain, screen, WebContentsView, WebPreferences, app } from 'electron'
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http'
 import { URL } from 'url'
+import { AsyncLocalStorage } from 'async_hooks'
+import { randomUUID } from 'crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 import { PNG } from 'pngjs'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFile, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname, extname, basename } from 'path'
 import { handleCloneRoute } from './cloneManager'
 
@@ -36,6 +38,77 @@ const state: BrowserPanelState = {
   toolsPanelWidth: 0
 }
 
+// ── [2026-06-12] 按 session 隔离的多 tab 调试浏览器 ──────────────────────────
+// 每个终端 session 拥有自己的一组 tab，互不可见。state.view 是「当前前台 session
+// 的 active tab」镜像，保持原有布局/拖拽/DevTools 逻辑几乎不变；后台 session 的
+// tab view 仍存活，AI 可通过 CDP 截图/操作。
+interface BrowserTab {
+  id: string
+  view: WebContentsView
+  title: string
+  consoleLogs: ConsoleLogEntry[]
+}
+
+interface SessionBrowser {
+  sessionId: string
+  tabs: BrowserTab[]
+  activeTabId: string | null
+}
+
+const sessionBrowsers = new Map<string, SessionBrowser>()
+// [2026-06-12] session → workdir 映射，供 routine HTTP 端点按请求 session 定位项目目录。
+const sessionWorkdirs = new Map<string, string>()
+export function registerSessionWorkdir(sessionId: string, workdir: string): void {
+  if (sessionId && workdir) sessionWorkdirs.set(sessionId, workdir)
+}
+export function unregisterSessionWorkdir(sessionId: string): void {
+  sessionWorkdirs.delete(sessionId)
+}
+/** 当前请求 session 的项目目录（routine 存取根）。 */
+// @ts-ignore
+function currentWorkdir(): string | null {
+  const sid = currentSessionId()
+  return sid ? (sessionWorkdirs.get(sid) ?? null) : null
+}
+// 当前前台显示哪个 session 的浏览器（null = 无/旧单例兼容）
+let foregroundSessionId: string | null = null
+// title 变化防抖计时器（per session），避免页面快速更新 title 时 IPC 雪崩
+const tabTitleDebounce = new Map<string, ReturnType<typeof setTimeout>>()
+// 每个 HTTP 请求携带的 session id（来自 X-Feng-Session 头）
+const requestSessionStore = new AsyncLocalStorage<string>()
+
+/** 当前请求归属的 session id：优先请求头（非空），回退前台 session */
+function currentSessionId(): string | null {
+  const stored = requestSessionStore.getStore()
+  return (stored && stored.length > 0) ? stored : foregroundSessionId
+}
+
+function ensureSessionBrowser(sid: string): SessionBrowser {
+  let sb = sessionBrowsers.get(sid)
+  if (!sb) {
+    sb = { sessionId: sid, tabs: [], activeTabId: null }
+    sessionBrowsers.set(sid, sb)
+  }
+  return sb
+}
+
+function getActiveTab(sid: string | null): BrowserTab | null {
+  if (!sid) return null
+  const sb = sessionBrowsers.get(sid)
+  if (!sb || !sb.activeTabId) return null
+  return sb.tabs.find(t => t.id === sb.activeTabId) ?? null
+}
+
+/** 当前请求/前台应操作的 webContents：前台 session 用 state.view（保留布局），
+ *  后台 session 用其 active tab 的 view（仍存活、可 CDP 截图）。 */
+function targetWebContents(): Electron.WebContents | null {
+  const sid = currentSessionId()
+  if (sid && sid !== foregroundSessionId) {
+    return getActiveTab(sid)?.view.webContents ?? null
+  }
+  return state.view?.webContents ?? null
+}
+
 // ── 浏览器 URL 持久化 ───────────────────────────────────────────────────────
 function browserStateFile(): string {
   return join(app.getPath('userData'), 'browser-state.json')
@@ -48,12 +121,55 @@ function loadLastBrowserUrl(): string {
 }
 function saveLastBrowserUrl(url: string): void {
   if (!url || url.startsWith('data:') || url === 'about:blank') return
-  try { writeFileSync(browserStateFile(), JSON.stringify({ lastUrl: url }), 'utf-8') } catch { /* ignore */ }
+  writeFile(browserStateFile(), JSON.stringify({ lastUrl: url }), 'utf-8', () => {})
+}
+/** [2026-06-12] tab 增删/切换时持久化前台 active tab 的 URL（sessionId 为运行时 uuid，
+ *  不做跨重启的 per-session tab 集恢复，仅保留「重开恢复上次页面」行为）。 */
+function saveSessionTabs(): void {
+  const active = getActiveTab(foregroundSessionId)
+  const url = active?.view.webContents.getURL()
+  if (url) saveLastBrowserUrl(url)
 }
 
 const DEFAULT_PORT = 3100
 const TITLEBAR_H = 32
-const NAVBAR_H = 34
+const NAVBAR_H = 60   // [2026-06-12] 两行：标签条(26) + 控制行(34)
+const HISTORY_PANEL_H = 250  // 历史面板展开时覆盖在浏览器内容上方的高度
+let historyPanelH = 0        // 0 = 关闭，HISTORY_PANEL_H = 打开
+
+// ── 浏览历史 ────────────────────────────────────────────────────────────────
+interface HistoryEntry { url: string; title: string; ts: number }
+const MAX_HISTORY = 100
+let browserHistory: HistoryEntry[] = []
+
+function browserHistoryFile(): string {
+  return join(app.getPath('userData'), 'browser-history.json')
+}
+function loadBrowserHistory(): void {
+  try {
+    const data = JSON.parse(readFileSync(browserHistoryFile(), 'utf-8'))
+    if (Array.isArray(data)) browserHistory = data.slice(0, MAX_HISTORY)
+  } catch { /* first run */ }
+}
+function saveBrowserHistory(): void {
+  writeFile(browserHistoryFile(), JSON.stringify(browserHistory), 'utf-8', () => {})
+}
+function addToHistory(url: string, title: string): void {
+  if (!url || url.startsWith('data:') || url === 'about:blank') return
+  const idx = browserHistory.findIndex(h => h.url === url)
+  if (idx >= 0) browserHistory.splice(idx, 1)
+  browserHistory.unshift({ url, title: title || url, ts: Date.now() })
+  if (browserHistory.length > MAX_HISTORY) browserHistory.length = MAX_HISTORY
+  saveBrowserHistory()
+  pushHistoryToNav()
+}
+function pushHistoryToNav(): void {
+  // 面板关着时不推送，节省 IPC
+  if (!state.navView?.webContents || historyPanelH === 0) return
+  state.navView.webContents.send('browser-nav:history', {
+    items: browserHistory.slice(0, 60).map(h => ({ url: h.url, title: h.title, ts: h.ts }))
+  })
+}
 const MIN_RATIO = 0.25
 const MAX_RATIO = 0.75
 const DEVTOOLS_MIN_RATIO = 0.2   // [2026-04-30] DevTools 最小比例
@@ -120,11 +236,6 @@ function setBounds(win: BrowserWindow): void {
   const viewW = Math.round(effectiveWidth * state.splitRatio)
   const viewX = effectiveWidth - viewW
 
-  // 通知导航栏当前比例
-  if (state.navView?.webContents) {
-    state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
-  }
-
   const contentY = TITLEBAR_H + NAVBAR_H
   const contentH = bounds.height - contentY
 
@@ -145,13 +256,13 @@ function setBounds(win: BrowserWindow): void {
     state.view.setBounds({ x: viewX, y: contentY, width: viewW, height: contentH })
   }
 
-  // 导航栏
+  // 导航栏（历史面板打开时向下延伸覆盖浏览器内容，不挤压内容区）
   if (state.navView) {
     state.navView.setBounds({
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H
+      height: NAVBAR_H + historyPanelH
     })
   }
 }
@@ -160,6 +271,8 @@ function setSplitRatio(win: BrowserWindow, ratio: number): void {
   state.splitRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, ratio))
   setBounds(win)
   if (state.navView?.webContents) {
+    // ratio 真正变化时才通知 navView 更新拖拽手柄记录的值
+    state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
     state.navView.webContents.send('browser-nav:resize', { ratio: state.splitRatio })
   }
   notifyBrowserState()
@@ -173,13 +286,86 @@ const NAVBAR_HTML = `<!DOCTYPE html>
 body {
   background: #1a1a1a;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  flex-direction: column;
   height: 100%;
   font-family: system-ui, sans-serif;
   user-select: none;
   border-left: 1px solid #333;
+}
+/* [2026-06-12] 标签条 */
+#tab-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 26px;
+  padding: 3px 6px 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#tab-strip::-webkit-scrollbar { display: none; }
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  min-width: 70px;
+  padding: 2px 6px;
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: #999;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover { background: #222; color: #ccc; }
+.tab.active { background: #2b2b2b; color: #fff; border-color: #3a3a3a; }
+.tab .t-title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.tab .t-close {
+  flex: none; width: 14px; height: 14px; line-height: 13px; text-align: center;
+  border-radius: 3px; font-size: 12px; color: #888;
+}
+.tab .t-close:hover { background: #444; color: #fff; }
+#tab-new {
+  flex: none; width: 24px; min-width: 24px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid #2a2a2a; border-radius: 5px;
+  color: #aaa; font-size: 15px; cursor: pointer; margin-top: 1px;
+}
+#tab-new:hover { background: #2a2a2a; color: #fff; }
+/* 历史面板 */
+#history-panel {
+  display: none; flex-direction: column;
+  position: absolute; top: 60px; left: 0; right: 0; height: 250px;
+  background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
+  overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 20;
+}
+#history-panel.open { display: flex; }
+.h-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 10px; border-bottom: 1px solid #2a2a2a; flex: none;
+  font-size: 11px; color: #888; background: #161616; position: sticky; top: 0; z-index: 1;
+}
+.h-scroll { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #444 transparent; }
+.h-clear { background: none; border: 1px solid #333; color: #666; border-radius: 3px; padding: 1px 6px; font-size: 10px; cursor: pointer; height: auto; min-width: auto; }
+.h-clear:hover { color: #e05252; border-color: #e05252; background: none; }
+.h-empty { padding: 20px; color: #555; text-align: center; font-size: 12px; }
+.h-group { padding: 4px 10px 2px; font-size: 10px; color: #555; letter-spacing: .04em; text-transform: uppercase; background: #161616; position: sticky; top: 0; z-index: 1; }
+.h-item { padding: 4px 10px 3px; cursor: pointer; border-bottom: 1px solid #1e1e1e; }
+.h-item:hover { background: #222; }
+.h-row1 { display: flex; align-items: baseline; gap: 6px; }
+.h-title { flex: 1; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-time  { flex: none; font-size: 10px; color: #555; white-space: nowrap; }
+.h-url   { font-size: 10px; color: #444; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+/* 控制行 */
+#ctrl-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  flex: 1;
 }
 button {
   background: none;
@@ -212,11 +398,12 @@ button:disabled { opacity: 0.3; cursor: default; }
 }
 #url-input:focus { border-color: #f59e0b; }
 #drag-handle {
+  position: absolute;
+  left: 0; top: 0;
   width: 4px;
   height: 100%;
   cursor: col-resize;
   background: transparent;
-  margin-left: -6px;
   z-index: 10;
 }
 #drag-handle:hover { background: #f59e0b66; }
@@ -224,13 +411,20 @@ button:disabled { opacity: 0.3; cursor: default; }
 .spacer { flex: 1; }
 </style></head><body>
   <div id="drag-handle" title="拖拽调整宽度"></div>
-  <button id="back-btn" title="后退">◀</button>
-  <button id="fwd-btn" title="前进">▶</button>
-  <button id="reload-btn" title="刷新">⟳</button>
-  <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
-  <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
-  <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
-  <button id="close-btn" title="关闭浏览器">×</button>
+  <div id="tab-strip">
+    <button id="tab-new" title="新建标签页">+</button>
+  </div>
+  <div id="ctrl-row">
+    <button id="back-btn" title="后退">◀</button>
+    <button id="fwd-btn" title="前进">▶</button>
+    <button id="reload-btn" title="刷新">⟳</button>
+    <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
+    <button id="history-btn" title="历史记录">⏱</button>
+    <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
+    <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
+    <button id="close-btn" title="关闭浏览器">×</button>
+  </div>
+  <div id="history-panel"></div>
 <script>
   const $ = id => document.getElementById(id)
   const { ipcRenderer } = require('electron')
@@ -249,6 +443,7 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
+  $('tab-new').addEventListener('click', () => ipcRenderer.send('browser-nav:tab-new'))
   $('url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) ipcRenderer.send('browser-nav:navigate', v) }
   })
@@ -257,6 +452,92 @@ button:disabled { opacity: 0.3; cursor: default; }
   ipcRenderer.on('browser-nav:devtools', (_, d) => { $('devtools-btn').classList.toggle('active', d.enabled) })
   ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
   ipcRenderer.on('browser-nav:pick-active', (_, d) => { $('pick-btn').classList.toggle('active', d.active) })
+  // [2026-06-12] 渲染标签条
+  ipcRenderer.on('browser-nav:tabs', (_, d) => {
+    const strip = $('tab-strip')
+    const newBtn = $('tab-new')
+    Array.from(strip.querySelectorAll('.tab')).forEach(el => el.remove())
+    for (const t of (d.tabs || [])) {
+      const tab = document.createElement('div')
+      tab.className = 'tab' + (t.active ? ' active' : '')
+      tab.title = t.title
+      const title = document.createElement('span')
+      title.className = 't-title'; title.textContent = t.title || 'New Tab'
+      const close = document.createElement('span')
+      close.className = 't-close'; close.textContent = '×'
+      close.addEventListener('click', ev => { ev.stopPropagation(); ipcRenderer.send('browser-nav:tab-close', t.id) })
+      tab.addEventListener('click', () => ipcRenderer.send('browser-nav:tab-select', t.id))
+      tab.appendChild(title); tab.appendChild(close)
+      strip.insertBefore(tab, newBtn)
+    }
+    // 单 tab 时隐藏标签条更简洁？保留显示以便随时 +。
+  })
+  // 历史面板
+  let histOpen = false
+  function toggleHistory(force) {
+    histOpen = force !== undefined ? force : !histOpen
+    $('history-btn').classList.toggle('active', histOpen)
+    $('history-panel').classList.toggle('open', histOpen)
+    ipcRenderer.send('browser-nav:history-panel', { open: histOpen })
+  }
+  $('history-btn').addEventListener('click', e => { e.stopPropagation(); toggleHistory() })
+  document.addEventListener('click', e => {
+    if (histOpen && !$('history-panel').contains(e.target) && e.target !== $('history-btn')) toggleHistory(false)
+  })
+  function fmtTime(ts) {
+    if (!ts) return ''
+    const d = new Date(ts), now = new Date()
+    const hhmm = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0')
+    const todayStr = now.toDateString()
+    const yestStr = new Date(now - 86400000).toDateString()
+    if (d.toDateString() === todayStr) return hhmm
+    if (d.toDateString() === yestStr) return '昨天 ' + hhmm
+    const days = Math.floor((now - d) / 86400000)
+    if (days < 7) return '周' + '日一二三四五六'[d.getDay()] + ' ' + hhmm
+    return (d.getMonth()+1) + '-' + d.getDate().toString().padStart(2,'0') + ' ' + hhmm
+  }
+  function getGroup(ts) {
+    if (!ts) return '更早'
+    const d = new Date(ts), now = new Date()
+    if (d.toDateString() === now.toDateString()) return '今天'
+    if (d.toDateString() === new Date(now - 86400000).toDateString()) return '昨天'
+    return '更早'
+  }
+  ipcRenderer.on('browser-nav:history', (_, d) => {
+    const panel = $('history-panel')
+    panel.innerHTML = ''
+    // 固定顶部标题 + 清除按钮
+    const hdr = document.createElement('div'); hdr.className = 'h-header'
+    const lbl = document.createElement('span'); lbl.textContent = '历史记录'
+    const clr = document.createElement('button'); clr.className = 'h-clear'; clr.textContent = '清除全部'
+    clr.addEventListener('click', e => { e.stopPropagation(); ipcRenderer.send('browser-nav:history-clear') })
+    hdr.appendChild(lbl); hdr.appendChild(clr); panel.appendChild(hdr)
+    const scroll = document.createElement('div'); scroll.className = 'h-scroll'
+    panel.appendChild(scroll)
+    const items = d.items || []
+    if (!items.length) {
+      const em = document.createElement('div'); em.className = 'h-empty'; em.textContent = '暂无历史记录'
+      scroll.appendChild(em); return
+    }
+    let curGrp = null
+    for (const item of items) {
+      const grp = getGroup(item.ts)
+      if (grp !== curGrp) {
+        curGrp = grp
+        const g = document.createElement('div'); g.className = 'h-group'; g.textContent = grp
+        scroll.appendChild(g)
+      }
+      const row = document.createElement('div'); row.className = 'h-item'
+      const r1 = document.createElement('div'); r1.className = 'h-row1'
+      const t = document.createElement('span'); t.className = 'h-title'; t.textContent = item.title || item.url
+      const tm = document.createElement('span'); tm.className = 'h-time'; tm.textContent = fmtTime(item.ts)
+      r1.appendChild(t); r1.appendChild(tm)
+      const u = document.createElement('div'); u.className = 'h-url'; u.textContent = item.url
+      row.appendChild(r1); row.appendChild(u)
+      row.addEventListener('click', () => { ipcRenderer.send('browser-nav:navigate', item.url); toggleHistory(false) })
+      scroll.appendChild(row)
+    }
+  })
 </script></body></html>`
 
 function createNavView(): WebContentsView {
@@ -294,6 +575,17 @@ function browserNavigate(url: string): void {
   state.view.webContents.loadURL(target).catch(() => {})
 }
 
+/** [2026-06-12] 切换 tab/session 前，关掉旧 active tab 的内嵌 DevTools，避免遗留。 */
+function closeActiveDevTools(): void {
+  if (state.devToolsVisible && state.view) {
+    try { state.view.webContents.closeDevTools() } catch { /* ignore */ }
+    state.devToolsVisible = false
+    if (state.navView?.webContents) {
+      state.navView.webContents.send('browser-nav:devtools', { enabled: false })
+    }
+  }
+}
+
 // 切换 DevTools — 使用 mode:'right' 内嵌在 state.view 内部，无需独立 WebContentsView
 function toggleDevTools(): void {
   if (!state.view || !state.mainWin) return
@@ -323,82 +615,280 @@ function revealMainWindow(win: BrowserWindow): void {
   if (!win.isFocused()) win.focus()
 }
 
+/** [2026-06-12] 为某 session 创建一个 tab（独立 WebContentsView + 事件监听）。
+ *  view 立即挂到窗口（backgroundThrottling:false，后台仍渲染以支持后台截图），
+ *  z-order 由 raiseForegroundView 调整。 */
+function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
+  const prefs: WebPreferences = {
+    nodeIntegration: false,
+    contextIsolation: true
+  }
+  const view = new WebContentsView({ webPreferences: prefs })
+  // 新建 tab 默认为 active tab，立即关闭 throttle 使 capturePage 可用；
+  // 切换为非 active 时由 selectTab 恢复 throttle（减少 GPU 开销）。
+  view.webContents.setBackgroundThrottling(false)
+  const tab: BrowserTab = { id: randomUUID(), view, title: '', consoleLogs: [] }
+
+  view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  view.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
+      event.preventDefault()
+      void startElementPicker()
+    }
+  })
+
+  const isForegroundActive = (): boolean =>
+    sid === foregroundSessionId && getActiveTab(sid)?.id === tab.id
+
+  view.webContents.on('did-navigate', (_, navUrl) => {
+    if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
+    addToHistory(navUrl, tab.title)
+  })
+  view.webContents.on('did-navigate-in-page', (_, navUrl) => {
+    if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
+    // 只有路径/query 变化才记录；纯 hash 跳转（锚点）不写历史
+    const prevUrl = browserHistory[0]?.url ?? ''
+    if (navUrl.split('#')[0] !== prevUrl.split('#')[0]) addToHistory(navUrl, tab.title)
+  })
+  view.webContents.on('page-title-updated', (_e, title) => {
+    tab.title = title
+    // 防抖：title 稳定后再同步历史（避免页面加载期间每帧写盘+IPC）
+    const cur = view.webContents.getURL()
+    const entry = browserHistory.find(h => h.url === cur)
+    if (entry && entry.title !== title) {
+      entry.title = title
+      const debounceKey = `hist-title-${tab.id}`
+      const existing = tabTitleDebounce.get(debounceKey)
+      if (existing) clearTimeout(existing)
+      tabTitleDebounce.set(debounceKey, setTimeout(() => {
+        tabTitleDebounce.delete(debounceKey)
+        saveBrowserHistory()
+        pushHistoryToNav()
+      }, 500))
+    }
+    if (sid === foregroundSessionId) {
+      // 防抖：页面加载期间 title 可能快速变化，150ms 内只推一次 IPC
+      const existing = tabTitleDebounce.get(sid)
+      if (existing) clearTimeout(existing)
+      tabTitleDebounce.set(sid, setTimeout(() => {
+        tabTitleDebounce.delete(sid)
+        pushTabsToNav(sid)
+      }, 150))
+    }
+  })
+
+  view.webContents.on('console-message', (_event: Electron.Event, level: number, message: string, _line: number, _sourceId: string) => {
+    const entry: ConsoleLogEntry = { level: levelToString(level), text: message, timestamp: new Date().toISOString() }
+    tab.consoleLogs.push(entry)
+    if (tab.consoleLogs.length > CONSOLE_BUFFER_MAX) tab.consoleLogs.shift()
+    // 前台 active tab 同步写入全局 buffer（兼容 /console 端点）
+    if (isForegroundActive()) {
+      consoleLogs.push(entry)
+      if (consoleLogs.length > CONSOLE_BUFFER_MAX) consoleLogs.shift()
+    }
+  })
+
+  win.contentView.addChildView(view)
+  // [2026-06-12] 给后台 tab 一个非零初始 bounds，使其合成器持续出帧，
+  // 后台 capturePage / CDP 截图才不为空白。前台 active tab 由 setBounds 覆盖。
+  view.setBounds(computeContentBounds(win))
+  return tab
+}
+
+/** 计算浏览器内容区 bounds（不含 DevTools 分栏，给后台 tab 用）。 */
+function computeContentBounds(win: BrowserWindow): { x: number; y: number; width: number; height: number } {
+  const bounds = win.getContentBounds()
+  const effectiveWidth = bounds.width - state.toolsPanelWidth
+  const viewW = Math.round(effectiveWidth * state.splitRatio)
+  const viewX = effectiveWidth - viewW
+  const contentY = TITLEBAR_H + NAVBAR_H
+  return { x: viewX, y: contentY, width: Math.max(1, viewW), height: Math.max(1, bounds.height - contentY) }
+}
+
+/** 窗口 resize/maximize 时同步所有后台 tab view 的 bounds，
+ *  防止它们保留旧尺寸/位置从前台 view 边缘漏出来覆盖终端区域。 */
+function syncAllBackgroundBounds(win: BrowserWindow): void {
+  const b = computeContentBounds(win)
+  for (const sb of sessionBrowsers.values()) {
+    for (const tab of sb.tabs) {
+      if (tab.view !== state.view) {
+        try { tab.view.setBounds(b) } catch { /* ignore */ }
+      }
+    }
+  }
+}
+
+/** 把前台 session 的 active tab 提到内容层顶部，navView 再提到最顶。
+ *  其余 tab view 仍挂载但被遮挡（保持渲染）。 */
+function raiseForegroundView(win: BrowserWindow): void {
+  const active = getActiveTab(foregroundSessionId)
+  if (active) {
+    state.view = active.view
+    win.contentView.addChildView(active.view)  // 重新 add = 提到顶层
+  }
+  if (state.devToolsVisible && state.devToolsSeparatorView && state.devToolsView) {
+    win.contentView.addChildView(state.devToolsSeparatorView)
+    win.contentView.addChildView(state.devToolsView)
+  }
+  if (state.navView) win.contentView.addChildView(state.navView)
+}
+
 /** 创建或显示浏览器面板 */
 export function showBrowserView(win: BrowserWindow, url?: string): void {
   revealMainWindow(win)
-  if (!state.view) {
-    const prefs: WebPreferences = {
-      nodeIntegration: false,
-      contextIsolation: true,
-    }
-    const view = new WebContentsView({ webPreferences: prefs })
-    state.view = view
 
-    // 拦截新窗口请求
-    view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // 目标 session：HTTP 请求带的 session 优先，否则前台/默认单例 key
+  const sid = currentSessionId() ?? foregroundSessionId ?? '__default__'
+  const sb = ensureSessionBrowser(sid)
 
-    // Ctrl+Shift+D — element picker，当浏览器页面获得焦点时也能触发
-    view.webContents.on('before-input-event', (event, input) => {
-      if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
-        event.preventDefault()
-        void startElementPicker()
-      }
-    })
-
-    // URL 变化时更新导航栏地址并持久化
-    view.webContents.on('did-navigate', (_, navUrl) => {
-      updateNavUrl(navUrl)
-      updateNavBackForward()
-      saveLastBrowserUrl(navUrl)
-    })
-    view.webContents.on('did-navigate-in-page', (_, navUrl) => {
-      updateNavUrl(navUrl)
-      updateNavBackForward()
-      saveLastBrowserUrl(navUrl)
-    })
-
-    view.webContents.on('console-message', (_event: Electron.Event, level: number, message: string, _line: number, _sourceId: string) => {
-      consoleLogs.push({
-        level: levelToString(level),
-        text: message,
-        timestamp: new Date().toISOString()
-      })
-      if (consoleLogs.length > CONSOLE_BUFFER_MAX) {
-        consoleLogs.shift()
-      }
-    })
-
+  // 共享导航栏（单例，只显示前台 session）
+  if (!state.navView) {
     state.navView = createNavView()
-    state.mainWin = win
-
-    // 窗口 resize 时重新定位 + 通知渲染进程
-    state.resizeHandler = () => { setBounds(win); notifyBrowserState() }
+    win.contentView.addChildView(state.navView)
+  }
+  if (!state.resizeHandler) {
+    let resizeDeferPending = false
+    state.resizeHandler = () => {
+      setBounds(win)  // 立即更新前台 view 坐标，保证视觉跟手
+      if (!resizeDeferPending) {
+        resizeDeferPending = true
+        setImmediate(() => {
+          resizeDeferPending = false
+          syncAllBackgroundBounds(win)  // 后台 tab bounds 合并更新
+          notifyBrowserState()          // 通知 renderer 宽度变化
+        })
+      }
+    }
     win.on('resize', state.resizeHandler)
     win.on('maximize', state.resizeHandler)
     win.on('unmaximize', state.resizeHandler)
+  }
+  state.mainWin = win
 
-    win.contentView.addChildView(view)
-    win.contentView.addChildView(state.navView)
+  // 该 session 还没有 tab → 建首个 tab
+  if (sb.tabs.length === 0) {
+    // 只有这是应用启动后首次打开调试浏览器（其他 session 尚无 tab）时，才恢复上次 URL；
+    // 其余情况新 session 独立开始，避免继承上一个 session 的页面。
+    const hasOtherTabs = Array.from(sessionBrowsers.values()).some(s => s !== sb && s.tabs.length > 0)
+    const tab = createBrowserTab(sid, win)
+    sb.tabs.push(tab)
+    sb.activeTabId = tab.id
+    const initial = url || (hasOtherTabs ? '' : loadLastBrowserUrl()) || 'https://www.bing.com'
+    tab.view.webContents.loadURL(initial).catch(() => {})
+  } else if (url) {
+    const active = getActiveTab(sid)
+    active?.view.webContents.loadURL(url).catch(() => {})
   }
 
-  state.mainWin = win
+  // 把该 session 设为前台并置顶
+  foregroundSessionId = sid
+  state.view = getActiveTab(sid)?.view ?? null
   setBounds(win)
-  // 先添加浏览器内容，再添加导航栏（确保导航栏在最上层）
-  if (state.navView) win.contentView.addChildView(state.navView)
-  win.contentView.addChildView(state.view)
-
-  if (url) {
-    state.view.webContents.loadURL(url).catch(() => {})
-  } else {
-    const currentUrl = state.view.webContents.getURL()
-    if (!currentUrl || currentUrl === 'about:blank') {
-      const last = loadLastBrowserUrl()
-      state.view.webContents.loadURL(last || 'https://www.bing.com').catch(() => {})
-    }
+  raiseForegroundView(win)
+  pushTabsToNav(sid)
+  updateNavUrl(state.view?.webContents.getURL() ?? '')
+  updateNavBackForward()
+  // navView 首次显示时推送一次当前比例（setBounds 中已不再发 ratio IPC）
+  if (state.navView?.webContents) {
+    state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
   }
 
   state.visible = true
   notifyBrowserState()
+}
+
+/** 把某 session 的 tab 列表推送到导航栏（标签条 UI 用，阶段 B 接入）。 */
+function pushTabsToNav(sid: string): void {
+  if (!state.navView?.webContents) return
+  const sb = sessionBrowsers.get(sid)
+  if (!sb) return
+  const tabs = sb.tabs.map(t => ({
+    id: t.id,
+    title: t.title || t.view.webContents.getURL().replace(/^https?:\/\//, '').slice(0, 30) || 'New Tab',
+    active: t.id === sb.activeTabId
+  }))
+  state.navView.webContents.send('browser-nav:tabs', { tabs })
+}
+
+// ── [2026-06-12] tab 管理（用户标签条 + MCP tab 工具共用）─────────────────
+
+/** 在某 session 新建 tab 并切为 active。返回新 tab id。 */
+function openTab(sid: string, url?: string): string | null {
+  if (!state.mainWin) return null
+  const sb = ensureSessionBrowser(sid)
+  const tab = createBrowserTab(sid, state.mainWin)
+  sb.tabs.push(tab)
+  sb.activeTabId = tab.id
+  tab.view.webContents.loadURL(url || 'https://www.bing.com').catch(() => {})
+  if (sid === foregroundSessionId) {
+    state.view = tab.view
+    setBounds(state.mainWin)
+    raiseForegroundView(state.mainWin)
+    pushTabsToNav(sid)
+  }
+  saveSessionTabs()
+  return tab.id
+}
+
+/** 切换某 session 的 active tab。 */
+function selectTab(sid: string, tabId: string): boolean {
+  const sb = sessionBrowsers.get(sid)
+  if (!sb) return false
+  const tab = sb.tabs.find(t => t.id === tabId)
+  if (!tab) return false
+  if (sid === foregroundSessionId) closeActiveDevTools()
+  // 旧 active tab 恢复 throttle（不再需要保持合成器），新 active tab 关闭 throttle
+  const oldTab = sb.tabs.find(t => t.id === sb.activeTabId)
+  if (oldTab && oldTab.id !== tabId) oldTab.view.webContents.setBackgroundThrottling(true)
+  tab.view.webContents.setBackgroundThrottling(false)
+  sb.activeTabId = tabId
+  if (sid === foregroundSessionId && state.mainWin) {
+    state.view = tab.view
+    setBounds(state.mainWin)
+    raiseForegroundView(state.mainWin)
+    pushTabsToNav(sid)
+    updateNavUrl(tab.view.webContents.getURL())
+    updateNavBackForward()
+  }
+  saveSessionTabs()
+  return true
+}
+
+/** 关闭某 session 的一个 tab；若关的是 active，则切到相邻 tab。最后一个 tab 不关（保留空浏览器）。 */
+function closeTab(sid: string, tabId: string): boolean {
+  const sb = sessionBrowsers.get(sid)
+  if (!sb) return false
+  const idx = sb.tabs.findIndex(t => t.id === tabId)
+  if (idx < 0) return false
+  const [removed] = sb.tabs.splice(idx, 1)
+  try { state.mainWin?.contentView.removeChildView(removed.view) } catch { /* ignore */ }
+  try { (removed.view.webContents as Electron.WebContents).close() } catch { /* ignore */ }
+  if (sb.activeTabId === tabId) {
+    const next = sb.tabs[idx] ?? sb.tabs[idx - 1] ?? null
+    sb.activeTabId = next?.id ?? null
+    if (sid === foregroundSessionId && state.mainWin) {
+      state.view = next?.view ?? null
+      if (next) { setBounds(state.mainWin); raiseForegroundView(state.mainWin) }
+      updateNavUrl(next?.view.webContents.getURL() ?? '')
+      updateNavBackForward()
+    }
+  }
+  if (sid === foregroundSessionId) pushTabsToNav(sid)
+  saveSessionTabs()
+  return true
+}
+
+/** 列出某 session 的 tab（供 MCP browser_tab_list）。 */
+function listTabs(sid: string): { id: string; title: string; url: string; active: boolean }[] {
+  const sb = sessionBrowsers.get(sid)
+  if (!sb) return []
+  return sb.tabs.map(t => ({
+    id: t.id,
+    title: t.title || '',
+    url: t.view.webContents.getURL(),
+    active: t.id === sb.activeTabId
+  }))
 }
 
 /** 更新导航栏 URL 显示 */
@@ -419,14 +909,19 @@ function updateNavBackForward(): void {
 
 /** 隐藏浏览器面板 */
 export function hideBrowserView(_win?: BrowserWindow): void {
-  if (!state.view || !state.mainWin) return
-  state.mainWin.contentView.removeChildView(state.view)
+  if (!state.mainWin) return
+  // [2026-06-12] 移除所有 session 所有 tab 的 view（WebContents 仍存活，重新 show 时 re-add）
+  for (const sb of sessionBrowsers.values()) {
+    for (const tab of sb.tabs) {
+      try { state.mainWin.contentView.removeChildView(tab.view) } catch { /* ignore */ }
+    }
+  }
   if (state.navView) {
     state.mainWin.contentView.removeChildView(state.navView)
   }
   // [2026-04-30] 清理 DevTools 相关视图
   if (state.devToolsVisible) {
-    state.view.webContents.closeDevTools()
+    state.view?.webContents.closeDevTools()
     if (state.devToolsView) {
       state.mainWin.contentView.removeChildView(state.devToolsView)
     }
@@ -455,12 +950,26 @@ export function isBrowserViewVisible(): boolean {
 }
 
 export function getBrowserViewWebContents(): Electron.WebContents | null {
-  return state.view?.webContents ?? null
+  // [2026-06-12] 按 session 路由：后台 session 返回其 active tab 的 view（仍存活），
+  // 前台/旧单例返回 state.view —— 64 处 HTTP handler 调用点无需改动。
+  return targetWebContents()
 }
 
 function ensureBrowserVisible(): boolean {
-  if (state.visible && state.view?.webContents) return true
   if (!state.mainWin) return false
+  const sid = currentSessionId()
+  // [2026-06-12] 后台 session 调用：不抢前台，只确保该 session 有 active tab（仍可 CDP/capturePage）
+  if (sid && sid !== foregroundSessionId && foregroundSessionId !== null) {
+    const sb = ensureSessionBrowser(sid)
+    if (sb.tabs.length === 0) {
+      const tab = createBrowserTab(sid, state.mainWin)
+      sb.tabs.push(tab)
+      sb.activeTabId = tab.id
+      tab.view.webContents.loadURL('https://www.bing.com').catch(() => {})
+    }
+    return Boolean(getActiveTab(sid)?.view.webContents)
+  }
+  if (state.visible && state.view?.webContents) return true
   /* [2026-04-30] 允许 Claude Code 直接调用 browser_navigate/browser_screenshot 拉起内置浏览器，
    * 不再要求用户或模型先显式调用 browser_show。 */
   showBrowserView(state.mainWin)
@@ -468,16 +977,19 @@ function ensureBrowserVisible(): boolean {
 }
 
 export async function navigateTo(url: string): Promise<{ success: boolean; url: string }> {
-  if (!ensureBrowserVisible() || !state.view?.webContents) {
+  if (!ensureBrowserVisible()) {
     return { success: false, url: '' }
   }
+  // [2026-06-12] 路由到请求 session 的 active tab（后台 session 不抢前台）
+  const wc = targetWebContents()
+  if (!wc) return { success: false, url: '' }
   let target = url
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     target = 'https://' + url
   }
   try {
-    await state.view.webContents.loadURL(target)
-    return { success: true, url: state.view.webContents.getURL() }
+    await wc.loadURL(target)
+    return { success: true, url: wc.getURL() }
   } catch {
     return { success: false, url: '' }
   }
@@ -909,9 +1421,85 @@ export function setOverlayOpen(win: BrowserWindow, open: boolean): void {
   }
 }
 
+// ── [2026-06-12] 前台 session 切换 + 生命周期 ────────────────────────────
+
+/** 切换前台显示的 session：把目标 session 的 active tab 提到顶层，刷新导航栏。
+ *  若该 session 还没有浏览器（从未打开过），仅记录前台 id；面板保持当前内容直到它打开。 */
+export function setForegroundSession(sessionId: string): void {
+  if (!sessionId || sessionId === foregroundSessionId) return
+  closeActiveDevTools()  // 关掉旧 session active tab 的 DevTools
+  foregroundSessionId = sessionId
+  if (!state.visible || !state.mainWin) return
+  const sb = sessionBrowsers.get(sessionId)
+  if (!sb || sb.tabs.length === 0) {
+    // 该 session 尚无 tab：保持面板可见但内容为空——这里直接为其建首个 tab，体验更顺
+    showBrowserView(state.mainWin)
+    return
+  }
+  // 重新挂载该 session 所有 tab（hide 时可能被移除），再置顶 active
+  for (const tab of sb.tabs) {
+    try { state.mainWin.contentView.addChildView(tab.view) } catch { /* ignore */ }
+  }
+  state.view = getActiveTab(sessionId)?.view ?? null
+  setBounds(state.mainWin)
+  raiseForegroundView(state.mainWin)
+  pushTabsToNav(sessionId)
+  updateNavUrl(state.view?.webContents.getURL() ?? '')
+  updateNavBackForward()
+  notifyBrowserState()
+}
+
+/** 销毁某 session 的全部 tab（终端关闭时调用），释放内存。 */
+export function destroySessionBrowser(sessionId: string): void {
+  const sb = sessionBrowsers.get(sessionId)
+  if (!sb) return
+  for (const tab of sb.tabs) {
+    try { state.mainWin?.contentView.removeChildView(tab.view) } catch { /* ignore */ }
+    try { (tab.view.webContents as Electron.WebContents).close() } catch { /* ignore */ }
+  }
+  sessionBrowsers.delete(sessionId)
+  unregisterSessionWorkdir(sessionId)
+  if (foregroundSessionId === sessionId) {
+    foregroundSessionId = null
+    state.view = null
+  }
+}
+
 // ─ IPC ────────────────────────────────────────────────────────────────
 
 export function registerBrowserViewIpc(): void {
+  loadBrowserHistory()
+
+  ipcMain.on('browser-view:set-active-session', (_event, sessionId: string) => {
+    setForegroundSession(sessionId)
+  })
+  ipcMain.on('browser-view:destroy-session', (_event, sessionId: string) => {
+    destroySessionBrowser(sessionId)
+  })
+
+  // [2026-06-12] 导航栏标签条操作（作用于前台 session）
+  ipcMain.on('browser-nav:tab-new', () => {
+    if (foregroundSessionId) openTab(foregroundSessionId)
+  })
+  ipcMain.on('browser-nav:tab-select', (_event, tabId: string) => {
+    if (foregroundSessionId) selectTab(foregroundSessionId, tabId)
+  })
+  ipcMain.on('browser-nav:tab-close', (_event, tabId: string) => {
+    if (foregroundSessionId) closeTab(foregroundSessionId, tabId)
+  })
+
+  // 历史面板开/关：调整 navView 高度（overlay，不挤内容区）
+  ipcMain.on('browser-nav:history-panel', (_event, { open }: { open: boolean }) => {
+    historyPanelH = open ? HISTORY_PANEL_H : 0
+    if (state.mainWin) setBounds(state.mainWin)
+    if (open) pushHistoryToNav()
+  })
+  ipcMain.on('browser-nav:history-clear', () => {
+    browserHistory = []
+    saveBrowserHistory()
+    pushHistoryToNav()
+  })
+
   ipcMain.handle('browser-view:toggle', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { visible: false }
@@ -1096,7 +1684,12 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
   state.mainWin = win
 
   return new Promise((resolve) => {
-    browserHttpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    browserHttpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+      // [2026-06-12] 读取 X-Feng-Session 头，在整个请求处理期间携带 session id，
+      // 使 getBrowserViewWebContents() 等按 session 路由到对应的调试浏览器。
+      const sidHeader = req.headers['x-feng-session']
+      const reqSid = (Array.isArray(sidHeader) ? sidHeader[0] : sidHeader) || ''
+      void requestSessionStore.run(reqSid || (foregroundSessionId ?? ''), async () => {
       res.setHeader('Content-Type', 'application/json')
       res.setHeader('Access-Control-Allow-Origin', '*')
 
@@ -1106,6 +1699,42 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
 
         if (path === '/health') {
           res.writeHead(200); res.end(JSON.stringify({ status: 'ok' }))
+          return
+        }
+
+        // ── [2026-06-12] 多 tab 管理（按请求 session 隔离）──────────────────
+        if (path === '/tabs' && req.method === 'GET') {
+          const sid = currentSessionId()
+          if (!sid) { res.writeHead(200); res.end(JSON.stringify({ tabs: [] })); return }
+          res.writeHead(200); res.end(JSON.stringify({ tabs: listTabs(sid) }))
+          return
+        }
+        if (path === '/tabs/new' && req.method === 'POST') {
+          const body = await readBody(req)
+          ensureBrowserVisible()
+          const sid = currentSessionId()
+          if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'No session' })); return }
+          const id = openTab(sid, (body?.url as string) || undefined)
+          if (!id) { res.writeHead(500); res.end(JSON.stringify({ error: 'Failed to open tab' })); return }
+          res.writeHead(200); res.end(JSON.stringify({ tabId: id, tabs: listTabs(sid) }))
+          return
+        }
+        if (path === '/tabs/select' && req.method === 'POST') {
+          const body = await readBody(req)
+          const sid = currentSessionId()
+          const tabId = (body?.tabId as string) ?? ''
+          if (!sid || !tabId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing session or tabId' })); return }
+          const ok = selectTab(sid, tabId)
+          res.writeHead(ok ? 200 : 404); res.end(JSON.stringify(ok ? { ok: true, tabs: listTabs(sid) } : { error: 'Tab not found' }))
+          return
+        }
+        if (path === '/tabs/close' && req.method === 'POST') {
+          const body = await readBody(req)
+          const sid = currentSessionId()
+          const tabId = (body?.tabId as string) ?? ''
+          if (!sid || !tabId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing session or tabId' })); return }
+          const ok = closeTab(sid, tabId)
+          res.writeHead(ok ? 200 : 404); res.end(JSON.stringify(ok ? { ok: true, tabs: listTabs(sid) } : { error: 'Tab not found' }))
           return
         }
 
@@ -1587,10 +2216,11 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
         // GET /console?clear=true
         if (path === '/console' && req.method === 'GET') {
           const doClear = url.searchParams.get('clear') === 'true'
-          const entries = [...consoleLogs]
-          if (doClear) {
-            consoleLogs.length = 0
-          }
+          // [2026-06-12] 优先返回请求 session 的 active tab 日志，回退全局 buffer
+          const activeTab = getActiveTab(currentSessionId())
+          const buf = activeTab ? activeTab.consoleLogs : consoleLogs
+          const entries = [...buf]
+          if (doClear) { buf.length = 0 }
           res.writeHead(200); res.end(JSON.stringify({ entries }))
           return
         }
@@ -2002,6 +2632,7 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
       } catch (e) {
         res.writeHead(500); res.end(JSON.stringify({ error: String(e) }))
       }
+      }) // end requestSessionStore.run
     })
 
     // port 0 → OS 自动分配空闲端口，多实例互不冲突
