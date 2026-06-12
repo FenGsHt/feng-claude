@@ -55,7 +55,7 @@ export function loadRoutine(workdir: string, name: string): Routine | null {
   try {
     const path = join(routinesDir(workdir), `${sanitizeName(name)}.json`)
     const data = JSON.parse(readFileSync(path, 'utf-8'))
-    if (data && Array.isArray(data.steps)) return data as Routine
+    if (data && typeof data.name === 'string' && data.name && Array.isArray(data.steps)) return data as Routine
     return null
   } catch { return null }
 }
@@ -68,7 +68,7 @@ export function listRoutines(workdir: string): RoutineSummary[] {
     if (!f.endsWith('.json')) continue
     try {
       const r = JSON.parse(readFileSync(join(dir, f), 'utf-8')) as Routine
-      if (!Array.isArray(r.steps)) continue
+      if (!Array.isArray(r.steps) || typeof r.name !== 'string' || !r.name) continue
       out.push({ name: r.name, description: r.description || '', params: extractParams(r), stepCount: r.steps.length })
     } catch { /* skip corrupt */ }
   }
