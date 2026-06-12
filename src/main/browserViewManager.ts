@@ -136,6 +136,8 @@ const TITLEBAR_H = 32
 const NAVBAR_H = 60   // [2026-06-12] 两行：标签条(26) + 控制行(34)
 const HISTORY_PANEL_H = 250  // 历史面板展开时覆盖在浏览器内容上方的高度
 let historyPanelH = 0        // 0 = 关闭，HISTORY_PANEL_H = 打开
+const ROUTINE_PANEL_H = 250  // Routine 回放面板展开高度
+let routinePanelH = 0        // 0 = 关闭，ROUTINE_PANEL_H = 打开
 const SAVE_BAR_H = 34        // 录制命名条高度
 let saveBarH = 0             // 0 = 关闭，SAVE_BAR_H = 打开
 
@@ -264,7 +266,7 @@ function setBounds(win: BrowserWindow): void {
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H + historyPanelH + saveBarH
+      height: NAVBAR_H + historyPanelH + routinePanelH + saveBarH
     })
   }
 }
@@ -293,6 +295,7 @@ body {
   font-family: system-ui, sans-serif;
   user-select: none;
   border-left: 1px solid #333;
+  overflow: hidden;   /* 面板过窄时不长出整页滚动条，由内部各行自行处理溢出 */
 }
 /* [2026-06-12] 标签条 */
 #tab-strip {
@@ -300,6 +303,7 @@ body {
   align-items: stretch;
   gap: 2px;
   height: 26px;
+  flex: none;        /* 固定 26px，不被压缩，保证两行总高锁定在 60px */
   padding: 3px 6px 0 10px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -336,6 +340,13 @@ body {
   background: none; border: 1px solid #2a2a2a; border-radius: 5px;
   color: #aaa; font-size: 15px; cursor: pointer; margin-top: 1px;
 }
+/* 标签条右侧关闭按钮 */
+#close-btn {
+  flex: none; width: 24px; min-width: 24px; height: 22px;
+  border: 1px solid #2a2a2a; border-radius: 5px; margin-top: 1px;
+  font-size: 14px; color: #999;
+}
+#close-btn:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
 #tab-new:hover { background: #2a2a2a; color: #fff; }
 /* 历史面板 */
 #history-panel {
@@ -381,8 +392,14 @@ body {
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  flex: 1;
+  flex: none;            /* 固定 34px 高，与标签条 26px 合计锁定 60px */
+  height: 34px;
+  min-width: 0;          /* 允许内部 url-input 收缩，而非撑大父级 */
+  overflow-x: auto;      /* 极窄时横向滚动而非溢出整页 */
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+#ctrl-row::-webkit-scrollbar { display: none; }
 button {
   background: none;
   border: 1px solid #333;
@@ -395,6 +412,7 @@ button {
   align-items: center;
   justify-content: center;
   min-width: 28px;
+  flex: none;            /* 按钮不被压缩，保持可点尺寸 */
   height: 24px;
 }
 button:hover { background: #2a2a2a; color: #fff; }
@@ -433,7 +451,8 @@ button:disabled { opacity: 0.3; cursor: default; }
 #save-ok, #save-cancel { font-size: 12px; padding: 2px 10px; white-space: nowrap; }
 #save-ok { color: #4ade80; border-color: #4ade80; }
 #url-input {
-  flex: 1;
+  flex: 1 1 60px;   /* 可伸可缩，最低 60px，让按钮优先保有空间 */
+  min-width: 60px;
   background: #111;
   border: 1px solid #333;
   color: #e0e0e0;
@@ -444,6 +463,22 @@ button:disabled { opacity: 0.3; cursor: default; }
   height: 24px;
 }
 #url-input:focus { border-color: #f59e0b; }
+/* 更多菜单（收纳历史/拾取/DevTools 等次要功能） */
+#more-wrap { position: relative; flex: none; }
+#more-menu {
+  display: none;
+  position: absolute; right: 0; top: 28px;
+  min-width: 130px; padding: 4px;
+  background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 40;
+}
+#more-menu.open { display: block; }
+.m-item {
+  padding: 6px 10px; font-size: 12px; color: #ccc; border-radius: 4px;
+  cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+}
+.m-item:hover { background: #2d2d2d; color: #fff; }
+.m-item.active { color: #f59e0b; }
 #drag-handle {
   position: absolute;
   left: 0; top: 0;
@@ -460,6 +495,8 @@ button:disabled { opacity: 0.3; cursor: default; }
   <div id="drag-handle" title="拖拽调整宽度"></div>
   <div id="tab-strip">
     <button id="tab-new" title="新建标签页">+</button>
+    <div class="spacer"></div>
+    <button id="close-btn" title="关闭浏览器">×</button>
   </div>
   <div id="ctrl-row">
     <button id="back-btn" title="后退">◀</button>
@@ -468,10 +505,14 @@ button:disabled { opacity: 0.3; cursor: default; }
     <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
     <button id="record-btn" title="录制操作（routine）">⏺</button>
     <button id="play-btn" title="回放 routine">▶</button>
-    <button id="history-btn" title="历史记录">⏱</button>
-    <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
-    <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
-    <button id="close-btn" title="关闭浏览器">×</button>
+    <div id="more-wrap">
+      <button id="more-btn" title="更多">⋯</button>
+      <div id="more-menu">
+        <div class="m-item" id="m-history">⏱ 历史记录</div>
+        <div class="m-item" id="m-pick">⊕ 拾取元素</div>
+        <div class="m-item" id="m-devtools">⌘ DevTools</div>
+      </div>
+    </div>
   </div>
   <div id="save-bar">
     <span>保存 routine：</span>
@@ -496,8 +537,21 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('back-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'back'))
   $('fwd-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'forward'))
   $('reload-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'reload'))
-  $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
+  // 更多菜单：开关 + 三个次要功能项
+  let moreOpen = false
+  function toggleMore(force) {
+    moreOpen = force !== undefined ? force : !moreOpen
+    $('more-btn').classList.toggle('active', moreOpen)
+    $('more-menu').classList.toggle('open', moreOpen)
+  }
+  $('more-btn').addEventListener('click', e => { e.stopPropagation(); toggleMore() })
+  document.addEventListener('click', e => {
+    if (moreOpen && !$('more-wrap').contains(e.target)) toggleMore(false)
+  })
+  $('m-history').addEventListener('click', () => { toggleMore(false); toggleHistory() })
+  $('m-pick').addEventListener('click', () => { toggleMore(false); ipcRenderer.send('browser-nav:action', 'pick') })
+  $('m-devtools').addEventListener('click', () => { toggleMore(false); ipcRenderer.send('browser-nav:action', 'devtools') })
   let recording = false
   function showSaveBar() {
     $('save-bar').classList.add('show')
@@ -577,16 +631,15 @@ button:disabled { opacity: 0.3; cursor: default; }
       scroll.appendChild(row)
     }
   })
-  $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
   $('tab-new').addEventListener('click', () => ipcRenderer.send('browser-nav:tab-new'))
   $('url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) ipcRenderer.send('browser-nav:navigate', v) }
   })
   ipcRenderer.on('browser-nav:url', (_, d) => { $('url-input').value = d.url })
   ipcRenderer.on('browser-nav:nav-state', (_, d) => { $('back-btn').disabled = !d.canGoBack; $('fwd-btn').disabled = !d.canGoForward })
-  ipcRenderer.on('browser-nav:devtools', (_, d) => { $('devtools-btn').classList.toggle('active', d.enabled) })
+  ipcRenderer.on('browser-nav:devtools', (_, d) => { $('m-devtools').classList.toggle('active', d.enabled) })
   ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
-  ipcRenderer.on('browser-nav:pick-active', (_, d) => { $('pick-btn').classList.toggle('active', d.active) })
+  ipcRenderer.on('browser-nav:pick-active', (_, d) => { $('m-pick').classList.toggle('active', d.active) })
   // [2026-06-12] 渲染标签条
   ipcRenderer.on('browser-nav:tabs', (_, d) => {
     const strip = $('tab-strip')
@@ -607,17 +660,16 @@ button:disabled { opacity: 0.3; cursor: default; }
     }
     // 单 tab 时隐藏标签条更简洁？保留显示以便随时 +。
   })
-  // 历史面板
+  // 历史面板（由更多菜单 m-history 触发）
   let histOpen = false
   function toggleHistory(force) {
     histOpen = force !== undefined ? force : !histOpen
-    $('history-btn').classList.toggle('active', histOpen)
+    $('m-history').classList.toggle('active', histOpen)
     $('history-panel').classList.toggle('open', histOpen)
     ipcRenderer.send('browser-nav:history-panel', { open: histOpen })
   }
-  $('history-btn').addEventListener('click', e => { e.stopPropagation(); toggleHistory() })
   document.addEventListener('click', e => {
-    if (histOpen && !$('history-panel').contains(e.target) && e.target !== $('history-btn')) toggleHistory(false)
+    if (histOpen && !$('history-panel').contains(e.target) && !$('more-wrap').contains(e.target)) toggleHistory(false)
   })
   function fmtTime(ts) {
     if (!ts) return ''
@@ -1684,6 +1736,8 @@ export function registerBrowserViewIpc(): void {
 
   // Routine 回放面板：开面板时推送本项目 routine 列表
   ipcMain.on('browser-nav:routine-panel', (_event, { open }: { open: boolean }) => {
+    routinePanelH = open ? ROUTINE_PANEL_H : 0
+    if (state.mainWin) setBounds(state.mainWin)
     if (open) pushRoutinesToNav()
   })
   // 手动回放（用户从面板点击）：作用于前台 session 的 active tab，无参数
