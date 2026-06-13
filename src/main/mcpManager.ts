@@ -7,6 +7,32 @@ import type { McpEntry, McpServerConfig, McpServerType } from '../renderer/src/t
 
 export type { McpEntry, McpServerConfig }
 
+// ── 文件放置规则 / File placement rules ──────────────────────────────────────
+//
+// Zone 1  getConfigDir()
+//   Win packaged : %LOCALAPPDATA%\feng-claude\
+//   Dev / others : app.getPath('userData')
+//   用途: 应用持久数据 — claude-settings.json, history.json, token-data.json,
+//         scrollback/<id>.bin, kv/<key>.json
+//
+// Zone 2  app.getPath('userData')
+//   用途: 运行时复制/下载的文件 — browser-mcp-server.js, visual-agent-mcp-server.js,
+//         browser-state.json, browser-history.json, officecli-* binary
+//   注: 打包 Windows 下与 Zone 1 路径不同，不保证跨升级留存
+//
+// Zone 3  ~/.claude/   ← Claude Code CLI 领地，本文件只写这里
+//   用途: CLI 读取的配置 — .claude.json (MCP 注册), settings.json (权限/hooks),
+//         channels/<stateDirId>/ (Telegram bot.pid 等),
+//         channels/_feng_nonchannel_<sessionId>/ (隔离非 Telegram 会话)
+//   规则: 只通过 mcpJsonPath() / telegramStateDir() 构造路径，禁止手动拼接
+//
+// Zone 4  <workdir>/.claude/
+//   用途: 项目级数据 — browser-routines/*.json
+//   规则: 只通过 routinesDir(workdir) 构造路径
+//
+// 禁止: 直接使用 __dirname / process.cwd() / 硬编码 AppData 路径
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── .claude.json helpers ──────────────────────────────────────────────────────
 // [2026-04-29] MCP 配置应写入 .claude.json（CLI 读取位置），而非 settings.json
 
