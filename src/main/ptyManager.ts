@@ -339,16 +339,30 @@ function nonChannelTelegramStateDir(sessionId: string): string {
   return telegramStateDir(`_feng_nonchannel_${sessionId}`)
 }
 
-/** [2026-06-13] bot.pid 里的进程已死才删除，避免误删正在运行的 bot 进程 */
+/** [2026-06-13] 检查 pid 对应的进程是否为 telegram bot（包含 "telegram" 关键字）。
+ *  防止 PID 复用：OS 复用已死的 bot PID 给无关进程时，不应保留 stale pid。 */
+function isTelegramBotProcess(pid: number): boolean {
+  try {
+    if (process.platform === 'win32') {
+      const r = spawnSync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine', '/format:list'], { encoding: 'utf8', timeout: 3000 })
+      return r.stdout?.toLowerCase().includes('telegram') ?? false
+    } else {
+      const r = spawnSync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf8', timeout: 3000 })
+      return r.stdout?.toLowerCase().includes('telegram') ?? false
+    }
+  } catch { return false }
+}
+
+/** [2026-06-13] bot.pid 里的进程已死、或非 telegram 进程时删除（防止 PID 复用导致误保留） */
 function cleanStaleBotPid(dir: string): void {
   const pidFile = join(dir, 'bot.pid')
   try {
     const pid = parseInt(readFileSync(pidFile, 'utf8').trim(), 10)
     if (isNaN(pid)) { unlinkSync(pidFile); return }
-    try {
-      process.kill(pid, 0) // 进程存活：不删
-    } catch {
-      unlinkSync(pidFile) // 进程已死：删除残留
+    let alive = false
+    try { process.kill(pid, 0); alive = true } catch { /* 进程已死 */ }
+    if (!alive || !isTelegramBotProcess(pid)) {
+      unlinkSync(pidFile) // 已死或 PID 被复用：删除残留
     }
   } catch { /* 文件不存在，忽略 */ }
 }

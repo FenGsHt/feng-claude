@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.47] - 2026-06-13
+
+### 修复 | Bug Fixes
+- **Telegram bot.pid PID 复用误判**：`cleanStaleBotPid` 现额外用 `wmic`（Windows）/ `ps`（Unix）核验进程命令行含 "telegram" 关键字，防止 OS 将旧 bot PID 分配给无关进程时误判为 bot 在线（导致 `-32000` 重连失败）
+- **cacheCreate Token 不可见**：TokenUsageWidget 的 Today/Total 及 Models 分项均默认隐藏 `cacheCreate`（☁ 橙色），鼠标悬浮时淡入显示，解决 Opus 高费用来源不透明问题
+
 ## [0.7.46] - 2026-06-13
 
 ### 修复 | Bug Fixes

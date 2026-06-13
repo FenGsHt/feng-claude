@@ -418,20 +418,30 @@ export function TokenUsageWidget(): React.ReactElement {
         <div className="space-y-0.5">
           <div className="flex justify-between items-baseline">
             <span className="text-claude-muted">{t.token.today}</span>
-            <span className="font-mono tabular-nums text-right">
+            <span className="font-mono tabular-nums text-right group">
               {fmtTokens(today.input)}↑ {fmtTokens(today.output)}↓
               {today.cacheRead > 0 && (
                 <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
+              )}
+              {today.cacheCreate > 0 && (
+                <span className="text-orange-400/70 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {fmtTokens(today.cacheCreate)}☁
+                </span>
               )}
               <span className="text-amber-400 ml-1.5">{fmtCost(todayCost)}</span>
             </span>
           </div>
           <div className="flex justify-between items-baseline">
             <span className="text-claude-muted">{t.token.total}</span>
-            <span className="font-mono tabular-nums text-right">
+            <span className="font-mono tabular-nums text-right group">
               {fmtTokens(total.input)}↑ {fmtTokens(total.output)}↓
               {total.cacheRead > 0 && (
                 <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
+              )}
+              {total.cacheCreate > 0 && (
+                <span className="text-orange-400/70 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {fmtTokens(total.cacheCreate)}☁
+                </span>
               )}
               <span className="text-amber-400 ml-1.5">{fmtCost(totalCost)}</span>
             </span>
@@ -476,10 +486,15 @@ export function TokenUsageWidget(): React.ReactElement {
               return (
                 <div key={id} className="flex items-center justify-between text-[9px] py-px">
                   <span className="text-claude-muted/80">{modelDisplayName(id)}</span>
-                  <span className="font-mono tabular-nums text-claude-muted/70">
+                  <span className="font-mono tabular-nums text-claude-muted/70 group/model">
                     {fmtTokens(mt.input)}↑ {fmtTokens(mt.output)}↓
                     {mt.cacheRead > 0 && (
                       <span className="text-sky-400/60 ml-0.5">{fmtTokens(mt.cacheRead)}⚡</span>
+                    )}
+                    {mt.cacheCreate > 0 && (
+                      <span className="text-orange-400/60 ml-0.5 opacity-0 group-hover/model:opacity-100 transition-opacity">
+                        {fmtTokens(mt.cacheCreate)}☁
+                      </span>
                     )}
                     <span className="text-amber-400/70 ml-1">{fmtCost(cost)}</span>
                   </span>
