@@ -6,6 +6,7 @@ import type { ClaudeSettings, ApiProfile } from '../../types/settings'
 import { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { useI18n } from '../../i18n'
 import { UsageOverviewDashboard } from './UsageOverviewDashboard'
+import { computeClaudeModelsCost } from '../../lib/modelPricing'
 
 /** 返回需要在图表中展示的配置列表，包含官方虚拟 profile（若有数据）*/
 function displayProfiles(settings: ClaudeSettings | null, perProfileData: Record<string, unknown>): Array<ApiProfile> {
@@ -84,6 +85,27 @@ function sumDailyHistory(dailyHistory: Record<string, TokenTotals>, dates: strin
 
 function sumAllDailyHistory(dailyHistory: Record<string, TokenTotals>): TokenTotals {
   return sumDailyHistory(dailyHistory, Object.keys(dailyHistory))
+}
+
+function sumPerModelHistory(
+  dailyHistoryPerModel: Record<string, Record<string, TokenTotals>>,
+  dates: string[]
+): Record<string, TokenTotals> {
+  const result: Record<string, TokenTotals> = {}
+  for (const d of dates) {
+    const dayModels = dailyHistoryPerModel[d]
+    if (!dayModels) continue
+    for (const [mid, t] of Object.entries(dayModels)) {
+      const prev = result[mid] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
+      result[mid] = {
+        input: prev.input + t.input,
+        output: prev.output + t.output,
+        cacheCreate: prev.cacheCreate + t.cacheCreate,
+        cacheRead: prev.cacheRead + t.cacheRead
+      }
+    }
+  }
+  return result
 }
 
 function sumPerProfileHistory(
@@ -191,7 +213,7 @@ function PieChart({ slices, title }: { slices: PieSlice[]; title: string }): Rea
 // ── Main chart ──────────────────────────────────────────────────
 
 export function UsageChart(): React.ReactElement {
-  const { dailyHistory, total, today, todayDate, perProfile, pricing: globalPricing, dailyHistoryPerProfile } = useGlobalTokenStore()
+  const { dailyHistory, total, today, todayDate, perProfile, pricing: globalPricing, dailyHistoryPerProfile, perModel, dailyHistoryPerModel } = useGlobalTokenStore()
   const { t } = useI18n()
 
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
@@ -258,15 +280,26 @@ export function UsageChart(): React.ReactElement {
   // Per-profile pie chart
   const pieSlices = buildPieSlices(settings, rangePerProfile, rangeData)
 
+  // Per-model totals for the current time range (used for official profile cost)
+  const rangePerModel: Record<string, TokenTotals> =
+    timeRange === 'today'
+      ? (dailyHistoryPerModel[todayDate] ?? {})
+      : timeRange === 'week'
+        ? sumPerModelHistory(dailyHistoryPerModel, weekDates)
+        : perModel
+
   // Per-profile stats
   const profileStats = displayProfiles(settings, rangePerProfile).map((profile, i) => {
     const pt = rangePerProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
-    const profilePricing: Pricing = profile.pricing ?? DEFAULT_PRICING
+    // 官方配置没有自定义定价，改用 perModel 精确定价（Opus/Sonnet/Haiku 各自单价）
+    const cost = profile.id === OFFICIAL_PROFILE_ID
+      ? computeClaudeModelsCost(rangePerModel)
+      : computeCost(pt, profile.pricing ?? DEFAULT_PRICING)
     return {
       id: profile.id,
       name: profile.name,
       tokens: tokenSum(pt),
-      cost: computeCost(pt, profilePricing),
+      cost,
       color: COLORS[i % COLORS.length]
     }
   }) ?? []

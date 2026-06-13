@@ -4,27 +4,7 @@ import { fmtTokens } from '../../lib/formatTokens'
 import { useI18n } from '../../i18n'
 import type { ClaudeSettings } from '../../types/settings'
 import { OFFICIAL_PROFILE_ID } from '../../types/settings'
-
-// [2026-06-09] 模型定价映射（¥/M tokens，Anthropic USD × 7）— 用于 per-model 费用计算
-// 来源: https://platform.claude.com/docs/en/about-claude/pricing
-const MODEL_PRICING: Record<string, Pricing> = {
-  'opus':    { inputPerM: 35,  outputPerM: 175, cacheCreatePerM: 43.75, cacheReadPerM: 3.50 },
-  'sonnet':  { inputPerM: 21,  outputPerM: 105, cacheCreatePerM: 26.25, cacheReadPerM: 2.10 },
-  'haiku':   { inputPerM: 7,   outputPerM: 35,  cacheCreatePerM: 8.75,  cacheReadPerM: 0.70 },
-  'fable':   { inputPerM: 70,  outputPerM: 350, cacheCreatePerM: 87.50, cacheReadPerM: 7.00 },
-}
-
-/** 从模型 ID（如 "claude-sonnet-4-20250514"）提取定价 key；第三方模型返回 null */
-function modelToPricingKey(modelId: string): string | null {
-  const lower = modelId.toLowerCase()
-  // 只识别 Claude 官方模型
-  if (!lower.startsWith('claude-')) return null
-  if (lower.includes('opus')) return 'opus'
-  if (lower.includes('fable') || lower.includes('mythos')) return 'fable'
-  if (lower.includes('haiku')) return 'haiku'
-  if (lower.includes('sonnet')) return 'sonnet'
-  return null
-}
+import { MODEL_PRICING, modelToPricingKey } from '../../lib/modelPricing'
 
 /** 模型 ID → 短显示名（如 "claude-opus-4-8" → "Opus 4.8"，第三方显示全名） */
 function modelDisplayName(modelId: string): string {
