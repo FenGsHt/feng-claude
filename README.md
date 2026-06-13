@@ -8,11 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.3 主要更新
+### v0.7.48 主要更新
 
-- **外嵌多行提交**：正文与回车分两帧发送，修复斜杠 TUI 下多行无法提交；PTY 写入增加 ACK 便于排查
-- **斜杠识别与首行 `/`**：`/**` 等不再误判为命令；非命令时对首行 `/` 做转义
-- **斜杠交互**：统一用「中断」，移除「强制退出」
+- **Telegram 强制重连**：Settings → Telegram Channel 右上角新增 `↻` 按钮，一键 kill 旧 bot 进程、清除 bot.pid、触发重连，解决跨会话 PID 占用导致的 -32000 错误
+- **Token 统计优化**：cacheCreate（☁）默认隐藏不占位，鼠标悬浮时显示，解释高费用来源；per-model 费用细分
+- **调试浏览器 Routine 录制/回放**：把浏览器操作录成项目级 routine，支持 7 种动作、参数化模板、数据抓取
+- **Token 去重修复**：按 message.id 去重，修复 cacheRead/output 多算 40~56% 的问题
 
 ### 内置 MCP 与上游说明
 
@@ -25,12 +26,6 @@
 | `visual-agent` | 本地图片分析（走所配置的 Anthropic 兼容多模态 API） | **本仓库** [`scripts/visual-agent-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/visual-agent-mcp-server.js)，经 `node` 以 stdio 启动 |
 
 GUI 本体还依赖 Electron、xterm.js、node-pty 等常见技术栈，详见 `package.json`。
-
-### v0.6.8 主要更新
-
-- **Telegram 多 Bot 预设**：支持添加多条 Bot Token 预设，每条约独立的配对状态与访问控制。标签栏一键切换 Bot，自动应用新 Token。
-- **外嵌界面 Beta**：支持 `@` 文件/目录自动补全、会话 JSONL 转录回显、斜杠命令 TUI 交互、Fallout 磷光主题。
-- **设置面板改进**：保存/更新按钮固定在底部，不再随内容滚动。
 
 ### 核心亮点
 
@@ -46,33 +41,38 @@ GUI 本体还依赖 Electron、xterm.js、node-pty 等常见技术栈，详见 `
 
 #### 📊 实时 Token 统计 + 费用估算
 
-- 从 Claude Code JSONL 日志精确解析 token 用量
-- 每日/累计统计，可视化趋势图表
-- 自定义费用定价（$/百万 token），自动计算花费
+- 从 Claude Code JSONL 日志精确解析 token 用量（按 message.id 去重）
+- 每日/累计统计，per-model 费用细分（Opus/Sonnet/Haiku 各自定价）
+- cacheCreate（☁）/ cacheRead（⚡）分开显示，悬浮可查 cache 写入成本
+- 自定义费用定价（¥/百万 token），自动计算花费
 - 300 级进度系统，直观展示用量等级
+
+#### 📱 Telegram Channel
+
+- **多 Bot 预设**：添加多条 Bot Token，每条独立配对状态与访问控制
+- **标签栏一键切换** Bot，自动应用新 Token
+- **强制重连按钮**：Settings 里 `↻` 一键 kill 旧 bot 进程并重连，解决跨会话残留问题
+- **单会话锁**：防止多个 Claude 进程争抢同一 bot 消息
+
+#### 🌐 内嵌调试浏览器
+
+- 内嵌 Chromium，支持导航、截图、点击、输入等 MCP 工具
+- **Routine 录制/回放**：把浏览器操作录成项目级 routine，支持 7 种动作（navigate/click/type/select/sleep/wait_for/evaluate）
+- `${var}` 参数化模板，evaluate 抓数据回传变量
+- 5 个 MCP 工具：record_start/stop、list/run/delete
+
+#### 🖥️ 分屏终端 + Git Worktree
+
+- **分屏布局**：水平/垂直分割，可拖拽调整大小
+- **Git Worktree 支持**：一键创建 worktree 并在新分屏打开，并行开发不同分支
+- **持久化 Shell**：后台守护进程，重启应用不中断会话
 
 #### 🐱 ASCII 宠物系统
 
 - **13 种空闲活动**：look、blink、sleep、play、curious、yawn、stretch、hungry、sneeze、groom、wiggle、tilt、doze、walk
 - **加权随机切换**：自然的活动过渡，带冷却规则
 - **抚摸互动**：点击触发 happy 动画和随机回复
-- **走动动画**：水平移动，边界反弹
-- **内容库**：预设笑话、技巧、新闻、闲聊；每日 API 更新
-- **自动触发**：Claude 回答后概率触发技术点评（可调概率，最高 100%）
-- **触发概率可调**：0-100%，可设为百分百触发
-
-#### 🖥️ 分屏终端 + Git Worktree
-
-- **分屏布局**：水平/垂直分割，可拖拽调整大小
-- **Git Worktree 支持**：一键创建 worktree 并在新分屏打开，并行开发不同分支
-- **合并提醒**：多个 worktree 存在时显示提示
-
-#### 💾 工作区持久化 + 快速恢复
-
-- 自动保存终端布局、分屏比例
-- 重启后恢复上次工作状态（目录、会话、分屏）
-- **侧边栏历史记录**：一键恢复任意 Claude Code 会话
-- **多窗口支持**：不同工作目录的历史独立保存，任意恢复
+- **自动触发**：Claude 回答后概率触发技术点评（可调 0-100%）
 
 ### 功能一览
 
@@ -80,9 +80,11 @@ GUI 本体还依赖 Electron、xterm.js、node-pty 等常见技术栈，详见 `
 |------|------|
 | **终端集成** | xterm.js + node-pty，支持分屏、多会话、持久化 shell（后台守护进程） |
 | **文件树** | 浏览项目文件，拖拽生成 `@` 引用 |
-| **外嵌界面 Beta** | `@` 文件自动补全、会话 JSONL 转录、斜杠 TUI、Fallout 主题 |
-| **Telegram Channel** | 多 Bot 预设一键切换，独立 Token/配对状态/访问控制 |
+| **外嵌界面 Beta** | `@` 文件自动补全、会话 JSONL 转录、斜杠 TUI |
+| **Telegram Channel** | 多 Bot 预设，强制重连，独立 Token/配对状态/访问控制 |
+| **调试浏览器** | 内嵌 Chromium + Routine 录制回放 + 7 种 MCP 操作工具 |
 | **历史记录** | 会话历史，支持标签、搜索、快速恢复（多窗口独立保存） |
+| **Token 统计** | per-model 费用细分，cacheCreate/cacheRead 分别显示 |
 | **Slash Commands** | 管理 `~/.claude/commands/` 自定义命令 |
 | **MCP 面板** | 可视化管理 MCP 服务器连接 |
 | **Skills 面板** | 管理 Claude Code skills/slash 命令 |
@@ -181,11 +183,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.3 Highlights
+### v0.7.48 Highlights
 
-- **Embed multiline submit**: split body vs Enter with a short delay so slash TUIs accept submission; PTY input ACK for debugging
-- **Slash detection & leading `/`**: `/**` blocks are not treated as slash commands; leading-space escape for non-command lines starting with `/`
-- **Slash TUI UX**: single **Interrupt** control; removed separate “force exit”
+- **Telegram force reconnect**: `↻` button in Settings → Telegram Channel kills the old bot process, clears bot.pid, and triggers `/plugin` — fixes -32000 errors caused by stale PIDs from other sessions
+- **Token stats improvements**: cacheCreate (☁) hidden by default (no layout shift), visible on hover; per-model cost breakdown
+- **Browser Routine recording/playback**: record browser actions as project-level routines with 7 action types, parameterized templates, and data extraction
+- **Token dedup fix**: deduplicate by message.id, fixing 40–56% over-counting of cacheRead/output
 
 ### Bundled MCPs & upstream
 
@@ -194,16 +197,10 @@ On launch, the app **auto-registers** these MCP entries in the Claude Code user 
 | MCP name | Purpose | Upstream / implementation |
 |----------|---------|---------------------------|
 | `office-cli` | Office documents (e.g. docx / xlsx / pptx) | Binaries and behavior from **[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)**; this app downloads, updates, and writes the MCP entry |
-| `browser-tools` | Embedded browser: navigate, screenshot, click, type, … | **This repo**: [`scripts/browser-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/browser-mcp-server.js), stdio via `node`, talking to the app’s built-in browser HTTP API |
+| `browser-tools` | Embedded browser: navigate, screenshot, click, type, … | **This repo**: [`scripts/browser-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/browser-mcp-server.js), stdio via `node`, talking to the app's built-in browser HTTP API |
 | `visual-agent` | Local image analysis (Anthropic-compatible multimodal API from your profile) | **This repo**: [`scripts/visual-agent-mcp-server.js`](https://github.com/FenGsHt/feng-claude/blob/master/scripts/visual-agent-mcp-server.js), stdio via `node` |
 
 The GUI stack (Electron, xterm.js, node-pty, etc.) is listed in `package.json`.
-
-### v0.6.8 Highlights
-
-- **Telegram Multi-Bot Presets**: Multiple bot tokens with isolated pairing state & access control. Quick switch via tab bar dropdown.
-- **Embed Output Beta**: `@` file autocomplete, JSONL transcript rendering, slash command TUI support, Fallout CRT theme.
-- **Persistent Shell Sessions**: Survive app restarts via background daemon, no tmux required.
 
 ### Key Features
 
@@ -219,32 +216,38 @@ Each profile stores: API Key, Base URL, default model, pricing, etc. New session
 
 #### 📊 Real-time Token Tracking + Cost Estimation
 
-- Precise parsing from Claude Code JSONL logs
-- Daily/total statistics with trend charts
-- Custom pricing ($/M tokens), auto cost calculation
+- Precise parsing from Claude Code JSONL logs (deduplicated by message.id)
+- Daily/total statistics, per-model cost breakdown (Opus/Sonnet/Haiku priced separately)
+- cacheCreate (☁) / cacheRead (⚡) shown separately; hover to reveal cache write cost
+- Custom pricing (¥/M tokens), auto cost calculation
 - 300-level progression system
+
+#### 📱 Telegram Channel
+
+- **Multi-bot presets**: multiple bot tokens with isolated pairing state & access control
+- **Tab bar quick switch**, auto-applies new token
+- **Force reconnect button**: `↻` in Settings kills the old bot process and reconnects, fixing cross-session PID conflicts
+- **Single-session lock**: prevents multiple Claude processes competing for the same bot
+
+#### 🌐 Embedded Debug Browser
+
+- Embedded Chromium with navigate, screenshot, click, type MCP tools
+- **Routine recording/playback**: record browser sessions as project-level routines with 7 action types (navigate/click/type/select/sleep/wait_for/evaluate)
+- `${var}` parameterized templates, evaluate steps can capture data into variables
+- 5 MCP tools: record_start/stop, list/run/delete
+
+#### 🖥️ Split Terminal + Git Worktree
+
+- **Split layout**: horizontal/vertical, draggable resize
+- **Git Worktree**: create and open in split pane for parallel development
+- **Persistent shell**: background daemon survives app restarts
 
 #### 🐱 ASCII Pet System
 
 - **13 idle activities**: look, blink, sleep, play, curious, yawn, stretch, hungry, sneeze, groom, wiggle, tilt, doze, walk
 - **Weighted random transitions** with cooldown rules
 - **Petting interaction**: click for happy animation
-- **Walking animation**: horizontal movement with bounce
-- **Content library**: jokes, tips, news; daily API updates
-- **Auto-trigger**: probability-based tech comments (adjustable 0-100%)
-
-#### 🖥️ Split Terminal + Git Worktree
-
-- **Split layout**: horizontal/vertical, draggable resize
-- **Git Worktree**: create and open in split pane for parallel development
-- **Merge reminder**: visual hint when multiple worktrees exist
-
-#### 💾 Workspace Persistence + Quick Resume
-
-- Auto-save terminal layout, split ratios
-- Restore on restart (directories, sessions, splits)
-- **Sidebar History**: one-click resume any Claude Code session
-- **Multi-window Support**: separate history per working directory, resume any session
+- **Auto-trigger**: probability-based tech comments after Claude replies (0-100%)
 
 ### Feature Overview
 
@@ -252,9 +255,11 @@ Each profile stores: API Key, Base URL, default model, pricing, etc. New session
 |---------|-------------|
 | **Terminal Integration** | xterm.js + node-pty, split panes, multi-session, persistent shell daemon |
 | **File Tree** | Browse files, drag to create `@` references |
-| **Embed Output Beta** | `@` autocomplete, JSONL transcript, slash TUI, Fallout theme |
-| **Telegram Channel** | Multi-bot presets, quick switch, isolated pairing & access control |
+| **Embed Output Beta** | `@` autocomplete, JSONL transcript, slash TUI |
+| **Telegram Channel** | Multi-bot presets, force reconnect, isolated pairing & access control |
+| **Debug Browser** | Embedded Chromium + Routine recording/playback + 7 MCP action tools |
 | **History** | Session history with labels, search, quick resume (multi-window independent) |
+| **Token Stats** | Per-model cost breakdown, cacheCreate/cacheRead separately displayed |
 | **Slash Commands** | Manage `~/.claude/commands/` |
 | **MCP Panel** | Visual MCP server management |
 | **Skills Panel** | Manage Claude Code skills |
