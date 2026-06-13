@@ -78,6 +78,89 @@ term.textarea.addEventListener('keydown', handler, true)
 ```
 Remember to cleanup in return function.
 
+## File Placement Rules
+
+Any new file written by the main process must go into one of these four zones. Never create ad-hoc paths outside them.
+
+### Zone 1 — `getConfigDir()` · App persistent data
+
+```
+Packaged Windows : %LOCALAPPDATA%\feng-claude\
+Dev / others     : app.getPath('userData')   (AppData\Roaming\Feng Claude in dev)
+```
+
+Put here: anything the app owns and persists across sessions.
+
+| File / dir | Owner |
+|---|---|
+| `claude-settings.json` | electron-store (settings + profiles) |
+| `history.json` | electron-store (session history) |
+| `token-data.json` | tokenDataStore |
+| `scrollback/<sessionId>.bin` | PTY scrollback buffer |
+| `kv/<key>.json` | kvStore |
+
+### Zone 2 — `app.getPath('userData')` · Runtime-copied binaries & browser state
+
+```
+AppData\Roaming\Feng Claude\   (same as getConfigDir in dev; different in packaged Windows)
+```
+
+Put here: files copied/downloaded at runtime that do NOT need to survive a clean reinstall on Windows (since `%LOCALAPPDATA%\feng-claude` is the durable store there).
+
+| File | Source / note |
+|---|---|
+| `browser-mcp-server.js` | Copied from `scripts/` by mcpManager on startup |
+| `visual-agent-mcp-server.js` | Copied from `scripts/` by mcpManager on startup |
+| `browser-state.json` | BrowserView navigation state |
+| `browser-history.json` | BrowserView URL history |
+| `officecli-<arch>[.exe]` | Downloaded by officeCliManager |
+| `officecli-version.txt` | Installed version tag |
+
+### Zone 3 — `~/.claude/` · Claude Code CLI territory
+
+```
+homedir() + '/.claude/'
+```
+
+Put here: anything the Claude CLI reads, or that follows the official `~/.claude` convention (so users find it where docs say).
+
+| Path | What |
+|---|---|
+| `.claude.json` | MCP server registrations (user scope) — **only mcpManager writes this** |
+| `settings.json` | Claude CLI permissions / hooks — written by claudeSessionConfigDir |
+| `channels/<stateDirId>/` | Telegram bot state dir (bot.pid, access.json, etc.) |
+| `channels/_feng_nonchannel_<sessionId>/` | Isolated non-Telegram sessions (prevent plugin fallback collision) |
+| `session/*.jsonl` | Session transcripts written by Claude CLI (read-only for us) |
+
+`stateDirId` comes from the bot preset's `stateDirId` field (defaults to `"telegram"`). Always go through `telegramStateDir(id)` in `ptyManager.ts` — never construct this path manually.
+
+### Zone 4 — `<workdir>/.claude/` · Project-scoped data
+
+Put here: data that belongs to a specific project repo and should live alongside it.
+
+| Path | What |
+|---|---|
+| `browser-routines/*.json` | Recorded browser routines — always under the active session's workdir |
+
+Always go through `routinesDir(workdir)` in `browserRoutineManager.ts`.
+
+### Source-only (not runtime paths)
+
+| Path | What |
+|---|---|
+| `scripts/browser-mcp-server.js` | MCP server source — copied to Zone 2 at runtime |
+| `scripts/visual-agent-mcp-server.js` | MCP server source — copied to Zone 2 at runtime |
+| `scripts/pty-daemon.js` | Daemon process source |
+| `local/claude.local.json` | Dev-only local overrides (gitignored) |
+
+### Rule of thumb
+
+- New **feature data** → Zone 1 via `getConfigDir()`
+- New **runtime binary / downloaded asset** → Zone 2 via `app.getPath('userData')`
+- New **Claude CLI integration file** → Zone 3 under `~/.claude/`
+- New **per-project file** → Zone 4 under `<workdir>/.claude/`
+- Never use a raw `__dirname`, `process.cwd()`, or hardcoded `AppData` path — always go through the zone helpers.
+
 ## Version Release Process
 
 When `package.json` version changes:
