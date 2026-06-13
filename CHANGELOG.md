@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.50] - 2026-06-13
+
+### 修复 | Bug Fixes
+- **统计面板费用修正**：官方配置（Anthropic）的费用改用 per-model 精确定价（Opus/Sonnet/Haiku 各自单价），不再 fallback 到 DEFAULT_PRICING（¥3/¥15），修复统计页显示费用远低于实际的问题
+- **modelPricing 共享**：将 MODEL_PRICING / modelToPricingKey / computeClaudeModelsCost 抽取到 `lib/modelPricing.ts` 供 TokenUsageWidget 和 UsageChart 共用
+
 ## [0.7.49] - 2026-06-13
 
 ### 新功能 | Features

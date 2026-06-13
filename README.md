@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.49 主要更新
+### v0.7.50 主要更新
 
+- **统计面板费用修正**：官方配置（Anthropic）费用改用 per-model 精确定价（Opus ¥35/M、Sonnet ¥21/M），修复统计页费用严重偏低的问题
 - **FEATURES.md 功能手册 + 标题栏 `?` 按钮**：右上角新增帮助入口，点击打开完整双语功能与快捷键文档
 - **Telegram 强制重连**：Settings → Telegram Channel 右上角新增 `↻` 按钮，一键 kill 旧 bot 进程、清除 bot.pid、触发重连，解决跨会话 PID 占用导致的 -32000 错误
 - **Token 统计优化**：cacheCreate（☁）默认隐藏不占位，鼠标悬浮时显示，解释高费用来源；per-model 费用细分
-- **调试浏览器 Routine 录制/回放**：把浏览器操作录成项目级 routine，支持 7 种动作、参数化模板、数据抓取
 
 ### 内置 MCP 与上游说明
 
@@ -183,12 +183,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.49 Highlights
+### v0.7.50 Highlights
 
+- **Stats panel cost fix**: official profile (Anthropic) now uses per-model pricing (Opus ¥35/M, Sonnet ¥21/M), fixing severely underreported costs in the stats panel
 - **FEATURES.md + title bar `?` button**: new help entry in the top-right corner opens the full bilingual feature & shortcut reference on GitHub
 - **Telegram force reconnect**: `↻` button in Settings → Telegram Channel kills the old bot process, clears bot.pid, and triggers `/plugin` — fixes -32000 errors caused by stale PIDs from other sessions
 - **Token stats improvements**: cacheCreate (☁) hidden by default (no layout shift), visible on hover; per-model cost breakdown
-- **Browser Routine recording/playback**: record browser actions as project-level routines with 7 action types, parameterized templates, and data extraction
 
 ### Bundled MCPs & upstream
 
