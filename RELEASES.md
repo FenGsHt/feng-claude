@@ -5,6 +5,16 @@
 
 ---
 
+## v0.7.48 (2026-06-13)
+
+### 新功能
+- **Telegram 强制重连**：Settings → Telegram Channel 右上角新增 `↻` 按钮，一键 kill 旧 bot、清 bot.pid、触发 `/plugin` 重连，解决跨会话 PID 占用的 -32000 问题
+
+### 修复
+- **cacheCreate 占位**：隐藏时改用 `hidden` 而非 `opacity-0`，修复 Models 分项换行问题
+
+---
+
 ## v0.7.47 (2026-06-13)
 
 ### 修复

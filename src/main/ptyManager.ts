@@ -1061,6 +1061,34 @@ export class PtyManager {
     }
   }
 
+  /** [2026-06-13] 强制重连 Telegram bot：kill 旧 bun → 删 bot.pid → 向 PTY 写 /plugin\r */
+  telegramForceReconnect(sessionId: string): { ok: boolean; error?: string } {
+    const session = this.sessions.get(sessionId)
+    if (!session) return { ok: false, error: 'session not found' }
+    const stateDir = session.telegramStateDirAbs
+    if (!stateDir) return { ok: false, error: 'no telegram state dir for this session' }
+    const pidFile = join(stateDir, 'bot.pid')
+    try {
+      const pidStr = readFileSync(pidFile, 'utf8').trim()
+      const pid = parseInt(pidStr, 10)
+      if (!isNaN(pid) && pid > 1) {
+        try { process.kill(pid, 'SIGTERM') } catch { /* already dead */ }
+      }
+      try { unlinkSync(pidFile) } catch { /* may not exist */ }
+    } catch { /* no pid file, ok */ }
+    // 写 /plugin\r 触发 Claude Code 重连 MCP
+    const pty = session.ptyProcess
+    if (pty) {
+      pty.write('/plugin\r')
+    } else if (session.daemonSocket) {
+      const payload = JSON.stringify({ type: 'input', data: '/plugin\r' }) + '\n'
+      session.daemonSocket.write(payload)
+    } else {
+      return { ok: false, error: 'no active pty' }
+    }
+    return { ok: true }
+  }
+
   closeSession(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session) {

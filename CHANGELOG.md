@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.48] - 2026-06-13
+
+### 新功能 | Features
+- **Telegram 强制重连按钮**：Settings → Telegram Channel 区域新增 `↻` 按钮，一键 kill 旧 bot 进程、清除 bot.pid、触发 `/plugin` 重连，解决跨会话 PID 占用导致无法重连的问题
+
+### 修复 | Bug Fixes
+- **cacheCreate Token 占位问题**：改用 `hidden group-hover:inline` 替代 `opacity-0`，隐藏时不占位，修复 Models 分项因不可见元素撑开导致换行的问题
+
 ## [0.7.47] - 2026-06-13
 
 ### 修复 | Bug Fixes

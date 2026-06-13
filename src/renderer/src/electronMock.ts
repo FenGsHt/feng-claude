@@ -84,6 +84,7 @@ export function injectMockElectronAPI(): void {
         channelsFlag: true,
         telegramPluginInstalled: false
       }),
+      telegramForceReconnect: async (_sessionId: string) => ({ ok: true }),
       profiles: {
         add: async () => ({ success: true }),
         update: async () => ({ success: true }),

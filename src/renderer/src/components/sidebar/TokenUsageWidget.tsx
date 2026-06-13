@@ -424,7 +424,7 @@ export function TokenUsageWidget(): React.ReactElement {
                 <span className="text-sky-400/70 ml-1">{fmtTokens(today.cacheRead)}⚡</span>
               )}
               {today.cacheCreate > 0 && (
-                <span className="text-orange-400/70 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-orange-400/70 ml-1 hidden group-hover:inline">
                   {fmtTokens(today.cacheCreate)}☁
                 </span>
               )}
@@ -439,7 +439,7 @@ export function TokenUsageWidget(): React.ReactElement {
                 <span className="text-sky-400/70 ml-1">{fmtTokens(total.cacheRead)}⚡</span>
               )}
               {total.cacheCreate > 0 && (
-                <span className="text-orange-400/70 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-orange-400/70 ml-1 hidden group-hover:inline">
                   {fmtTokens(total.cacheCreate)}☁
                 </span>
               )}
@@ -492,7 +492,7 @@ export function TokenUsageWidget(): React.ReactElement {
                       <span className="text-sky-400/60 ml-0.5">{fmtTokens(mt.cacheRead)}⚡</span>
                     )}
                     {mt.cacheCreate > 0 && (
-                      <span className="text-orange-400/60 ml-0.5 opacity-0 group-hover/model:opacity-100 transition-opacity">
+                      <span className="text-orange-400/60 ml-0.5 hidden group-hover/model:inline">
                         {fmtTokens(mt.cacheCreate)}☁
                       </span>
                     )}

@@ -141,6 +141,8 @@ export const IPC = {
   SHELL_DETECT: 'shell:detect',
   /** [2026-05-08] 检测 Claude Code Telegram Channel 可用性 */
   TELEGRAM_CHANNEL_CHECK: 'telegram:channelCheck',
+  /** [2026-06-13] 强制重连 Telegram bot：kill 旧 bun + 删 pid + /plugin */
+  TELEGRAM_FORCE_RECONNECT: 'telegram:forceReconnect',
 
   /** [2026-05-12] OfficeCLI 内置 MCP：状态推送 / 查询 / 触发更新 */
   OFFICE_CLI_STATUS: 'officeCli:status',

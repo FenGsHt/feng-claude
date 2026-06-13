@@ -316,6 +316,10 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle(IPC.TELEGRAM_FORCE_RECONNECT, (_e, sessionId: string) => {
+    return ptyManager.telegramForceReconnect(sessionId)
+  })
+
   // ── Settings ─────────────────────────────────────────────────
   ipcMain.handle(IPC.SETTINGS_GET, async () => settingsStore.get())
   ipcMain.handle(IPC.SETTINGS_SET, async (_e, settings) => {

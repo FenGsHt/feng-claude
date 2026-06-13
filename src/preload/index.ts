@@ -125,6 +125,9 @@ const electronAPI = {
   checkTelegramChannel: (): Promise<TelegramChannelCheckResult> =>
     ipcRenderer.invoke(IPC.TELEGRAM_CHANNEL_CHECK),
 
+  telegramForceReconnect: (sessionId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC.TELEGRAM_FORCE_RECONNECT, sessionId),
+
   onSettingsChanged: (callback: () => void): (() => void) => {
     const handler = (): void => callback()
     ipcRenderer.on(IPC.SETTINGS_CHANGED, handler)

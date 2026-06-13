@@ -24,6 +24,8 @@ export function SettingsPanel(): React.ReactElement {
   const [checking, setChecking] = useState(false)
   const [telegramCheck, setTelegramCheck] = useState<TelegramChannelCheckResult | null>(null)
   const [telegramChecking, setTelegramChecking] = useState(false)
+  const [telegramReconnecting, setTelegramReconnecting] = useState(false)
+  const [telegramReconnectResult, setTelegramReconnectResult] = useState<string | null>(null)
   /** [2026-05-08] 添加 Bot 预设表单（列表可多条） */
   const [tgNewName, setTgNewName] = useState('')
   const [tgNewToken, setTgNewToken] = useState('')
@@ -102,6 +104,27 @@ export function SettingsPanel(): React.ReactElement {
       setTelegramCheck(result)
     } finally {
       setTelegramChecking(false)
+    }
+  }
+
+  const runTelegramForceReconnect = async (): Promise<void> => {
+    const { sessions } = useSessionStore.getState()
+    const telegramSession = sessions.find(s => s.telegramChannel?.enabled)
+    if (!telegramSession) {
+      setTelegramReconnectResult(lang === 'zh' ? '未找到启用 Telegram 的会话' : 'No session with Telegram enabled')
+      setTimeout(() => setTelegramReconnectResult(null), 3000)
+      return
+    }
+    setTelegramReconnecting(true)
+    setTelegramReconnectResult(null)
+    try {
+      const result = await window.electronAPI.telegramForceReconnect(telegramSession.id)
+      setTelegramReconnectResult(result.ok
+        ? (lang === 'zh' ? '已发送重连指令' : 'Reconnect sent')
+        : (result.error ?? 'failed'))
+    } finally {
+      setTelegramReconnecting(false)
+      setTimeout(() => setTelegramReconnectResult(null), 3000)
     }
   }
 
@@ -453,13 +476,27 @@ export function SettingsPanel(): React.ReactElement {
           <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
             Telegram Channel
           </span>
-          <button
-            type="button"
-            onClick={() => void runTelegramCheck()}
-            className="rounded border border-claude-border bg-claude-bg px-2 py-0.5 text-[9px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
-          >
-            {telegramChecking ? (lang === 'zh' ? '检测中…' : 'Checking…') : (lang === 'zh' ? '检测' : 'Check')}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => void runTelegramForceReconnect()}
+              disabled={telegramReconnecting}
+              title={lang === 'zh' ? '强制重连：kill 旧 bot 进程并重启 MCP server' : 'Force reconnect: kill old bot process and restart MCP server'}
+              className="rounded border border-claude-border bg-claude-bg px-2 py-0.5 text-[9px] text-claude-muted hover:border-orange-500/50 hover:text-orange-400 disabled:opacity-50"
+            >
+              {telegramReconnecting ? '↻…' : '↻'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runTelegramCheck()}
+              className="rounded border border-claude-border bg-claude-bg px-2 py-0.5 text-[9px] text-claude-muted hover:border-amber-600/50 hover:text-claude-text"
+            >
+              {telegramChecking ? (lang === 'zh' ? '检测中…' : 'Checking…') : (lang === 'zh' ? '检测' : 'Check')}
+            </button>
+          </div>
+          {telegramReconnectResult && (
+            <span className="text-[9px] text-orange-400">{telegramReconnectResult}</span>
+          )}
         </div>
         <label className="mb-2 flex items-center gap-2 cursor-pointer">
           <input
