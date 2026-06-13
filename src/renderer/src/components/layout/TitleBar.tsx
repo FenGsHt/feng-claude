@@ -129,6 +129,15 @@ export function TitleBar(): React.ReactElement {
         className="flex items-center gap-0.5 w-56 justify-end shrink-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
+        {/* Help / Features doc */}
+        <button
+          onClick={() => window.open('https://github.com/FenGsHt/feng-claude/blob/master/FEATURES.md')}
+          title={lang === 'zh' ? '功能手册 / 快捷键' : 'Feature manual / shortcuts'}
+          className="w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-sky-400 hover:bg-claude-border transition-colors text-[11px] font-bold"
+        >
+          ?
+        </button>
+
         {/* Repo link */}
         <a
           href="https://github.com/FenGsHt/feng-claude"

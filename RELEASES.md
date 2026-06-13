@@ -5,6 +5,14 @@
 
 ---
 
+## v0.7.49 (2026-06-13)
+
+### 新功能
+- **FEATURES.md 功能手册**：新增完整功能与快捷键文档，双语（中/英），涵盖所有侧栏面板、API Profile、Token 统计、Telegram Channel、调试浏览器、Git Worktree、ASCII 宠物、MCP/Skills/插件、快捷键速查
+- **标题栏 `?` 帮助按钮**：右上角新增 `?` 按钮，点击直接打开 GitHub FEATURES.md
+
+---
+
 ## v0.7.48 (2026-06-13)
 
 ### 新功能
