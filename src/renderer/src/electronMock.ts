@@ -168,7 +168,9 @@ export function injectMockElectronAPI(): void {
         onBrowserNavSetRatio: listener,
         onBrowserViewStateChanged: listener,
         setToolsPanelWidth: (_width: number) => {},
-        setOverlayOpen: (_open: boolean) => {}
+        setOverlayOpen: (_open: boolean) => {},
+        setActiveSession: (_sessionId: string) => {},
+        destroySession: (_sessionId: string) => {}
       },
       git: {
         isRepo: async () => ({ isRepo: true }),

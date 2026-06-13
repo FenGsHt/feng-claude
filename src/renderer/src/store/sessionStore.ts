@@ -301,6 +301,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     clearEmbedTurnLatency(id)
     clearPtyAlternateScreenSession(id)
     window.electronAPI.closeSession(id)
+    // [2026-06-12] 销毁该 session 的调试浏览器 tab，释放内存
+    window.electronAPI.browserView?.destroySession?.(id)
     set((s) => {
       const remaining = s.sessions.filter((sess) => sess.id !== id)
       let layoutRoot = s.layoutRoot ? removeSessionFromLayout(s.layoutRoot, id) : null
@@ -320,6 +322,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   setActiveSession: (id: string) => {
+    // [2026-06-12] 通知 main：调试浏览器面板跟随切换到该 session 的 tab
+    window.electronAPI.browserView?.setActiveSession?.(id)
     set((s) => {
       const ids = s.layoutRoot ? collectLeafSessionIds(s.layoutRoot) : []
       if (!s.layoutRoot || !ids.includes(id)) {

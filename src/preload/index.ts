@@ -302,6 +302,12 @@ const electronAPI = {
       ipcRenderer.send('browser-view:set-tools-panel-width', width),
     setOverlayOpen: (open: boolean): void =>
       ipcRenderer.send('browser-view:overlay', open),
+    // [2026-06-12] 切换前台终端 session，调试浏览器面板跟随显示该 session 的 tab
+    setActiveSession: (sessionId: string): void =>
+      ipcRenderer.send('browser-view:set-active-session', sessionId),
+    // 销毁某 session 的所有调试浏览器 tab（终端关闭时）
+    destroySession: (sessionId: string): void =>
+      ipcRenderer.send('browser-view:destroy-session', sessionId),
   },
 
   // Git Worktree

@@ -464,6 +464,9 @@ export function TokenUsageWidget(): React.ReactElement {
               <span className="text-[9px] text-claude-muted/70 uppercase tracking-wider flex items-center gap-0.5">
                 <span className="transition-transform duration-150 inline-block" style={{ transform: modelsExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
                 Models
+                {!hasTodayPerModelData && hasPerModelData && (
+                  <span className="text-[8px] text-claude-muted/40 normal-case tracking-normal ml-0.5">累计</span>
+                )}
               </span>
               <span className="font-mono text-[9px] text-amber-400/80">{fmtCost(totalModelCost)}</span>
             </button>

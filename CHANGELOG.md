@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.45] - 2026-06-13
+
+### 修复 | Bug Fixes
+- **Routine 回放列表为空**：调试浏览器面板切换前台 session 的渲染侧接线（preload `setActiveSession`/`destroySession` 暴露 + sessionStore 调用）此前漏提交，导致切换终端后浏览器面板/routine 列表的 session 归属解析不一致；现补齐接线，切回对应项目的终端即可看到该项目录制的 routine
+
+### 界面 | UI
+- **Token 统计「累计」标识**：Models 分项在仅有累计数据（今日无细分）时显示「累计」小标，区分今日用量与历史累计
+
 ## [0.7.44] - 2026-06-13
 
 ### 新功能 | Features
