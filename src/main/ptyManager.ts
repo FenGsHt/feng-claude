@@ -339,6 +339,20 @@ function nonChannelTelegramStateDir(sessionId: string): string {
   return telegramStateDir(`_feng_nonchannel_${sessionId}`)
 }
 
+/** [2026-06-13] bot.pid 里的进程已死才删除，避免误删正在运行的 bot 进程 */
+function cleanStaleBotPid(dir: string): void {
+  const pidFile = join(dir, 'bot.pid')
+  try {
+    const pid = parseInt(readFileSync(pidFile, 'utf8').trim(), 10)
+    if (isNaN(pid)) { unlinkSync(pidFile); return }
+    try {
+      process.kill(pid, 0) // 进程存活：不删
+    } catch {
+      unlinkSync(pidFile) // 进程已死：删除残留
+    }
+  } catch { /* 文件不存在，忽略 */ }
+}
+
 /** [2026-05-09] 非 Telegram 会话显式去 token 化：确保插件拿不到历史 .env / bot.pid */
 function ensureTokenlessTelegramStateDir(absDir: string): void {
   try {
@@ -440,8 +454,8 @@ function prepareTelegramChannel(
     mkdirSync(dir, { recursive: true })
     /* [2026-05-08] 官方插件固定读取 TELEGRAM_STATE_DIR/.env；仅写入用户配置目录，避免 token 进仓库。 */
     writeFileSync(join(dir, '.env'), `TELEGRAM_BOT_TOKEN=${token}\n`, 'utf8')
-    /* [2026-05-09] 删除残留 bot.pid：退出再开时 --continue 可能让旧 PID 欺骗 plugin 跳过启动。 */
-    try { unlinkSync(join(dir, 'bot.pid')) } catch { /* may not exist */ }
+    /* [2026-06-13] 仅清除已死进程的 bot.pid，避免误删正在运行的 bot。 */
+    cleanStaleBotPid(dir)
   } catch (e) {
     console.warn('[telegram-channel] failed to prepare state dir:', e)
     ensureTokenlessTelegramStateDir(isolatedDir)

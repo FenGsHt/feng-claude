@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.46] - 2026-06-13
+
+### 修复 | Bug Fixes
+- **Telegram bot.pid 残留**：启动 Telegram channel 前先检查 `bot.pid` 里的进程是否存活，仅在进程已死时清除，避免旧 PID 文件导致插件连接失败（-32000）
+
 ## [0.7.45] - 2026-06-13
 
 ### 修复 | Bug Fixes
