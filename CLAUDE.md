@@ -84,4 +84,5 @@ When `package.json` version changes:
 
 1. Update `CHANGELOG.md` — add new section with `[version] - date` and list all changes since last version
 2. Update `RELEASES.md` — add release notes block for the new version (this file is the source for GitHub releases)
-3. Copy the new version block from `RELEASES.md` into the GitHub Release body
+3. Update `README.md` — update the version number in the "vX.Y.Z 主要更新" / "vX.Y.Z Highlights" sections (both 中文 and English) to reflect the new version and summarize the key changes in this release
+4. Copy the new version block from `RELEASES.md` into the GitHub Release body
