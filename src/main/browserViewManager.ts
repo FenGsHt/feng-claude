@@ -413,35 +413,37 @@ body {
 #ctrl-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  flex: none;            /* 固定 34px 高，与标签条 26px 合计锁定 60px */
+  gap: 3px;
+  padding: 0 8px;
+  flex: none;
   height: 34px;
-  min-width: 0;          /* 允许内部 url-input 收缩，而非撑大父级 */
-  overflow-x: auto;      /* 极窄时横向滚动而非溢出整页 */
+  min-width: 0;
+  overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
 }
 #ctrl-row::-webkit-scrollbar { display: none; }
 button {
   background: none;
-  border: 1px solid #333;
-  color: #ccc;
-  border-radius: 4px;
-  padding: 2px 8px;
+  border: 1px solid #2e2e2e;
+  color: #aaa;
+  border-radius: 5px;
+  padding: 0;
   font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  flex: none;            /* 按钮不被压缩，保持可点尺寸 */
-  height: 24px;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  line-height: 1;
 }
-button:hover { background: #2a2a2a; color: #fff; }
-button:active { background: #333; }
-button.active { color: #f59e0b; border-color: #f59e0b; }
-#record-btn.recording { color: #ef4444; border-color: #ef4444; }
+button:hover { background: #252525; color: #e0e0e0; border-color: #3a3a3a; }
+button:active { background: #2e2e2e; }
+button.active { color: #f59e0b; border-color: #f59e0b; background: #2a2200; }
+#bookmark-btn.active { color: #f59e0b; border-color: #f59e0b; background: #2a2200; }
+#record-btn.recording { color: #ef4444; border-color: #ef4444; background: #2a0a0a; }
 button:disabled { opacity: 0.3; cursor: default; }
 /* 收藏栏：第三行，固定 26px */
 #bookmark-bar {
