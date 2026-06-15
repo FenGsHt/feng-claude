@@ -142,6 +142,8 @@ const SAVE_BAR_H = 34        // 录制命名条高度
 let saveBarH = 0             // 0 = 关闭，SAVE_BAR_H = 打开
 const URL_DROPDOWN_H = 300   // URL 历史下拉展开高度
 let urlDropdownH = 0         // 0 = 关闭，URL_DROPDOWN_H = 打开
+const ROUTINE_DROP_H = 70    // 录制/回放合并按钮 hover 下拉高度
+let routineDropH = 0         // 0 = 关闭，ROUTINE_DROP_H = 打开
 
 // ── 浏览历史 ────────────────────────────────────────────────────────────────
 interface HistoryEntry { url: string; title: string; ts: number }
@@ -312,7 +314,7 @@ function setBounds(win: BrowserWindow): void {
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H + routinePanelH + saveBarH + urlDropdownH
+      height: NAVBAR_H + routinePanelH + saveBarH + urlDropdownH + routineDropH
     })
   }
 }
@@ -403,6 +405,11 @@ body {
   overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 20;
 }
 #routine-panel.open { display: flex; }
+.h-header { flex: none; display: flex; align-items: center; height: 30px; padding: 0 12px; font-size: 12px; font-weight: 600; color: #ddd; border-bottom: 1px solid #2a2a2a; background: #202020; }
+.h-scroll { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #444 transparent; }
+.h-scroll::-webkit-scrollbar { width: 8px; }
+.h-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+.h-empty { padding: 20px 12px; font-size: 12px; color: #666; text-align: center; }
 .r-item { padding: 5px 10px 4px; cursor: pointer; border-bottom: 1px solid #1e1e1e; }
 .r-item:hover { background: #222; }
 .r-row1 { display: flex; align-items: baseline; gap: 6px; }
@@ -443,7 +450,13 @@ button:hover { background: #252525; color: #e0e0e0; border-color: #3a3a3a; }
 button:active { background: #2e2e2e; }
 button.active { color: #f59e0b; border-color: #f59e0b; background: #2a2200; }
 #bookmark-btn.active { color: #f59e0b; border-color: #f59e0b; background: #2a2200; }
-#record-btn.recording { color: #ef4444; border-color: #ef4444; background: #2a0a0a; }
+#routine-btn.recording { color: #ef4444; border-color: #ef4444; background: #2a0a0a; }
+/* 录制/回放合并按钮下拉 */
+#routine-drop { display: none; position: absolute; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 3px; z-index: 200; min-width: 90px; flex-direction: column; gap: 2px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+#routine-drop.open { display: flex; }
+.rd-row { width: auto !important; padding: 0 9px !important; height: 26px; justify-content: flex-start !important; gap: 7px; font-size: 12px; white-space: nowrap; border-color: transparent !important; color: #aaa; }
+.rd-row:hover { background: #252525 !important; border-color: #3a3a3a !important; color: #e0e0e0; }
+.rd-sep { height: 1px; background: #2a2a2a; margin: 1px 2px; }
 button:disabled { opacity: 0.3; cursor: default; }
 button svg { display: block; pointer-events: none; }
 /* 收藏栏：第三行，固定 26px */
@@ -560,13 +573,17 @@ button svg { display: block; pointer-events: none; }
     <button id="reload-btn" title="刷新"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
     <input id="url-input" type="text" placeholder="输入 URL 回车导航" autocomplete="off" />
     <button id="bookmark-btn" title="收藏/取消收藏当前页"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
-    <button id="record-btn" title="录制操作（routine）"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></svg></button>
-    <button id="play-btn" title="回放 routine"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="currentColor"/></svg></button>
+    <button id="routine-btn" title="录制 / 回放 routine"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></svg></button>
     <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
     <button id="devtools-btn" title="打开/关闭 DevTools"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
   </div>
   <div id="bookmark-bar"><span class="bk-empty">暂无收藏</span></div>
   <div id="url-dropdown"></div>
+  <div id="routine-drop">
+    <button id="record-btn" class="rd-row" title="录制操作（routine）"><svg width="12" height="12" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></svg><span>录制</span></button>
+    <div class="rd-sep"></div>
+    <button id="play-btn" class="rd-row" title="回放 routine"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="currentColor"/></svg><span>回放</span></button>
+  </div>
   <div id="save-bar">
     <span>保存 routine：</span>
     <input id="save-name" type="text" placeholder="输入名称回车保存" />
@@ -614,6 +631,7 @@ button svg { display: block; pointer-events: none; }
       // Electron 不支持 window.prompt，用内联命名条命名后再 stop
       showSaveBar()
     }
+    hideRoutineDrop()
   })
   $('save-ok').addEventListener('click', commitSave)
   $('save-name').addEventListener('keydown', e => {
@@ -624,29 +642,67 @@ button svg { display: block; pointer-events: none; }
   $('save-cancel').addEventListener('click', () => { ipcRenderer.send('browser-nav:record-cancel'); hideSaveBar() })
   ipcRenderer.on('browser-nav:recording', (_, d) => {
     recording = !!d.active
-    const btn = $('record-btn')
-    btn.classList.toggle('recording', recording)
+    const rbtn = $('routine-btn')
+    rbtn.classList.toggle('recording', recording)
     if (recording) {
-      btn.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + ICON_STOP + '<span style="font-size:10px;font-weight:600">' + (d.count||0) + '</span></span>'
-      btn.style.width = 'auto'; btn.style.padding = '0 5px'
+      rbtn.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + ICON_STOP + '<span style="font-size:10px;font-weight:600">' + (d.count||0) + '</span></span>'
+      rbtn.style.width = 'auto'; rbtn.style.padding = '0 5px'
     } else {
-      btn.innerHTML = ICON_REC; btn.style.width = ''; btn.style.padding = ''
+      rbtn.innerHTML = ICON_REC; rbtn.style.width = ''; rbtn.style.padding = ''
     }
-    btn.title = recording ? '停止并保存（已录 ' + (d.count||0) + ' 步）' : '录制操作（routine）'
+    rbtn.title = recording ? '停止并保存（已录 ' + (d.count||0) + ' 步）' : '录制 / 回放 routine'
     if (!recording) hideSaveBar()
+  })
+  // routine-btn 点击：未录制时直接开始录制；录制中点击则弹出命名条停止
+  $('routine-btn').addEventListener('click', () => {
+    if (recording) showSaveBar()
+    else ipcRenderer.send('browser-nav:record-start')
+    hideRoutineDrop()
   })
   // Routine 回放面板
   let routineOpen = false
   function toggleRoutine(force) {
     routineOpen = force !== undefined ? force : !routineOpen
     $('play-btn').classList.toggle('active', routineOpen)
+    $('routine-btn').classList.toggle('active', routineOpen)
     $('routine-panel').classList.toggle('open', routineOpen)
     ipcRenderer.send('browser-nav:routine-panel', { open: routineOpen })
   }
-  $('play-btn').addEventListener('click', e => { e.stopPropagation(); toggleRoutine() })
+  $('play-btn').addEventListener('click', e => { e.stopPropagation(); hideRoutineDrop(); toggleRoutine() })
   document.addEventListener('click', e => {
-    if (routineOpen && !$('routine-panel').contains(e.target) && e.target !== $('play-btn')) toggleRoutine(false)
+    if (routineOpen && !$('routine-panel').contains(e.target) && e.target !== $('routine-btn')) toggleRoutine(false)
   })
+  // 录制/回放合并下拉：hover routine-btn 在其正下方弹出，进入下拉不关闭
+  let rdTimer = null
+  function openRoutineDrop() {
+    if (recording) return   // 录制中不弹下拉
+    if (rdTimer) { clearTimeout(rdTimer); rdTimer = null }
+    const r = $('routine-btn').getBoundingClientRect()
+    const drop = $('routine-drop')
+    drop.style.top = (r.bottom + 4) + 'px'
+    drop.style.left = r.left + 'px'
+    drop.classList.add('open')
+    // 校正：避免右溢出
+    const dw = drop.offsetWidth
+    if (r.left + dw > window.innerWidth - 4) drop.style.left = (window.innerWidth - dw - 4) + 'px'
+    ipcRenderer.send('browser-nav:routine-drop', { open: true })
+  }
+  function closeRoutineDrop() {
+    if (rdTimer) clearTimeout(rdTimer)
+    rdTimer = setTimeout(() => {
+      $('routine-drop').classList.remove('open')
+      ipcRenderer.send('browser-nav:routine-drop', { open: false })
+    }, 160)
+  }
+  function hideRoutineDrop() {
+    if (rdTimer) { clearTimeout(rdTimer); rdTimer = null }
+    $('routine-drop').classList.remove('open')
+    ipcRenderer.send('browser-nav:routine-drop', { open: false })
+  }
+  $('routine-btn').addEventListener('mouseenter', openRoutineDrop)
+  $('routine-btn').addEventListener('mouseleave', closeRoutineDrop)
+  $('routine-drop').addEventListener('mouseenter', () => { if (rdTimer) { clearTimeout(rdTimer); rdTimer = null } })
+  $('routine-drop').addEventListener('mouseleave', closeRoutineDrop)
   ipcRenderer.on('browser-nav:routines', (_, d) => {
     const panel = $('routine-panel')
     panel.innerHTML = ''
@@ -1882,6 +1938,11 @@ export function registerBrowserViewIpc(): void {
   // URL 历史下拉开/关：撑高 navView 让下拉可见
   ipcMain.on('browser-nav:url-dropdown', (_event, { open }: { open: boolean }) => {
     urlDropdownH = open ? URL_DROPDOWN_H : 0
+    if (state.mainWin) setBounds(state.mainWin)
+  })
+  // 录制/回放合并下拉 hover 开/关
+  ipcMain.on('browser-nav:routine-drop', (_event, { open }: { open: boolean }) => {
+    routineDropH = open ? ROUTINE_DROP_H : 0
     if (state.mainWin) setBounds(state.mainWin)
   })
   // 手动回放（用户从面板点击）：作用于前台 session 的 active tab，无参数

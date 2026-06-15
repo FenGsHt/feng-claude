@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
-import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
 import { injectEmbedDraft, focusEmbedInput } from '../../lib/embedDraftBridge'
@@ -9,7 +8,6 @@ import { openTextEditor } from '../sidebar/sidebarNav'
 import { openTodoPanel } from '../../lib/runTodos'
 import { useTodoListStore } from '../../store/todoListStore'
 import { WorktreeDialog } from './WorktreeDialog'
-import { fmtTokens } from '../../lib/formatTokens'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
 import { wakeTerminal, focusTerminal, getTerminalTextarea } from './XTerminal'
@@ -130,7 +128,6 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const loadHistory = useSessionStore((s) => s.loadHistory)
   const history = useSessionStore((s) => s.history)
   const sessions = useSessionStore((s) => s.sessions)
-  const tokenUsage = useTokenUsageStore((s) => s.bySession[sessionId])
   // [2026-06-05] 所有清单的未完成待办总数 —— >0 时显示按钮，点击打开待办面板挑选清单运行
   const pendingTodoCount = useTodoListStore((s) =>
     s.lists.reduce((n, l) => n + l.items.filter((todo) => todo.status === 'pending').length, 0)
@@ -364,21 +361,6 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
     void checkGitStatus() // 更新 worktree 状态
   }
 
-  const hasTokens = tokenUsage && (tokenUsage.input > 0 || tokenUsage.output > 0)
-  const hasCacheRead = tokenUsage && tokenUsage.cacheRead > 0
-
-  // Tooltip: detailed breakdown
-  const tokenTitle = tokenUsage
-    ? [
-        `Input:  ${tokenUsage.input.toLocaleString()} tokens`,
-        `Output: ${tokenUsage.output.toLocaleString()} tokens`,
-        tokenUsage.cacheCreate > 0 ? `Cache write: ${tokenUsage.cacheCreate.toLocaleString()}` : '',
-        tokenUsage.cacheRead > 0 ? `Cache read:  ${tokenUsage.cacheRead.toLocaleString()}` : ''
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : ''
-
   return (
     <>
       <div
@@ -413,20 +395,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
           {sess?.title ?? sessionId}
         </span>
 
-        {/* Token usage */}
-        {hasTokens && (
-          <span
-            className="shrink-0 font-mono text-[9px] tabular-nums leading-none text-claude-muted/70 whitespace-nowrap"
-            title={tokenTitle}
-          >
-            {fmtTokens(tokenUsage!.input)}↑ {fmtTokens(tokenUsage!.output)}↓
-            {hasCacheRead && (
-              <span className="text-sky-400/70 ml-1" title="Cache read tokens">
-                {fmtTokens(tokenUsage!.cacheRead)}⚡
-              </span>
-            )}
-          </span>
-        )}
+        {/* [2026-06-15] tab 标题栏 token 统计已隐藏（详细统计见侧栏 Stats 面板） */}
 
         {/* Action buttons */}
         <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>

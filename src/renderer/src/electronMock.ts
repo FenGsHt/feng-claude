@@ -42,6 +42,11 @@ export function injectMockElectronAPI(): void {
       readFileAsDataUrl: async (_path: string) => ({ success: false, error: 'Not available in browser preview' }),
       walkFiles: async (_dir: string): Promise<string[]> => [],
 
+      searchFiles: async () => [],
+      watchFilesStart: async () => {},
+      watchFilesStop: async () => {},
+      onFsChanged: () => () => {},
+
       readFileTree: async () => [
         {
           name: 'src',

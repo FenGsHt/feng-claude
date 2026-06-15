@@ -294,6 +294,54 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
   )
 }
 
+// [2026-06-15] 全树搜索命中项（扁平），解决深层文件搜不到的问题
+interface SearchHit {
+  name: string
+  path: string
+  rel: string
+  type: 'file' | 'directory'
+}
+
+function FileSearchResultItem({ hit }: { hit: SearchHit }): React.ReactElement {
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const sessions = useSessionStore((s) => s.sessions)
+  const isDir = hit.type === 'directory'
+  const node: FileTreeNode = { name: hit.name, path: hit.path, type: hit.type }
+  const dir = hit.rel.includes('/') ? hit.rel.slice(0, hit.rel.lastIndexOf('/')) : ''
+
+  const insertRef = useCallback((): void => {
+    const sid = activeSessionId
+    if (!sid) return
+    const activeSess = sessions.find((s) => s.id === sid)
+    const wd = activeSess?.workdir ?? ''
+    const ref = formatFileRefForClaudeCode(hit.path, wd, isDir) + ' '
+    if (injectEmbedDraft(sid, ref)) return
+    window.electronAPI.sendInput(sid, ref)
+  }, [activeSessionId, sessions, hit.path, isDir])
+
+  const handleDoubleClick = useCallback((): void => {
+    if (!isDir && isOfficeFile(hit.name)) { openOfficePreview(hit.path); return }
+    if (!isDir && isImageFile(hit.name)) { void openImagePreview(hit.path); return }
+    if (!isDir && isTextFile(hit.name)) { void openTextEditor(hit.path); return }
+    insertRef()
+  }, [hit.path, hit.name, isDir, insertRef])
+
+  return (
+    <button
+      type="button"
+      draggable
+      onDragStart={(e) => setFileDragData(e, node)}
+      onDoubleClick={handleDoubleClick}
+      className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+      title={hit.path}
+    >
+      {getFileIcon(hit.name, isDir)}
+      <span className="truncate shrink-0 max-w-[55%]">{hit.name}</span>
+      {dir && <span className="truncate text-[10px] text-claude-border/90 ml-auto pl-1" dir="rtl">{dir}</span>}
+    </button>
+  )
+}
+
 interface FileTreeProps {
   nodes: FileTreeNode[]
   loading?: boolean
@@ -305,7 +353,27 @@ interface FileTreeProps {
 
 export function FileTree({ nodes, loading, currentPath, onChangePath, onRefresh, loadChildren }: FileTreeProps): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchHits, setSearchHits] = useState<SearchHit[] | null>(null)
+  const [searching, setSearching] = useState(false)
   const { t } = useI18n()
+
+  // [2026-06-15] 全树后端搜索（debounce），覆盖未展开的深层目录
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (!q || !currentPath) { setSearchHits(null); setSearching(false); return }
+    setSearching(true)
+    let cancelled = false
+    const id = setTimeout(() => {
+      void window.electronAPI.searchFiles(currentPath, q).then((hits) => {
+        if (cancelled) return
+        setSearchHits(hits ?? [])
+        setSearching(false)
+      }).catch(() => { if (!cancelled) { setSearchHits([]); setSearching(false) } })
+    }, 200)
+    return () => { cancelled = true; clearTimeout(id) }
+  }, [searchQuery, currentPath])
+
+  const isSearching = searchQuery.trim().length > 0
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -353,7 +421,19 @@ export function FileTree({ nodes, loading, currentPath, onChangePath, onRefresh,
         />
       </div>
       <div className="flex-1 overflow-y-auto py-1">
-        {loading ? (
+        {isSearching ? (
+          searching && searchHits === null ? (
+            <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
+              {t.common.loading}
+            </div>
+          ) : !searchHits || searchHits.length === 0 ? (
+            <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
+              {t.files.empty}
+            </div>
+          ) : (
+            searchHits.map((hit) => <FileSearchResultItem key={hit.path} hit={hit} />)
+          )
+        ) : loading ? (
           <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
             {t.common.loading}
           </div>

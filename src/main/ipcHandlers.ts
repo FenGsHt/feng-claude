@@ -514,6 +514,21 @@ export function registerIpcHandlers(
     return fsHandler.readTree(payload.dirPath, payload.depth ?? 3)
   })
 
+  ipcMain.handle(IPC.FS_SEARCH, async (_e, payload) => {
+    return fsHandler.search(payload.rootPath, payload.query)
+  })
+
+  ipcMain.handle(IPC.FS_WATCH_START, async (e, payload: { dirPath: string }) => {
+    const wc = e.sender
+    fsHandler.watchStart(payload.dirPath, () => {
+      if (!wc.isDestroyed()) wc.send(IPC.FS_CHANGED, { dirPath: payload.dirPath })
+    })
+  })
+
+  ipcMain.handle(IPC.FS_WATCH_STOP, async () => {
+    fsHandler.watchStop()
+  })
+
   ipcMain.handle(IPC.FS_OPEN_FILE_DIALOG, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const result = await dialog.showOpenDialog(win, {

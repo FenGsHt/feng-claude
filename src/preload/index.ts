@@ -87,6 +87,21 @@ const electronAPI = {
   readFileTree: (dirPath: string, depth?: number): Promise<FileTreeNode[]> =>
     ipcRenderer.invoke(IPC.FS_READ_TREE, { dirPath, depth }),
 
+  searchFiles: (rootPath: string, query: string): Promise<Array<{ name: string; path: string; rel: string; type: 'file' | 'directory' }>> =>
+    ipcRenderer.invoke(IPC.FS_SEARCH, { rootPath, query }),
+
+  watchFilesStart: (dirPath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.FS_WATCH_START, { dirPath }),
+
+  watchFilesStop: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.FS_WATCH_STOP),
+
+  onFsChanged: (callback: (payload: { dirPath: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: { dirPath: string }): void => callback(payload)
+    ipcRenderer.on(IPC.FS_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.FS_CHANGED, handler)
+  },
+
   openTextFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC.FS_OPEN_FILE_DIALOG),
 

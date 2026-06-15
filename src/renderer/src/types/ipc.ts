@@ -21,6 +21,7 @@ export const IPC = {
   WORKDIR_CHANGE: 'workdir:change',
 
   FS_READ_TREE: 'fs:readTree',
+  FS_SEARCH: 'fs:search',
   FS_WATCH_START: 'fs:watchStart',
   FS_WATCH_STOP: 'fs:watchStop',
   FS_CHANGED: 'fs:changed',
