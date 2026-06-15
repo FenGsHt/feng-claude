@@ -8,9 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.59 主要更新
+### v0.7.60 主要更新
 
-- **Telegram -32000 根治**：强制重连现在会清掉所有 telegram 插件残留进程（含孤儿 server.ts），并延时重连让 Telegram 释放旧轮询槽，解决多 server 抢同一 token 的冲突
+- **Telegram 多窗口消息投错窗口修复**：新增跨实例 owner 锁，同一 token 全局只一个窗口轮询；强制重连（↻）夺锁让当前窗口独占接收
+- **Telegram -32000 根治**：强制重连清掉所有 telegram 插件残留进程（含孤儿 server.ts），延时重连让 Telegram 释放旧轮询槽
 - **宠物"看到现场"**：点评时纳入 Claude 最近回答摘要，不再盲评
 - **宠物报错哨兵 / 可一键执行命令 / 成本·Git 哨兵**：报错时优先排错；反引号命令一键填入终端；token 偏多或久未提交时提醒
 
@@ -191,9 +192,10 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.59 Highlights
+### v0.7.60 Highlights
 
-- **Telegram -32000 fix**: force-reconnect now kills all leftover telegram plugin processes (including orphan `server.ts` not tracked by bot.pid) and reconnects after a delay so Telegram releases the old polling slot — resolves multiple servers fighting over the same token
+- **Telegram multi-window misrouting fix**: new cross-instance owner lock so only one window polls a given token; force-reconnect (↻) steals the lock to make the current window the exclusive receiver
+- **Telegram -32000 fix**: force-reconnect kills all leftover telegram plugin processes (including orphan `server.ts`) and reconnects after a delay so Telegram releases the old polling slot
 - **Pet "sees the scene"**: pet commentary now includes a summary of Claude's latest reply — no more blind comments
 - **Pet error sentinel / one-click commands / cost·Git sentinels**: prioritizes troubleshooting on errors; backtick commands fill into the terminal; warns on token bursts or piled-up uncommitted changes
 

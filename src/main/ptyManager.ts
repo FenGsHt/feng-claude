@@ -404,6 +404,67 @@ function cleanStaleBotPid(dir: string): void {
   } catch { /* 文件不存在，忽略 */ }
 }
 
+/** [2026-06-15] 与 prepareTelegramChannel 一致地推导 token 的 stateDirId（供启动前跨实例锁检查复用） */
+function resolveTelegramStateDirId(
+  settings: ClaudeSettings,
+  requested?: TelegramChannelSessionConfig
+): { stateDirId: string; token?: string } {
+  const global = settings.telegramChannel
+  const config = requested ?? (global ? defaultTelegramFromGlobal(global) : undefined)
+  if (!config) return { stateDirId: 'telegram' }
+  const legacyGlobal = (config as TelegramChannelSessionConfig).useGlobalDefault === true
+  const token = (legacyGlobal ? global?.defaultBotToken : config.botToken)?.trim()
+  const stateDirId =
+    config.stateDirId?.trim() ||
+    (token ? `telegram-${createHash('md5').update(token).digest('hex').slice(0, 8)}` : 'telegram')
+  return { stateDirId, token }
+}
+
+/**
+ * [2026-06-15] 跨实例 Telegram owner 锁：lock 文件记录持有的「app 主进程 pid」。
+ * 多窗口 = 多个独立 app 实例，各自内存锁互不可见；用文件锁让同一 token 全局只有一个实例轮询，
+ * 避免多个 server.ts 抢同一 getUpdates（409 / -32000 / 消息投递到错误窗口）。
+ * 锁有效性 = 持有 pid 仍存活；持有实例崩溃/退出后 pid 死亡 → 锁自动失效，可被接管。
+ */
+interface TelegramOwnerLock { pid: number; sessionId: string; ts: number }
+function telegramOwnerLockFile(stateDir: string): string {
+  return join(stateDir, 'feng-owner.lock')
+}
+function readTelegramOwnerLock(stateDir: string): TelegramOwnerLock | null {
+  try {
+    const o = JSON.parse(readFileSync(telegramOwnerLockFile(stateDir), 'utf8'))
+    if (typeof o?.pid === 'number') return o as TelegramOwnerLock
+  } catch { /* 无锁文件 */ }
+  return null
+}
+/** 该 token 是否被「另一个仍存活的 app 实例」持有 */
+function isTelegramOwnedByOtherInstance(stateDir: string): boolean {
+  const lock = readTelegramOwnerLock(stateDir)
+  if (!lock || lock.pid === process.pid) return false
+  try { process.kill(lock.pid, 0) } catch { return false } // 持有进程已死 → 锁失效
+  return true
+}
+function writeTelegramOwnerLock(stateDir: string, sessionId: string): void {
+  try {
+    mkdirSync(stateDir, { recursive: true })
+    writeFileSync(
+      telegramOwnerLockFile(stateDir),
+      JSON.stringify({ pid: process.pid, sessionId, ts: Date.now() } as TelegramOwnerLock),
+      'utf8'
+    )
+  } catch { /* ignore */ }
+}
+/** 释放锁：默认仅当本实例持有时删除；force=true 时无条件删除（强制重连夺锁用） */
+function clearTelegramOwnerLock(stateDir: string, force = false): void {
+  try {
+    if (!force) {
+      const lock = readTelegramOwnerLock(stateDir)
+      if (lock && lock.pid !== process.pid) return
+    }
+    unlinkSync(telegramOwnerLockFile(stateDir))
+  } catch { /* ignore */ }
+}
+
 /** [2026-05-09] 非 Telegram 会话显式去 token 化：确保插件拿不到历史 .env / bot.pid */
 function ensureTokenlessTelegramStateDir(absDir: string): void {
   try {
@@ -701,14 +762,21 @@ export class PtyManager {
     const shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash'))
 
     // [2026-06-03] Telegram 单会话锁：已有其他 session 持有 bot，则本 session 用隔离目录，避免多进程争抢同一 Telegram bot
+    // [2026-06-15] 增加跨实例文件锁：多窗口=多 app 实例，内存锁互不可见；同一 token 全局只允许一个实例轮询
     let effectiveTelegramChannel = telegramChannel
     if (preparedWouldEnableTelegram(sessionId, s, telegramChannel, shellOnly)) {
-      if (this.telegramOwnerSessionId && this.telegramOwnerSessionId !== sessionId && this.sessions.has(this.telegramOwnerSessionId)) {
-        console.log('[telegram-channel] session', sessionId, 'blocked — owner is', this.telegramOwnerSessionId)
+      const { stateDirId } = resolveTelegramStateDirId(s, telegramChannel)
+      const tokenStateDir = telegramStateDir(stateDirId)
+      const sameInstanceBlocked = !!(this.telegramOwnerSessionId && this.telegramOwnerSessionId !== sessionId && this.sessions.has(this.telegramOwnerSessionId))
+      const otherInstanceOwns = this.telegramOwnerSessionId !== sessionId && isTelegramOwnedByOtherInstance(tokenStateDir)
+      if (sameInstanceBlocked || otherInstanceOwns) {
+        console.log('[telegram-channel] session', sessionId, 'blocked —',
+          sameInstanceBlocked ? ('in-instance owner ' + this.telegramOwnerSessionId) : 'another app instance owns this token')
         effectiveTelegramChannel = { ...(telegramChannel ?? defaultTelegramFromGlobal(s.telegramChannel!)!), enabled: false }
       } else {
         this.telegramOwnerSessionId = sessionId
-        console.log('[telegram-channel] session', sessionId, 'acquired Telegram owner lock')
+        writeTelegramOwnerLock(tokenStateDir, sessionId)
+        console.log('[telegram-channel] session', sessionId, 'acquired Telegram owner lock (pid', process.pid, ')')
       }
     }
     const preparedTelegram = prepareTelegramChannel(sessionId, s, effectiveTelegramChannel, shellOnly)
@@ -1118,6 +1186,11 @@ export class PtyManager {
       }
       try { unlinkSync(pidFile) } catch { /* may not exist */ }
     } catch { /* no pid file, ok */ }
+    // [2026-06-15] 夺取跨实例 owner 锁：让「执行强制重连的这个窗口」成为新 owner，
+    // 其它实例下次启动会看到锁被本实例持有而退避，消息从此只投递到本窗口。
+    clearTelegramOwnerLock(stateDir, true)
+    this.telegramOwnerSessionId = sessionId
+    writeTelegramOwnerLock(stateDir, sessionId)
     // 写 /plugin\r 触发 Claude Code 重连 MCP
     const pty = session.ptyProcess
     if (!pty && !session.daemonSocket) {
@@ -1156,7 +1229,13 @@ export class PtyManager {
           }
         }
       }
-      if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
+      // [2026-06-15] 释放 owner：清内存锁 + 删跨实例文件锁（让其它窗口可接管）
+      if (this.telegramOwnerSessionId === sessionId) {
+        this.telegramOwnerSessionId = null
+        if (session.telegramChannelLaunchEnabled && session.telegramStateDirAbs) {
+          clearTelegramOwnerLock(session.telegramStateDirAbs)
+        }
+      }
       this.sessions.delete(sessionId)
     }
   }

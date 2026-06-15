@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.60] - 2026-06-15
+
+### 修复 | Bug Fixes
+- **Telegram 多窗口消息投递到错误窗口**：新增跨实例 owner 文件锁（`feng-owner.lock`，记录持有的 app 主进程 pid）。多窗口=多个独立 app 实例，原内存锁互不可见会各起一个 poller 抢同一 token；现在同一 token 全局只允许一个实例轮询，其它实例的会话自动退避（不起 poller）。持有实例退出/崩溃后锁自动失效可接管；会话关闭释放锁；**强制重连（↻）会夺锁**，让执行重连的那个窗口成为新 owner，消息从此只投递到该窗口
+
 ## [0.7.59] - 2026-06-15
 
 ### 修复 | Bug Fixes
