@@ -279,6 +279,7 @@ function notifyBrowserState(): void {
 
 function setBounds(win: BrowserWindow): void {
   if (!state.view || !state.mainWin) return
+  if (state.view.webContents.isDestroyed()) return
   const bounds = win.getContentBounds()
   // [2026-05-01] 浏览器面板右边需要给 Tools calls 面板留空间
   const effectiveWidth = bounds.width - state.toolsPanelWidth
@@ -306,7 +307,7 @@ function setBounds(win: BrowserWindow): void {
   }
 
   // 导航栏（历史面板/命名条打开时向下延伸覆盖浏览器内容，不挤压内容区）
-  if (state.navView) {
+  if (state.navView && !state.navView.webContents.isDestroyed()) {
     state.navView.setBounds({
       x: viewX,
       y: TITLEBAR_H,
