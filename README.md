@@ -8,13 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.58 主要更新
+### v0.7.59 主要更新
 
-- **宠物"看到现场"**：点评时纳入 Claude 最近回答摘要，不再盲评；能针对真实发生的事给建议
-- **宠物报错哨兵**：会话报错时强制触发、冷却减半，优先给排错方向
-- **宠物建议可一键执行**：回复中反引号命令显示「▶」按钮，点击填入当前终端
-- **宠物成本/Git 哨兵**：输出 token 偏多提示成本；未提交改动多时提醒 commit
-- **宠物输入污染修复 + 日志上限 200**：剥离鼠标转义序列，宠物不再被刷屏激怒
+- **Telegram -32000 根治**：强制重连现在会清掉所有 telegram 插件残留进程（含孤儿 server.ts），并延时重连让 Telegram 释放旧轮询槽，解决多 server 抢同一 token 的冲突
+- **宠物"看到现场"**：点评时纳入 Claude 最近回答摘要，不再盲评
+- **宠物报错哨兵 / 可一键执行命令 / 成本·Git 哨兵**：报错时优先排错；反引号命令一键填入终端；token 偏多或久未提交时提醒
 
 ### v0.7.51 主要更新
 
@@ -193,13 +191,11 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.58 Highlights
+### v0.7.59 Highlights
 
-- **Pet "sees the scene"**: pet commentary now includes a summary of Claude's latest reply — no more blind comments, advice grounded in what actually happened
-- **Pet error sentinel**: when a turn ends in error, the pet force-triggers with halved cooldown and prioritizes troubleshooting
-- **Pet one-click commands**: commands wrapped in backticks show a "▶" button in the bubble that fills them into the current terminal
-- **Pet cost/Git sentinels**: warns on large token bursts; new `git:dirtyCount` reminds you to commit when changes pile up
-- **Pet input cleanup + 200-log cap**: mouse escape sequences stripped so the pet no longer mistakes them for spam
+- **Telegram -32000 fix**: force-reconnect now kills all leftover telegram plugin processes (including orphan `server.ts` not tracked by bot.pid) and reconnects after a delay so Telegram releases the old polling slot — resolves multiple servers fighting over the same token
+- **Pet "sees the scene"**: pet commentary now includes a summary of Claude's latest reply — no more blind comments
+- **Pet error sentinel / one-click commands / cost·Git sentinels**: prioritizes troubleshooting on errors; backtick commands fill into the terminal; warns on token bursts or piled-up uncommitted changes
 
 ### v0.7.51 Highlights
 

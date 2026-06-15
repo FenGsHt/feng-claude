@@ -353,6 +353,43 @@ function isTelegramBotProcess(pid: number): boolean {
   } catch { return false }
 }
 
+/**
+ * [2026-06-15] 枚举并 kill 所有 telegram 插件相关的 bun 进程。
+ *
+ * 背景：插件 start = `bun install && bun server.ts`，从插件目录（.../claude-plugins-official/telegram/<ver>）启动。
+ *   - launcher 进程命令行含 `claude-plugins-official`
+ *   - 实际 channel server 命令行仅为 `bun server.ts`（不含插件路径，cwd 才是插件目录）
+ * bot.pid 只记录单个 server PID，一旦出现「bot.pid 不知道的孤儿 server.ts」（多次启动/异常退出残留），
+ * 多个 server 抢同一 Telegram token 的 getUpdates → 409 冲突 → 插件报 -32000。
+ *
+ * 注意：所有 token 的 bot 都跑同一份 `bun server.ts`，命令行无法区分 token，因此本函数会清掉**全部** telegram
+ * 插件 bun 进程。仅用于用户显式触发的「强制重连」恢复动作，不在常规启动路径调用，避免误杀其它 token 的 bot。
+ *
+ * @returns 清掉的进程数（失败返回 0）
+ */
+function killTelegramPluginBunProcesses(): number {
+  try {
+    if (process.platform === 'win32') {
+      const psCmd =
+        "$p = Get-CimInstance Win32_Process -Filter \"Name='bun.exe'\"; " +
+        "$t = $p | Where-Object { $_.CommandLine -and ($_.CommandLine -match 'claude-plugins-official' -or $_.CommandLine -match 'server\\.ts\\s*$') }; " +
+        "$t | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }; " +
+        "($t | Measure-Object).Count"
+      const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], {
+        encoding: 'utf8', timeout: 8000, windowsHide: true
+      })
+      return parseInt((r.stdout || '0').trim(), 10) || 0
+    } else {
+      // Unix：命令行含插件路径，或 bun 跑 server.ts
+      spawnSync('pkill', ['-f', 'claude-plugins-official/telegram'], { encoding: 'utf8', timeout: 5000 })
+      spawnSync('pkill', ['-f', 'bun.*server\\.ts'], { encoding: 'utf8', timeout: 5000 })
+      return 1
+    }
+  } catch {
+    return 0
+  }
+}
+
 /** [2026-06-13] bot.pid 里的进程已死、或非 telegram 进程时删除（防止 PID 复用导致误保留） */
 function cleanStaleBotPid(dir: string): void {
   const pidFile = join(dir, 'bot.pid')
@@ -1061,12 +1098,17 @@ export class PtyManager {
     }
   }
 
-  /** [2026-06-13] 强制重连 Telegram bot：kill 旧 bun → 删 bot.pid → 向 PTY 写 /plugin\r */
+  /** [2026-06-13] 强制重连 Telegram bot：kill 旧 bun → 删 bot.pid → 向 PTY 写 /plugin\r
+   *  [2026-06-15] 不再只 kill bot.pid 里的单个 PID：枚举并清掉所有 telegram 插件 bun 进程（含 bot.pid
+   *  追踪不到的孤儿 server.ts），根治多 server 抢同一 token 导致的 -32000 冲突。 */
   telegramForceReconnect(sessionId: string): { ok: boolean; error?: string } {
     const session = this.sessions.get(sessionId)
     if (!session) return { ok: false, error: 'session not found' }
     const stateDir = session.telegramStateDirAbs
     if (!stateDir) return { ok: false, error: 'no telegram state dir for this session' }
+    // 全量清掉 telegram 插件 bun 进程（launcher + 孤儿 server.ts）
+    const killed = killTelegramPluginBunProcesses()
+    console.log('[telegram-channel] force-reconnect killed bun processes:', killed)
     const pidFile = join(stateDir, 'bot.pid')
     try {
       const pidStr = readFileSync(pidFile, 'utf8').trim()
@@ -1078,14 +1120,20 @@ export class PtyManager {
     } catch { /* no pid file, ok */ }
     // 写 /plugin\r 触发 Claude Code 重连 MCP
     const pty = session.ptyProcess
-    if (pty) {
-      pty.write('/plugin\r')
-    } else if (session.daemonSocket) {
-      const payload = JSON.stringify({ type: 'input', data: '/plugin\r' }) + '\n'
-      session.daemonSocket.write(payload)
-    } else {
+    if (!pty && !session.daemonSocket) {
       return { ok: false, error: 'no active pty' }
     }
+    /* [2026-06-15] 延时再写 /plugin：刚 kill 的旧 server 需要几秒释放 Telegram getUpdates 轮询槽，
+     * 否则新连接仍可能撞 409 → -32000。延迟 2.5s 让 Telegram 侧释放。 */
+    setTimeout(() => {
+      const s = this.sessions.get(sessionId)
+      if (!s) return
+      if (s.ptyProcess) {
+        s.ptyProcess.write('/plugin\r')
+      } else if (s.daemonSocket) {
+        s.daemonSocket.write(JSON.stringify({ type: 'input', data: '/plugin\r' }) + '\n')
+      }
+    }, 2500)
     return { ok: true }
   }
 

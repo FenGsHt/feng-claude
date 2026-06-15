@@ -268,9 +268,9 @@
 
 #### 强制重连（↻）
 
-- **场景**：出现 `-32000` 错误（旧 bot 进程 / 跨会话 PID 占用）
+- **场景**：出现 `-32000` 错误（旧 bot 进程 / 孤儿 server.ts / 跨会话占用同一 token）
 - **操作**：Settings → Telegram Channel → 点击 `↻`
-- **效果**：SIGTERM 终止旧 bot → 删 bot.pid → 向终端发 `/plugin` 触发重连
+- **效果**：枚举并清掉**所有** telegram 插件 bun 进程（含 `bot.pid` 追踪不到的孤儿 `server.ts`）→ 删 bot.pid → 延时 2.5s 后向终端发 `/plugin` 重连（等 Telegram 释放旧轮询槽，避免再撞 409）
 
 #### 单会话锁
 

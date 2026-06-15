@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.59] - 2026-06-15
+
+### 修复 | Bug Fixes
+- **Telegram -32000 根治**：强制重连不再只 kill `bot.pid` 记录的单个 PID，改为枚举并清掉**所有** telegram 插件 bun 进程（含 `bot.pid` 追踪不到的孤儿 `server.ts`），解决多个 server 抢同一 token 的 getUpdates（409 冲突）导致的 -32000；`/plugin` 重连延时 2.5s，给 Telegram 释放旧轮询槽，避免新连接仍撞 409
+
 ## [0.7.58] - 2026-06-15
 
 ### 新功能 | Features
