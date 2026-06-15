@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.56 主要更新
+### v0.7.57 主要更新
 
+- **搜索结果"在文件树中定位"**：搜索结果右键菜单一键跳回文件树对应位置，级联展开并高亮
 - **文件侧栏全树搜索**：搜索递归遍历整个工作目录，三级以上深层文件也能搜到（扁平结果含相对路径）
 - **文件侧栏自动刷新**：监听文件增删/重命名自动刷新文件树，保留已展开文件夹状态
 - **录制/回放合并按钮**：导航栏录制与回放合并，hover 弹下拉、直接点击即录制
-- **隐藏终端标签栏 token 统计**：详细统计移至侧栏 Stats 面板
 
 ### v0.7.51 主要更新
 
@@ -192,12 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.56 Highlights
+### v0.7.57 Highlights
 
+- **"Locate in file tree" from search**: search-result context menu jumps back to the item's position in the tree, cascading expansion with a brief highlight
 - **File sidebar full-tree search**: search recursively walks the whole workdir so deeply-nested files (3+ levels) are found, returning a flat result list with relative paths
 - **File sidebar auto-refresh**: watches the workdir for file add/delete/rename and refreshes the tree automatically, preserving expanded-folder state
 - **Merged record/play button**: nav bar record and play merged into one button — hover to open a dropdown, click directly to start recording
-- **Hidden token stats in terminal tab header**: detailed stats remain in the sidebar Stats panel
 
 ### v0.7.51 Highlights
 

@@ -9,6 +9,11 @@ import { isOfficeFile } from '../office/officeFileDetector'
 import { openOfficePreview, openTextEditor, openImagePreview } from './sidebarNav'
 import { isTextFile, isImageFile } from './TextEditorPanel'
 
+// [2026-06-15] 路径规整：统一斜杠、去尾斜杠，用于"在文件树中定位"的祖先匹配
+function normPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
 function setFileDragData(e: React.DragEvent, node: FileTreeNode): void {
   const payload: FileDragPayload = {
     path: node.path,
@@ -119,14 +124,35 @@ interface NodeProps {
   depth: number
   searchQuery: string
   loadChildren?: (dirPath: string) => Promise<void>
+  revealPath?: string | null
+  onRevealed?: () => void
 }
 
-function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps): React.ReactElement {
+function FileTreeNodeItem({ node, depth, searchQuery, loadChildren, revealPath, onRevealed }: NodeProps): React.ReactElement {
   const [expanded, setExpanded] = useState(depth < 1)
+  const [highlight, setHighlight] = useState(false)
+  const rowRef = useRef<HTMLButtonElement | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: FileTreeNode } | null>(null)
   const ctxMenuDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const sessions = useSessionStore((s) => s.sessions)
+
+  // [2026-06-15] "在文件树中定位"：祖先节点自动展开，目标节点滚动到中间并短暂高亮
+  useEffect(() => {
+    if (!revealPath) return
+    const me = normPath(node.path)
+    const target = normPath(revealPath)
+    if (me === target) {
+      const sid = setTimeout(() => {
+        rowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 60)
+      setHighlight(true)
+      const clr = setTimeout(() => { setHighlight(false); onRevealed?.() }, 1600)
+      return () => { clearTimeout(sid); clearTimeout(clr) }
+    } else if (target.startsWith(me + '/')) {
+      setExpanded(true)
+    }
+  }, [revealPath, node.path]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lazy load children when expanding a directory with no children
   useEffect(() => {
@@ -246,13 +272,14 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
       <>
         <div>
           <button
+            ref={rowRef}
             type="button"
             draggable
             onDragStart={(e) => setFileDragData(e, node)}
             onClick={() => setExpanded((v) => !v)}
             onDoubleClick={handleDoubleClick}
             onContextMenu={handleContextMenu}
-            className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+            className={`flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${highlight ? 'bg-amber-500/25 text-claude-text' : 'text-claude-muted hover:text-claude-text hover:bg-claude-border/50'}`}
             style={{ paddingLeft: `${8 + depth * 14}px` }}
             title={node.path}
           >
@@ -263,7 +290,7 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
           {expanded && hasChildren && (
             <div>
               {node.children!.map((child) => (
-                <FileTreeNodeItem key={child.path} node={child} depth={depth + 1} searchQuery={searchQuery} loadChildren={loadChildren} />
+                <FileTreeNodeItem key={child.path} node={child} depth={depth + 1} searchQuery={searchQuery} loadChildren={loadChildren} revealPath={revealPath} onRevealed={onRevealed} />
               ))}
             </div>
           )}
@@ -276,12 +303,13 @@ function FileTreeNodeItem({ node, depth, searchQuery, loadChildren }: NodeProps)
   return (
     <>
       <button
+        ref={rowRef}
         type="button"
         draggable
         onDragStart={(e) => setFileDragData(e, node)}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
-        className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+        className={`flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${highlight ? 'bg-amber-500/25 text-claude-text' : 'text-claude-muted hover:text-claude-text hover:bg-claude-border/50'}`}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         title={node.path}
       >
@@ -302,12 +330,23 @@ interface SearchHit {
   type: 'file' | 'directory'
 }
 
-function FileSearchResultItem({ hit }: { hit: SearchHit }): React.ReactElement {
+function FileSearchResultItem({ hit, onLocate }: { hit: SearchHit; onLocate: (hit: SearchHit) => void }): React.ReactElement {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const sessions = useSessionStore((s) => s.sessions)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const isDir = hit.type === 'directory'
   const node: FileTreeNode = { name: hit.name, path: hit.path, type: hit.type }
   const dir = hit.rel.includes('/') ? hit.rel.slice(0, hit.rel.lastIndexOf('/')) : ''
+
+  // 点击菜单外关闭
+  useEffect(() => {
+    if (!ctxMenu) return
+    const id = setTimeout(() => {
+      const handler = (): void => setCtxMenu(null)
+      document.addEventListener('click', handler, { once: true })
+    }, 0)
+    return () => clearTimeout(id)
+  }, [ctxMenu])
 
   const insertRef = useCallback((): void => {
     const sid = activeSessionId
@@ -326,19 +365,47 @@ function FileSearchResultItem({ hit }: { hit: SearchHit }): React.ReactElement {
     insertRef()
   }, [hit.path, hit.name, isDir, insertRef])
 
-  return (
-    <button
-      type="button"
-      draggable
-      onDragStart={(e) => setFileDragData(e, node)}
-      onDoubleClick={handleDoubleClick}
-      className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
-      title={hit.path}
+  const menuBtnCls = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-claude-text hover:bg-[var(--theme-panel-bg-soft)] transition-colors'
+  const ctxMenuPortal = ctxMenu && createPortal(
+    <div
+      className="fixed z-[9999] min-w-[170px] rounded-lg border border-[var(--theme-panel-border)] bg-[var(--theme-card-bg)] py-1 shadow-2xl backdrop-blur-md"
+      style={{ left: ctxMenu.x, top: ctxMenu.y }}
+      role="menu"
     >
-      {getFileIcon(hit.name, isDir)}
-      <span className="truncate shrink-0 max-w-[55%]">{hit.name}</span>
-      {dir && <span className="truncate text-[10px] text-claude-border/90 ml-auto pl-1" dir="rtl">{dir}</span>}
-    </button>
+      <button type="button" className={menuBtnCls} onClick={() => { onLocate(hit); setCtxMenu(null) }}>
+        在文件树中定位
+      </button>
+      <div className="my-1 border-t border-[var(--theme-panel-border)]" />
+      <button type="button" className={menuBtnCls} onClick={() => { window.electronAPI.writeClipboardText(hit.path); setCtxMenu(null) }}>
+        复制绝对路径
+      </button>
+      <button type="button" className={menuBtnCls} onClick={() => { window.electronAPI.revealFile(hit.path); setCtxMenu(null) }}>
+        在文件管理器中打开
+      </button>
+      <button type="button" className={menuBtnCls} onClick={() => { insertRef(); setCtxMenu(null) }}>
+        @ 引用到终端
+      </button>
+    </div>,
+    document.body
+  )
+
+  return (
+    <>
+      <button
+        type="button"
+        draggable
+        onDragStart={(e) => setFileDragData(e, node)}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }) }}
+        className="flex cursor-pointer items-center gap-1.5 w-full text-left px-2 py-1 hover:bg-claude-border/50 rounded text-[12px] text-claude-muted hover:text-claude-text transition-colors"
+        title={hit.path}
+      >
+        {getFileIcon(hit.name, isDir)}
+        <span className="truncate shrink-0 max-w-[55%]">{hit.name}</span>
+        {dir && <span className="truncate text-[10px] text-claude-border/90 ml-auto pl-1" dir="rtl">{dir}</span>}
+      </button>
+      {ctxMenuPortal}
+    </>
   )
 }
 
@@ -355,7 +422,19 @@ export function FileTree({ nodes, loading, currentPath, onChangePath, onRefresh,
   const [searchQuery, setSearchQuery] = useState('')
   const [searchHits, setSearchHits] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
+  const [revealPath, setRevealPath] = useState<string | null>(null)
   const { t } = useI18n()
+
+  // [2026-06-15] 搜索结果右键"在文件树中定位"：清空搜索 + 触发树内展开滚动
+  const handleLocate = useCallback(async (hit: SearchHit) => {
+    setSearchQuery('')
+    setSearchHits(null)
+    // 确保目标所在目录的子级已加载（搜索结果可能指向未展开的深层目录）
+    if (loadChildren && hit.type === 'directory') {
+      await loadChildren(hit.path).catch(() => {})
+    }
+    setRevealPath(hit.path)
+  }, [loadChildren])
 
   // [2026-06-15] 全树后端搜索（debounce），覆盖未展开的深层目录
   useEffect(() => {
@@ -431,7 +510,7 @@ export function FileTree({ nodes, loading, currentPath, onChangePath, onRefresh,
               {t.files.empty}
             </div>
           ) : (
-            searchHits.map((hit) => <FileSearchResultItem key={hit.path} hit={hit} />)
+            searchHits.map((hit) => <FileSearchResultItem key={hit.path} hit={hit} onLocate={handleLocate} />)
           )
         ) : loading ? (
           <div className="flex items-center justify-center py-8 text-claude-muted text-xs">
@@ -442,7 +521,7 @@ export function FileTree({ nodes, loading, currentPath, onChangePath, onRefresh,
             {t.files.empty}
           </div>
         ) : (
-          nodes.map((node) => <FileTreeNodeItem key={node.path} node={node} depth={0} searchQuery={searchQuery} loadChildren={loadChildren} />)
+          nodes.map((node) => <FileTreeNodeItem key={node.path} node={node} depth={0} searchQuery={searchQuery} loadChildren={loadChildren} revealPath={revealPath} onRevealed={() => setRevealPath(null)} />)
         )}
       </div>
     </div>
