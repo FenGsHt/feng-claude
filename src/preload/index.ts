@@ -311,6 +311,9 @@ const electronAPI = {
     // 销毁某 session 的所有调试浏览器 tab（终端关闭时）
     destroySession: (sessionId: string): void =>
       ipcRenderer.send('browser-view:destroy-session', sessionId),
+    // 会话重启：将旧 session 的浏览器 tab 迁移到新 session，避免重置 URL
+    migrateSession: (oldId: string, newId: string): void =>
+      ipcRenderer.send('browser-view:migrate-session', oldId, newId),
   },
 
   // Git Worktree

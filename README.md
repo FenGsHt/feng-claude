@@ -8,12 +8,14 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.50 主要更新
+### v0.7.51 主要更新
 
-- **统计面板费用修正**：官方配置（Anthropic）费用改用 per-model 精确定价（Opus ¥35/M、Sonnet ¥21/M），修复统计页费用严重偏低的问题
-- **FEATURES.md 功能手册 + 标题栏 `?` 按钮**：右上角新增帮助入口，点击打开完整双语功能与快捷键文档
-- **Telegram 强制重连**：Settings → Telegram Channel 右上角新增 `↻` 按钮，一键 kill 旧 bot 进程、清除 bot.pid、触发重连，解决跨会话 PID 占用导致的 -32000 错误
-- **Token 统计优化**：cacheCreate（☁）默认隐藏不占位，鼠标悬浮时显示，解释高费用来源；per-model 费用细分
+- **FEATURES.md 全面补全**：完整收录所有 42 个浏览器 MCP 工具（标签页管理、网站克隆、截图差异对比、JS 执行、Routine 录制/回放）；补全缺失快捷键 Alt+E/R、Alt+↑/↓、Alt+M（语音）、Ctrl+P（文件搜索）、Ctrl+F（文件内查找）、Shift+Enter（嵌入换行）；新增文本编辑器专区与语音输入专区
+- **Token 归属修复**：同目录多 session 共享 watcher 时全局 token 归因改为跟踪最近创建的 session，修复重启会话后 token 误计入旧 profile 的问题
+- **会话重启保留调试浏览器**：新增 `migrateSessionBrowser`，重启时把旧 session 的浏览器 tab 迁移到新 session，避免调试浏览器被重置到初始页面
+- **分屏拖动同步**：拖动分屏分隔线时同步更新所有后台 session 的调试浏览器位置
+- **DevTools 重载不抢前台**：调试浏览器 DevTools 重新加载页面时抑制主窗口 focus 激活
+- **useDragResize hook**：AppShell 三处拖动缩放抽取为通用 hook
 
 ### 内置 MCP 与上游说明
 
@@ -183,12 +185,14 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.50 Highlights
+### v0.7.51 Highlights
 
-- **Stats panel cost fix**: official profile (Anthropic) now uses per-model pricing (Opus ¥35/M, Sonnet ¥21/M), fixing severely underreported costs in the stats panel
-- **FEATURES.md + title bar `?` button**: new help entry in the top-right corner opens the full bilingual feature & shortcut reference on GitHub
-- **Telegram force reconnect**: `↻` button in Settings → Telegram Channel kills the old bot process, clears bot.pid, and triggers `/plugin` — fixes -32000 errors caused by stale PIDs from other sessions
-- **Token stats improvements**: cacheCreate (☁) hidden by default (no layout shift), visible on hover; per-model cost breakdown
+- **FEATURES.md rewritten**: now covers all 42 browser MCP tools (tab management, site cloning, screenshot diff, JS execution, routine record/replay); adds missing shortcuts (Alt+E/R, Alt+↑/↓, Alt+M, Ctrl+P, Ctrl+F, Shift+Enter); new Text Editor & Voice Input sections, session creation options (Resume / Shell-only)
+- **Token attribution fix**: per-profile global token tracking now follows the most-recently-created session (`primarySessionId`) when multiple sessions share a watcher for the same workdir — fixes tokens being mis-attributed to the old profile after a session restart
+- **Session restart preserves debug browser**: new `migrateSessionBrowser` transfers browser tabs from old to new session ID on restart, so the debug browser stays on its current page instead of resetting to the initial URL
+- **Split drag syncs all sessions**: dragging the split divider now updates the debug browser bounds for every background session, not just the foreground one
+- **DevTools reload no longer steals focus**: when the debug browser's DevTools reloads the inspected page, the app stays in the background instead of being popped to the foreground
+- **useDragResize hook**: three drag-resize handlers in AppShell (sidebar, editor split, debug browser panel) extracted into a shared hook
 
 ### Bundled MCPs & upstream
 

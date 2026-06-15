@@ -73,8 +73,11 @@ interface SessionWatch {
   projectDir: string
   /**
    * [2026-05-06] 同一 projectDir 可能被多个标签共用 watcher；转录广播需发到每个 sessionId（token 路径仍用首 sessionId，保持原行为）
+   * [2026-06-15] primarySessionId: 最近创建的 session 优先作为 primary，确保重启后归属到新 session 的配置
    */
   linkedSessionIds: Set<string>
+  /** [2026-06-15] 最近一次 watchSession 创建的 session — token 全局归因使用此 session 的 profileId */
+  primarySessionId: string
   /**
    * Per-file byte offsets — only bytes beyond this position are processed.
    * Pre-populated with current sizes of files that existed at watcher-start
@@ -133,6 +136,7 @@ export class ClaudeSessionWatcher {
     const existing = this.watchedProjectDirs.get(projectDir)
     if (existing) {
       existing.linkedSessionIds.add(sessionId)
+      existing.primarySessionId = sessionId  // [2026-06-15] newest session owns global attribution
       this.sessions.set(sessionId, existing)
       /* [2026-05-06] 同一目录新开标签：把该项目已有 JSONL 全量同步到新 session（无 scrollback，避免重复） */
       if (this.shouldEmitTranscript()) {
@@ -146,6 +150,7 @@ export class ClaudeSessionWatcher {
       sessionId,
       projectDir,
       linkedSessionIds: new Set([sessionId]),
+      primarySessionId: sessionId,
       fileByteOffsets: new Map(),
       seenMessageIds: new Set(),
       timer: null,
@@ -309,19 +314,20 @@ export class ClaudeSessionWatcher {
           }
           sw.lastTokenTime = Date.now()
           /* [2026-05-12] 同一 projectDir 多 session 各自收到独立 token 更新
-           * [2026-06-01] isPrimary: 只有第一个 session（watcher 创建者）标记为 primary，
-           * renderer 仅对 primary 更新全局 store，防止多标签重复计费 */
+           * [2026-06-01] isPrimary: 只有 primarySessionId（最近创建的 session）标记为 primary，
+           * renderer 仅对 primary 更新全局 store，防止多标签重复计费
+           * [2026-06-15] 改用 primarySessionId（最近创建）而非首个，确保重启后新 session 优先 */
           const linkedArr = [...sw.linkedSessionIds]
-          for (let i = 0; i < linkedArr.length; i++) {
+          for (const sid of linkedArr) {
             this.emit({
-              sessionId: linkedArr[i],
+              sessionId: sid,
               input: usage.input,
               output: usage.output,
               cacheCreate: usage.cacheCreate,
               cacheRead: usage.cacheRead,
               model: usage.model,
               reset: false,
-              isPrimary: i === 0
+              isPrimary: sid === sw.primarySessionId
             })
           }
         }

@@ -5,6 +5,22 @@
 
 ---
 
+## v0.7.51 (2026-06-13)
+
+### 文档
+- **FEATURES.md 全面补全**：完整收录所有 42 个浏览器 MCP 工具（标签页管理、网站克隆、截图差异对比、JS 执行、Routine 录制/回放）；补全缺失快捷键 Alt+E/R、Alt+↑/↓、Alt+M、Ctrl+P、Ctrl+F、Shift+Enter；新增文本编辑器专区、语音输入专区、会话创建选项（Resume/Shell-only）
+
+### 修复
+- **Token 归属修复**：同目录多 session 共享 watcher 时，全局 token 归因改为跟踪最近创建的 session（primarySessionId），修复重启会话后 token 误计入旧 profile 的问题
+- **会话重启保留调试浏览器**：新增 `migrateSessionBrowser`，重启时把旧 session 的浏览器 tab 迁移到新 session，避免调试浏览器被重置到初始页面
+- **分屏拖动同步**：拖动分屏分隔线改变 splitRatio 或 toolsPanelWidth 时，同步更新所有后台 session 的调试浏览器 bounds
+- **DevTools 重载不抢前台**：调试浏览器 DevTools 重新加载页面时，检测同 URL 重载并抑制主窗口 focus 激活，避免应用被弹到前台
+
+### 重构
+- **useDragResize hook**：AppShell 三处拖动缩放（侧栏、编辑器分屏、调试浏览器面板）抽取为通用 hook
+
+---
+
 ## v0.7.50 (2026-06-13)
 
 ### 修复

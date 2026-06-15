@@ -461,6 +461,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       })
       return
     }
+    // 将旧 session 的调试浏览器 tab 迁移到新 session，避免重新建 tab 并重置 URL
+    window.electronAPI.browserView?.migrateSession?.(id, result.sessionId)
     const resolvedWorkdir = result.workdir ?? workdir
     // [2026-06-11] restart 是显式切换配置/重启的路径，按当前设置快照 profile 名称
     const restartSettings = await window.electronAPI.settings.get().catch(() => null)

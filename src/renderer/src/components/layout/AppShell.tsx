@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from '../sidebar/Sidebar'
 import { TabBar } from '../tabs/TabBar'
@@ -11,6 +11,7 @@ import { setTerminalLineHandler } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
 import { useGlobalTokenStore } from '../../store/globalTokenStore'
 import { useLangStore } from '../../i18n'
+import { useDragResize } from '../../hooks/useDragResize'
 
 const SIDEBAR_DEFAULT = 280
 const SIDEBAR_MIN = 180
@@ -23,83 +24,41 @@ export function AppShell(): React.ReactElement {
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY)
     return saved ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parseInt(saved, 10))) : SIDEBAR_DEFAULT
   })
-  const isResizing = useRef(false)
-  const isBrowserResizing = useRef(false)
-  const browserDragStartX = useRef(0)
-  const browserDragStartWidth = useRef(0)
   const officePanelWidth = useOfficePreviewPanelStore((s) => s.visible ? s.width : 0)
   const editorVisible = useTextEditorStore((s) => s.visible)
   const splitSize = useTextEditorStore((s) => s.splitSize)
   const splitDirection = useTextEditorStore((s) => s.splitDirection)
   const setSplitSize = useTextEditorStore((s) => s.setSplitSize)
 
+  // Capture-at-mousedown refs shared across drag handlers
+  const sidebarStartW = useRef(0)
+  const editorStartSize = useRef(0)
+  const browserStartW = useRef(0)
+
   // ── Sidebar resize ──────────────────────────────────────────
-  const startResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    isResizing.current = true
-    const startX = e.clientX
-    const startW = sidebarWidth
+  const startResize = useDragResize({
+    onStart: () => { sidebarStartW.current = sidebarWidth },
+    onMove: (delta) => setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, sidebarStartW.current + delta))),
+    onEnd: () => setSidebarWidth((w) => { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(w)); return w }),
+  })
 
-    const onMove = (ev: MouseEvent): void => {
-      if (!isResizing.current) return
-      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + ev.clientX - startX))
-      setSidebarWidth(next)
-    }
-    const onUp = (): void => {
-      isResizing.current = false
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      setSidebarWidth((w) => { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(w)); return w })
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [sidebarWidth])
+  // ── Editor split resize (grows toward the left/top so delta is inverted) ──
+  const startEditorResize = useDragResize({
+    axis: splitDirection === 'horizontal' ? 'x' : 'y',
+    onStart: () => { editorStartSize.current = useTextEditorStore.getState().splitSize },
+    onMove: (delta) => setSplitSize(Math.max(200, Math.min(1400, editorStartSize.current - delta))),
+  })
 
-  // ── Editor split resize ─────────────────────────────────────
-  const startEditorResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const dir = useTextEditorStore.getState().splitDirection
-    const startPos = dir === 'horizontal' ? e.clientX : e.clientY
-    const startSize = useTextEditorStore.getState().splitSize
-
-    const onMove = (ev: MouseEvent): void => {
-      const pos = dir === 'horizontal' ? ev.clientX : ev.clientY
-      // dragging toward the editor (left for H, up for V) grows the editor
-      const next = Math.max(200, Math.min(1400, startSize + startPos - pos))
-      setSplitSize(next)
-    }
-    const onUp = (): void => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [setSplitSize])
-
-  // ── Browser panel resize ────────────────────────────────────
-  const startBrowserResize = useCallback((e: React.MouseEvent) => {
-    if (!browserPanel.visible) return
-    e.preventDefault()
-    isBrowserResizing.current = true
-    browserDragStartX.current = e.clientX
-    browserDragStartWidth.current = browserPanel.width
-
-    const onMove = (ev: MouseEvent): void => {
-      if (!isBrowserResizing.current) return
-      const delta = browserDragStartX.current - ev.clientX
-      const newWidth = Math.max(200, browserDragStartWidth.current + delta)
+  // ── Browser panel resize (grows leftward so delta is inverted) ─────────────
+  const startBrowserResize = useDragResize({
+    onStart: () => { if (browserPanel.visible) browserStartW.current = browserPanel.width },
+    onMove: (delta) => {
+      if (!browserPanel.visible) return
+      const newWidth = Math.max(200, browserStartW.current - delta)
       const opW = useOfficePreviewPanelStore.getState().visible ? useOfficePreviewPanelStore.getState().width : 0
-      const effectiveWidth = window.innerWidth - opW
-      void window.electronAPI.browserView?.setRatio?.(newWidth / effectiveWidth)
-    }
-    const onUp = (): void => {
-      isBrowserResizing.current = false
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [browserPanel])
+      void window.electronAPI.browserView?.setRatio?.(newWidth / (window.innerWidth - opW))
+    },
+  })
 
   useEffect(() => {
     setTerminalLineHandler((sessionId, line) => {

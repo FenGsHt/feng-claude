@@ -86,8 +86,16 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  // [2026-06-15] 仅首次 ready-to-show 调用 win.show()；
+  // 开发模式下 Vite 全量刷新会再次触发 ready-to-show，
+  // Windows 上 win.show() 无条件激活窗口（SetForegroundWindow），
+  // 导致后台运行的应用被弹到前台。
+  let firstShow = true
   win.on('ready-to-show', () => {
-    win.show()
+    if (firstShow) {
+      firstShow = false
+      win.show()
+    }
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {

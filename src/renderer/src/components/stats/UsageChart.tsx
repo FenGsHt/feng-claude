@@ -277,31 +277,23 @@ export function UsageChart(): React.ReactElement {
     { name: 'Cache↓', val: rangeData.cacheRead, cost: (rangeData.cacheRead / 1_000_000) * pricing.cacheReadPerM, color: 'text-amber-400' },
   ]
 
+  // Per-model range totals (for official profile cost via per-model pricing)
+  const rangePerModel = timeRange === 'today'
+    ? (dailyHistoryPerModel[todayDate] ?? {})
+    : timeRange === 'week'
+      ? sumPerModelHistory(dailyHistoryPerModel, weekDates)
+      : perModel
+
   // Per-profile pie chart
   const pieSlices = buildPieSlices(settings, rangePerProfile, rangeData)
-
-  // Per-model totals for the current time range (used for official profile cost)
-  const rangePerModel: Record<string, TokenTotals> =
-    timeRange === 'today'
-      ? (dailyHistoryPerModel[todayDate] ?? {})
-      : timeRange === 'week'
-        ? sumPerModelHistory(dailyHistoryPerModel, weekDates)
-        : perModel
 
   // Per-profile stats
   const profileStats = displayProfiles(settings, rangePerProfile).map((profile, i) => {
     const pt = rangePerProfile[profile.id] ?? { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }
-    // 官方配置没有自定义定价，改用 perModel 精确定价（Opus/Sonnet/Haiku 各自单价）
     const cost = profile.id === OFFICIAL_PROFILE_ID
       ? computeClaudeModelsCost(rangePerModel)
       : computeCost(pt, profile.pricing ?? DEFAULT_PRICING)
-    return {
-      id: profile.id,
-      name: profile.name,
-      tokens: tokenSum(pt),
-      cost,
-      color: COLORS[i % COLORS.length]
-    }
+    return { id: profile.id, name: profile.name, tokens: tokenSum(pt), cost, color: COLORS[i % COLORS.length] }
   }) ?? []
 
   // 14-day bar chart

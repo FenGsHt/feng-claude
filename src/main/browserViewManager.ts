@@ -48,6 +48,8 @@ interface BrowserTab {
   view: WebContentsView
   title: string
   consoleLogs: ConsoleLogEntry[]
+  /** [2026-06-15] 上一次 URL，用于区分重载与导航 */
+  _lastUrl?: string
 }
 
 interface SessionBrowser {
@@ -209,6 +211,10 @@ function levelToString(level: number): string {
 let devToolsDragging = false
 let devToolsDragTimer: NodeJS.Timeout | null = null
 
+// [2026-06-15] DevTools 触发页面重新加载时，webContents 会被 focus，连带激活父窗口。
+// 在 did-start-loading 检测到"同 URL 重载 + DevTools 开着"就标记抑制，主窗口 focus 事件据此撤销激活。
+let suppressFocusUntil = 0
+
 // [2026-04-30] 浏览器面板拖拽状态（通过主窗口 input-event 全局跟踪）
 let browserDragging = false
 let browserDragTimer: NodeJS.Timeout | null = null
@@ -276,6 +282,7 @@ function setBounds(win: BrowserWindow): void {
 function setSplitRatio(win: BrowserWindow, ratio: number): void {
   state.splitRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, ratio))
   setBounds(win)
+  syncAllBackgroundBounds(win)
   if (state.navView?.webContents) {
     // ratio 真正变化时才通知 navView 更新拖拽手柄记录的值
     state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
@@ -852,10 +859,24 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
     }
   })
 
+  // [2026-06-15] 检测 DevTools 触发的同 URL 重载：标记抑制，防止父窗口被激活弹到前台
+  // did-start-loading 在 did-navigate 之后触发，此时 getURL() 已是新 URL；
+  // 与上一次 did-navigate 保存的 _lastUrl 对比：相同 = 重载，不同 = 新导航。
+  view.webContents.on('did-start-loading', () => {
+    if (!state.devToolsVisible) return
+    const currentUrl = view.webContents.getURL()
+    const prevUrl = tab._lastUrl
+    if (currentUrl && prevUrl && currentUrl === prevUrl) {
+      suppressFocusUntil = Date.now() + 500
+      setTimeout(() => { suppressFocusUntil = 0 }, 600)
+    }
+  })
+
   const isForegroundActive = (): boolean =>
     sid === foregroundSessionId && getActiveTab(sid)?.id === tab.id
 
   view.webContents.on('did-navigate', (_, navUrl) => {
+    tab._lastUrl = navUrl  // [2026-06-15] 记录已完成的导航 URL，供 did-start-loading 对比重载
     if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
     addToHistory(navUrl, tab.title)
     // [2026-06-12] 录制中：记录导航并在新页面重注入 recorder（导航清空了注入脚本）
@@ -1704,6 +1725,19 @@ export function setForegroundSession(sessionId: string): void {
   pushRecordingState(sessionId)
 }
 
+/** 会话重启时，将旧 sessionId 的浏览器 tab 原地迁移到新 sessionId，避免重建 tab 并重置 URL。 */
+export function migrateSessionBrowser(oldId: string, newId: string): void {
+  if (!oldId || !newId || oldId === newId) return
+  const sb = sessionBrowsers.get(oldId)
+  if (!sb) return
+  sb.sessionId = newId
+  sessionBrowsers.set(newId, sb)
+  sessionBrowsers.delete(oldId)
+  const wd = sessionWorkdirs.get(oldId)
+  if (wd) { sessionWorkdirs.set(newId, wd); sessionWorkdirs.delete(oldId) }
+  if (foregroundSessionId === oldId) foregroundSessionId = newId
+}
+
 /** 销毁某 session 的全部 tab（终端关闭时调用），释放内存。 */
 export function destroySessionBrowser(sessionId: string): void {
   const sb = sessionBrowsers.get(sessionId)
@@ -1730,6 +1764,9 @@ export function registerBrowserViewIpc(): void {
   })
   ipcMain.on('browser-view:destroy-session', (_event, sessionId: string) => {
     destroySessionBrowser(sessionId)
+  })
+  ipcMain.on('browser-view:migrate-session', (_event, oldId: string, newId: string) => {
+    migrateSessionBrowser(oldId, newId)
   })
 
   // [2026-06-12] 导航栏标签条操作（作用于前台 session）
@@ -1838,7 +1875,7 @@ export function registerBrowserViewIpc(): void {
   ipcMain.on('browser-view:set-tools-panel-width', (event, width: number) => {
     const win = getBrowserOwnerWindow(event.sender)
     state.toolsPanelWidth = width
-    if (win && state.visible) setBounds(win)
+    if (win && state.visible) { setBounds(win); syncAllBackgroundBounds(win) }
   })
 
   // [2026-04-30] 浏览器面板拖拽（通过主窗口 input-event 全局跟踪，解决 WebContentsView 内 mousemove 出界断触问题）
@@ -1981,6 +2018,17 @@ export function getBrowserServerPort(): number { return browserServerPort }
 export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }> {
   /* [2026-04-30] HTTP /show 可能早于用户手动打开浏览器；原来未保存 win，state.mainWin=null 时仍返回 visible:true 但不显示。 */
   state.mainWin = win
+
+  // [2026-06-15] DevTools 重新加载页面时，webContents 被 focus 导致父窗口被 OS 激活弹到前台。
+  // 检测条件：DevTools 开着 + 开发模式 + 距最近一次「同 URL 重载」不足 500ms → blur 撤销激活。
+  win.on('focus', () => {
+    if (!is.dev || !state.devToolsVisible) return
+    if (Date.now() > suppressFocusUntil) return
+    setImmediate(() => {
+      const w = state.mainWin
+      if (w && w.isFocused()) w.blur()
+    })
+  })
 
   return new Promise((resolve) => {
     browserHttpServer = createServer((req: IncomingMessage, res: ServerResponse) => {

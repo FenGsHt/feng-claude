@@ -171,7 +171,8 @@ export function injectMockElectronAPI(): void {
         setToolsPanelWidth: (_width: number) => {},
         setOverlayOpen: (_open: boolean) => {},
         setActiveSession: (_sessionId: string) => {},
-        destroySession: (_sessionId: string) => {}
+        destroySession: (_sessionId: string) => {},
+        migrateSession: (_oldId: string, _newId: string) => {}
       },
       git: {
         isRepo: async () => ({ isRepo: true }),
