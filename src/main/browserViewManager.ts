@@ -487,6 +487,7 @@ button:disabled { opacity: 0.3; cursor: default; }
 .ud-text { flex: 1; min-width: 0; }
 .ud-title { display: block; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ud-url   { display: block; font-size: 11px; color: #4a90d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.ud-star  { flex: none; font-size: 13px; color: #f59e0b; margin-left: 6px; }
 /* 录制命名条（替代 window.prompt，Electron 不支持原生 prompt）。
    展开时撑高 navView，占控制行下方独立一行，不覆盖控制行。 */
 #save-bar {
@@ -753,6 +754,10 @@ button:disabled { opacity: 0.3; cursor: default; }
       const u = document.createElement('span'); u.className = 'ud-url'; u.textContent = item.url
       text.appendChild(t); text.appendChild(u)
       row.appendChild(icon); row.appendChild(text)
+      if (bookmarks.some(b => b.url === item.url)) {
+        const star = document.createElement('div'); star.className = 'ud-star'; star.textContent = '★'
+        row.appendChild(star)
+      }
       row.addEventListener('mousedown', e => { e.preventDefault(); navigateDropdown(item.url) })
       dd.appendChild(row)
     }
