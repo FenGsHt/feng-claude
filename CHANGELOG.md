@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.55] - 2026-06-15
+
+### 界面 | UI
+- **调试浏览器导航栏 SVG 图标统一**：所有按钮（后退、前进、刷新、收藏、录制、回放、拾取、DevTools、新标签、关闭）从 Unicode 字符替换为 Feather 风格统一 SVG 图标，视觉一致性提升
+
 ## [0.7.54] - 2026-06-15
 
 ### 修复 | Bug Fixes

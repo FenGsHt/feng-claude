@@ -445,6 +445,7 @@ button.active { color: #f59e0b; border-color: #f59e0b; background: #2a2200; }
 #bookmark-btn.active { color: #f59e0b; border-color: #f59e0b; background: #2a2200; }
 #record-btn.recording { color: #ef4444; border-color: #ef4444; background: #2a0a0a; }
 button:disabled { opacity: 0.3; cursor: default; }
+button svg { display: block; pointer-events: none; }
 /* 收藏栏：第三行，固定 26px */
 #bookmark-bar {
   display: flex;
@@ -549,20 +550,20 @@ button:disabled { opacity: 0.3; cursor: default; }
 </style></head><body>
   <div id="drag-handle" title="拖拽调整宽度"></div>
   <div id="tab-strip">
-    <button id="tab-new" title="新建标签页">+</button>
+    <button id="tab-new" title="新建标签页"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     <div class="spacer"></div>
-    <button id="close-btn" title="关闭浏览器">×</button>
+    <button id="close-btn" title="关闭浏览器"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <div id="ctrl-row">
-    <button id="back-btn" title="后退">◀</button>
-    <button id="fwd-btn" title="前进">▶</button>
-    <button id="reload-btn" title="刷新">⟳</button>
+    <button id="back-btn" title="后退"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <button id="fwd-btn" title="前进"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+    <button id="reload-btn" title="刷新"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
     <input id="url-input" type="text" placeholder="输入 URL 回车导航" autocomplete="off" />
-    <button id="bookmark-btn" title="收藏/取消收藏当前页">☆</button>
-    <button id="record-btn" title="录制操作（routine）">⏺</button>
-    <button id="play-btn" title="回放 routine">▶</button>
-    <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
-    <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
+    <button id="bookmark-btn" title="收藏/取消收藏当前页"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+    <button id="record-btn" title="录制操作（routine）"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></svg></button>
+    <button id="play-btn" title="回放 routine"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="currentColor"/></svg></button>
+    <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+    <button id="devtools-btn" title="打开/关闭 DevTools"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
   </div>
   <div id="bookmark-bar"><span class="bk-empty">暂无收藏</span></div>
   <div id="url-dropdown"></div>
@@ -625,7 +626,12 @@ button:disabled { opacity: 0.3; cursor: default; }
     recording = !!d.active
     const btn = $('record-btn')
     btn.classList.toggle('recording', recording)
-    btn.textContent = recording ? ('⏹ ' + (d.count || 0)) : '⏺'
+    if (recording) {
+      btn.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + ICON_STOP + '<span style="font-size:10px;font-weight:600">' + (d.count||0) + '</span></span>'
+      btn.style.width = 'auto'; btn.style.padding = '0 5px'
+    } else {
+      btn.innerHTML = ICON_REC; btn.style.width = ''; btn.style.padding = ''
+    }
     btn.title = recording ? '停止并保存（已录 ' + (d.count||0) + ' 步）' : '录制操作（routine）'
     if (!recording) hideSaveBar()
   })
@@ -723,10 +729,15 @@ button:disabled { opacity: 0.3; cursor: default; }
     }
   }
   ipcRenderer.on('browser-nav:bookmarks', (_, d) => { bookmarks = d.bookmarks || []; renderBookmarkBar() })
+  const _svg = c => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + c + '</svg>'
+  const ICON_BM_OFF = _svg('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>')
+  const ICON_BM_ON  = _svg('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" fill="currentColor"/>')
+  const ICON_REC    = _svg('<circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/>')
+  const ICON_STOP   = '<svg width="12" height="12" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>'
   ipcRenderer.on('browser-nav:bookmark-state', (_, d) => {
     const btn = $('bookmark-btn')
-    if (d.bookmarked) { btn.textContent = '★'; btn.title = '取消收藏'; btn.classList.add('active') }
-    else { btn.textContent = '☆'; btn.title = '收藏当前页'; btn.classList.remove('active') }
+    if (d.bookmarked) { btn.innerHTML = ICON_BM_ON; btn.title = '取消收藏'; btn.classList.add('active') }
+    else { btn.innerHTML = ICON_BM_OFF; btn.title = '收藏当前页'; btn.classList.remove('active') }
   })
   $('bookmark-btn').addEventListener('click', () => {
     const url = currentUrl; if (!url || url === 'about:blank') return
