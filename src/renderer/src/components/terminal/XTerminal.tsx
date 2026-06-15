@@ -31,13 +31,27 @@ const terminalLineBuffers = new Map<string, string>()
 /** [2026-04-27] 用户输入缓冲：多行文本合并为完整问题 */
 const userInputBuffers = new Map<string, string[]>()
 
+/**
+ * [2026-06-15] 剥离 ANSI/控制序列：onData 会发出鼠标跟踪（\x1b[<...M/m）、方向键等转义序列，
+ * 这些不是用户键入的问题文本，若混入会污染宠物上下文（曾导致宠物把鼠标刷屏当成挑衅）。
+ */
+function sanitizeUserInput(s: string): string {
+  return s
+    // CSI 序列：含鼠标 SGR（\x1b[<35;83;36M）、光标移动、SGR 颜色等
+    .replace(/\x1b\[[0-9;<>?=]*[@-~]/g, '')
+    // 其他 ESC 起始的两/三字节序列（\x1bO A 方向键、字符集切换等）
+    .replace(/\x1b[ -/]*[0-~]/g, '')
+    // 剩余裸 ESC 与 C0 控制字符（保留可见文本；换行已在外层 split）
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
+}
+
 /** [2026-04-28] 通用的输入缓冲函数：将发送到 PTY 的数据同时缓冲到 userInputBuffers */
 export function bufferUserInput(sessionId: string, data: string): void {
   // 按换行分割，每行单独缓冲
   const lines = data.split(/\r?\n/)
   let buf = userInputBuffers.get(sessionId) ?? []
   for (const line of lines) {
-    const trimmed = line.trim()
+    const trimmed = sanitizeUserInput(line).trim()
     if (trimmed.length > 0) {
       buf.push(trimmed)
       if (buf.length > 30) buf = buf.slice(-30)

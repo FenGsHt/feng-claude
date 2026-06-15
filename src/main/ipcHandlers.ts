@@ -529,6 +529,20 @@ export function registerIpcHandlers(
     fsHandler.watchStop()
   })
 
+  // [2026-06-15] 宠物"Git 哨兵"：返回工作目录未提交改动数（-1 表示非仓库/失败）
+  ipcMain.handle(IPC.GIT_DIRTY_COUNT, async (_e, payload: { workdir: string }) => {
+    try {
+      if (!payload?.workdir) return -1
+      const r = spawnSync('git', ['status', '--porcelain'], {
+        cwd: payload.workdir, encoding: 'utf-8', timeout: 2500, windowsHide: true
+      })
+      if (r.status !== 0 || typeof r.stdout !== 'string') return -1
+      return r.stdout.split('\n').filter((l) => l.trim().length > 0).length
+    } catch {
+      return -1
+    }
+  })
+
   ipcMain.handle(IPC.FS_OPEN_FILE_DIALOG, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const result = await dialog.showOpenDialog(win, {
@@ -815,6 +829,9 @@ export function registerIpcHandlers(
     }
 
     systemParts.push('回答必须简短（1到2句），具体可执行，绝不废话。')
+    // [2026-06-15] 上下文里可能含"Claude 的回答(摘要)"与报错/成本/Git 信号，请据此给出贴合现场的点评或建议；
+    // 若建议某个可直接运行的命令，请用反引号包裹该命令（如 `npm test`），方便用户一键填入终端。
+    systemParts.push('如果你的建议涉及某个可执行命令，请把该命令用反引号包裹（例如 `npm test`）。')
     const systemPrompt = systemParts.join(' ')
 
     const historyMessages = history.map((h) => ({ role: h.role, content: h.content }))

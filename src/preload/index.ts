@@ -96,6 +96,9 @@ const electronAPI = {
   watchFilesStop: (): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_WATCH_STOP),
 
+  gitDirtyCount: (workdir: string): Promise<number> =>
+    ipcRenderer.invoke(IPC.GIT_DIRTY_COUNT, { workdir }),
+
   onFsChanged: (callback: (payload: { dirPath: string }) => void): (() => void) => {
     const handler = (_: Electron.IpcRendererEvent, payload: { dirPath: string }): void => callback(payload)
     ipcRenderer.on(IPC.FS_CHANGED, handler)

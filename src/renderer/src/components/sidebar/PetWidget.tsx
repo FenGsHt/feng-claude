@@ -16,6 +16,8 @@ import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useGlobalTokenStore, computeCost } from '../../store/globalTokenStore'
 import { useContentBankStore } from '../../store/contentBankStore'
 import { useUserPromptStore } from '../../store/userPromptStore'
+import { useTranscriptStore } from '../../store/transcriptStore'
+import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 import { navigateToPetTab } from './Sidebar'
 import { BlackjackGame } from './BlackjackGame'
 
@@ -461,7 +463,7 @@ export function AsciiPet({
 }
 
 // ── 打字机气泡（仅 thinking / excited / talking 时显示）────────────
-function Bubble({ text, loading }: { text: string; loading: boolean }): React.ReactElement {
+function Bubble({ text, loading, onRunCommand }: { text: string; loading: boolean; onRunCommand?: (cmd: string) => void }): React.ReactElement {
   const [shown, setShown] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -476,6 +478,10 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
     timerRef.current = setTimeout(tick, 60)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [text, loading])
+
+  // [2026-06-15] 从回复里抽取反引号包裹的命令，打完字后显示"填入终端"按钮
+  const cmd = (text.match(/`([^`\n]{1,120})`/)?.[1] ?? '').trim()
+  const typingDone = shown.length >= text.length
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-1 z-50 px-2">
@@ -495,6 +501,17 @@ function Bubble({ text, loading }: { text: string; loading: boolean }): React.Re
             {shown}
             {shown.length < text.length && (
               <span className="inline-block w-[2px] h-[10px] bg-amber-400/80 animate-pulse align-middle ml-0.5" />
+            )}
+            {typingDone && cmd && onRunCommand && (
+              <button
+                type="button"
+                onClick={() => onRunCommand(cmd)}
+                title={`填入终端：${cmd}`}
+                className="mt-2 flex max-w-full items-center gap-1.5 rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-500/20 transition-colors"
+              >
+                <span className="shrink-0">▶</span>
+                <span className="truncate font-mono">{cmd}</span>
+              </button>
             )}
           </>
         )}
@@ -559,6 +576,17 @@ const PET_RESPONSES: string[] = [
 
 function randomPick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
+}
+
+// [2026-06-15] 清洗喂给宠物的文本：剥离 ANSI/控制字符、压缩空白，避免噪声污染上下文
+function stripForPet(s: string): string {
+  return s
+    .replace(/\x1b\[[0-9;<>?=]*[@-~]/g, '')
+    .replace(/\x1b[ -/]*[0-~]/g, '')
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export function PetWidget(): React.ReactElement {
@@ -848,6 +876,13 @@ export function PetWidget(): React.ReactElement {
     }, 2000)
   }, [lastPetAt, setLastPetAt, setSpeech, startIdleCycle])
 
+  // [2026-06-15] 宠物建议的命令一键填入当前终端（不自动回车，由用户确认后提交）
+  const runCommand = useCallback((cmd: string) => {
+    if (!activeSessionId || !cmd) return
+    if (injectEmbedDraft(activeSessionId, cmd)) return
+    window.electronAPI.sendInput(activeSessionId, cmd)
+  }, [activeSessionId])
+
   // ── 触发宠物讲话 ──────────────────────────────────────────────
   const triggerPet = useCallback(
     async (userMsg: string) => {
@@ -904,13 +939,38 @@ export function PetWidget(): React.ReactElement {
   )
 
   // ── 构建上下文 ────────────────────────────────────────────────
-  const buildContext = useCallback((): string => {
-    const workdir = activeSession?.workdir ?? '(未知目录)'
+  // [2026-06-15] 让宠物"看到现场"：工作目录 + 用户问题 + Claude 回答摘要 + 报错/成本/Git 信号
+  const buildContext = useCallback(async (deltaOut: number): Promise<{ ctx: string; isError: boolean }> => {
+    const sess = useSessionStore.getState().sessions.find((s) => s.id === activeSessionId)
+    const workdir = sess?.workdir ?? '(未知目录)'
     const lastPrompt = activeSessionId ? (useUserPromptStore.getState().getPrompt(activeSessionId) ?? '') : ''
+
+    // Claude 最近一条回答（从转录里倒序找 assistant）
+    let lastAnswer = ''
+    if (activeSessionId) {
+      const entries = useTranscriptStore.getState().bySession[activeSessionId] ?? []
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].kind === 'assistant' && entries[i].text.trim()) { lastAnswer = entries[i].text; break }
+      }
+    }
+    lastAnswer = stripForPet(lastAnswer).slice(0, 600)
+    const isError = sess?.status === 'error'
+
     const lines = [`工作目录: ${workdir}`]
-    if (lastPrompt) lines.push(`用户的问题: ${lastPrompt}`)
-    return lines.join('\n')
-  }, [activeSession, activeSessionId])
+    if (lastPrompt) lines.push(`用户的问题: ${stripForPet(lastPrompt).slice(0, 800)}`)
+    if (lastAnswer) lines.push(`Claude 的回答(摘要): ${lastAnswer}`)
+    if (isError) lines.push('信号: 本轮以错误状态结束。')
+    if (deltaOut >= 8000) lines.push(`信号: 本轮 Claude 输出约 ${deltaOut} tokens（偏多，可留意成本）。`)
+
+    // Git 哨兵：未提交改动较多时提示
+    if (sess?.workdir) {
+      try {
+        const dirty = await window.electronAPI.gitDirtyCount(sess.workdir)
+        if (dirty >= 15) lines.push(`信号: 当前有 ${dirty} 处未提交改动。`)
+      } catch { /* 忽略 */ }
+    }
+    return { ctx: lines.join('\n'), isError }
+  }, [activeSessionId])
 
   // ── 核心触发：监听 output tokens 增加 ────────────────────────
   // output tokens 增加 = Claude Code 完成了一轮回答 = 用户之前发送了一个问题
@@ -929,23 +989,30 @@ export function PetWidget(): React.ReactElement {
     // [2026-04-28] 跳过太小的增量（agent 调用产生的噪音），只响应较大增量（用户提问的回答）
     if (delta < 100) return
 
-    // 概率门控：考虑用户设置和好感度
+    // [2026-06-15] 报错哨兵：本轮报错时强制触发并缩短冷却，优先给排错建议
+    const sess = useSessionStore.getState().sessions.find((s) => s.id === activeSessionId)
+    const isError = sess?.status === 'error'
+
+    // 概率门控：考虑用户设置和好感度（报错时无视概率，必触发）
     const tier = getAffectionTier(growth.affection)
-    const triggerProb = calculateActualTriggerProbability(config.triggerProbability, tier)
+    const triggerProb = isError ? 1 : calculateActualTriggerProbability(config.triggerProbability, tier)
     if (Math.random() > triggerProb) return
 
-    // 冷却检查
+    // 冷却检查（报错时冷却减半）
     const now = Date.now()
-    if (now - lastAutoAt < COOLDOWN_MS) return
+    if (now - lastAutoAt < (isError ? COOLDOWN_MS / 2 : COOLDOWN_MS)) return
 
     setLastAutoAt(now)
     addXp(3, 'autoTrigger')
     addAffection(2)
-    const ctx = buildContext()
-    void triggerPet(
-      `[上下文]\n${ctx}\n\n用户刚完成一轮 Claude Code 对话。用你的人格点评或建议。`
-    )
-  }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt, growth.affection, addXp, addAffection])
+    void (async () => {
+      const { ctx, isError: err } = await buildContext(delta)
+      const instr = err
+        ? '上面这轮以报错结束。用你的人格，先点出最可能的原因，再给一条具体的排查或修复建议。'
+        : '用户刚完成一轮 Claude Code 对话。用你的人格点评，或给出有用的下一步建议。'
+      void triggerPet(`[上下文]\n${ctx}\n\n${instr}`)
+    })()
+  }, [outputTokens, lastAutoAt, buildContext, triggerPet, setLastAutoAt, growth.affection, config.triggerProbability, activeSessionId, addXp, addAffection])
 
   // session 切换时重置 token 计数基线
   useEffect(() => {
@@ -995,7 +1062,7 @@ export function PetWidget(): React.ReactElement {
   return (
     <div className="shrink-0 border-t border-claude-border bg-claude-surface/50 relative overflow-visible">
       {/* 浮动气泡（绝对定位在宠物栏上方）*/}
-      {bubbleVisible && <Bubble text={speech} loading={isLoading} />}
+      {bubbleVisible && <Bubble text={speech} loading={isLoading} onRunCommand={runCommand} />}
 
       {/* 21 点游戏面板（内嵌在宠物栏上方，最小化时 CSS 隐藏但组件不卸载）*/}
       {showBlackjack && (

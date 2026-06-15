@@ -22,6 +22,7 @@ export const IPC = {
 
   FS_READ_TREE: 'fs:readTree',
   FS_SEARCH: 'fs:search',
+  GIT_DIRTY_COUNT: 'git:dirtyCount',
   FS_WATCH_START: 'fs:watchStart',
   FS_WATCH_STOP: 'fs:watchStop',
   FS_CHANGED: 'fs:changed',

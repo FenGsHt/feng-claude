@@ -8,12 +8,13 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.57 主要更新
+### v0.7.58 主要更新
 
-- **搜索结果"在文件树中定位"**：搜索结果右键菜单一键跳回文件树对应位置，级联展开并高亮
-- **文件侧栏全树搜索**：搜索递归遍历整个工作目录，三级以上深层文件也能搜到（扁平结果含相对路径）
-- **文件侧栏自动刷新**：监听文件增删/重命名自动刷新文件树，保留已展开文件夹状态
-- **录制/回放合并按钮**：导航栏录制与回放合并，hover 弹下拉、直接点击即录制
+- **宠物"看到现场"**：点评时纳入 Claude 最近回答摘要，不再盲评；能针对真实发生的事给建议
+- **宠物报错哨兵**：会话报错时强制触发、冷却减半，优先给排错方向
+- **宠物建议可一键执行**：回复中反引号命令显示「▶」按钮，点击填入当前终端
+- **宠物成本/Git 哨兵**：输出 token 偏多提示成本；未提交改动多时提醒 commit
+- **宠物输入污染修复 + 日志上限 200**：剥离鼠标转义序列，宠物不再被刷屏激怒
 
 ### v0.7.51 主要更新
 
@@ -192,12 +193,13 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.57 Highlights
+### v0.7.58 Highlights
 
-- **"Locate in file tree" from search**: search-result context menu jumps back to the item's position in the tree, cascading expansion with a brief highlight
-- **File sidebar full-tree search**: search recursively walks the whole workdir so deeply-nested files (3+ levels) are found, returning a flat result list with relative paths
-- **File sidebar auto-refresh**: watches the workdir for file add/delete/rename and refreshes the tree automatically, preserving expanded-folder state
-- **Merged record/play button**: nav bar record and play merged into one button — hover to open a dropdown, click directly to start recording
+- **Pet "sees the scene"**: pet commentary now includes a summary of Claude's latest reply — no more blind comments, advice grounded in what actually happened
+- **Pet error sentinel**: when a turn ends in error, the pet force-triggers with halved cooldown and prioritizes troubleshooting
+- **Pet one-click commands**: commands wrapped in backticks show a "▶" button in the bubble that fills them into the current terminal
+- **Pet cost/Git sentinels**: warns on large token bursts; new `git:dirtyCount` reminds you to commit when changes pile up
+- **Pet input cleanup + 200-log cap**: mouse escape sequences stripped so the pet no longer mistakes them for spam
 
 ### v0.7.51 Highlights
 

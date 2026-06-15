@@ -46,6 +46,7 @@ export function injectMockElectronAPI(): void {
       watchFilesStart: async () => {},
       watchFilesStop: async () => {},
       onFsChanged: () => () => {},
+      gitDirtyCount: async () => 0,
 
       readFileTree: async () => [
         {
