@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.52 主要更新
+
+- **主进程启动崩溃修复**：`browserViewManager.ts` 中 `is.dev` 未导入导致 `ReferenceError`，改用 `app.isPackaged`
+
 ### v0.7.51 主要更新
 
 - **FEATURES.md 全面补全**：完整收录所有 42 个浏览器 MCP 工具（标签页管理、网站克隆、截图差异对比、JS 执行、Routine 录制/回放）；补全缺失快捷键 Alt+E/R、Alt+↑/↓、Alt+M（语音）、Ctrl+P（文件搜索）、Ctrl+F（文件内查找）、Shift+Enter（嵌入换行）；新增文本编辑器专区与语音输入专区
@@ -184,6 +188,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.52 Highlights
+
+- **Startup crash fix**: `browserViewManager.ts` referenced `is.dev` without importing `@electron-toolkit/utils`, causing `ReferenceError: is is not defined` in packaged builds — replaced with `app.isPackaged`
 
 ### v0.7.51 Highlights
 

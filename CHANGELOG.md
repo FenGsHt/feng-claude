@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.52] - 2026-06-15
+
+### 修复 | Bug Fixes
+- **主进程启动崩溃修复**：`browserViewManager.ts` 中 `is.dev` 引用未导入导致 `ReferenceError: is is not defined`，改用 `app.isPackaged`（已在 electron import 中可用）
+
 ## [0.7.51] - 2026-06-13
 
 ### 文档 | Docs

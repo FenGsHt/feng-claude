@@ -2022,7 +2022,7 @@ export function startBrowserServer(win: BrowserWindow): Promise<{ port: number }
   // [2026-06-15] DevTools 重新加载页面时，webContents 被 focus 导致父窗口被 OS 激活弹到前台。
   // 检测条件：DevTools 开着 + 开发模式 + 距最近一次「同 URL 重载」不足 500ms → blur 撤销激活。
   win.on('focus', () => {
-    if (!is.dev || !state.devToolsVisible) return
+    if (app.isPackaged || !state.devToolsVisible) return
     if (Date.now() > suppressFocusUntil) return
     setImmediate(() => {
       const w = state.mainWin

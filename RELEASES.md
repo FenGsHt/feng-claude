@@ -5,6 +5,13 @@
 
 ---
 
+## v0.7.52 (2026-06-15)
+
+### 修复
+- **主进程启动崩溃修复**：`browserViewManager.ts` 中 `is.dev` 引用未导入导致 `ReferenceError: is is not defined`，改用 `app.isPackaged`
+
+---
+
 ## v0.7.51 (2026-06-13)
 
 ### 文档
