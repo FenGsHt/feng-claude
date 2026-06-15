@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.54] - 2026-06-15
+
+### 修复 | Bug Fixes
+- **URL 历史下拉正确展开**：下拉面板通过 IPC 撑高 navView（同历史/routine 面板机制），不再被 86px navView 裁剪；样式改为两行（标题 + 蓝色 URL）+ 地球图标，与浏览器地址栏风格一致
+- **移除冗余历史面板**：历史记录已由 URL 下拉覆盖，移除"更多"菜单及旧历史面板
+
 ## [0.7.53] - 2026-06-15
 
 ### 新功能 | Features

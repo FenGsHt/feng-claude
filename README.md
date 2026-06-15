@@ -8,10 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.53 主要更新
+### v0.7.54 主要更新
 
-- **调试浏览器网页收藏**：ctrl-row 新增 ☆/★ 按钮收藏/取消收藏当前页；收藏栏（导航行下方）快捷点击跳转，× 取消收藏；持久化到本地文件
-- **URL 输入框历史下拉**：点击地址栏自动展开历史记录，支持实时过滤，↑↓ 选择，Enter 跳转
+- **调试浏览器网页收藏**：ctrl-row 新增 ☆/★ 按钮；收藏栏（第三行）快捷点击跳转，× 删除，持久化本地
+- **URL 地址栏历史下拉**：点击展开历史列表，两行样式（标题 + 蓝色 URL），实时过滤，↑↓ 键盘导航
 
 ### v0.7.51 主要更新
 
@@ -190,10 +190,10 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.53 Highlights
+### v0.7.54 Highlights
 
-- **Debug browser bookmarks**: ☆/★ button in ctrl-row to bookmark/unbookmark the current page; bookmark bar (third row, horizontally scrollable) for quick navigation; × to remove; persisted to `browser-bookmarks.json`
-- **URL bar history dropdown**: clicking the address bar shows a filtered history dropdown; type to filter, ↑↓ to navigate, Enter to go, Escape to close
+- **Debug browser bookmarks**: ☆/★ button in ctrl-row; bookmark bar (third row) for quick navigation, × to remove, persisted locally
+- **URL bar history dropdown**: click to expand history list with two-line style (title + blue URL), real-time filter, ↑↓ keyboard navigation; old redundant history panel removed
 
 ### v0.7.51 Highlights
 
