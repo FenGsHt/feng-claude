@@ -144,6 +144,8 @@ const SAVE_BAR_H = 34        // 录制命名条高度
 let saveBarH = 0             // 0 = 关闭，SAVE_BAR_H = 打开
 const MORE_MENU_H = 44       // 更多菜单展开高度（单项）
 let moreMenuH = 0            // 0 = 关闭，MORE_MENU_H = 打开
+const URL_DROPDOWN_H = 300   // URL 历史下拉展开高度
+let urlDropdownH = 0         // 0 = 关闭，URL_DROPDOWN_H = 打开
 
 // ── 浏览历史 ────────────────────────────────────────────────────────────────
 interface HistoryEntry { url: string; title: string; ts: number }
@@ -317,7 +319,7 @@ function setBounds(win: BrowserWindow): void {
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H + historyPanelH + routinePanelH + saveBarH + moreMenuH
+      height: NAVBAR_H + historyPanelH + routinePanelH + saveBarH + moreMenuH + urlDropdownH
     })
   }
 }
@@ -503,18 +505,20 @@ button:disabled { opacity: 0.3; cursor: default; }
 #url-dropdown {
   display: none;
   position: absolute; top: 86px; left: 0; right: 0;
-  max-height: 260px; overflow-y: auto;
-  background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
+  max-height: 300px; overflow-y: auto;
+  background: #1f1f1f; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
   scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 50;
 }
 #url-dropdown.open { display: block; }
 .ud-item {
-  padding: 5px 10px 4px; cursor: pointer; border-bottom: 1px solid #1e1e1e;
-  display: flex; align-items: baseline; gap: 8px;
+  padding: 7px 14px 6px; cursor: pointer; border-bottom: 1px solid #1a1a1a;
+  display: flex; align-items: center; gap: 10px;
 }
-.ud-item:hover, .ud-item.focused { background: #252525; }
-.ud-title { flex: 1; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ud-url   { flex: none; max-width: 45%; font-size: 10px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-item:hover, .ud-item.focused { background: #2a2a2a; }
+.ud-icon { flex: none; width: 16px; height: 16px; font-size: 13px; color: #555; display: flex; align-items: center; justify-content: center; }
+.ud-text { flex: 1; min-width: 0; }
+.ud-title { display: block; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-url   { display: block; font-size: 11px; color: #4a90d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 /* 录制命名条（替代 window.prompt，Electron 不支持原生 prompt）。
    展开时撑高 navView，占控制行下方独立一行，不覆盖控制行。 */
 #save-bar {
@@ -891,8 +895,8 @@ button:disabled { opacity: 0.3; cursor: default; }
   function openDropdown(filter) {
     const src = historyForDropdown
     const filtered = filter
-      ? src.filter(h => h.url.includes(filter) || (h.title||'').toLowerCase().includes(filter.toLowerCase())).slice(0,30)
-      : src.slice(0,30)
+      ? src.filter(h => h.url.includes(filter) || (h.title||'').toLowerCase().includes(filter.toLowerCase())).slice(0,50)
+      : src.slice(0,50)
     dropdownItems = filtered
     dropdownFocusIdx = -1
     const dd = $('url-dropdown'); dd.innerHTML = ''
@@ -900,15 +904,24 @@ button:disabled { opacity: 0.3; cursor: default; }
     for (let i = 0; i < filtered.length; i++) {
       const item = filtered[i]
       const row = document.createElement('div'); row.className = 'ud-item'; row.dataset.idx = i
+      const icon = document.createElement('div'); icon.className = 'ud-icon'; icon.textContent = '🌐'
+      const text = document.createElement('div'); text.className = 'ud-text'
       const t = document.createElement('span'); t.className = 'ud-title'; t.textContent = item.title || item.url
       const u = document.createElement('span'); u.className = 'ud-url'; u.textContent = item.url
-      row.appendChild(t); row.appendChild(u)
+      text.appendChild(t); text.appendChild(u)
+      row.appendChild(icon); row.appendChild(text)
       row.addEventListener('mousedown', e => { e.preventDefault(); navigateDropdown(item.url) })
       dd.appendChild(row)
+    }
+    if (!dropdownOpen) {
+      ipcRenderer.send('browser-nav:url-dropdown', { open: true })
     }
     dd.classList.add('open'); dropdownOpen = true
   }
   function closeDropdown() {
+    if (dropdownOpen) {
+      ipcRenderer.send('browser-nav:url-dropdown', { open: false })
+    }
     $('url-dropdown').classList.remove('open'); dropdownOpen = false; dropdownFocusIdx = -1
   }
   function navigateDropdown(url) {
@@ -2018,6 +2031,11 @@ export function registerBrowserViewIpc(): void {
   // 更多菜单开/关：撑高 navView 让下拉可见
   ipcMain.on('browser-nav:more-menu', (_event, { open }: { open: boolean }) => {
     moreMenuH = open ? MORE_MENU_H : 0
+    if (state.mainWin) setBounds(state.mainWin)
+  })
+  // URL 历史下拉开/关：撑高 navView 让下拉可见
+  ipcMain.on('browser-nav:url-dropdown', (_event, { open }: { open: boolean }) => {
+    urlDropdownH = open ? URL_DROPDOWN_H : 0
     if (state.mainWin) setBounds(state.mainWin)
   })
   // 手动回放（用户从面板点击）：作用于前台 session 的 active tab，无参数
