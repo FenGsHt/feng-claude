@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.53] - 2026-06-15
+
+### 新功能 | Features
+- **调试浏览器网页收藏**：ctrl-row 新增 ☆/★ 按钮收藏/取消收藏当前页；收藏栏（第三行，横向滚动）快捷点击跳转，× 删除；收藏持久化到 `browser-bookmarks.json`
+- **URL 输入框历史下拉**：点击地址栏自动展开历史记录下拉，支持输入文字实时过滤；↑↓ 键导航，Enter 跳转，Escape 关闭
+
 ## [0.7.52] - 2026-06-15
 
 ### 修复 | Bug Fixes

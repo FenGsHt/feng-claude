@@ -135,7 +135,7 @@ function saveSessionTabs(): void {
 
 const DEFAULT_PORT = 3100
 const TITLEBAR_H = 32
-const NAVBAR_H = 60   // [2026-06-12] 两行：标签条(26) + 控制行(34)
+const NAVBAR_H = 86   // [2026-06-15] 三行：标签条(26) + 控制行(34) + 收藏栏(26)
 const HISTORY_PANEL_H = 250  // 历史面板展开时覆盖在浏览器内容上方的高度
 let historyPanelH = 0        // 0 = 关闭，HISTORY_PANEL_H = 打开
 const ROUTINE_PANEL_H = 250  // Routine 回放面板展开高度
@@ -149,6 +149,47 @@ let moreMenuH = 0            // 0 = 关闭，MORE_MENU_H = 打开
 interface HistoryEntry { url: string; title: string; ts: number }
 const MAX_HISTORY = 100
 let browserHistory: HistoryEntry[] = []
+
+// ── 书签 ────────────────────────────────────────────────────────────────────
+interface BookmarkEntry { url: string; title: string }
+let browserBookmarks: BookmarkEntry[] = []
+
+function browserBookmarksFile(): string {
+  return join(app.getPath('userData'), 'browser-bookmarks.json')
+}
+function loadBrowserBookmarks(): void {
+  try {
+    const data = JSON.parse(readFileSync(browserBookmarksFile(), 'utf-8'))
+    if (Array.isArray(data)) browserBookmarks = data
+  } catch { /* first run */ }
+}
+function saveBrowserBookmarks(): void {
+  writeFile(browserBookmarksFile(), JSON.stringify(browserBookmarks), 'utf-8', () => {})
+}
+function pushBookmarksToNav(): void {
+  if (!state.navView?.webContents) return
+  state.navView.webContents.send('browser-nav:bookmarks', { bookmarks: browserBookmarks })
+}
+function isBookmarked(url: string): boolean {
+  return browserBookmarks.some(b => b.url === url)
+}
+function addBookmark(url: string, title: string): void {
+  if (!url || url === 'about:blank' || isBookmarked(url)) return
+  browserBookmarks.push({ url, title: title || url })
+  saveBrowserBookmarks()
+  pushBookmarksToNav()
+  pushBookmarkStateToNav(url)
+}
+function removeBookmark(url: string): void {
+  browserBookmarks = browserBookmarks.filter(b => b.url !== url)
+  saveBrowserBookmarks()
+  pushBookmarksToNav()
+  pushBookmarkStateToNav(url)
+}
+function pushBookmarkStateToNav(url: string): void {
+  if (!state.navView?.webContents) return
+  state.navView.webContents.send('browser-nav:bookmark-state', { url, bookmarked: isBookmarked(url) })
+}
 
 function browserHistoryFile(): string {
   return join(app.getPath('userData'), 'browser-history.json')
@@ -172,11 +213,13 @@ function addToHistory(url: string, title: string): void {
   pushHistoryToNav()
 }
 function pushHistoryToNav(): void {
-  // 面板关着时不推送，节省 IPC
-  if (!state.navView?.webContents || historyPanelH === 0) return
-  state.navView.webContents.send('browser-nav:history', {
-    items: browserHistory.slice(0, 60).map(h => ({ url: h.url, title: h.title, ts: h.ts }))
-  })
+  if (!state.navView?.webContents) return
+  const items = browserHistory.slice(0, 100).map(h => ({ url: h.url, title: h.title, ts: h.ts }))
+  // 下拉用完整列表；面板只在开着时渲染
+  state.navView.webContents.send('browser-nav:history-items', { items })
+  if (historyPanelH > 0) {
+    state.navView.webContents.send('browser-nav:history', { items: items.slice(0, 60) })
+  }
 }
 const MIN_RATIO = 0.25
 const MAX_RATIO = 0.75
@@ -360,7 +403,7 @@ body {
 /* 历史面板 */
 #history-panel {
   display: none; flex-direction: column;
-  position: absolute; top: 60px; left: 0; right: 0; height: 250px;
+  position: absolute; top: 86px; left: 0; right: 0; height: 250px;
   background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
   overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 20;
 }
@@ -384,7 +427,7 @@ body {
 /* Routine 回放面板（复用历史面板布局） */
 #routine-panel {
   display: none; flex-direction: column;
-  position: absolute; top: 60px; left: 0; right: 0; height: 250px;
+  position: absolute; top: 86px; left: 0; right: 0; height: 250px;
   background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
   overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 20;
 }
@@ -429,12 +472,55 @@ button:active { background: #333; }
 button.active { color: #f59e0b; border-color: #f59e0b; }
 #record-btn.recording { color: #ef4444; border-color: #ef4444; }
 button:disabled { opacity: 0.3; cursor: default; }
+/* 收藏栏：第三行，固定 26px */
+#bookmark-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  flex: none;
+  padding: 2px 6px;
+  border-top: 1px solid #222;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#bookmark-bar::-webkit-scrollbar { display: none; }
+.bk-chip {
+  display: flex; align-items: center; gap: 3px;
+  padding: 1px 6px 1px 7px; height: 20px;
+  background: #222; border: 1px solid #2e2e2e; border-radius: 10px;
+  font-size: 11px; color: #bbb; cursor: pointer; white-space: nowrap; flex: none;
+}
+.bk-chip:hover { background: #2d2d2d; color: #fff; }
+.bk-del {
+  font-size: 11px; color: #555; margin-left: 2px; line-height: 1; cursor: pointer;
+  padding: 0 1px;
+}
+.bk-del:hover { color: #e05252; }
+.bk-empty { font-size: 11px; color: #444; padding: 0 6px; white-space: nowrap; }
+/* URL 输入框焦点时的历史下拉 */
+#url-dropdown {
+  display: none;
+  position: absolute; top: 86px; left: 0; right: 0;
+  max-height: 260px; overflow-y: auto;
+  background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
+  scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 50;
+}
+#url-dropdown.open { display: block; }
+.ud-item {
+  padding: 5px 10px 4px; cursor: pointer; border-bottom: 1px solid #1e1e1e;
+  display: flex; align-items: baseline; gap: 8px;
+}
+.ud-item:hover, .ud-item.focused { background: #252525; }
+.ud-title { flex: 1; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-url   { flex: none; max-width: 45%; font-size: 10px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 录制命名条（替代 window.prompt，Electron 不支持原生 prompt）。
    展开时撑高 navView，占控制行下方独立一行，不覆盖控制行。 */
 #save-bar {
   display: none;
   position: absolute;
-  left: 0; right: 0; top: 60px; height: 34px;
+  left: 0; right: 0; top: 86px; height: 34px;
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
@@ -478,7 +564,7 @@ button:disabled { opacity: 0.3; cursor: default; }
 #more-wrap { position: relative; flex: none; }
 #more-menu {
   display: none;
-  position: absolute; top: 60px; right: 4px;
+  position: absolute; top: 86px; right: 4px;
   min-width: 130px; padding: 4px;
   background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 40;
@@ -513,7 +599,8 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="back-btn" title="后退">◀</button>
     <button id="fwd-btn" title="前进">▶</button>
     <button id="reload-btn" title="刷新">⟳</button>
-    <input id="url-input" type="text" placeholder="输入 URL 回车导航" />
+    <input id="url-input" type="text" placeholder="输入 URL 回车导航" autocomplete="off" />
+    <button id="bookmark-btn" title="收藏/取消收藏当前页">☆</button>
     <button id="record-btn" title="录制操作（routine）">⏺</button>
     <button id="play-btn" title="回放 routine">▶</button>
     <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
@@ -522,9 +609,11 @@ button:disabled { opacity: 0.3; cursor: default; }
       <button id="more-btn" title="更多">⋯</button>
     </div>
   </div>
+  <div id="bookmark-bar"><span class="bk-empty">暂无收藏</span></div>
   <div id="more-menu">
     <div class="m-item" id="m-history">⏱ 历史记录</div>
   </div>
+  <div id="url-dropdown"></div>
   <div id="save-bar">
     <span>保存 routine：</span>
     <input id="save-name" type="text" placeholder="输入名称回车保存" />
@@ -667,7 +756,8 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) ipcRenderer.send('browser-nav:navigate', v) }
   })
-  ipcRenderer.on('browser-nav:url', (_, d) => { $('url-input').value = d.url })
+  let currentUrl = ''
+  ipcRenderer.on('browser-nav:url', (_, d) => { $('url-input').value = d.url; currentUrl = d.url || '' })
   ipcRenderer.on('browser-nav:nav-state', (_, d) => { $('back-btn').disabled = !d.canGoBack; $('fwd-btn').disabled = !d.canGoForward })
   ipcRenderer.on('browser-nav:devtools', (_, d) => { $('devtools-btn').classList.toggle('active', d.enabled) })
   ipcRenderer.on('browser-nav:ratio', (_, d) => { window.__currentRatio = d.ratio })
@@ -759,6 +849,103 @@ button:disabled { opacity: 0.3; cursor: default; }
       scroll.appendChild(row)
     }
   })
+  // ── 收藏栏 ──────────────────────────────────────────────────────────────
+  let bookmarks = []
+  function renderBookmarkBar() {
+    const bar = $('bookmark-bar'); bar.innerHTML = ''
+    if (!bookmarks.length) {
+      const em = document.createElement('span'); em.className = 'bk-empty'; em.textContent = '暂无收藏'
+      bar.appendChild(em); return
+    }
+    for (const bk of bookmarks) {
+      const chip = document.createElement('div'); chip.className = 'bk-chip'
+      chip.title = bk.url
+      const label = document.createElement('span'); label.textContent = bk.title || bk.url
+      const del = document.createElement('span'); del.className = 'bk-del'; del.textContent = '×'
+      del.addEventListener('click', e => {
+        e.stopPropagation()
+        ipcRenderer.send('browser-nav:bookmark-remove', { url: bk.url })
+      })
+      chip.appendChild(label); chip.appendChild(del)
+      chip.addEventListener('click', () => ipcRenderer.send('browser-nav:navigate', bk.url))
+      bar.appendChild(chip)
+    }
+  }
+  ipcRenderer.on('browser-nav:bookmarks', (_, d) => { bookmarks = d.bookmarks || []; renderBookmarkBar() })
+  ipcRenderer.on('browser-nav:bookmark-state', (_, d) => {
+    const btn = $('bookmark-btn')
+    if (d.bookmarked) { btn.textContent = '★'; btn.title = '取消收藏'; btn.classList.add('active') }
+    else { btn.textContent = '☆'; btn.title = '收藏当前页'; btn.classList.remove('active') }
+  })
+  $('bookmark-btn').addEventListener('click', () => {
+    const url = currentUrl; if (!url || url === 'about:blank') return
+    const bookmarked = bookmarks.some(b => b.url === url)
+    if (bookmarked) ipcRenderer.send('browser-nav:bookmark-remove', { url })
+    else ipcRenderer.send('browser-nav:bookmark-add', { url, title: document.title || url })
+  })
+  ipcRenderer.send('browser-nav:bookmarks-get')
+  // ── URL 下拉历史 ──────────────────────────────────────────────────────────
+  let dropdownItems = []
+  let dropdownFocusIdx = -1
+  let dropdownOpen = false
+  function openDropdown(filter) {
+    const src = historyForDropdown
+    const filtered = filter
+      ? src.filter(h => h.url.includes(filter) || (h.title||'').toLowerCase().includes(filter.toLowerCase())).slice(0,30)
+      : src.slice(0,30)
+    dropdownItems = filtered
+    dropdownFocusIdx = -1
+    const dd = $('url-dropdown'); dd.innerHTML = ''
+    if (!filtered.length) { closeDropdown(); return }
+    for (let i = 0; i < filtered.length; i++) {
+      const item = filtered[i]
+      const row = document.createElement('div'); row.className = 'ud-item'; row.dataset.idx = i
+      const t = document.createElement('span'); t.className = 'ud-title'; t.textContent = item.title || item.url
+      const u = document.createElement('span'); u.className = 'ud-url'; u.textContent = item.url
+      row.appendChild(t); row.appendChild(u)
+      row.addEventListener('mousedown', e => { e.preventDefault(); navigateDropdown(item.url) })
+      dd.appendChild(row)
+    }
+    dd.classList.add('open'); dropdownOpen = true
+  }
+  function closeDropdown() {
+    $('url-dropdown').classList.remove('open'); dropdownOpen = false; dropdownFocusIdx = -1
+  }
+  function navigateDropdown(url) {
+    $('url-input').value = url; closeDropdown()
+    ipcRenderer.send('browser-nav:navigate', url)
+  }
+  function setDropdownFocus(idx) {
+    const rows = $('url-dropdown').querySelectorAll('.ud-item')
+    rows.forEach((r, i) => r.classList.toggle('focused', i === idx))
+    dropdownFocusIdx = idx
+    if (idx >= 0 && rows[idx]) $('url-input').value = dropdownItems[idx].url
+  }
+  let historyForDropdown = []
+  ipcRenderer.on('browser-nav:history-items', (_, d) => { historyForDropdown = d.items || [] })
+  $('url-input').addEventListener('focus', () => {
+    ipcRenderer.send('browser-nav:history-get')
+    openDropdown($('url-input').value)
+  })
+  $('url-input').addEventListener('input', e => { openDropdown(e.target.value) })
+  $('url-input').addEventListener('keydown', e => {
+    if (!dropdownOpen) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setDropdownFocus(Math.min(dropdownFocusIdx + 1, dropdownItems.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const prev = Math.max(dropdownFocusIdx - 1, -1)
+      setDropdownFocus(prev)
+      if (prev === -1) $('url-input').value = currentUrl
+    } else if (e.key === 'Enter' && dropdownFocusIdx >= 0) {
+      e.stopImmediatePropagation()
+      navigateDropdown(dropdownItems[dropdownFocusIdx].url)
+    } else if (e.key === 'Escape') {
+      closeDropdown(); $('url-input').value = currentUrl
+    }
+  })
+  $('url-input').addEventListener('blur', () => { setTimeout(closeDropdown, 150) })
 </script></body></html>`
 
 function createNavView(): WebContentsView {
@@ -1043,6 +1230,10 @@ export function showBrowserView(win: BrowserWindow, url?: string): void {
   // navView 首次显示时推送一次当前比例（setBounds 中已不再发 ratio IPC）
   if (state.navView?.webContents) {
     state.navView.webContents.send('browser-nav:ratio', { ratio: state.splitRatio })
+    // [2026-06-15] 推送书签列表与当前页书签状态
+    pushBookmarksToNav()
+    const curUrl = state.view?.webContents.getURL() ?? ''
+    if (curUrl) state.navView.webContents.send('browser-nav:bookmark-state', { url: curUrl, bookmarked: isBookmarked(curUrl) })
   }
 
   state.visible = true
@@ -1146,6 +1337,7 @@ function listTabs(sid: string): { id: string; title: string; url: string; active
 function updateNavUrl(url: string): void {
   if (state.navView?.webContents) {
     state.navView.webContents.send('browser-nav:url', { url })
+    state.navView.webContents.send('browser-nav:bookmark-state', { url, bookmarked: isBookmarked(url) })
   }
 }
 
@@ -1758,6 +1950,7 @@ export function destroySessionBrowser(sessionId: string): void {
 
 export function registerBrowserViewIpc(): void {
   loadBrowserHistory()
+  loadBrowserBookmarks()
 
   ipcMain.on('browser-view:set-active-session', (_event, sessionId: string) => {
     setForegroundSession(sessionId)
@@ -1790,6 +1983,24 @@ export function registerBrowserViewIpc(): void {
     browserHistory = []
     saveBrowserHistory()
     pushHistoryToNav()
+  })
+  // URL 下拉：请求历史列表（无需打开面板）
+  ipcMain.on('browser-nav:history-get', () => {
+    if (!state.navView?.webContents) return
+    state.navView.webContents.send('browser-nav:history-items', {
+      items: browserHistory.slice(0, 100).map(h => ({ url: h.url, title: h.title, ts: h.ts }))
+    })
+  })
+
+  // 书签：加/删/查
+  ipcMain.on('browser-nav:bookmark-add', (_event, { url, title }: { url: string; title: string }) => {
+    addBookmark(url, title)
+  })
+  ipcMain.on('browser-nav:bookmark-remove', (_event, { url }: { url: string }) => {
+    removeBookmark(url)
+  })
+  ipcMain.on('browser-nav:bookmarks-get', () => {
+    pushBookmarksToNav()
   })
 
   // 录制命名条开/关：撑高 navView 占独立一行
