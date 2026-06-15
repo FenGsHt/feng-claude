@@ -136,14 +136,10 @@ function saveSessionTabs(): void {
 const DEFAULT_PORT = 3100
 const TITLEBAR_H = 32
 const NAVBAR_H = 86   // [2026-06-15] 三行：标签条(26) + 控制行(34) + 收藏栏(26)
-const HISTORY_PANEL_H = 250  // 历史面板展开时覆盖在浏览器内容上方的高度
-let historyPanelH = 0        // 0 = 关闭，HISTORY_PANEL_H = 打开
 const ROUTINE_PANEL_H = 250  // Routine 回放面板展开高度
 let routinePanelH = 0        // 0 = 关闭，ROUTINE_PANEL_H = 打开
 const SAVE_BAR_H = 34        // 录制命名条高度
 let saveBarH = 0             // 0 = 关闭，SAVE_BAR_H = 打开
-const MORE_MENU_H = 44       // 更多菜单展开高度（单项）
-let moreMenuH = 0            // 0 = 关闭，MORE_MENU_H = 打开
 const URL_DROPDOWN_H = 300   // URL 历史下拉展开高度
 let urlDropdownH = 0         // 0 = 关闭，URL_DROPDOWN_H = 打开
 
@@ -217,11 +213,7 @@ function addToHistory(url: string, title: string): void {
 function pushHistoryToNav(): void {
   if (!state.navView?.webContents) return
   const items = browserHistory.slice(0, 100).map(h => ({ url: h.url, title: h.title, ts: h.ts }))
-  // 下拉用完整列表；面板只在开着时渲染
   state.navView.webContents.send('browser-nav:history-items', { items })
-  if (historyPanelH > 0) {
-    state.navView.webContents.send('browser-nav:history', { items: items.slice(0, 60) })
-  }
 }
 const MIN_RATIO = 0.25
 const MAX_RATIO = 0.75
@@ -319,7 +311,7 @@ function setBounds(win: BrowserWindow): void {
       x: viewX,
       y: TITLEBAR_H,
       width: viewW,
-      height: NAVBAR_H + historyPanelH + routinePanelH + saveBarH + moreMenuH + urlDropdownH
+      height: NAVBAR_H + routinePanelH + saveBarH + urlDropdownH
     })
   }
 }
@@ -402,30 +394,6 @@ body {
 }
 #close-btn:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
 #tab-new:hover { background: #2a2a2a; color: #fff; }
-/* 历史面板 */
-#history-panel {
-  display: none; flex-direction: column;
-  position: absolute; top: 86px; left: 0; right: 0; height: 250px;
-  background: #1a1a1a; border-left: 1px solid #333; border-bottom: 2px solid #3a3a3a;
-  overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #444 transparent; z-index: 20;
-}
-#history-panel.open { display: flex; }
-.h-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 5px 10px; border-bottom: 1px solid #2a2a2a; flex: none;
-  font-size: 11px; color: #888; background: #161616; position: sticky; top: 0; z-index: 1;
-}
-.h-scroll { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #444 transparent; }
-.h-clear { background: none; border: 1px solid #333; color: #666; border-radius: 3px; padding: 1px 6px; font-size: 10px; cursor: pointer; height: auto; min-width: auto; }
-.h-clear:hover { color: #e05252; border-color: #e05252; background: none; }
-.h-empty { padding: 20px; color: #555; text-align: center; font-size: 12px; }
-.h-group { padding: 4px 10px 2px; font-size: 10px; color: #555; letter-spacing: .04em; text-transform: uppercase; background: #161616; position: sticky; top: 0; z-index: 1; }
-.h-item { padding: 4px 10px 3px; cursor: pointer; border-bottom: 1px solid #1e1e1e; }
-.h-item:hover { background: #222; }
-.h-row1 { display: flex; align-items: baseline; gap: 6px; }
-.h-title { flex: 1; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.h-time  { flex: none; font-size: 10px; color: #555; white-space: nowrap; }
-.h-url   { font-size: 10px; color: #444; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 /* Routine 回放面板（复用历史面板布局） */
 #routine-panel {
   display: none; flex-direction: column;
@@ -562,24 +530,6 @@ button:disabled { opacity: 0.3; cursor: default; }
   height: 24px;
 }
 #url-input:focus { border-color: #f59e0b; }
-/* 更多菜单（收纳历史等次要功能）。
-   menu 提到 body 层级，绝对定位在 navbar 下方右侧；展开时通过 IPC 撑高
-   navView（与历史/回放面板同机制），否则会被 60px 高的 navView 裁掉。 */
-#more-wrap { position: relative; flex: none; }
-#more-menu {
-  display: none;
-  position: absolute; top: 86px; right: 4px;
-  min-width: 130px; padding: 4px;
-  background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 6px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 40;
-}
-#more-menu.open { display: block; }
-.m-item {
-  padding: 6px 10px; font-size: 12px; color: #ccc; border-radius: 4px;
-  cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px;
-}
-.m-item:hover { background: #2d2d2d; color: #fff; }
-.m-item.active { color: #f59e0b; }
 #drag-handle {
   position: absolute;
   left: 0; top: 0;
@@ -609,14 +559,8 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="play-btn" title="回放 routine">▶</button>
     <button id="pick-btn" title="点击拾取页面元素，将层级信息发送到对话框 (Ctrl+Shift+Q)">⊕</button>
     <button id="devtools-btn" title="打开/关闭 DevTools">⌘</button>
-    <div id="more-wrap">
-      <button id="more-btn" title="更多">⋯</button>
-    </div>
   </div>
   <div id="bookmark-bar"><span class="bk-empty">暂无收藏</span></div>
-  <div id="more-menu">
-    <div class="m-item" id="m-history">⏱ 历史记录</div>
-  </div>
   <div id="url-dropdown"></div>
   <div id="save-bar">
     <span>保存 routine：</span>
@@ -624,7 +568,6 @@ button:disabled { opacity: 0.3; cursor: default; }
     <button id="save-ok" title="保存">保存</button>
     <button id="save-cancel" title="取消（保留录制）">取消</button>
   </div>
-  <div id="history-panel"></div>
   <div id="routine-panel"></div>
 <script>
   const $ = id => document.getElementById(id)
@@ -644,39 +587,6 @@ button:disabled { opacity: 0.3; cursor: default; }
   $('close-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'close'))
   $('devtools-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'devtools'))
   $('pick-btn').addEventListener('click', () => ipcRenderer.send('browser-nav:action', 'pick'))
-  // 更多菜单：目前仅收纳历史记录。menu 绝对定位在 navbar 下方，展开时发 IPC
-  // 撑高 navView（否则被 60px 高的 view 裁掉）；支持 hover + 点击。
-  let moreOpen = false
-  let moreHideTimer = null
-  function openMore() {
-    if (moreHideTimer) { clearTimeout(moreHideTimer); moreHideTimer = null }
-    if (moreOpen) return
-    moreOpen = true
-    $('more-btn').classList.add('active')
-    $('more-menu').classList.add('open')
-    ipcRenderer.send('browser-nav:more-menu', { open: true })
-  }
-  function closeMore() {
-    if (!moreOpen) return
-    moreOpen = false
-    $('more-btn').classList.remove('active')
-    $('more-menu').classList.remove('open')
-    ipcRenderer.send('browser-nav:more-menu', { open: false })
-  }
-  // 延迟关闭，给鼠标从按钮移到菜单的间隙留缓冲
-  function scheduleClose() {
-    if (moreHideTimer) clearTimeout(moreHideTimer)
-    moreHideTimer = setTimeout(closeMore, 250)
-  }
-  $('more-btn').addEventListener('mouseenter', openMore)
-  $('more-btn').addEventListener('mouseleave', scheduleClose)
-  $('more-btn').addEventListener('click', e => { e.stopPropagation(); moreOpen ? closeMore() : openMore() })
-  $('more-menu').addEventListener('mouseenter', () => { if (moreHideTimer) { clearTimeout(moreHideTimer); moreHideTimer = null } })
-  $('more-menu').addEventListener('mouseleave', scheduleClose)
-  document.addEventListener('click', e => {
-    if (moreOpen && !$('more-wrap').contains(e.target) && !$('more-menu').contains(e.target)) closeMore()
-  })
-  $('m-history').addEventListener('click', () => { closeMore(); toggleHistory() })
   let recording = false
   function showSaveBar() {
     $('save-bar').classList.add('show')
@@ -785,73 +695,6 @@ button:disabled { opacity: 0.3; cursor: default; }
       strip.insertBefore(tab, newBtn)
     }
     // 单 tab 时隐藏标签条更简洁？保留显示以便随时 +。
-  })
-  // 历史面板（由更多菜单 m-history 触发）
-  let histOpen = false
-  function toggleHistory(force) {
-    histOpen = force !== undefined ? force : !histOpen
-    $('m-history').classList.toggle('active', histOpen)
-    $('history-panel').classList.toggle('open', histOpen)
-    ipcRenderer.send('browser-nav:history-panel', { open: histOpen })
-  }
-  document.addEventListener('click', e => {
-    // m-history 在 #more-menu 内（已移到 body 层级），需一并豁免，否则点它会先开后立刻关
-    if (histOpen && !$('history-panel').contains(e.target)
-        && !$('more-wrap').contains(e.target) && !$('more-menu').contains(e.target)) toggleHistory(false)
-  })
-  function fmtTime(ts) {
-    if (!ts) return ''
-    const d = new Date(ts), now = new Date()
-    const hhmm = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0')
-    const todayStr = now.toDateString()
-    const yestStr = new Date(now - 86400000).toDateString()
-    if (d.toDateString() === todayStr) return hhmm
-    if (d.toDateString() === yestStr) return '昨天 ' + hhmm
-    const days = Math.floor((now - d) / 86400000)
-    if (days < 7) return '周' + '日一二三四五六'[d.getDay()] + ' ' + hhmm
-    return (d.getMonth()+1) + '-' + d.getDate().toString().padStart(2,'0') + ' ' + hhmm
-  }
-  function getGroup(ts) {
-    if (!ts) return '更早'
-    const d = new Date(ts), now = new Date()
-    if (d.toDateString() === now.toDateString()) return '今天'
-    if (d.toDateString() === new Date(now - 86400000).toDateString()) return '昨天'
-    return '更早'
-  }
-  ipcRenderer.on('browser-nav:history', (_, d) => {
-    const panel = $('history-panel')
-    panel.innerHTML = ''
-    // 固定顶部标题 + 清除按钮
-    const hdr = document.createElement('div'); hdr.className = 'h-header'
-    const lbl = document.createElement('span'); lbl.textContent = '历史记录'
-    const clr = document.createElement('button'); clr.className = 'h-clear'; clr.textContent = '清除全部'
-    clr.addEventListener('click', e => { e.stopPropagation(); ipcRenderer.send('browser-nav:history-clear') })
-    hdr.appendChild(lbl); hdr.appendChild(clr); panel.appendChild(hdr)
-    const scroll = document.createElement('div'); scroll.className = 'h-scroll'
-    panel.appendChild(scroll)
-    const items = d.items || []
-    if (!items.length) {
-      const em = document.createElement('div'); em.className = 'h-empty'; em.textContent = '暂无历史记录'
-      scroll.appendChild(em); return
-    }
-    let curGrp = null
-    for (const item of items) {
-      const grp = getGroup(item.ts)
-      if (grp !== curGrp) {
-        curGrp = grp
-        const g = document.createElement('div'); g.className = 'h-group'; g.textContent = grp
-        scroll.appendChild(g)
-      }
-      const row = document.createElement('div'); row.className = 'h-item'
-      const r1 = document.createElement('div'); r1.className = 'h-row1'
-      const t = document.createElement('span'); t.className = 'h-title'; t.textContent = item.title || item.url
-      const tm = document.createElement('span'); tm.className = 'h-time'; tm.textContent = fmtTime(item.ts)
-      r1.appendChild(t); r1.appendChild(tm)
-      const u = document.createElement('div'); u.className = 'h-url'; u.textContent = item.url
-      row.appendChild(r1); row.appendChild(u)
-      row.addEventListener('click', () => { ipcRenderer.send('browser-nav:navigate', item.url); toggleHistory(false) })
-      scroll.appendChild(row)
-    }
   })
   // ── 收藏栏 ──────────────────────────────────────────────────────────────
   let bookmarks = []
@@ -1986,17 +1829,6 @@ export function registerBrowserViewIpc(): void {
     if (foregroundSessionId) closeTab(foregroundSessionId, tabId)
   })
 
-  // 历史面板开/关：调整 navView 高度（overlay，不挤内容区）
-  ipcMain.on('browser-nav:history-panel', (_event, { open }: { open: boolean }) => {
-    historyPanelH = open ? HISTORY_PANEL_H : 0
-    if (state.mainWin) setBounds(state.mainWin)
-    if (open) pushHistoryToNav()
-  })
-  ipcMain.on('browser-nav:history-clear', () => {
-    browserHistory = []
-    saveBrowserHistory()
-    pushHistoryToNav()
-  })
   // URL 下拉：请求历史列表（无需打开面板）
   ipcMain.on('browser-nav:history-get', () => {
     if (!state.navView?.webContents) return
@@ -2027,11 +1859,6 @@ export function registerBrowserViewIpc(): void {
     routinePanelH = open ? ROUTINE_PANEL_H : 0
     if (state.mainWin) setBounds(state.mainWin)
     if (open) pushRoutinesToNav()
-  })
-  // 更多菜单开/关：撑高 navView 让下拉可见
-  ipcMain.on('browser-nav:more-menu', (_event, { open }: { open: boolean }) => {
-    moreMenuH = open ? MORE_MENU_H : 0
-    if (state.mainWin) setBounds(state.mainWin)
   })
   // URL 历史下拉开/关：撑高 navView 让下拉可见
   ipcMain.on('browser-nav:url-dropdown', (_event, { open }: { open: boolean }) => {
