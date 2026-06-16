@@ -3,6 +3,7 @@ import { join, basename } from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 
+// [2026-06-16] WATCH 忽略集：构建/依赖/缓存等高频变动或巨大目录，避免监听时狂刷新与资源占用
 const IGNORE_DIRS = new Set([
   'node_modules',
   '.git',
@@ -25,6 +26,16 @@ const IGNORE_DIRS = new Set([
   '.next',
   '.nuxt',
   'coverage'
+])
+
+// [2026-06-16] 文件树/搜索 显示忽略集：只隐藏体积巨大且几乎不浏览的依赖/版本库目录，
+// 其余（build/dist/temp/library 及 dot 文件夹如 .creator/.history）与系统资源管理器保持一致地显示。
+// 注：文件树是按需懒加载（展开才读一层），显示这些目录开销很小。
+const TREE_IGNORE_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.svn',
+  '.hg'
 ])
 
 const MAX_TREE_NODES = 2500
@@ -62,8 +73,8 @@ export class FileSystemHandler {
       }
       for (const name of entries) {
         if (budget.scan <= 0 || hits.length >= MAX_SEARCH_HITS) break
-        if (name.startsWith('.') && depth === 0) continue
-        if (IGNORE_DIRS.has(name)) continue
+        // [2026-06-16] 与文件树显示保持一致：只跳过巨大依赖/版本库目录（node_modules/.git 等），其余可搜
+        if (TREE_IGNORE_DIRS.has(name)) continue
         budget.scan -= 1
         const fullPath = join(dirPath, name)
         let stat
@@ -144,8 +155,8 @@ export class FileSystemHandler {
 
     for (const name of entries) {
       if (budget.remaining <= 0) break
-      if (name.startsWith('.') && depth === 0) continue
-      if (IGNORE_DIRS.has(name)) continue
+      // [2026-06-16] 与资源管理器一致：显示 dot 文件/夹（.creator/.history/.babelrc 等），只隐藏巨大依赖/版本库目录
+      if (TREE_IGNORE_DIRS.has(name)) continue
 
       const fullPath = join(dirPath, name)
       let stat

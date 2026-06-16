@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.61 主要更新
+### v0.7.62 主要更新
 
-- **调试浏览器 Alt+E/R 修复**：DevTools/浏览器聚焦时也能用 Alt+E/R 切换会话（主进程拦截转发）
-- **DevTools 切换会话保留**：DevTools 改为 per-tab 持久，切走再切回仍在，不再被强关
-- **Telegram 多窗口消息投错窗口修复**：跨实例 owner 锁，同一 token 全局只一个窗口轮询；↻ 夺锁独占接收
-- **Telegram -32000 根治**：强制重连清掉所有残留进程（含孤儿 server.ts），延时重连
+- **文件侧边栏漏显示文件夹修复**：dot 文件夹及 `build`/`dist`/`temp`/`library` 等现在与系统资源管理器一致地显示（只隐藏 node_modules/.git）
+- **调试浏览器 Alt+E/R 修复**：DevTools/浏览器聚焦时也能用 Alt+E/R 切换会话
+- **DevTools 切换会话保留**：DevTools 改为 per-tab 持久，切走再切回仍在
+- **Telegram 多窗口/-32000 修复**：跨实例 owner 锁 + 强制重连清残留进程
 
 ### v0.7.51 主要更新
 
@@ -192,12 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.61 Highlights
+### v0.7.62 Highlights
 
-- **Debug browser Alt+E/R fix**: session switching with Alt+E/R works even when the browser or DevTools has focus (intercepted and forwarded by the main process)
-- **DevTools persists across session switch**: DevTools is now per-tab — switch away and back and it's still open, no longer force-closed
-- **Telegram multi-window misrouting fix**: cross-instance owner lock so only one window polls a given token; ↻ steals the lock for exclusive receipt
-- **Telegram -32000 fix**: force-reconnect kills all leftover plugin processes (including orphan `server.ts`) and reconnects after a delay
+- **File sidebar missing-folders fix**: dot folders and `build`/`dist`/`temp`/`library` now show just like the OS file explorer (only `node_modules`/`.git` stay hidden)
+- **Debug browser Alt+E/R fix**: session switching with Alt+E/R works even when the browser or DevTools has focus
+- **DevTools persists across session switch**: DevTools is now per-tab — switch away and back and it's still open
+- **Telegram multi-window / -32000 fixes**: cross-instance owner lock + force-reconnect clears leftover processes
 
 ### v0.7.51 Highlights
 

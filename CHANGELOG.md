@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.62] - 2026-06-16
+
+### 修复 | Bug Fixes
+- **文件侧边栏漏显示文件夹**：之前根级别隐藏所有 dot 文件/夹，且 `build`/`dist`/`out` 等在忽略名单里，导致 Cocos 等项目的 `.creator`/`.history`/`build`/`.babelrc` 等不显示。现在文件树与搜索改用更宽松的显示规则（只隐藏 `node_modules`/`.git`/`.svn`/`.hg`），与系统资源管理器一致；watcher 仍忽略 build/dist/temp 等高频变动目录避免狂刷新
+
 ## [0.7.61] - 2026-06-15
 
 ### 修复 | Bug Fixes
