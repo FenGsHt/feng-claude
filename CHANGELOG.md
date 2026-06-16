@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.64] - 2026-06-16
+
+### 修复 | Bug Fixes
+- **Token 归因串号修复（侧栏统计）**：watcher 按 workdir 的 primarySessionId 归因，官方会话作 primary 时第三方模型（qwen/glm 等）的 token 会漏进「官方配置」桶。新增模型守卫：归到官方但 model 非 `claude-*` 时，按 model 唯一匹配改归正确 profile（仅在"官方+非 claude 模型"这一确定错误组合下重归，claude 模型不动，零误伤）。注：仅修新产生的 token，历史已混入的数据需手动重置
+
 ## [0.7.63] - 2026-06-16
 
 ### 新功能 | Features

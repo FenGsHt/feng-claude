@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.63 主要更新
+### v0.7.64 主要更新
 
-- **浏览器克隆工具大幅增强（SPA 静态复刻全链路）**：新增 `browser_clone_routes`/`browser_save_html`；`clone_page` 支持 `outputFile`；`stripJs` 静态快照；导航 shim 三层拦截（`<a href>`/data-*/clickRules）；serve-local 路由→文件 rewrite（拦得住框架自身改 URL）
-- **文件侧边栏漏显示文件夹修复**：dot 文件夹及 `build`/`dist` 等与资源管理器一致显示
-- **调试浏览器 Alt+E/R 修复 + DevTools 切换会话保留**
-- **Telegram 多窗口/-32000 修复**：跨实例 owner 锁 + 强制重连清残留进程
+- **Token 归因串号修复**：第三方模型（qwen/glm 等）的 token 不再因 workdir primary 归因漏进「官方配置」桶（新增模型守卫，零误伤）
+- **浏览器克隆工具大幅增强（SPA 静态复刻全链路）**：`browser_clone_routes`/`browser_save_html`；`clone_page` 的 `outputFile`；`stripJs` 静态快照；导航 shim 三层拦截；serve-local 路由→文件 rewrite
+- **文件侧边栏漏显示文件夹修复 + 调试浏览器 Alt+E/R + DevTools 切换保留**
+- **Telegram 多窗口/-32000 修复**
 
 ### v0.7.51 主要更新
 
@@ -192,12 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.63 Highlights
+### v0.7.64 Highlights
 
-- **Major browser-clone upgrade (end-to-end static SPA cloning)**: new `browser_clone_routes`/`browser_save_html`; `clone_page` gains `outputFile`; `stripJs` static-snapshot mode; 3-layer nav shim (`<a href>`/data-*/clickRules); serve-local route→file rewrite (catches the framework changing the URL itself)
-- **File sidebar missing-folders fix**: dot folders and `build`/`dist` now show like the OS file explorer
-- **Debug browser Alt+E/R fix + per-tab DevTools persistence**
-- **Telegram multi-window / -32000 fixes**: cross-instance owner lock + force-reconnect clears leftover processes
+- **Token attribution fix**: third-party models (qwen/glm, etc.) no longer leak into the "official" profile bucket due to per-workdir primary attribution (new model guard, no false reattribution)
+- **Major browser-clone upgrade (end-to-end static SPA cloning)**: `browser_clone_routes`/`browser_save_html`; `clone_page` `outputFile`; `stripJs` static snapshot; 3-layer nav shim; serve-local route→file rewrite
+- **File sidebar missing-folders fix + debug browser Alt+E/R + per-tab DevTools persistence**
+- **Telegram multi-window / -32000 fixes**
 
 ### v0.7.51 Highlights
 

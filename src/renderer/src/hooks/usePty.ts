@@ -22,6 +22,18 @@ import {
 import { stripAnsi } from '../lib/stripAnsi'
 import { setBracketedPasteMode } from '../lib/bracketedPasteMode'
 import { syncTodosFromFile, parseTodoStatusBlock, useTodoListStore } from '../store/todoListStore'
+import { OFFICIAL_PROFILE_ID } from '../types/settings'
+
+// [2026-06-16] 缓存 profiles（id+model），用于 token 归因的模型守卫：
+// watcher 按 workdir 的 primarySessionId 归因，官方会话作 primary 时第三方模型 token 会漏进官方桶。
+// 官方配置只可能产生 claude-* 模型，故归到官方但 model 非 claude 时按模型唯一匹配改归正确 profile。
+let cachedProfiles: Array<{ id: string; model?: string }> = []
+function reattributeProfileByModel(profileId: string | undefined, model?: string): string | undefined {
+  if (!profileId || profileId !== OFFICIAL_PROFILE_ID) return profileId
+  if (!model || model.toLowerCase().startsWith('claude-')) return profileId
+  const matches = cachedProfiles.filter((p) => p.model && p.model === model)
+  return matches.length === 1 ? matches[0].id : profileId
+}
 
 /**
  * Global hook — subscribes to PTY output and routes data to xterm instances.
@@ -186,13 +198,13 @@ export function usePty(): void {
   const { updateSessionStatus } = useSessionStore()
 
   useEffect(() => {
-    void window.electronAPI.settings.get().then((s) => {
+    const applySettings = (s: { embedClaudeOutputBeta?: boolean; profiles?: Array<{ id: string; model?: string }> }): void => {
       useEmbedOutputBetaStore.getState().setEnabled(s.embedClaudeOutputBeta === true)
-    })
+      if (Array.isArray(s.profiles)) cachedProfiles = s.profiles.map((p) => ({ id: p.id, model: p.model }))
+    }
+    void window.electronAPI.settings.get().then(applySettings)
     const offEmbedSettings = window.electronAPI.onSettingsChanged(() => {
-      void window.electronAPI.settings.get().then((s) => {
-        useEmbedOutputBetaStore.getState().setEnabled(s.embedClaudeOutputBeta === true)
-      })
+      void window.electronAPI.settings.get().then(applySettings)
     })
 
     // ── PTY output: write to terminal ────────────────────────
@@ -328,7 +340,9 @@ export function usePty(): void {
       // [2026-06-01] 只有 primary session 更新全局 store，防止同 workdir 多标签重复计费
       if (isPrimary !== false) {
         const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
-        const profileId = session?.profileId
+        // [2026-06-16] 模型守卫：归到官方但 model 非 claude-* 时，按模型唯一匹配改归正确 profile，
+        // 防止第三方模型（qwen/glm 等）token 因 primary 归因漏进官方配置桶
+        const profileId = reattributeProfileByModel(session?.profileId, model)
         useGlobalTokenStore.getState().ingest({
           input,
           output,
