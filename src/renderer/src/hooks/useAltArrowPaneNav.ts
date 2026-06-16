@@ -2,6 +2,22 @@ import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { findNeighborSessionId, type PaneDirection } from '../lib/terminalPaneNeighbors'
 import { focusTerminal } from '../components/terminal/XTerminal'
+import { collectLeafSessionIds } from '../lib/paneLayout'
+
+// [2026-06-16] 计算分屏组：每组首个 leaf 为主 tab；返回隐藏副窗格集合 + 副→主映射
+function computeGroups(): { hidden: Set<string>; primaryOf: Record<string, string> } {
+  const { layoutRoot, parkedLayouts } = useSessionStore.getState()
+  const hidden = new Set<string>()
+  const primaryOf: Record<string, string> = {}
+  for (const g of [layoutRoot, ...parkedLayouts]) {
+    if (!g) continue
+    const leaves = collectLeafSessionIds(g)
+    if (leaves.length <= 1) continue
+    const head = leaves[0]
+    for (const id of leaves) { primaryOf[id] = head; if (id !== head) hidden.add(id) }
+  }
+  return { hidden, primaryOf }
+}
 
 /**
  * Alt + 方向键在多个终端窗格间切换焦点（捕获阶段，优先于 xterm 处理）。
@@ -13,32 +29,56 @@ export function useAltArrowPaneNav(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return
 
-    // 在 sessions 列表中切上一个/下一个会话（读取实时 store，供键盘与主进程转发共用）
-    const switchSession = (dir: 'prev' | 'next'): void => {
-      const aId = useSessionStore.getState().activeSessionId
+    // [2026-06-16] Alt+E/R：在「窗口」（tab 组）间切换 —— 只在各组主 tab 间循环，
+    // 不再钻进分屏副窗格。落到主 tab 后由 setActiveSession 还原该组分屏布局。
+    const switchTab = (dir: 'prev' | 'next'): void => {
+      const { sessions, activeSessionId: aId } = useSessionStore.getState()
       if (!aId) return
-      const sessions = useSessionStore.getState().sessions
-      const idx = sessions.findIndex((s) => s.id === aId)
-      if (idx < 0 || sessions.length < 2) return
+      const { hidden, primaryOf } = computeGroups()
+      const tabs = sessions.filter((s) => !hidden.has(s.id))
+      if (tabs.length < 2) return
+      const curPrimary = primaryOf[aId] ?? aId
+      const idx = tabs.findIndex((s) => s.id === curPrimary)
+      if (idx < 0) return
       const next = dir === 'prev'
-        ? sessions[(idx - 1 + sessions.length) % sessions.length]
-        : sessions[(idx + 1) % sessions.length]
+        ? tabs[(idx - 1 + tabs.length) % tabs.length]
+        : tabs[(idx + 1) % tabs.length]
       setActiveSession(next.id)
       queueMicrotask(() => focusTerminal(next.id))
     }
 
+    // [2026-06-16] Alt+F：在「当前窗口内的多个终端」（当前分屏组的窗格）间循环；
+    // 非分屏（单格）时返回 false，不拦截（让 Alt+F 等终端 readline 行为照常）
+    const cyclePane = (): boolean => {
+      const { layoutRoot, activeSessionId: aId } = useSessionStore.getState()
+      if (!layoutRoot || !aId) return false
+      const leaves = collectLeafSessionIds(layoutRoot)
+      if (leaves.length < 2) return false
+      const idx = leaves.indexOf(aId)
+      const nextId = leaves[((idx < 0 ? 0 : idx) + 1) % leaves.length]
+      if (nextId === aId) return false
+      setActiveSession(nextId)
+      queueMicrotask(() => focusTerminal(nextId))
+      return true
+    }
+
     // [2026-06-15] 调试浏览器/DevTools 聚焦时，Alt+E/R 的 keydown 进的是那个 webContents，
     // 渲染窗口收不到；由主进程拦截后通过该 IPC 转发到这里执行切换。
-    const offSwitch = window.electronAPI.onBrowserSwitchSession((dir) => switchSession(dir))
+    const offSwitch = window.electronAPI.onBrowserSwitchSession((dir) => switchTab(dir))
 
     const onKeyDown = (e: KeyboardEvent): void => {
-      // Alt+E/R：在 sessions 列表中切换上一个/下一个会话（标签页 or 分屏均适用）
       if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
         const k = e.key.toLowerCase()
+        // Alt+E/R：窗口（tab 组）间切换
         if (k === 'e' || k === 'r') {
           e.preventDefault()
           e.stopPropagation()
-          switchSession(k === 'e' ? 'prev' : 'next')
+          switchTab(k === 'e' ? 'prev' : 'next')
+          return
+        }
+        // Alt+F：当前窗口内多终端（分屏窗格）间切换
+        if (k === 'f') {
+          if (cyclePane()) { e.preventDefault(); e.stopPropagation() }
           return
         }
       }

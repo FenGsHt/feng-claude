@@ -7,6 +7,7 @@ import { matchSessionToPresetId, presetToSessionConfig } from '../../lib/telegra
 import { useI18n } from '../../i18n'
 import { TelegramSetupGuideDialog } from '../terminal/TelegramSetupGuideDialog'
 import { navigateToSettingsTab } from '../sidebar/Sidebar'
+import { collectLeafSessionIds } from '../../lib/paneLayout'
 
 /** Status dot color for a session */
 function statusColor(status: Session['status']): string {
@@ -253,6 +254,29 @@ export function TabBar(): React.ReactElement {
     restartSession,
     updateSessionTelegramChannel
   } = useSessionStore()
+  const layoutRoot = useSessionStore((s) => s.layoutRoot)
+  const parkedLayouts = useSessionStore((s) => s.parkedLayouts)
+
+  // [2026-06-16] 分屏组在 tab 栏只显示一个「主 tab」（组内第一个 leaf）；隐藏副窗格，
+  // active 状态映射到所属组的主 tab。
+  const { hiddenSecondary, primaryOf } = useMemo(() => {
+    const hidden = new Set<string>()
+    const primary: Record<string, string> = {}
+    const groups = [layoutRoot, ...parkedLayouts].filter((g): g is NonNullable<typeof g> => !!g)
+    for (const g of groups) {
+      const leaves = collectLeafSessionIds(g)
+      if (leaves.length <= 1) continue
+      const head = leaves[0]
+      for (const id of leaves) {
+        primary[id] = head
+        if (id !== head) hidden.add(id)
+      }
+    }
+    return { hiddenSecondary: hidden, primaryOf: primary }
+  }, [layoutRoot, parkedLayouts])
+
+  const tabSessions = sessions.filter((s) => !hiddenSecondary.has(s.id))
+  const activePrimary = (activeSessionId && primaryOf[activeSessionId]) || activeSessionId
   const scrollRef = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
   const [settings, setSettings] = useState<ClaudeSettings | null>(null)
@@ -398,8 +422,8 @@ export function TabBar(): React.ReactElement {
         className="flex flex-1 items-stretch overflow-x-auto min-w-0"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
-        {sessions.map((sess) => {
-          const isActive = sess.id === activeSessionId
+        {tabSessions.map((sess) => {
+          const isActive = sess.id === activePrimary
           const profileName = getProfileName(sess)
           return (
             <div

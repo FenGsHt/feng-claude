@@ -456,6 +456,16 @@ async function clonePageCore(
       html = html
         .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<script\b[^>]*\/>/gi, '')
+      // [2026-06-16] 强制可见：内容已在 DOM 里，但常被「等 JS 才显示」的 CSS 藏着
+      // （v-cloak / 滚动揭示用的 opacity:0 / 入场过渡类）。JS 已剥，揭示动作不会触发，故在此放开。
+      const forceVisibleCss = `<style data-strip-js-visible>
+[v-cloak]{display:revert !important}
+[style*="opacity:0"],[style*="opacity: 0"]{opacity:1 !important}
+[style*="visibility:hidden"],[style*="visibility: hidden"]{visibility:visible !important}
+.v-enter,.v-enter-from,.v-leave-to,.fade-enter,.fade-enter-from,.fade-leave-to,[class*="animate"][class*="hidden"]{opacity:1 !important;transform:none !important}
+.wow,.aos-init{opacity:1 !important;transform:none !important;visibility:visible !important}
+</style>`
+      html = html.replace(/<\/head>/i, `${forceVisibleCss}</head>`)
     } else {
       // inject order: 1) route-fix (inline, 可关), 2) replay shim — both before any app JS
       const headInject = routeFix

@@ -61,8 +61,9 @@
 | `Alt+→` | 切换到右侧窗格 |
 | `Alt+↑` | 切换到上方窗格 |
 | `Alt+↓` | 切换到下方窗格 |
-| `Alt+E` | 切换到上一个会话（在标签列表中循环） |
-| `Alt+R` | 切换到下一个会话（在标签列表中循环） |
+| `Alt+E` | 切换到上一个**窗口**（tab 组，不会钻进分屏副窗格） |
+| `Alt+R` | 切换到下一个**窗口**（tab 组） |
+| `Alt+F` | 在**当前窗口内的多个终端**（分屏窗格）间循环切换 |
 
 #### 持久化 Shell（守护进程模式）
 
@@ -544,8 +545,9 @@ Claude 可调用以下工具操作浏览器：
 | `Alt+→` | 切换到右侧分屏 |
 | `Alt+↑` | 切换到上方分屏 |
 | `Alt+↓` | 切换到下方分屏 |
-| `Alt+E` | 切换到上一个会话（标签列表循环） |
-| `Alt+R` | 切换到下一个会话（标签列表循环） |
+| `Alt+E` | 切换到上一个窗口（tab 组） |
+| `Alt+R` | 切换到下一个窗口（tab 组） |
+| `Alt+F` | 当前窗口内多个终端（分屏窗格）间切换 |
 
 #### 语音输入
 
@@ -641,8 +643,9 @@ Claude 可调用以下工具操作浏览器：
 | `Alt+→` | Focus right pane |
 | `Alt+↑` | Focus upper pane |
 | `Alt+↓` | Focus lower pane |
-| `Alt+E` | Switch to previous session (cyclic) |
-| `Alt+R` | Switch to next session (cyclic) |
+| `Alt+E` | Switch to previous window (tab group) |
+| `Alt+R` | Switch to next window (tab group) |
+| `Alt+F` | Cycle terminals within the current window |
 
 #### Persistent Shell (Daemon Mode)
 
@@ -1021,8 +1024,9 @@ Send messages to Claude via a Telegram Bot; Claude replies in real time.
 | `Alt+→` | Focus right pane |
 | `Alt+↑` | Focus upper pane |
 | `Alt+↓` | Focus lower pane |
-| `Alt+E` | Switch to previous session (cyclic) |
-| `Alt+R` | Switch to next session (cyclic) |
+| `Alt+E` | Switch to previous window (tab group) |
+| `Alt+R` | Switch to next window (tab group) |
+| `Alt+F` | Cycle terminals within the current window |
 
 #### Voice Input
 

@@ -150,8 +150,11 @@ async function upsertWorkdirHistory(
 interface SessionStore {
   sessions: Session[]
   activeSessionId: string | null
-  /** [2026-04-23] 主区域多分屏布局；与 tabs 中 session 对应，切换 tab 到未入屏会话时会暂退为单屏 */
+  /** [2026-04-23] 主区域多分屏布局；与 tabs 中 session 对应 */
   layoutRoot: PaneNode | null
+  /** [2026-06-16] 停泊的分屏组：切到其它会话时把当前分屏组暂存，切回其任一成员时还原，
+   *  避免分屏窗格在 Alt+E/R 切走再切回后丢失、变成独立 tab */
+  parkedLayouts: PaneNode[]
   history: HistoryRecord[]
 
   /**
@@ -200,6 +203,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   activeSessionId: null,
   layoutRoot: null,
+  parkedLayouts: [],
   history: [],
 
   createSession: async (
@@ -254,10 +258,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     set((s) => {
       let layoutRoot = s.layoutRoot
+      let parked = s.parkedLayouts
 
-      if (mode === 'fullscreen') {
-        layoutRoot = { type: 'leaf', sessionId: result.sessionId }
-      } else if (!layoutRoot) {
+      if (mode === 'fullscreen' || !layoutRoot) {
+        // [2026-06-16] 新建全屏会话前，把当前分屏组停泊，便于切回时还原
+        if (s.layoutRoot && s.layoutRoot.type === 'split') {
+          const curIds = collectLeafSessionIds(s.layoutRoot)
+          parked = [...parked.filter((t) => !collectLeafSessionIds(t).some((sid) => curIds.includes(sid))), s.layoutRoot]
+        }
         layoutRoot = { type: 'leaf', sessionId: result.sessionId }
       } else if (mode === 'split-right') {
         const anchor = splitFromSessionId ?? s.activeSessionId
@@ -278,7 +286,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       return {
         sessions: [...s.sessions, newSession],
         activeSessionId: result.sessionId,
-        layoutRoot
+        layoutRoot,
+        parkedLayouts: parked
       }
     })
 
@@ -305,10 +314,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     window.electronAPI.browserView?.destroySession?.(id)
     set((s) => {
       const remaining = s.sessions.filter((sess) => sess.id !== id)
+      // 从停泊组里也移除该会话，丢弃空组
+      const parked = s.parkedLayouts
+        .map((t) => removeSessionFromLayout(t, id))
+        .filter((t): t is PaneNode => t !== null)
       let layoutRoot = s.layoutRoot ? removeSessionFromLayout(s.layoutRoot, id) : null
-      if (layoutRoot === null && remaining.length > 0) {
-        layoutRoot = { type: 'leaf', sessionId: remaining[remaining.length - 1].id }
-      }
 
       const newActive =
         s.activeSessionId === id
@@ -317,7 +327,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             : null
           : s.activeSessionId
 
-      return { sessions: remaining, activeSessionId: newActive, layoutRoot }
+      if (layoutRoot === null && newActive) {
+        // 当前组被关空：若 newActive 属于某停泊组则还原它，否则单格显示
+        const pIdx = parked.findIndex((t) => collectLeafSessionIds(t).includes(newActive))
+        if (pIdx >= 0) { layoutRoot = parked[pIdx]; parked.splice(pIdx, 1) }
+        else layoutRoot = { type: 'leaf', sessionId: newActive }
+      }
+
+      return { sessions: remaining, activeSessionId: newActive, layoutRoot, parkedLayouts: parked }
     })
   },
 
@@ -325,14 +342,25 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // [2026-06-12] 通知 main：调试浏览器面板跟随切换到该 session 的 tab
     window.electronAPI.browserView?.setActiveSession?.(id)
     set((s) => {
-      const ids = s.layoutRoot ? collectLeafSessionIds(s.layoutRoot) : []
-      if (!s.layoutRoot || !ids.includes(id)) {
-        return {
-          activeSessionId: id,
-          layoutRoot: { type: 'leaf', sessionId: id }
-        }
+      const curIds = s.layoutRoot ? collectLeafSessionIds(s.layoutRoot) : []
+      // 目标已在当前布局里 → 仅切焦点，分屏不变
+      if (s.layoutRoot && curIds.includes(id)) {
+        return { activeSessionId: id }
       }
-      return { activeSessionId: id }
+      let parked = [...s.parkedLayouts]
+      // 把当前「分屏组」停泊起来（单格 leaf 无需停泊，还原即重建）
+      if (s.layoutRoot && s.layoutRoot.type === 'split') {
+        parked = parked.filter((t) => !collectLeafSessionIds(t).some((sid) => curIds.includes(sid)))
+        parked.push(s.layoutRoot)
+      }
+      // 目标若属于某个停泊的分屏组 → 还原该组（分屏窗格随之回来）
+      const pIdx = parked.findIndex((t) => collectLeafSessionIds(t).includes(id))
+      if (pIdx >= 0) {
+        const restored = parked[pIdx]
+        parked.splice(pIdx, 1)
+        return { activeSessionId: id, layoutRoot: restored, parkedLayouts: parked }
+      }
+      return { activeSessionId: id, layoutRoot: { type: 'leaf', sessionId: id }, parkedLayouts: parked }
     })
   },
 
@@ -447,6 +475,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       console.error('[restartSession] 创建会话失败:', result.error)
       set((s) => {
         const remaining = s.sessions.filter((sess) => sess.id !== id)
+        const parked = s.parkedLayouts
+          .map((t) => removeSessionFromLayout(t, id))
+          .filter((t): t is PaneNode => t !== null)
         let layoutRoot = s.layoutRoot ? removeSessionFromLayout(s.layoutRoot, id) : null
         if (layoutRoot === null && remaining.length > 0) {
           layoutRoot = { type: 'leaf', sessionId: remaining[remaining.length - 1].id }
@@ -457,7 +488,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
               ? remaining[remaining.length - 1].id
               : null
             : s.activeSessionId
-        return { sessions: remaining, activeSessionId: newActive, layoutRoot }
+        return { sessions: remaining, activeSessionId: newActive, layoutRoot, parkedLayouts: parked }
       })
       return
     }
@@ -494,7 +525,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activeSessionId: s.activeSessionId === id ? result.sessionId : s.activeSessionId,
       layoutRoot: s.layoutRoot
         ? replaceLeafId(s.layoutRoot, id, result.sessionId)
-        : { type: 'leaf', sessionId: result.sessionId }
+        : { type: 'leaf', sessionId: result.sessionId },
+      // 同步停泊组里的旧 id → 新 id，避免重启会话后停泊组里残留死引用
+      parkedLayouts: s.parkedLayouts.map((t) => replaceLeafId(t, id, result.sessionId))
     }))
 
     if (result.scrollback) {
@@ -585,7 +618,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activeSessionId = ids[idx]
     }
 
-    set({ sessions, layoutRoot, activeSessionId })
+    set({ sessions, layoutRoot, activeSessionId, parkedLayouts: [] })
     await get().loadHistory()
   },
 

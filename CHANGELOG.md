@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.65] - 2026-06-16
+
+### 新功能 | Features
+- **Alt+F 窗口内终端切换**：分屏快捷键职责拆分 —— `Alt+E/R` 改为在「窗口（tab 组）」间切换（只在各组主 tab 间循环，不再钻进分屏副窗格）；`Alt+F` 在「当前窗口内的多个终端（分屏窗格）」间循环（非分屏时不拦截，保留终端 readline 行为）
+
+### 修复 | Bug Fixes
+- **分屏窗格 Alt+E/R 切走丢失**：split 分屏的窗格在 Alt+E/R 切到其它会话再切回时会脱离、变成独立 tab。新增 `parkedLayouts` 停泊机制：切走时暂存分屏组，切回其任一成员时还原整组（关闭/重启会话同步清理）
+- **tab 栏分屏组重复显示**：分屏组现在只显示一个「主 tab」（组内首个 leaf），隐藏副窗格；active 高亮映射到所属组的主 tab
+
+### 界面 | UI
+- **底部 MODELS 价格随激活配置变动修复**：每个模型的价格固定用「拥有该模型的 profile」的定价，与当前激活 profile 无关
+
 ## [0.7.64] - 2026-06-16
 
 ### 修复 | Bug Fixes

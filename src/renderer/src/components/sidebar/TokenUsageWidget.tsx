@@ -197,6 +197,13 @@ export function TokenUsageWidget(): React.ReactElement {
     : (settings?.profiles.find(p => p.id === settings?.activeProfileId) ?? settings?.profiles[0])
   const singlePricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
+  // [2026-06-16] model → 该模型所属 profile 的定价（与当前激活 profile 无关）。
+  // 修复：切换激活 profile 时，底部 MODELS 里第三方模型价格会跟着变 —— 它应固定用各自 profile 的定价。
+  const modelOwnerPricing: Record<string, Pricing> = {}
+  for (const p of settings?.profiles ?? []) {
+    if (p.model && p.pricing && !modelOwnerPricing[p.model]) modelOwnerPricing[p.model] = p.pricing
+  }
+
   // [2026-04-28] Compute costs using each profile's own pricing.
   // Also adds unattributed remainder (tokens ingested before per-profile tracking) at singlePricing.
   function computePerProfileCost(totals: Record<string, TokenTotals>, globalRef?: TokenTotals): number {
@@ -236,7 +243,9 @@ export function TokenUsageWidget(): React.ReactElement {
   // 这些应走官方定价表；只有非 claude-* 的第三方模型才用 singlePricing。
   function modelPricing(modelId: string): Pricing {
     const key = modelToPricingKey(modelId)
-    return key ? (MODEL_PRICING[key] ?? singlePricing) : singlePricing
+    // claude-* 走官方固定定价；第三方模型走「拥有它的 profile」的定价，与激活 profile 无关
+    if (key) return MODEL_PRICING[key] ?? DEFAULT_PRICING
+    return modelOwnerPricing[modelId] ?? globalPricing ?? DEFAULT_PRICING
   }
 
   // globalRef: the authoritative token total (today/total); untracked tokens use singlePricing
