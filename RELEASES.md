@@ -5,6 +5,14 @@
 
 ---
 
+## v0.7.61 (2026-06-15)
+
+### 修复
+- **调试浏览器/DevTools 聚焦时 Alt+E/R 失效**：主进程在浏览器 tab 与 DevTools 的 webContents 上拦截 Alt+E/R 并转发渲染端，焦点在浏览器/DevTools 时也能切换会话
+- **切换会话/标签时 DevTools 被关掉**：DevTools 改为 per-tab 持久，切换不再强关，切回时仍在
+
+---
+
 ## v0.7.60 (2026-06-15)
 
 ### 修复

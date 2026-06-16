@@ -13,6 +13,24 @@ export function useAltArrowPaneNav(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return
 
+    // 在 sessions 列表中切上一个/下一个会话（读取实时 store，供键盘与主进程转发共用）
+    const switchSession = (dir: 'prev' | 'next'): void => {
+      const aId = useSessionStore.getState().activeSessionId
+      if (!aId) return
+      const sessions = useSessionStore.getState().sessions
+      const idx = sessions.findIndex((s) => s.id === aId)
+      if (idx < 0 || sessions.length < 2) return
+      const next = dir === 'prev'
+        ? sessions[(idx - 1 + sessions.length) % sessions.length]
+        : sessions[(idx + 1) % sessions.length]
+      setActiveSession(next.id)
+      queueMicrotask(() => focusTerminal(next.id))
+    }
+
+    // [2026-06-15] 调试浏览器/DevTools 聚焦时，Alt+E/R 的 keydown 进的是那个 webContents，
+    // 渲染窗口收不到；由主进程拦截后通过该 IPC 转发到这里执行切换。
+    const offSwitch = window.electronAPI.onBrowserSwitchSession((dir) => switchSession(dir))
+
     const onKeyDown = (e: KeyboardEvent): void => {
       // Alt+E/R：在 sessions 列表中切换上一个/下一个会话（标签页 or 分屏均适用）
       if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
@@ -20,15 +38,7 @@ export function useAltArrowPaneNav(enabled: boolean): void {
         if (k === 'e' || k === 'r') {
           e.preventDefault()
           e.stopPropagation()
-          if (!activeSessionId) return
-          const sessions = useSessionStore.getState().sessions
-          const idx = sessions.findIndex((s) => s.id === activeSessionId)
-          if (idx < 0 || sessions.length < 2) return
-          const next = k === 'e'
-            ? sessions[(idx - 1 + sessions.length) % sessions.length]
-            : sessions[(idx + 1) % sessions.length]
-          setActiveSession(next.id)
-          queueMicrotask(() => focusTerminal(next.id))
+          switchSession(k === 'e' ? 'prev' : 'next')
           return
         }
       }
@@ -69,6 +79,9 @@ export function useAltArrowPaneNav(enabled: boolean): void {
     }
 
     window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      offSwitch()
+    }
   }, [enabled, activeSessionId, setActiveSession])
 }

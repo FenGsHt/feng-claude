@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.61] - 2026-06-15
+
+### 修复 | Bug Fixes
+- **调试浏览器聚焦/开 DevTools 时 Alt+E/R 失效**：DevTools 与调试浏览器是独立 WebContentsView，聚焦后渲染窗口收不到按键。现在主进程在每个浏览器 tab 与 DevTools 的 webContents 上拦截 Alt+E/R 并转发给渲染端，无论焦点在哪都能切换会话
+- **切换会话/标签时 DevTools 被关掉**：DevTools 改为 per-tab 记录（`devToolsOpen`），内嵌 DevTools 随各自 webContents 持久；切换时不再强关，按新 active tab 状态恢复，切回时 DevTools 仍在
+
 ## [0.7.60] - 2026-06-15
 
 ### 修复 | Bug Fixes

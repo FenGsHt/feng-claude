@@ -50,6 +50,8 @@ interface BrowserTab {
   consoleLogs: ConsoleLogEntry[]
   /** [2026-06-15] 上一次 URL，用于区分重载与导航 */
   _lastUrl?: string
+  /** [2026-06-15] 该 tab 是否开着内嵌 DevTools（per-tab 记录，切换会话/标签时保留而非强关） */
+  devToolsOpen?: boolean
 }
 
 interface SessionBrowser {
@@ -914,14 +916,60 @@ function browserNavigate(url: string): void {
   state.view.webContents.loadURL(target).catch(() => {})
 }
 
-/** [2026-06-12] 切换 tab/session 前，关掉旧 active tab 的内嵌 DevTools，避免遗留。 */
+// [2026-06-15] 调试浏览器/DevTools 聚焦时，Alt+E/R 仍可切换会话。
+// WebContentsView 与 DevTools 都是独立 webContents，渲染窗口的 keydown 监听收不到它们的按键，
+// 故在主进程拦截 Alt+E/R 并转发给渲染端执行切换。
+const devToolsKeyWired = new WeakSet<Electron.WebContents>()
+function maybeHandleSessionSwitchKey(event: Electron.Event, input: Electron.Input): boolean {
+  if (input.type !== 'keyDown' || !input.alt || input.control || input.shift || input.meta) return false
+  const k = input.key.toLowerCase()
+  if (k !== 'e' && k !== 'r') return false
+  event.preventDefault()
+  state.mainWin?.webContents.send('app:browser-switch-session', { dir: k === 'e' ? 'prev' : 'next' })
+  return true
+}
+function attachDevToolsKeyForwarding(viewWc: Electron.WebContents): void {
+  const attach = (): void => {
+    const dwc = viewWc.devToolsWebContents
+    if (dwc && !devToolsKeyWired.has(dwc)) {
+      devToolsKeyWired.add(dwc)
+      dwc.on('before-input-event', (e, input) => { maybeHandleSessionSwitchKey(e, input) })
+    }
+  }
+  if (viewWc.isDevToolsOpened()) attach()
+  else viewWc.once('devtools-opened', attach)
+}
+
+/** [2026-06-12] 切换 tab/session 前，关掉旧 active tab 的内嵌 DevTools，避免遗留。
+ *  （仅在确实要销毁/关闭时用；普通切换改用 syncDevToolsForActiveTab 保留 per-tab 状态） */
 function closeActiveDevTools(): void {
   if (state.devToolsVisible && state.view) {
     try { state.view.webContents.closeDevTools() } catch { /* ignore */ }
     state.devToolsVisible = false
+    const t = getActiveTab(foregroundSessionId)
+    if (t) t.devToolsOpen = false
     if (state.navView?.webContents) {
       state.navView.webContents.send('browser-nav:devtools', { enabled: false })
     }
+  }
+}
+
+/** [2026-06-15] 切换前台 session/active tab 后，按新 active tab 的 per-tab 记录同步 DevTools 与按钮状态。
+ *  内嵌 DevTools 随各自 webContents 持久存在，切走的 tab 不再被强关。 */
+function syncDevToolsForActiveTab(): void {
+  const tab = getActiveTab(foregroundSessionId)
+  const open = !!tab?.devToolsOpen
+  state.devToolsVisible = open
+  if (state.view) {
+    const wc = state.view.webContents
+    try {
+      if (open && !wc.isDevToolsOpened()) wc.openDevTools({ mode: 'right' })
+      else if (!open && wc.isDevToolsOpened()) wc.closeDevTools()
+      if (open) attachDevToolsKeyForwarding(wc)
+    } catch { /* ignore */ }
+  }
+  if (state.navView?.webContents) {
+    state.navView.webContents.send('browser-nav:devtools', { enabled: open })
   }
 }
 
@@ -933,11 +981,13 @@ function toggleDevTools(): void {
   if (state.devToolsVisible) {
     // mode:'right' 让 Chrome 直接在浏览器视图内右侧渲染 DevTools，无空白间隔问题
     state.view.webContents.openDevTools({ mode: 'right' })
-    // DevTools 分阶段异步初始化，did-finish-load 之后页面仍在继续布局，
-    // 需要在多个时间点强制 setBounds + 注入 CSS 覆盖 DevTools 内部尺寸
+    attachDevToolsKeyForwarding(state.view.webContents)
   } else {
     state.view.webContents.closeDevTools()
   }
+  // [2026-06-15] 记录到 per-tab，使切换会话/标签后仍能保留
+  const t = getActiveTab(foregroundSessionId)
+  if (t) t.devToolsOpen = state.devToolsVisible
   // 通知导航栏按钮状态
   if (state.navView?.webContents) {
     state.navView.webContents.send('browser-nav:devtools', { enabled: state.devToolsVisible })
@@ -971,6 +1021,8 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
   view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   view.webContents.on('before-input-event', (event, input) => {
+    // [2026-06-15] 浏览器内容聚焦时 Alt+E/R 仍能切换会话
+    if (maybeHandleSessionSwitchKey(event, input)) return
     if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
       event.preventDefault()
       void startElementPicker()
@@ -1210,7 +1262,6 @@ function selectTab(sid: string, tabId: string): boolean {
   if (!sb) return false
   const tab = sb.tabs.find(t => t.id === tabId)
   if (!tab) return false
-  if (sid === foregroundSessionId) closeActiveDevTools()
   // 旧 active tab 恢复 throttle（不再需要保持合成器），新 active tab 关闭 throttle
   const oldTab = sb.tabs.find(t => t.id === sb.activeTabId)
   if (oldTab && oldTab.id !== tabId) oldTab.view.webContents.setBackgroundThrottling(true)
@@ -1220,6 +1271,7 @@ function selectTab(sid: string, tabId: string): boolean {
     state.view = tab.view
     setBounds(state.mainWin)
     raiseForegroundView(state.mainWin)
+    syncDevToolsForActiveTab()  // [2026-06-15] 按新 active tab 保留/恢复 DevTools，而非强关
     pushTabsToNav(sid)
     updateNavUrl(tab.view.webContents.getURL())
     updateNavBackForward()
@@ -1825,7 +1877,7 @@ export function setOverlayOpen(win: BrowserWindow, open: boolean): void {
  *  若该 session 还没有浏览器（从未打开过），仅记录前台 id；面板保持当前内容直到它打开。 */
 export function setForegroundSession(sessionId: string): void {
   if (!sessionId || sessionId === foregroundSessionId) return
-  closeActiveDevTools()  // 关掉旧 session active tab 的 DevTools
+  // [2026-06-15] 不再强关旧 session 的 DevTools：内嵌 DevTools 随 webContents 持久，切回时仍在
   foregroundSessionId = sessionId
   if (!state.visible || !state.mainWin) return
   const sb = sessionBrowsers.get(sessionId)
@@ -1841,6 +1893,7 @@ export function setForegroundSession(sessionId: string): void {
   state.view = getActiveTab(sessionId)?.view ?? null
   setBounds(state.mainWin)
   raiseForegroundView(state.mainWin)
+  syncDevToolsForActiveTab()  // [2026-06-15] 按新 active tab 恢复 DevTools 状态
   pushTabsToNav(sessionId)
   updateNavUrl(state.view?.webContents.getURL() ?? '')
   updateNavBackForward()

@@ -158,6 +158,13 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('speech:toggle', handler)
   },
 
+  // [2026-06-15] 调试浏览器/DevTools 聚焦时，主进程转发 Alt+E/R 来切换会话
+  onBrowserSwitchSession: (callback: (dir: 'prev' | 'next') => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: { dir: 'prev' | 'next' }): void => callback(payload.dir)
+    ipcRenderer.on('app:browser-switch-session', handler)
+    return () => ipcRenderer.removeListener('app:browser-switch-session', handler)
+  },
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onElementPicked: (callback: (info: any) => void): (() => void) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

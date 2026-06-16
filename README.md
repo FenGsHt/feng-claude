@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.60 主要更新
+### v0.7.61 主要更新
 
-- **Telegram 多窗口消息投错窗口修复**：新增跨实例 owner 锁，同一 token 全局只一个窗口轮询；强制重连（↻）夺锁让当前窗口独占接收
-- **Telegram -32000 根治**：强制重连清掉所有 telegram 插件残留进程（含孤儿 server.ts），延时重连让 Telegram 释放旧轮询槽
-- **宠物"看到现场"**：点评时纳入 Claude 最近回答摘要，不再盲评
-- **宠物报错哨兵 / 可一键执行命令 / 成本·Git 哨兵**：报错时优先排错；反引号命令一键填入终端；token 偏多或久未提交时提醒
+- **调试浏览器 Alt+E/R 修复**：DevTools/浏览器聚焦时也能用 Alt+E/R 切换会话（主进程拦截转发）
+- **DevTools 切换会话保留**：DevTools 改为 per-tab 持久，切走再切回仍在，不再被强关
+- **Telegram 多窗口消息投错窗口修复**：跨实例 owner 锁，同一 token 全局只一个窗口轮询；↻ 夺锁独占接收
+- **Telegram -32000 根治**：强制重连清掉所有残留进程（含孤儿 server.ts），延时重连
 
 ### v0.7.51 主要更新
 
@@ -192,12 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.60 Highlights
+### v0.7.61 Highlights
 
-- **Telegram multi-window misrouting fix**: new cross-instance owner lock so only one window polls a given token; force-reconnect (↻) steals the lock to make the current window the exclusive receiver
-- **Telegram -32000 fix**: force-reconnect kills all leftover telegram plugin processes (including orphan `server.ts`) and reconnects after a delay so Telegram releases the old polling slot
-- **Pet "sees the scene"**: pet commentary now includes a summary of Claude's latest reply — no more blind comments
-- **Pet error sentinel / one-click commands / cost·Git sentinels**: prioritizes troubleshooting on errors; backtick commands fill into the terminal; warns on token bursts or piled-up uncommitted changes
+- **Debug browser Alt+E/R fix**: session switching with Alt+E/R works even when the browser or DevTools has focus (intercepted and forwarded by the main process)
+- **DevTools persists across session switch**: DevTools is now per-tab — switch away and back and it's still open, no longer force-closed
+- **Telegram multi-window misrouting fix**: cross-instance owner lock so only one window polls a given token; ↻ steals the lock for exclusive receipt
+- **Telegram -32000 fix**: force-reconnect kills all leftover plugin processes (including orphan `server.ts`) and reconnects after a delay
 
 ### v0.7.51 Highlights
 

@@ -71,6 +71,7 @@ export function injectMockElectronAPI(): void {
       onClaudeTranscriptUpdate: listener,
       onSettingsChanged: listener,
       onSpeechToggle: listener,
+      onBrowserSwitchSession: listener,
       onElementPicked: listener,
       settings: {
         get: async () => ({ ...DEFAULT_SETTINGS }),
