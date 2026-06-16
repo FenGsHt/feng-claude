@@ -168,14 +168,27 @@ function PaneContent({
 
   const orientation = node.dir === 'horizontal' ? 'horizontal' : 'vertical'
   const idPath = path.replace(/\//g, '-')
+  const leftId = `p-${idPath}-L`
+  const rightId = `p-${idPath}-R`
+  // [2026-06-16] 还原拖动比例：node.sizes 存在则作为初始布局，避免切换窗口后重置成 50/50
+  const defaultLayout = node.sizes ? { [leftId]: node.sizes[0], [rightId]: node.sizes[1] } : undefined
 
   return (
     <Group
       id={`term-grp-${idPath}`}
       orientation={orientation}
       className="flex h-full min-h-0 min-w-0 flex-1"
+      defaultLayout={defaultLayout}
+      onLayoutChanged={(layout) => {
+        const l = layout[leftId]
+        const r = layout[rightId]
+        if (typeof l !== 'number' || typeof r !== 'number') return
+        const cur = node.sizes
+        if (cur && Math.round(cur[0]) === Math.round(l) && Math.round(cur[1]) === Math.round(r)) return
+        useSessionStore.getState().updateSplitSizes(path, [Math.round(l), Math.round(r)])
+      }}
     >
-      <Panel defaultSize={50} minSize={15} id={`p-${idPath}-L`} className="min-h-0 min-w-0">
+      <Panel defaultSize={50} minSize={15} id={leftId} className="min-h-0 min-w-0">
         <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <PaneContent
             node={node.first}
@@ -192,7 +205,7 @@ function PaneContent({
             : 'pane-separator pane-separator-rows shrink-0'
         }
       />
-      <Panel defaultSize={50} minSize={15} id={`p-${idPath}-R`} className="min-h-0 min-w-0">
+      <Panel defaultSize={50} minSize={15} id={rightId} className="min-h-0 min-w-0">
         <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <PaneContent
             node={node.second}

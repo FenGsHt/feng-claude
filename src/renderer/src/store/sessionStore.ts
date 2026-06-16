@@ -166,6 +166,8 @@ interface SessionStore {
   createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string, shellOnly?: boolean, telegramChannel?: TelegramChannelSessionConfig) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
+  /** [2026-06-16] 保存分屏拖动比例（path 为分屏树路径，sizes 为两侧百分比），用于切换窗口后还原 */
+  updateSplitSizes: (path: string, sizes: [number, number]) => void
 
   updateSessionStatus: (sessionId: string, status: Session['status']) => void
 
@@ -362,6 +364,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }
       return { activeSessionId: id, layoutRoot: { type: 'leaf', sessionId: id }, parkedLayouts: parked }
     })
+  },
+
+  updateSplitSizes: (path: string, sizes: [number, number]) => {
+    // path 形如 "s" / "s/0" / "s/1/0"，首段为根标记，其后 0=first 1=second
+    const segs = path.split('/').slice(1)
+    const apply = (node: PaneNode, rest: string[]): PaneNode => {
+      if (node.type !== 'split') return node
+      if (rest.length === 0) return { ...node, sizes }
+      const [head, ...tail] = rest
+      if (head === '0') return { ...node, first: apply(node.first, tail) }
+      if (head === '1') return { ...node, second: apply(node.second, tail) }
+      return node
+    }
+    set((s) => (s.layoutRoot ? { layoutRoot: apply(s.layoutRoot, segs) } : {}))
   },
 
   updateSessionStatus: (sessionId: string, status: Session['status']) => {

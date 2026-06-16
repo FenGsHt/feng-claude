@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.65 主要更新
+### v0.7.66 主要更新
 
-- **分屏快捷键拆分**：`Alt+E/R` 改为窗口（tab 组）间切换；新增 `Alt+F` 在当前窗口内的多个终端间切换
-- **分屏窗格不再脱离**：split 窗格在 Alt+E/R 切走再切回时会保留整组（停泊机制），tab 栏只显示一个主 tab
-- **底部 MODELS 价格修复**：每个模型固定用其所属 profile 的定价，不随激活配置变动
-- **Token 归因守卫**：第三方模型 token 不再漏进「官方配置」桶
+- **分屏拖动比例保留**：split 拖成非 50/50 后，Alt+E/R 切走再切回不再重置成五五分（比例随停泊/还原保留）
+- **分屏快捷键拆分**：`Alt+E/R` 窗口（tab 组）间切换；`Alt+F` 当前窗口内多终端间切换
+- **分屏窗格不再脱离 + tab 栏只显示主 tab**
+- **底部 MODELS 价格固定用所属 profile 定价 + Token 归因守卫**
 - **浏览器克隆工具大幅增强**：`clone_routes`/`save_html`/`stripJs`/导航 shim/serve-local 路由 rewrite
 
 ### v0.7.51 主要更新
@@ -193,12 +193,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.65 Highlights
+### v0.7.66 Highlights
 
-- **Split-pane shortcut split**: `Alt+E/R` now switches between windows (tab groups); new `Alt+F` cycles terminals within the current window
-- **Split panes no longer detach**: split panes survive Alt+E/R away-and-back (park mechanism); the tab bar shows a single main tab per group
-- **Bottom MODELS pricing fix**: each model uses its owning profile's pricing, independent of the active profile
-- **Token attribution guard**: third-party model tokens no longer leak into the "official" bucket
+- **Split ratio preserved**: a resized split no longer resets to 50/50 after switching windows away-and-back (ratio kept through park/restore)
+- **Split-pane shortcut split**: `Alt+E/R` switches between windows (tab groups); `Alt+F` cycles terminals within the current window
+- **Split panes no longer detach + single main tab per group**
+- **Bottom MODELS pricing fixed to owning profile + token attribution guard**
 - **Major browser-clone upgrade**: `clone_routes`/`save_html`/`stripJs`/nav shim/serve-local route rewrite
 
 ### v0.7.51 Highlights

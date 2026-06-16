@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.66] - 2026-06-16
+
+### 修复 | Bug Fixes
+- **分屏拖动比例切换窗口后重置**：split 拖成非 50/50 后，Alt+E/R 切到其它窗口再切回会重置成五五分。现在比例存进布局树（split 节点新增 `sizes`），随停泊/还原一起保留；`onLayoutChanged` 保存、`defaultLayout` 还原
+
 ## [0.7.65] - 2026-06-16
 
 ### 新功能 | Features

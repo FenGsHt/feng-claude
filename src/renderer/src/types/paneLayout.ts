@@ -7,6 +7,8 @@ export type PaneNode =
       dir: 'horizontal' | 'vertical'
       first: PaneNode
       second: PaneNode
+      /** [2026-06-16] 两侧拖动后的百分比 [左/上, 右/下]；缺省 50/50。用于切换窗口后还原比例 */
+      sizes?: [number, number]
     }
 
 export type CreateSessionMode = 'fullscreen' | 'split-right' | 'split-down' | 'split-worktree'
