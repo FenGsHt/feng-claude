@@ -294,7 +294,7 @@
 - **DevTools 按标签页持久**：每个标签页独立记录 DevTools 开关状态，切换会话/标签后保留，切回时仍在
 - **Alt+E/R 全焦点可用**：即使焦点在调试浏览器或 DevTools 内，Alt+E/R 仍可切换会话（主进程拦截转发）
 
-#### 完整 MCP 工具列表（共 42 个）
+#### 完整 MCP 工具列表（共 44 个）
 
 Claude 可调用以下工具操作浏览器：
 
@@ -375,10 +375,12 @@ Claude 可调用以下工具操作浏览器：
 |------|------|
 | `browser_capture_resources` | 下载页面所有资源（HTML/CSS/JS/图片/字体）到本地，生成 manifest.json |
 | `browser_site_pages` | 发现站点所有内部页面/路由 |
-| `browser_clone_page` | 克隆单个页面：下载资源、导出 CSS、重写 URL、接线导航 |
+| `browser_clone_page` | 克隆单个页面：下载资源、导出 CSS、重写 URL、接线导航；支持 `outputFile`（SPA hash 路由命名）/`stripJs`（静态快照）/`routeFix` |
+| `browser_clone_routes` | 按显式路由列表批量克隆 SPA（解决 hash 路由发现不到）；逐路由克隆→串导航→起预览服务器；支持 `stripJs`/`clickRules`（div+JS 路由 tabbar） |
 | `browser_clone_site` | 克隆整站：自动发现路由，录制 API 响应，启动预览服务器，计算视觉相似度 |
-| `browser_wire_navigation` | 将 href 链接重写为本地克隆文件路径 |
-| `browser_serve_local` | 启动本地 HTTP 服务器预览克隆 HTML |
+| `browser_save_html` | 直接把渲染后 HTML（或某 selector）存到文件，不过模型上下文 |
+| `browser_wire_navigation` | 将 href/路由重写为本地克隆文件，注入三层导航 shim，写 routes.json |
+| `browser_serve_local` | 启动本地 HTTP 服务器预览克隆 HTML（禁用缓存，按 routes.json 做路由→文件 rewrite） |
 | `browser_patch_element` | 提取元素的 computed style（含伪元素），自动写入克隆文件 |
 
 **Routine 录制/回放**
@@ -472,7 +474,7 @@ Claude 可调用以下工具操作浏览器：
 | MCP | 功能 |
 |-----|------|
 | `office-cli` | Office 文档处理（docx/xlsx/pptx） |
-| `browser-tools` | 内嵌浏览器 42 个操作工具 |
+| `browser-tools` | 内嵌浏览器 44 个操作工具 |
 | `visual-agent` | 本地图片分析（调用配置的多模态 API） |
 
 #### MCP 面板操作

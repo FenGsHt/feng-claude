@@ -8,6 +8,8 @@
  */
 
 const http = require('http')
+const fs = require('fs')
+const path = require('path')
 
 const BASE = `http://localhost:${process.env.FENG_CLAUDE_BROWSER_PORT || 3100}`
 
@@ -146,6 +148,18 @@ const TOOLS = [
       type: 'object',
       properties: { selector: { type: 'string', description: 'CSS selector to get outerHTML of (optional, defaults to full page)' } },
       required: []
+    }
+  },
+  {
+    name: 'browser_save_html',
+    description: 'Save the rendered HTML of the current page (or a selector) directly to a file on disk. Avoids piping large HTML through the model context. Use this instead of browser_get_html when you only need the HTML saved (e.g. snapshotting each SPA route).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        outputPath: { type: 'string', description: 'Absolute file path to write the HTML to (e.g. "C:/clone/about.html"). Parent dirs are created automatically.' },
+        selector:   { type: 'string', description: 'Optional CSS selector — saves only that element\'s outerHTML instead of the full page.' }
+      },
+      required: ['outputPath']
     }
   },
   {
@@ -345,6 +359,9 @@ const TOOLS = [
       properties: {
         url:       { type: 'string', description: 'Page URL to clone' },
         outputDir: { type: 'string', description: 'Absolute path to output directory (shared across all pages of a site)' },
+        outputFile: { type: 'string', description: 'Explicit output HTML filename (e.g. "about.html"). REQUIRED for SPA hash routes (#/about) where the base URL is identical and the default name would collide on index.html. When omitted, the name is derived from the URL path AND hash route.' },
+        stripJs:   { type: 'boolean', description: 'Static-snapshot mode: remove ALL <script> tags from the saved HTML so the framework (Vue/React) cannot re-mount and wipe the already-rendered DOM. Use this for a faithful VISUAL clone where you only need the rendered look + working page-to-page navigation (via the injected nav shim), not live interactivity. Default false (keeps JS + API replay). RECOMMENDED for navigable static SPA clones — it also avoids the route-fix/URL conflict entirely.' },
+        routeFix:  { type: 'boolean', description: 'Default true (non-stripJs only). Injects a tiny script that history.replaceState()s the URL to this file\'s original route path (e.g. /promo) so a LIVE Vue/React router renders the correct route instead of blanking. Set false if it conflicts with your serving setup. Ignored when stripJs is true (no scripts are kept).' },
         pageMap:   { type: 'object', description: 'Map of original URL → local filename for navigation wiring, e.g. {"https://example.com/": "index.html", "https://example.com/about": "about.html"}. Get this from browser_site_pages.' },
         waitMs:    { type: 'number', description: 'Extra wait after page load for JS/lazy content (default 4000, max 15000)' },
         interactMs: { type: 'number', description: 'Extra ms to keep recording API responses after scroll (default 0, max 20000). Increase for SPAs so more XHR/fetch responses get archived for replay.' }
@@ -362,9 +379,30 @@ const TOOLS = [
         outputDir: { type: 'string', description: 'Absolute path to output directory' },
         maxPages:  { type: 'number', description: 'Max pages to clone (default 10, max 30). Use multiple calls with the same outputDir for larger sites.' },
         waitMs:    { type: 'number', description: 'Extra wait per page after load (default 4000, max 15000)' },
-        interactMs: { type: 'number', description: 'Extra ms per page to record API responses (default 0, max 20000). Set 3000+ for SPAs.' }
+        interactMs: { type: 'number', description: 'Extra ms per page to record API responses (default 0, max 20000). Set 3000+ for SPAs.' },
+        stripJs:   { type: 'boolean', description: 'Static-snapshot mode: strip all <script> tags so the framework cannot re-render and blank the page (default false).' },
+        clickRules:{ type: 'array', description: 'Custom nav rules for non-<a> tabbars (div + JS router). Same format as browser_clone_routes clickRules.', items: {} }
       },
       required: ['url', 'outputDir']
+    }
+  },
+  {
+    name: 'browser_clone_routes',
+    description: 'Clone an explicit LIST of routes in one call — the reliable way to clone a Vue/React SPA whose routes are NOT discoverable via sitemap or links (e.g. hash routes like #/about that browser_clone_site cannot find). Pass the route list you obtained from the app\'s router config. Each route is navigated, fully cloned (with its own output filename), API responses recorded, navigation wired, and a preview server started. Routes may be full URLs, hash routes ("#/about"), absolute paths ("/about"), or {route, file} objects to control the output filename.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        outputDir: { type: 'string', description: 'Absolute path to output directory' },
+        routes:    { type: 'array', description: 'Route list. Items can be strings ("#/about", "/about", "https://site/#/about") or objects {route, file}. Each becomes a distinct local HTML file.', items: {} },
+        url:       { type: 'string', description: 'Base URL to resolve relative/hash routes against (defaults to the current page URL).' },
+        waitMs:    { type: 'number', description: 'Extra wait per page after load (default 4000, max 15000)' },
+        interactMs:{ type: 'number', description: 'Extra ms per page to record API responses (default 0, max 20000). Set 3000+ for SPAs.' },
+        stripJs:   { type: 'boolean', description: 'Static-snapshot mode: strip all <script> tags so the framework cannot re-render and blank the page. Page-to-page navigation still works via the injected nav shim. RECOMMENDED for faithful navigable SPA clones — also avoids the route-fix URL conflict. Default false.' },
+        routeFix:  { type: 'boolean', description: 'Default true (non-stripJs only). Each cloned file replaceState()s the URL to its original route path so a live router renders correctly. Set false to disable. Ignored when stripJs is true.' },
+        clickRules:{ type: 'array', description: 'Custom navigation rules for tabbars that are NOT <a href> links (e.g. <div> + JS router). The injected nav shim auto-handles <a href> and common data-route/data-to/data-path/data-url attributes; use clickRules ONLY for elements keyed by something else (like an icon\'s alt code). Each rule: {selector, file} (every click on selector → file) OR {selector, value, map} where value is "childSelector@attr" (e.g. "img@alt") or a self attribute name, and map is value→filename. Example: [{"selector":".tabbar-left-item","value":"img@alt","map":{"110004":"index.html","110006":"promo.html"}}]', items: {} },
+        serve:     { type: 'boolean', description: 'Start a local preview server when done (default true).' }
+      },
+      required: ['outputDir', 'routes']
     }
   },
   {
@@ -411,7 +449,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         dir:     { type: 'string', description: 'Absolute path to directory containing cloned HTML files' },
-        pageMap: { type: 'object', description: 'Map of original URL → local filename, same as passed to browser_clone_page' }
+        pageMap: { type: 'object', description: 'Map of original URL → local filename, same as passed to browser_clone_page' },
+        clickRules: { type: 'array', description: 'Optional custom navigation rules for non-<a> tabbars (div + JS router). Same format as browser_clone_routes clickRules: [{selector, value:"img@alt", map:{...}}] or [{selector, file}].', items: {} }
       },
       required: ['dir', 'pageMap']
     }
@@ -555,13 +594,22 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: r.ok ? `Closed tab ${args.tabId}. ${(r.tabs||[]).length} tab(s) left.` : `Failed: ${r.error}` }]
       }
       case 'browser_screenshot': {
-        const r = await callHttp('/screenshot')
+        // [2026-06-16] "display surface not available" 是间歇性合成器未就绪，自动重试（show + 等待 + 重拍）
+        let r = await callHttp('/screenshot')
+        let attempts = 0
+        while ((!r.data) && /display surface|not available for capture|capture/i.test(String(r.error || '')) && attempts < 3) {
+          attempts++
+          await callHttp('/show')
+          await new Promise(rs => setTimeout(rs, 400 * attempts))
+          r = await callHttp('/screenshot')
+        }
         if (r.data) {
           const fmt = r.format === 'png' ? 'image/png' : 'image/jpeg'
-          const meta = `Screenshot: ${r.width||'?'}x${r.height||'?'} ${r.format||'jpeg'}, ${r.byteLength||Math.round(r.data.length*0.75)} bytes${r.url?`, url: ${r.url}`:''}`
+          const retried = attempts ? ` (after ${attempts} retr${attempts === 1 ? 'y' : 'ies'})` : ''
+          const meta = `Screenshot: ${r.width||'?'}x${r.height||'?'} ${r.format||'jpeg'}, ${r.byteLength||Math.round(r.data.length*0.75)} bytes${r.url?`, url: ${r.url}`:''}${retried}`
           return [{ type: 'text', text: meta }, { type: 'image', data: r.data, mimeType: fmt }]
         }
-        return [{ type: 'text', text: `Failed: ${r.error || 'No screenshot data returned'}` }]
+        return [{ type: 'text', text: `Failed: ${r.error || 'No screenshot data returned'}${attempts ? ` (retried ${attempts}×). Try browser_show then retry, or browser_screenshot_full.` : ''}` }]
       }
       case 'browser_click': {
         const r = await callHttp('/click', { selector: args.selector })
@@ -633,9 +681,22 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: r.success ? `Office preview opened: ${args.filePath}` : `Failed: ${r.error}` }]
       }
       case 'browser_get_html': {
-        const path = args.selector ? `/html?selector=${encodeURIComponent(args.selector)}` : '/html'
-        const r = await callHttp(path)
+        const p = args.selector ? `/html?selector=${encodeURIComponent(args.selector)}` : '/html'
+        const r = await callHttp(p)
         return [{ type: 'text', text: r.html ?? `Failed: ${r.error}` }]
+      }
+      case 'browser_save_html': {
+        if (!args.outputPath) return [{ type: 'text', text: 'Failed: outputPath is required' }]
+        const p = args.selector ? `/html?selector=${encodeURIComponent(args.selector)}` : '/html'
+        const r = await callHttp(p)
+        if (r.html == null) return [{ type: 'text', text: `Failed: ${r.error || 'no HTML returned'}` }]
+        try {
+          fs.mkdirSync(path.dirname(args.outputPath), { recursive: true })
+          fs.writeFileSync(args.outputPath, r.html, 'utf-8')
+          return [{ type: 'text', text: `Saved HTML (${Buffer.byteLength(r.html)} bytes) → ${args.outputPath}` }]
+        } catch (e) {
+          return [{ type: 'text', text: `Failed to write file: ${String(e && e.message || e)}` }]
+        }
       }
       case 'browser_scroll': {
         const r = await callHttp('/scroll', { selector: args.selector, deltaY: args.deltaY, x: args.x, y: args.y, behavior: args.behavior || 'smooth' })
@@ -753,7 +814,7 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       case 'browser_clone_page': {
-        const r = await callHttp('/clone-page', { url: args.url, outputDir: args.outputDir, pageMap: args.pageMap || {}, waitMs: args.waitMs, interactMs: args.interactMs })
+        const r = await callHttp('/clone-page', { url: args.url, outputDir: args.outputDir, outputFile: args.outputFile, stripJs: args.stripJs, routeFix: args.routeFix, pageMap: args.pageMap || {}, waitMs: args.waitMs, interactMs: args.interactMs })
         if (r.htmlFile) {
           const crossNote = r.crossOriginCss?.length ? `\nCross-origin CSS fetched: ${r.crossOriginCss.length} sheets` : ''
           const apiNote = r.apiResponses ? `\nAPI responses archived for replay: ${r.apiResponses}` : ''
@@ -762,12 +823,27 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       case 'browser_clone_site': {
-        const r = await callHttp('/clone-site', { url: args.url, outputDir: args.outputDir, maxPages: args.maxPages, waitMs: args.waitMs, interactMs: args.interactMs })
+        const r = await callHttp('/clone-site', { url: args.url, outputDir: args.outputDir, maxPages: args.maxPages, waitMs: args.waitMs, interactMs: args.interactMs, stripJs: args.stripJs, routeFix: args.routeFix, clickRules: args.clickRules || [] })
         if (r.pages) {
           const rows = r.pages.map(p => `  ${p.htmlFile}  sim=${p.similarity === null ? '?' : p.similarity + '%'}  res=${p.resources}  api=${p.apiResponses}  ←  ${p.url}`)
           const failRows = (r.failed || []).map(f => `  FAILED  ${f.url}  (${f.error})`)
           return [{ type: 'text', text:
             `Site cloned → ${r.outputDir}\nPreview server: ${r.serverUrl}\nNavigation wired in ${r.navUpdated} files\n\nPages (${r.pages.length}):\n${rows.join('\n')}${failRows.length ? '\n' + failRows.join('\n') : ''}\n\nNext: for pages with sim < 92%, navigate to the original page and use browser_patch_element(selector, applyTo: "<outputDir>/<file>.html") to fix differences, then re-screenshot.` }]
+        }
+        return [{ type: 'text', text: `Failed: ${r.error}` }]
+      }
+      case 'browser_clone_routes': {
+        const r = await callHttp('/clone-routes', {
+          outputDir: args.outputDir, routes: args.routes || [], url: args.url,
+          waitMs: args.waitMs, interactMs: args.interactMs, serve: args.serve, stripJs: args.stripJs,
+          routeFix: args.routeFix, clickRules: args.clickRules || []
+        })
+        if (r.pages) {
+          const rows = r.pages.map(p => `  ${p.htmlFile}  res=${p.resources}  api=${p.apiResponses}  ←  ${p.url}`)
+          const failRows = (r.failed || []).map(f => `  FAILED  ${f.url}  (${f.error})`)
+          const srv = r.serverUrl ? `\nPreview server: ${r.serverUrl}` : ''
+          return [{ type: 'text', text:
+            `Cloned ${r.pages.length} route(s) → ${r.outputDir}${srv}\nNavigation wired in ${r.navUpdated} files\n\n${rows.join('\n')}${failRows.length ? '\n' + failRows.join('\n') : ''}` }]
         }
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
@@ -800,7 +876,7 @@ async function handleTool(name, args) {
         return [{ type: 'text', text: `Failed: ${r.error}` }]
       }
       case 'browser_wire_navigation': {
-        const r = await callHttp('/wire-navigation', { dir: args.dir, pageMap: args.pageMap })
+        const r = await callHttp('/wire-navigation', { dir: args.dir, pageMap: args.pageMap, clickRules: args.clickRules || [] })
         if (r.updated !== undefined) {
           return [{ type: 'text', text: `Navigation wired in ${r.updated}/${r.files?.length} HTML files\nFiles: ${r.files?.join(', ')}` }]
         }

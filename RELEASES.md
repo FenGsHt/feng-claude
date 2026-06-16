@@ -5,6 +5,24 @@
 
 ---
 
+## v0.7.63 (2026-06-16)
+
+### 新功能
+- **浏览器克隆工具大幅增强（SPA 静态复刻全链路）**：
+  - 新增 `browser_clone_routes`（按显式路由列表批量克隆，解决 hash 路由发现不到）、`browser_save_html`（直接存 HTML 到文件）
+  - `clone_page` 支持 `outputFile` + hash 路由命名，多路由不再互相覆盖
+  - `stripJs` 静态快照模式：剥除脚本避免框架重渲染擦除内容
+  - 导航 shim 三层拦截：`<a href>` / data-* 路由属性 / 自定义 clickRules（覆盖 div+JS 路由 tabbar）
+  - serve-local 路由→文件 rewrite（`routes.json`），把 `/promo` 等路由路径反查回克隆文件，拦得住框架自身改 URL
+  - 新增 `routeFix` 开关交给调用方控制
+
+### 修复
+- 克隆页导航连不上（wired 0）：href 重写覆盖 hash/路径，注入捕获阶段点击 shim
+- route-fix 加执行守卫，支持 hash 路由
+- browser_screenshot 间歇失败自动重试；serve-local 禁用缓存
+
+---
+
 ## v0.7.62 (2026-06-16)
 
 ### 修复

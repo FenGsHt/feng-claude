@@ -149,6 +149,18 @@ const REPLAY_SHIM = `// replay-shim.js — serves archived API responses to make
 })();
 `
 
+// [2026-06-16] 由 URL 推导本地文件名（不含扩展名），兼容 SPA hash 路由（#/about → about）
+function derivePageNameFromUrl(targetUrl: string): string {
+  try {
+    const u = new URL(targetUrl)
+    const p = u.pathname.replace(/\/$/, '') || '/'
+    let base = p === '/' ? 'index' : (p.replace(/^\//, '').replace(/\//g, '-').replace(/[^a-zA-Z0-9\-_.]/g, '_') || 'index')
+    const hash = u.hash.replace(/^#\/?/, '').replace(/\//g, '-').replace(/[^a-zA-Z0-9\-_.]/g, '_')
+    if (hash) base = base === 'index' ? hash : `${base}-${hash}`
+    return base || 'index'
+  } catch { return 'index' }
+}
+
 // ── Page clone core (shared by /clone-page and /clone-site) ─────────────────
 
 interface CloneResult {
@@ -167,7 +179,10 @@ async function clonePageCore(
   outputDir: string,
   pageMap: Record<string, string>,
   waitMs: number,
-  interactMs = 0
+  interactMs = 0,
+  outputFile = '',
+  stripJs = false,
+  routeFix = true
 ): Promise<CloneResult> {
   mkdirSync(outputDir, { recursive: true })
 
@@ -350,11 +365,8 @@ async function clonePageCore(
       return localFile ? `url("${localFile}")` : `url(${q}${rawUrl}${q})`
     })
 
-    const pageName = (() => {
-      const p = new URL(targetUrl).pathname.replace(/\/$/, '') || '/'
-      if (p === '/') return 'index'
-      return p.replace(/^\//, '').replace(/\//g, '-').replace(/[^a-zA-Z0-9\-_.]/g, '_') || 'index'
-    })()
+    // [2026-06-16] 显式 outputFile 优先（解决 SPA 同 base URL 多路由互相覆盖）；否则按 URL（含 hash 路由）推导
+    const pageName = outputFile ? outputFile.replace(/\.html$/i, '') : derivePageNameFromUrl(targetUrl)
     const cssFile = `styles_${pageName}.css`
     writeFileSync(join(outputDir, cssFile), fullCss, 'utf-8')
     const cssRuleCount = (fullCss.match(/\{/g) || []).length
@@ -426,19 +438,31 @@ async function clonePageCore(
     html = html.replace(/<\/head>/i, `  <link rel="stylesheet" href="${cssFile}">\n</head>`)
 
     // Route-fix: restore original URL before SPA router reads it.
-    // When serving "about.html" locally, window.location.pathname is "/about.html" which
-    // doesn't match any SPA route → router re-renders to homepage/404, clobbering the clone.
-    // replaceState runs synchronously before any app JS, so the SPA sees the correct path.
-    const originalPath = (() => {
+    // 服务 promo.html 时 location.pathname 是 /promo.html，不匹配任何 SPA 路由 → 路由器渲染到首页/404
+    // 擦掉克隆内容。route-fix 在任何 app JS 之前同步把 URL 改回该文件对应的原始路由路径。
+    // [2026-06-16] 同时支持 path 路由（/promo）与 hash 路由（#/promo）。
+    const { originalPath, originalHash } = (() => {
       try {
         const u = new URL(targetUrl)
-        return u.pathname + (u.search || '')
-      } catch { return '/' }
+        return { originalPath: u.pathname + (u.search || ''), originalHash: u.hash || '' }
+      } catch { return { originalPath: '/', originalHash: '' } }
     })()
-    const routeFixScript = `<script>(function(){try{if(window.history&&window.location.pathname!==${JSON.stringify(originalPath)}){history.replaceState(null,'',${JSON.stringify(originalPath)})}}catch(e){}})()</script>`
+    // [2026-06-16] 加执行标记：同文档内只跑一次，避免与 SPA 自身后续路由跳转互相打架
+    const routeFixScript = `<script data-route-fix>(function(){try{if(window.__fengRouteFixed)return;window.__fengRouteFixed=1;var p=${JSON.stringify(originalPath)},h=${JSON.stringify(originalHash)};if(window.history&&location.pathname!==p){history.replaceState(null,'',p+h)}if(h&&location.hash!==h){location.hash=h}}catch(e){}})()</script>`
 
-    // inject order: 1) route-fix (inline), 2) replay shim — both before any app JS
-    html = html.replace(/<head([^>]*)>/i, `<head$1>\n  ${routeFixScript}\n  <script src="replay-shim.js"></script>`)
+    if (stripJs) {
+      // [2026-06-16] 静态快照模式：移除所有脚本，避免 Vue/React 重新挂载擦除已渲染的 DOM。
+      // 保留已渲染内容 + CSS，配合 wireNavigation 注入的导航 shim 在静态页之间跳转。
+      html = html
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<script\b[^>]*\/>/gi, '')
+    } else {
+      // inject order: 1) route-fix (inline, 可关), 2) replay shim — both before any app JS
+      const headInject = routeFix
+        ? `<head$1>\n  ${routeFixScript}\n  <script src="replay-shim.js"></script>`
+        : `<head$1>\n  <script src="replay-shim.js"></script>`
+      html = html.replace(/<head([^>]*)>/i, headInject)
+    }
 
     const htmlFile = `${pageName}.html`
     writeFileSync(join(outputDir, htmlFile), html, 'utf-8')
@@ -460,11 +484,14 @@ async function handleClonePage(req: IncomingMessage, res: ServerResponse, getWC:
   const pageMap = (body?.pageMap as Record<string, string>) ?? {}
   const waitMs = Math.min(Number(body?.waitMs ?? 4000), 15000)
   const interactMs = Number(body?.interactMs ?? 0)
+  const outputFile = (body?.outputFile as string) ?? ''
+  const stripJs = body?.stripJs === true
+  const routeFix = body?.routeFix !== false
   if (!targetUrl || !outputDir) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing url or outputDir' })); return }
   const wc = getWC()
   if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
   try {
-    const result = await clonePageCore(wc, targetUrl, outputDir, pageMap, waitMs, interactMs)
+    const result = await clonePageCore(wc, targetUrl, outputDir, pageMap, waitMs, interactMs, outputFile, stripJs, routeFix)
     res.writeHead(200); res.end(JSON.stringify({ ...result, outputDir }))
   } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
 }
@@ -501,6 +528,8 @@ async function handleCloneSite(
   const maxPages = Math.min(Number(body?.maxPages ?? 10), 30)
   const waitMs = Math.min(Number(body?.waitMs ?? 4000), 15000)
   const interactMs = Number(body?.interactMs ?? 0)
+  const stripJs = body?.stripJs === true
+  const routeFix = body?.routeFix !== false
   if (!targetUrl || !outputDir) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing url or outputDir' })); return }
   const wc = getWC()
   if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
@@ -516,7 +545,7 @@ async function handleCloneSite(
     const failed: { url: string; error: string }[] = []
     for (const p of selected) {
       try {
-        const r = await clonePageCore(wc, p.url, outputDir, pageMap, waitMs, interactMs)
+        const r = await clonePageCore(wc, p.url, outputDir, pageMap, waitMs, interactMs, '', stripJs, routeFix)
         results.push({ url: p.url, htmlFile: r.htmlFile, resources: r.resources, apiResponses: r.apiResponses, similarity: null })
       } catch (e) {
         failed.push({ url: p.url, error: String(e) })
@@ -540,7 +569,7 @@ async function handleCloneSite(
     }
 
     // 5. wire navigation across all cloned files
-    const wired = wireNavigationCore(outputDir, pageMap)
+    const wired = wireNavigationCore(outputDir, pageMap, Array.isArray(body?.clickRules) ? (body!.clickRules as NavClickRule[]) : [])
 
     res.writeHead(200); res.end(JSON.stringify({
       serverUrl, outputDir,
@@ -586,10 +615,27 @@ async function startLocalServer(dir: string, port: number, localServers: Map<str
     }
   } catch { /* no manifest — fall back to direct file serving only */ }
 
+  // [2026-06-16] 路由→文件映射（routes.json）：把 SPA 路由路径（/promo、/user/profile）反查回克隆文件，
+  // 不管 URL 是被注入的 route-fix 改的还是 SPA 自身 bundle 改的，刷新/直达都能命中正确文件。
+  const routesMap: Record<string, string> = {}
+  try {
+    const rj: Record<string, string> = JSON.parse(readFileSync(join(dir, 'routes.json'), 'utf-8'))
+    for (const [route, file] of Object.entries(rj)) {
+      const k = route.replace(/^#\/?/, '/').replace(/\/$/, '') || '/'  // "#/promo"→"/promo", "/promo/"→"/promo"
+      routesMap[k] = file
+    }
+  } catch { /* no routes.json */ }
+
   const srv = createServer((req2, res2) => {
     const reqPath = decodeURIComponent(new URL(req2.url ?? '/', 'http://localhost').pathname)
     let filePath = join(dir, reqPath === '/' ? 'index.html' : reqPath)
     if (!existsSync(filePath) && existsSync(filePath + '.html')) filePath += '.html'
+    // 路由 rewrite：直接文件未命中时，按 routes.json 把路由路径映射到克隆文件（覆盖多段路由）
+    if (!existsSync(filePath)) {
+      const routeKey = reqPath.replace(/\/$/, '') || '/'
+      const mappedFile = routesMap[routeKey]
+      if (mappedFile && existsSync(join(dir, mappedFile))) filePath = join(dir, mappedFile)
+    }
     if (!existsSync(filePath)) {
       // 1) manifest pathname 精确命中（如 /static/css/vendor-xxx.css）
       const mapped = pathnameMap[reqPath]
@@ -616,6 +662,10 @@ async function startLocalServer(dir: string, port: number, localServers: Map<str
     const ext2 = extname(filePath).toLowerCase()
     res2.setHeader('Content-Type', MIME_MAP[ext2] ?? 'application/octet-stream')
     res2.setHeader('Access-Control-Allow-Origin', '*')
+    // [2026-06-16] 禁用缓存：改完克隆文件后刷新即生效，无需换端口重启
+    res2.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res2.setHeader('Pragma', 'no-cache')
+    res2.setHeader('Expires', '0')
     createReadStream(filePath).pipe(res2)
   })
   await new Promise<void>((resolve, reject) => {
@@ -722,16 +772,100 @@ async function handlePatchElement(req: IncomingMessage, res: ServerResponse, get
 
 // ── /wire-navigation ──────────────────────────────────────────────────────────
 
-function wireNavigationCore(dir: string, pageMap: Record<string, string>): { updated: number; files: string[] } {
+// [2026-06-16] 路由规范化键：hash 路由 → "#/about"，否则取 pathname。Node 与浏览器 shim 用同一逻辑。
+function canonRoute(u: URL): string {
+  if (u.hash) return '#/' + u.hash.replace(/^#\/?/, '').replace(/\/$/, '')
+  return u.pathname.replace(/\/$/, '') || '/'
+}
+
+// 为某条原始 URL 生成可能出现在 href 里的各种写法（用于静态重写）
+function hrefVariants(origUrl: string): string[] {
+  const out = new Set<string>()
+  const add = (s?: string): void => {
+    if (!s) return
+    out.add(s)
+    out.add(s.replace(/\/$/, ''))
+    out.add(s.replace(/\/$/, '') + '/')
+  }
+  add(origUrl)
+  try {
+    const u = new URL(origUrl)
+    if (u.hash) add(u.hash)            // "#/about"
+    add(u.pathname)                    // "/about"
+    if (u.pathname !== '/') add(u.pathname + u.hash)
+  } catch { /* non-absolute key */ }
+  return [...out].filter(Boolean)
+}
+
+// clickRules：拦截无 <a href> 的自定义导航（div tabbar + JS 路由）。每条规则：
+//   selector: 可点击元素的 CSS 选择器（用 closest 匹配祖先）
+//   file:     直接目标文件（点该元素即跳此文件），或
+//   value+map: 用区分属性取值再查表。value 形如 "img@alt"（子元素 img 的 alt）或 "data-id"（自身属性）
+export interface NavClickRule {
+  selector: string
+  file?: string
+  value?: string
+  map?: Record<string, string>
+}
+
+// [2026-06-16] 导航 shim：document 捕获阶段拦截点击，按 route→本地文件 / clickRules 强制跳转。
+// 对 Vue/React 重渲染同样有效（监听在 document 上，stopImmediatePropagation 抢在框架 router 之前）。
+function buildNavShim(routeMap: Record<string, string>, clickRules: NavClickRule[] = []): string {
+  return `<script data-nav-shim>(function(){
+  var R=${JSON.stringify(routeMap)};
+  var RULES=${JSON.stringify(clickRules)};
+  function canon(href){try{var u=new URL(href,location.href);
+    if(u.hash)return '#/'+u.hash.replace(/^#\\/?/,'').replace(/\\/$/,'');
+    return (u.pathname.replace(/\\/$/,'')||'/');}catch(e){return href||'';}}
+  function go(dest,e){e.preventDefault();e.stopImmediatePropagation();window.location.href=dest;}
+  document.addEventListener('click',function(e){
+    var t=e.target; if(!t||!t.closest)return;
+    var a=t.closest('a[href]');
+    if(a){var d=R[canon(a.getAttribute('href'))];if(d){return go(d,e);}}
+    // 通用自动层：常见 data-* 路由属性（覆盖多数规范 SPA，无需显式规则）
+    var ne=t.closest('[data-route],[data-path],[data-to],[data-url],[data-href]');
+    if(ne){var raw=ne.getAttribute('data-route')||ne.getAttribute('data-path')||ne.getAttribute('data-to')||ne.getAttribute('data-url')||ne.getAttribute('data-href');
+      var dd=R[canon(raw)]; if(dd){return go(dd,e);}}
+    for(var i=0;i<RULES.length;i++){var rule=RULES[i];
+      var el=t.closest(rule.selector); if(!el)continue;
+      var dest=null;
+      if(rule.file){dest=rule.file;}
+      else if(rule.value&&rule.map){
+        var idx=rule.value.indexOf('@');
+        var sel=idx>=0?rule.value.slice(0,idx):'';
+        var attr=idx>=0?rule.value.slice(idx+1):rule.value;
+        var node=sel?el.querySelector(sel):el;
+        var v=node?(node.getAttribute(attr)||''):'';
+        dest=rule.map[v];
+      }
+      if(dest){return go(dest,e);}
+    }
+  },true);
+})();</script>`
+}
+
+function wireNavigationCore(dir: string, pageMap: Record<string, string>, clickRules: NavClickRule[] = []): { updated: number; files: string[] } {
   const htmlFiles = readdirSync(dir).filter(f => f.endsWith('.html'))
+  // 规范化路由映射（供 shim 用）
+  const routeMap: Record<string, string> = {}
+  for (const [origUrl, localFile] of Object.entries(pageMap)) {
+    try { routeMap[canonRoute(new URL(origUrl))] = localFile } catch { /* skip */ }
+  }
+  const shim = buildNavShim(routeMap, clickRules)
+  // [2026-06-16] 写 routes.json 供 serve-local 做路由→文件 rewrite：
+  // 即便 SPA 自身的 bundle 把 URL replaceState 成 /promo，服务器也能据此把 /promo 反查回 promo.html。
+  try { writeFileSync(join(dir, 'routes.json'), JSON.stringify(routeMap), 'utf-8') } catch { /* ignore */ }
   let updated = 0
   for (const file of htmlFiles) {
     const filePath = join(dir, file)
     let content = readFileSync(filePath, 'utf-8')
     let changed = false
+    // 注：route-fix 脚本（data-route-fix）保留——它已按每文件克隆来源 URL 注入正确的路由路径
+    // （promo.html → replaceState('/promo')），活 SPA 据此渲染正确路由；serve-local 会把 /promo
+    // 反查回 promo.html，因此重载也成立。stripJs 模式下所有脚本已被剥除，route-fix 自然不存在。
+    // 1) 静态重写 href（含 hash 路由 / 路径形式），JS 禁用时也能跳
     for (const [origUrl, localFile] of Object.entries(pageMap)) {
-      const variants = [origUrl, origUrl.replace(/\/$/, ''), origUrl.replace(/\/$/, '') + '/']
-      for (const v of variants) {
+      for (const v of hrefVariants(origUrl)) {
         if (content.includes(`href="${v}"`) || content.includes(`href='${v}'`)) {
           content = content.split(`href="${v}"`).join(`href="${localFile}"`)
           content = content.split(`href='${v}'`).join(`href='${localFile}'`)
@@ -739,7 +873,14 @@ function wireNavigationCore(dir: string, pageMap: Record<string, string>): { upd
         }
       }
     }
-    if (changed) { writeFileSync(filePath, content, 'utf-8'); updated++ }
+    // 2) 注入/更新导航 shim（拦截点击，对重渲染后的 DOM 也生效）
+    const shimRe = /<script data-nav-shim>[\s\S]*?<\/script>\n?/
+    if (shimRe.test(content)) content = content.replace(shimRe, shim)
+    else if (/<\/body>/i.test(content)) content = content.replace(/<\/body>/i, `${shim}</body>`)
+    else content += shim
+    changed = true
+    writeFileSync(filePath, content, 'utf-8')
+    updated++
   }
   return { updated, files: htmlFiles }
 }
@@ -748,9 +889,10 @@ async function handleWireNavigation(req: IncomingMessage, res: ServerResponse): 
   const body = await readBody(req)
   const dir = (body?.dir as string) ?? ''
   const pageMap = (body?.pageMap as Record<string, string>) ?? {}
+  const clickRules = Array.isArray(body?.clickRules) ? (body!.clickRules as NavClickRule[]) : []
   if (!dir || !existsSync(dir)) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing or invalid dir' })); return }
   try {
-    res.writeHead(200); res.end(JSON.stringify(wireNavigationCore(dir, pageMap)))
+    res.writeHead(200); res.end(JSON.stringify(wireNavigationCore(dir, pageMap, clickRules)))
   } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
 }
 
@@ -837,6 +979,65 @@ async function handleScreenshotFull(req: IncomingMessage, res: ServerResponse, g
   } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
 }
 
+// ── /clone-routes — 按显式路由列表批量克隆（解决 SPA hash 路由无法被发现的问题）──────
+
+async function handleCloneRoutes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  getWC: GetWC,
+  localServers: Map<string, Server>
+): Promise<void> {
+  const body = await readBody(req)
+  const outputDir = (body?.outputDir as string) ?? ''
+  const routesIn = Array.isArray(body?.routes) ? (body!.routes as unknown[]) : []
+  const baseUrl = (body?.url as string) ?? ''
+  const waitMs = Math.min(Number(body?.waitMs ?? 4000), 15000)
+  const interactMs = Number(body?.interactMs ?? 0)
+  const serve = body?.serve !== false
+  const stripJs = body?.stripJs === true
+  const routeFix = body?.routeFix !== false
+  const clickRules = Array.isArray(body?.clickRules) ? (body!.clickRules as NavClickRule[]) : []
+  if (!outputDir || !routesIn.length) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing outputDir or routes' })); return }
+  const wc = getWC()
+  if (!wc) { res.writeHead(400); res.end(JSON.stringify({ error: 'Browser not open' })); return }
+  try {
+    const base = baseUrl || wc.getURL() || ''
+    // 解析每条路由 → { url, filename }；route 可为完整 URL / "#/about" / "/about" / "about"
+    const resolved: { url: string; filename: string }[] = []
+    for (const item of routesIn) {
+      let route = ''
+      let explicitFile = ''
+      if (typeof item === 'string') route = item
+      else if (item && typeof item === 'object') {
+        const o = item as Record<string, unknown>
+        route = String(o.route ?? o.url ?? '')
+        explicitFile = String(o.file ?? o.filename ?? '')
+      }
+      if (!route) continue
+      let url: string
+      try { url = /^https?:\/\//i.test(route) ? route : new URL(route, base || undefined).toString() }
+      catch { url = route }
+      const filename = explicitFile ? (explicitFile.endsWith('.html') ? explicitFile : `${explicitFile}.html`) : `${derivePageNameFromUrl(url)}.html`
+      resolved.push({ url, filename })
+    }
+    if (!resolved.length) { res.writeHead(400); res.end(JSON.stringify({ error: 'No valid routes resolved' })); return }
+    const pageMap: Record<string, string> = Object.fromEntries(resolved.map(x => [x.url, x.filename]))
+
+    const results: { url: string; htmlFile: string; resources: number; apiResponses: number }[] = []
+    const failed: { url: string; error: string }[] = []
+    for (const x of resolved) {
+      try {
+        const r = await clonePageCore(wc, x.url, outputDir, pageMap, waitMs, interactMs, x.filename, stripJs, routeFix)
+        results.push({ url: x.url, htmlFile: r.htmlFile, resources: r.resources, apiResponses: r.apiResponses })
+      } catch (e) { failed.push({ url: x.url, error: String(e) }) }
+    }
+    const wired = wireNavigationCore(outputDir, pageMap, clickRules)
+    let serverUrl: string | null = null
+    if (serve) { try { serverUrl = await startLocalServer(outputDir, 0, localServers) } catch { /* ignore */ } }
+    res.writeHead(200); res.end(JSON.stringify({ outputDir, serverUrl, pages: results, failed, navUpdated: wired.updated, pageMap }))
+  } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })) }
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 /**
@@ -852,6 +1053,7 @@ export async function handleCloneRoute(
   if (path === '/site-pages'       && req.method === 'POST') { await handleSitePages(req, res, getWC);               return true }
   if (path === '/clone-page'       && req.method === 'POST') { await handleClonePage(req, res, getWC);               return true }
   if (path === '/clone-site'       && req.method === 'POST') { await handleCloneSite(req, res, getWC, localServers); return true }
+  if (path === '/clone-routes'     && req.method === 'POST') { await handleCloneRoutes(req, res, getWC, localServers); return true }
   if (path === '/serve-local'      && req.method === 'POST') { await handleServeLocal(req, res, localServers);       return true }
   if (path === '/patch-element'    && req.method === 'POST') { await handlePatchElement(req, res, getWC);            return true }
   if (path === '/wire-navigation'  && req.method === 'POST') { await handleWireNavigation(req, res);                 return true }

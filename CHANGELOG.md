@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.63] - 2026-06-16
+
+### 新功能 | Features
+- **browser_clone_routes（新工具）**：按显式路由列表批量克隆 SPA（解决 Vue/React hash 路由 sitemap/链接发现不到的问题），逐路由克隆→串导航→起预览服务器
+- **browser_save_html（新工具）**：直接把渲染后 HTML 存到文件，不再让大 HTML 过模型上下文
+- **clone_page 支持 outputFile + hash 路由命名**：SPA 同 base URL 多路由不再都落到 index.html 互相覆盖
+- **stripJs 静态快照模式**：clone_page/routes/site 可剥除所有脚本，避免框架重渲染擦除已渲染 DOM
+- **导航 shim 三层拦截**：注入到克隆页的点击拦截支持 `<a href>` / 通用 data-* 路由属性 / 自定义 clickRules（覆盖 div+JS 路由的 tabbar）
+- **serve-local 路由→文件 rewrite**：克隆写 `routes.json`，本地服务器把 `/promo` 等路由路径（含多段路由）反查回克隆文件，拦得住框架自身改 URL
+- **routeFix 开关**：可控制是否注入 route-fix 脚本，交给调用方按现场决定
+
+### 修复 | Bug Fixes
+- **克隆页面导航连不上（wired in 0 files）**：href 重写扩展到 hash 路由/路径形式，并注入捕获阶段点击 shim，对 Vue 重渲染后的 DOM 也生效
+- **route-fix 加执行守卫**：`window.__fengRouteFixed` 防止同文档重复执行；hash 路由也能正确恢复
+- **browser_screenshot 间歇失败自动重试**：遇 "display surface not available" 自动 show+等待+重拍
+- **serve-local 禁用缓存**：改完克隆文件刷新即生效，无需换端口
+
 ## [0.7.62] - 2026-06-16
 
 ### 修复 | Bug Fixes
