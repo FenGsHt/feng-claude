@@ -5,6 +5,13 @@
 
 ---
 
+## v0.7.69 (2026-06-17)
+
+### 修复
+- **Alt+E/R 切换后终端不刷新 / 画面错乱**：Canvas 渲染器 reparent 后残留空白/旧帧的回归。新增 `refreshTerminalView`（先 fit 再 refresh，跨帧兜底），在终端 reparent 与变 active 时调用，覆盖聚焦/非聚焦窗格
+
+---
+
 ## v0.7.68 (2026-06-17)
 
 ### 修复

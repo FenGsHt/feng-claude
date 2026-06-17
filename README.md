@@ -8,12 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.68 主要更新
+### v0.7.69 主要更新
 
-- **切换焦点修复**：Alt+E/R / Alt+F 切换、点击窗格后焦点稳健落到输入框（重试式 focus，扛住分屏布局还原时的重挂载时序）
+- **Alt+E/R 切换后终端不刷新 / 画面错乱修复**：Canvas 渲染器 reparent 后残留空白/旧帧的回归，新增稳健重绘（先 fit 再 refresh、跨帧兜底），覆盖聚焦与非聚焦窗格
+- **切换焦点修复**：Alt+E/R / Alt+F 切换、点击窗格后焦点稳健落到输入框
 - **多终端性能优化**：xterm 改用 Canvas 渲染器；分屏 header 不再被其他终端状态变化牵连重渲染
 - **统计面板成本算法修复**：费用统一按模型定价（官方 Claude vs 第三方分开）
-- **顶部 tab 宽度收紧** + **分屏拖动比例保留** + **底部 MODELS 价格固定用所属 profile 定价**
 
 ### v0.7.51 主要更新
 
@@ -192,12 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.68 Highlights
+### v0.7.69 Highlights
 
-- **Switch-focus fix**: after Alt+E/R / Alt+F or clicking a pane, focus reliably lands in the input box (retry-based focus that survives pane re-mount during split-layout restore)
+- **Fix: terminal not refreshing / garbled after Alt+E/R**: regression from the Canvas renderer leaving blank/stale frames after reparenting; added robust repaint (fit then refresh, across frames) covering both focused and unfocused panes
+- **Switch-focus fix**: after Alt+E/R / Alt+F or clicking a pane, focus reliably lands in the input box
 - **Multi-terminal performance**: xterm now uses the Canvas renderer; split-pane headers no longer re-render on other terminals' status changes
 - **Stats panel cost fix**: costs now price per model (official Claude vs third-party separately)
-- **Tighter top tabs** + **split ratio preserved** + **bottom MODELS pricing fixed to owning profile**
 
 ### v0.7.51 Highlights
 

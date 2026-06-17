@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.69] - 2026-06-17
+
+### 修复 | Bug Fixes
+- **Alt+E/R 切换后终端不刷新 / 画面错乱**：上版引入 Canvas 渲染器后的回归 —— 切换还原停泊分屏布局时 `.xterm` 元素被 reparent 到新容器，Canvas 画布残留空白/旧帧；尤其还原回来的非聚焦副窗格不走 active effect，只靠一次性 refresh 不够；active effect 又是先 refresh 后 fit（顺序反），尺寸变化时按旧几何重绘花屏。新增 `refreshTerminalView`（先 fit 拿到正确 cols/rows 再 refresh，跨两帧兜底），在终端 reparent 与变 active 时都调用
+
 ## [0.7.68] - 2026-06-17
 
 ### 修复 | Bug Fixes

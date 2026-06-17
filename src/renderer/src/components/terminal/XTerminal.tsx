@@ -167,6 +167,35 @@ export function writeToTerminal(sessionId: string, data: string): void {
   terminals.get(sessionId)?.term.write(data)
 }
 
+/**
+ * [2026-06-17] reparent / 从隐藏变可见后强制重绘。
+ * Canvas 渲染器把内容画在 <canvas> 上，画布被 appendChild 移到新容器（Alt+E/R 还原停泊
+ * 分屏布局）或从隐藏变可见时会残留空白/旧帧；且必须先 fit 拿到正确 cols/rows 再 refresh，
+ * 否则按旧几何重绘会花屏。跨两帧兜底，覆盖容器布局尚未稳定的情况。
+ */
+export function refreshTerminalView(sessionId: string): void {
+  const kick = (): void => {
+    const entry = terminals.get(sessionId)
+    if (!entry) return
+    const el = entry.term.element
+    const w = el?.clientWidth ?? 0
+    const h = el?.clientHeight ?? 0
+    try {
+      if (w > 4 && h > 4) {
+        entry.fitAddon.fit()
+        window.electronAPI?.resizePty(sessionId, entry.term.cols, entry.term.rows)
+      }
+      entry.term.refresh(0, Math.max(0, entry.term.rows - 1))
+    } catch {
+      // hidden/detached 终端 fit/refresh 报错忽略
+    }
+  }
+  requestAnimationFrame(() => {
+    kick()
+    requestAnimationFrame(kick)
+  })
+}
+
 /** [2026-06-17] 重试式 focus 的 rAF 句柄，避免同一 session 叠多条重试链 */
 const pendingFocusRafBySession = new Map<string, number>()
 
@@ -465,10 +494,10 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     } else {
       // [2026-05-27] 重挂载（布局切换/tab 恢复）：将 element 移入新容器后强制刷新 canvas，
       // 防止 display:none 或 DOM 移动后 xterm 画布残留旧内容。
+      // [2026-06-17] Canvas 渲染器 reparent 后易残留空白/旧帧（尤其还原停泊分屏里的非聚焦副窗格，
+      // 它不走 active effect），改用 refreshTerminalView 先 fit 再跨帧 refresh 兜底。
       container.appendChild(term.element)
-      requestAnimationFrame(() => {
-        try { term.refresh(0, Math.max(0, term.rows - 1)) } catch {}
-      })
+      refreshTerminalView(sessionId)
     }
     scheduleScrollToBottom(sessionId, { frames: 3 })
 
@@ -648,12 +677,10 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
   useEffect(() => {
     if (!active) return
 
-    // [2026-05-27] 立即 refresh：display:none → visible 时 xterm canvas 可能有脏帧，
-    // 先强制重绘当前 buffer，避免用户看到 200ms 的残影/乱码。
-    const entry0 = terminals.get(sessionId)
-    if (entry0) {
-      try { entry0.term.refresh(0, Math.max(0, entry0.term.rows - 1)) } catch {}
-    }
+    // [2026-05-27] 变可见时 xterm canvas 可能有脏帧，先强制重绘避免 200ms 残影/乱码。
+    // [2026-06-17] 改用 refreshTerminalView：先 fit 拿到正确 cols/rows 再 refresh（跨帧），
+    // 修复 Canvas 渲染器切换后偶发不刷新 / 按旧几何重绘的花屏。
+    refreshTerminalView(sessionId)
 
     const t = window.setTimeout(() => {
       const entry = terminals.get(sessionId)
