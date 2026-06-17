@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.67] - 2026-06-17
+
+### 修复 | Bug Fixes
+- **统计面板成本仍用老算法修复**：「统计」侧栏里 3 处费用计算仍用单一 active-profile 定价 × 整段范围（汇总卡费用、今日明细 Input/Output/Cache 费用、柱状图 tooltip 每日费用），把贵的官方 Claude 和便宜的第三方模型混在一个价格里算。现统一改为按模型定价：`claude-*` 走官方固定定价表，第三方模型走「拥有它的 profile」的定价，未归类余量回退单一定价（与底部 widget 一致）
+
+### 界面 | UI
+- **顶部 tab 宽度收紧**：内边距/项间距/最小宽度下调，profile 与 telegram 徽章加最大宽截断，整体更紧凑
+
 ## [0.7.66] - 2026-06-16
 
 ### 修复 | Bug Fixes

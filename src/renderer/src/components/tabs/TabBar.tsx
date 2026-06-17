@@ -430,7 +430,7 @@ export function TabBar(): React.ReactElement {
               key={sess.id}
               title={sess.workdir}
               onClick={() => setActiveSession(sess.id)}
-              className={`tab-item ${isActive ? 'tab-active' : ''} relative flex items-center gap-1.5 px-3 h-full min-w-[80px] max-w-[260px] cursor-pointer border-r border-claude-border shrink-0 group select-none ${
+              className={`tab-item ${isActive ? 'tab-active' : ''} relative flex items-center gap-1 px-2 h-full min-w-[56px] max-w-[200px] cursor-pointer border-r border-claude-border shrink-0 group select-none ${
                 isActive
                   ? 'bg-claude-bg text-claude-text'
                   : 'bg-claude-surface text-claude-muted hover:text-claude-text hover:bg-claude-bg/60'
@@ -464,7 +464,7 @@ export function TabBar(): React.ReactElement {
                     e.stopPropagation()
                     handleBadgeClick(sess.id)
                   }}
-                  className={`shrink-0 text-[9px] px-1 py-0.5 rounded transition-colors ${
+                  className={`shrink-0 max-w-[68px] truncate text-[9px] px-1 py-0.5 rounded transition-colors ${
                     isActive
                       ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
                       : 'bg-claude-border text-claude-muted hover:bg-claude-border/80'
@@ -486,7 +486,7 @@ export function TabBar(): React.ReactElement {
                     e.stopPropagation()
                     handleTelegramBadgeClick(sess.id)
                   }}
-                  className={`shrink-0 max-w-[76px] truncate text-[9px] px-1 py-0.5 rounded transition-colors ${
+                  className={`shrink-0 max-w-[60px] truncate text-[9px] px-1 py-0.5 rounded transition-colors ${
                     isActive
                       ? sess.telegramChannel?.enabled
                         ? 'bg-sky-500/20 text-sky-300 hover:bg-sky-500/30'

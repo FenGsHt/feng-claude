@@ -6,7 +6,7 @@ import type { ClaudeSettings, ApiProfile } from '../../types/settings'
 import { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../../types/settings'
 import { useI18n } from '../../i18n'
 import { UsageOverviewDashboard } from './UsageOverviewDashboard'
-import { computeClaudeModelsCost } from '../../lib/modelPricing'
+import { computeClaudeModelsCost, MODEL_PRICING, modelToPricingKey } from '../../lib/modelPricing'
 
 /** 返回需要在图表中展示的配置列表，包含官方虚拟 profile（若有数据）*/
 function displayProfiles(settings: ClaudeSettings | null, perProfileData: Record<string, unknown>): Array<ApiProfile> {
@@ -231,6 +231,57 @@ export function UsageChart(): React.ReactElement {
   const activeProfile = settings?.profiles.find(p => p.id === settings.activeProfileId) ?? settings?.profiles[0]
   const pricing: Pricing = activeProfile?.pricing ?? globalPricing ?? DEFAULT_PRICING
 
+  // [2026-06-17] 按模型定价（与底部 widget 一致）：claude-* 走官方固定定价表，
+  // 第三方模型走「拥有它的 profile」的定价；避免用单一 active-profile 价格混算所有模型。
+  const modelOwnerPricing: Record<string, Pricing> = {}
+  for (const p of settings?.profiles ?? []) {
+    if (p.model && p.pricing && !modelOwnerPricing[p.model]) modelOwnerPricing[p.model] = p.pricing
+  }
+  const modelPricing = (modelId: string): Pricing => {
+    const key = modelToPricingKey(modelId)
+    if (key) return MODEL_PRICING[key] ?? DEFAULT_PRICING
+    return modelOwnerPricing[modelId] ?? globalPricing ?? DEFAULT_PRICING
+  }
+  // 一段范围内按 per-model 数据算费用；ref 给出权威 token 总量，未归类余量回退单一定价。
+  const costByModel = (perModelTotals: Record<string, TokenTotals>, ref?: TokenTotals): number => {
+    let cost = 0, si = 0, so = 0, sc = 0, sr = 0
+    for (const [mid, mt] of Object.entries(perModelTotals)) {
+      cost += computeCost(mt, modelPricing(mid))
+      si += mt.input; so += mt.output; sc += mt.cacheCreate; sr += mt.cacheRead
+    }
+    if (ref) {
+      const u: TokenTotals = {
+        input: Math.max(0, ref.input - si),
+        output: Math.max(0, ref.output - so),
+        cacheCreate: Math.max(0, ref.cacheCreate - sc),
+        cacheRead: Math.max(0, ref.cacheRead - sr)
+      }
+      if (u.input + u.output + u.cacheCreate + u.cacheRead > 0) cost += computeCost(u, pricing)
+    }
+    return cost
+  }
+  // 各 token 类型（Input/Output/Cache）的费用，按各模型自己的费率拆分汇总。
+  const breakdownCostByModel = (
+    perModelTotals: Record<string, TokenTotals>,
+    ref: TokenTotals
+  ): { input: number; output: number; cacheCreate: number; cacheRead: number } => {
+    let bi = 0, bo = 0, bc = 0, br = 0, si = 0, so = 0, sc = 0, sr = 0
+    for (const [mid, mt] of Object.entries(perModelTotals)) {
+      const p = modelPricing(mid)
+      bi += (mt.input / 1_000_000) * p.inputPerM
+      bo += (mt.output / 1_000_000) * p.outputPerM
+      bc += (mt.cacheCreate / 1_000_000) * p.cacheCreatePerM
+      br += (mt.cacheRead / 1_000_000) * p.cacheReadPerM
+      si += mt.input; so += mt.output; sc += mt.cacheCreate; sr += mt.cacheRead
+    }
+    // 未归类余量回退单一定价
+    bi += (Math.max(0, ref.input - si) / 1_000_000) * pricing.inputPerM
+    bo += (Math.max(0, ref.output - so) / 1_000_000) * pricing.outputPerM
+    bc += (Math.max(0, ref.cacheCreate - sc) / 1_000_000) * pricing.cacheCreatePerM
+    br += (Math.max(0, ref.cacheRead - sr) / 1_000_000) * pricing.cacheReadPerM
+    return { input: bi, output: bo, cacheCreate: bc, cacheRead: br }
+  }
+
   // Compute week data
   const weekDates = currentWeekDates()
   const weekTotal = sumDailyHistory(dailyHistory, weekDates)
@@ -264,25 +315,28 @@ export function UsageChart(): React.ReactElement {
 
   // Select data based on time range
   const rangeData = timeRange === 'today' ? today : timeRange === 'week' ? weekTotal : effectiveTotal
-  const rangeCost = computeCost(rangeData, pricing)
   const rangePerProfile = timeRange === 'today'
     ? (dailyHistoryPerProfile[todayDate] ?? {})
     : timeRange === 'week' ? weekPerProfile : effectivePerProfile
 
-  // Breakdown rows
-  const breakdownRows: { name: string; val: number; cost: number; color: string }[] = [
-    { name: 'Input', val: rangeData.input, cost: (rangeData.input / 1_000_000) * pricing.inputPerM, color: 'text-blue-400' },
-    { name: 'Output', val: rangeData.output, cost: (rangeData.output / 1_000_000) * pricing.outputPerM, color: 'text-green-400' },
-    { name: 'Cache↑', val: rangeData.cacheCreate, cost: (rangeData.cacheCreate / 1_000_000) * pricing.cacheCreatePerM, color: 'text-purple-400' },
-    { name: 'Cache↓', val: rangeData.cacheRead, cost: (rangeData.cacheRead / 1_000_000) * pricing.cacheReadPerM, color: 'text-amber-400' },
-  ]
-
-  // Per-model range totals (for official profile cost via per-model pricing)
+  // Per-model range totals (for cost via per-model pricing)
   const rangePerModel = timeRange === 'today'
     ? (dailyHistoryPerModel[todayDate] ?? {})
     : timeRange === 'week'
       ? sumPerModelHistory(dailyHistoryPerModel, weekDates)
       : perModel
+
+  // [2026-06-17] 范围总费用：按模型定价汇总（官方 Claude vs 第三方分开），余量回退单一定价
+  const rangeCost = costByModel(rangePerModel, rangeData)
+
+  // Breakdown rows — 费用按各模型自己的费率拆分（非单一 active-profile 价格）
+  const breakdownCosts = breakdownCostByModel(rangePerModel, rangeData)
+  const breakdownRows: { name: string; val: number; cost: number; color: string }[] = [
+    { name: 'Input', val: rangeData.input, cost: breakdownCosts.input, color: 'text-blue-400' },
+    { name: 'Output', val: rangeData.output, cost: breakdownCosts.output, color: 'text-green-400' },
+    { name: 'Cache↑', val: rangeData.cacheCreate, cost: breakdownCosts.cacheCreate, color: 'text-purple-400' },
+    { name: 'Cache↓', val: rangeData.cacheRead, cost: breakdownCosts.cacheRead, color: 'text-amber-400' },
+  ]
 
   // Per-profile pie chart
   const pieSlices = buildPieSlices(settings, rangePerProfile, rangeData)
@@ -303,7 +357,10 @@ export function UsageChart(): React.ReactElement {
     return dh ? tokenSum(dh) : 0
   })
   const maxVal = Math.max(...values, 1)
-  const dayCosts = Object.fromEntries(Object.entries(dailyHistory).map(([d, dh]) => [d, computeCost(dh, pricing)]))
+  // [2026-06-17] 每日费用按当日 per-model 数据定价（官方 vs 第三方分开），余量回退单一定价
+  const dayCosts = Object.fromEntries(
+    Object.entries(dailyHistory).map(([d, dh]) => [d, costByModel(dailyHistoryPerModel[d] ?? {}, dh)])
+  )
 
   const valuesFingerprint = values.join(',')
   const recentStackedLegend = useMemo(() => {
