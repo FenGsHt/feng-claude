@@ -12,8 +12,9 @@ import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequest
 /* [2026-05-07] 浮窗 × 不再强制退出 PTY，移除关闭路径中的输入/echo 清理依赖。 */
 // import { sendRawPtyInput, wakeTerminal } from './XTerminal'
 // import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
-import { wakeTerminal } from './XTerminal'
+import { wakeTerminal, refreshTerminalView } from './XTerminal'
 import { focusSessionInput } from '../../lib/sessionFocus'
+import { collectLeafSessionIds } from '../../lib/paneLayout'
 
 interface PaneLeafProps {
   sessionId: string
@@ -233,6 +234,17 @@ interface Props {
 export function TerminalSplitLayout({ root }: Props): React.ReactElement {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const setActiveSession = useSessionStore((s) => s.setActiveSession)
+
+  // [2026-06-17] 叶子集合变化（split 创建/还原/关闭某窗格）时，强制所有窗格按当前 pane 尺寸
+  // 重新 fit —— 修复分屏后 TUI（lazygit 等）按旧几何渲染超出 pane 被截断。
+  // 只 key 在叶子 id 序列上，不随拖动比例（sizes）变化触发（拖动由各终端 ResizeObserver 处理）。
+  const leafKey = collectLeafSessionIds(root).join(',')
+  useEffect(() => {
+    const ids = leafKey ? leafKey.split(',') : []
+    if (ids.length < 1) return
+    const raf = requestAnimationFrame(() => ids.forEach((id) => refreshTerminalView(id)))
+    return () => cancelAnimationFrame(raf)
+  }, [leafKey])
 
   if (root.type === 'leaf') {
     const focused = activeSessionId === root.sessionId

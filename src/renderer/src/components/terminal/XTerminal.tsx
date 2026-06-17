@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useCallback } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
-import { CanvasAddon } from 'xterm-addon-canvas'
 import 'xterm/css/xterm.css'
 import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
@@ -26,19 +25,8 @@ interface Props {
 // Map sessionId → Terminal instance (shared across re-renders)
 const terminals = new Map<string, { term: Terminal; fitAddon: FitAddon }>()
 
-// [2026-06-17] 已加载 Canvas 渲染器的终端实例。多终端分屏时 DOM 渲染器是主要性能瓶颈，
-// 改用 Canvas 渲染器（GPU 合成、不占 WebGL context 配额，适合多终端）。每实例仅加载一次，
-// 失败则静默回退到默认 DOM 渲染器。必须在 term.open() 之后加载。
-const canvasLoaded = new WeakSet<Terminal>()
-function ensureCanvasRenderer(term: Terminal): void {
-  if (canvasLoaded.has(term)) return
-  try {
-    term.loadAddon(new CanvasAddon())
-    canvasLoaded.add(term)
-  } catch {
-    // 回退到 DOM 渲染器（addon 加载失败不影响终端可用）
-  }
-}
+// [2026-06-17] 一度改用 Canvas 渲染器优化多终端性能，但多 canvas + 频繁 refresh 在多终端时
+// 造成切换花屏 / 分屏 TUI 溢出 / 卡死（关掉一个终端才恢复），已回退到稳定的默认 DOM 渲染器。
 
 /** 当前行缓冲，遇 \r/\n 提交为「最后一问」候选（与 PTY send 并行） */
 const terminalLineBuffers = new Map<string, string>()
@@ -168,10 +156,9 @@ export function writeToTerminal(sessionId: string, data: string): void {
 }
 
 /**
- * [2026-06-17] reparent / 从隐藏变可见后强制重绘。
- * Canvas 渲染器把内容画在 <canvas> 上，画布被 appendChild 移到新容器（Alt+E/R 还原停泊
- * 分屏布局）或从隐藏变可见时会残留空白/旧帧；且必须先 fit 拿到正确 cols/rows 再 refresh，
- * 否则按旧几何重绘会花屏。跨两帧兜底，覆盖容器布局尚未稳定的情况。
+ * [2026-06-17] reparent（Alt+E/R 还原停泊分屏布局）/ 从隐藏变可见后强制重绘。
+ * 先 fit 拿到当前 pane 的正确 cols/rows 再 refresh —— 修复分屏 TUI（lazygit 等）按旧几何
+ * 渲染导致超出 pane 被截断；并 SIGWINCH 通知 PTY 重排。跨两帧兜底容器布局尚未稳定的情况。
  */
 export function refreshTerminalView(sessionId: string): void {
   const kick = (): void => {
@@ -214,6 +201,12 @@ export function focusTerminal(sessionId: string): void {
   let attempts = 0
   const tryFocus = (): void => {
     attempts++
+    // [2026-06-17] 主窗口没焦点（焦点在调试浏览器 WebContentsView/别的窗口）时不抢焦点，
+    // 直接终止重试链 —— 否则重试循环会把焦点从调试浏览器拽回终端。
+    if (!document.hasFocus()) {
+      pendingFocusRafBySession.delete(sessionId)
+      return
+    }
     const entry = terminals.get(sessionId)
     const ta = entry?.term.textarea as HTMLTextAreaElement | undefined
     // 仅当 textarea 已接入 DOM 且容器有尺寸（非隐藏 tab）时才尝试 focus
@@ -489,13 +482,11 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
 
     if (!term.element) {
       term.open(container)
-      // [2026-06-17] open 后启用 Canvas 渲染器（多终端 DOM 渲染性能优化）
-      ensureCanvasRenderer(term)
     } else {
-      // [2026-05-27] 重挂载（布局切换/tab 恢复）：将 element 移入新容器后强制刷新 canvas，
-      // 防止 display:none 或 DOM 移动后 xterm 画布残留旧内容。
-      // [2026-06-17] Canvas 渲染器 reparent 后易残留空白/旧帧（尤其还原停泊分屏里的非聚焦副窗格，
-      // 它不走 active effect），改用 refreshTerminalView 先 fit 再跨帧 refresh 兜底。
+      // [2026-05-27] 重挂载（布局切换/tab 恢复）：将 element 移入新容器后强制刷新，
+      // 防止 display:none 或 DOM 移动后残留旧内容。
+      // [2026-06-17] 改用 refreshTerminalView：先 fit 拿到当前 pane 尺寸再跨帧 refresh，
+      // 修复还原分屏后副窗格 TUI 按旧几何渲染超出 pane 被截断（副窗格不走 active effect）。
       container.appendChild(term.element)
       refreshTerminalView(sessionId)
     }

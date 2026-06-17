@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.70] - 2026-06-17
+
+### 修复 | Bug Fixes
+- **回退 Canvas 渲染器（多终端卡死/切换花屏/分屏 TUI 溢出）**：v0.7.68 引入的 Canvas 渲染器在多终端时多 canvas + 频繁 refresh 造成 GPU/ResizeObserver 反馈，随终端数放大导致卡死（关掉一个终端才恢复）、切换花屏、分屏 TUI 超出被截断。已回退到稳定的 DOM 渲染器并卸载 `xterm-addon-canvas`；保留无副作用的 header 订阅收窄优化
+- **焦点被调试浏览器抢走**：重试式 focus 循环会把焦点从调试浏览器（独立 WebContentsView）拽回终端。`focusTerminal` / `focusEmbedInput` 每次重试先检查 `document.hasFocus()`，主窗口没焦点就不抢、直接终止重试
+- **分屏后 TUI 超出 pane 被截断**：叶子集合变化（split 创建/还原/关窗格）时强制所有窗格按当前 pane 尺寸重新 fit（先 fit 再 refresh），修复 lazygit 等全屏 TUI 按旧几何渲染溢出
+
 ## [0.7.69] - 2026-06-17
 
 ### 修复 | Bug Fixes

@@ -39,6 +39,8 @@ export function focusEmbedInput(sessionId: string): void {
   let attempts = 0
   const run = (): void => {
     attempts++
+    // [2026-06-17] 主窗口没焦点（焦点在调试浏览器/别处）时不抢，终止重试，避免抢走焦点
+    if (!document.hasFocus()) return
     const fn = focusers.get(sessionId)
     if (fn) {
       fn()
