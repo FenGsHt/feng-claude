@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { findNeighborSessionId, type PaneDirection } from '../lib/terminalPaneNeighbors'
-import { focusTerminal } from '../components/terminal/XTerminal'
+import { focusSessionInput } from '../lib/sessionFocus'
 import { collectLeafSessionIds } from '../lib/paneLayout'
 
 // [2026-06-16] 计算分屏组：每组首个 leaf 为主 tab；返回隐藏副窗格集合 + 副→主映射
@@ -44,7 +44,7 @@ export function useAltArrowPaneNav(enabled: boolean): void {
         ? tabs[(idx - 1 + tabs.length) % tabs.length]
         : tabs[(idx + 1) % tabs.length]
       setActiveSession(next.id)
-      queueMicrotask(() => focusTerminal(next.id))
+      queueMicrotask(() => focusSessionInput(next.id))
     }
 
     // [2026-06-16] Alt+F：在「当前窗口内的多个终端」（当前分屏组的窗格）间循环；
@@ -58,7 +58,7 @@ export function useAltArrowPaneNav(enabled: boolean): void {
       const nextId = leaves[((idx < 0 ? 0 : idx) + 1) % leaves.length]
       if (nextId === aId) return false
       setActiveSession(nextId)
-      queueMicrotask(() => focusTerminal(nextId))
+      queueMicrotask(() => focusSessionInput(nextId))
       return true
     }
 
@@ -115,7 +115,7 @@ export function useAltArrowPaneNav(enabled: boolean): void {
       e.stopPropagation()
 
       setActiveSession(next)
-      queueMicrotask(() => focusTerminal(next))
+      queueMicrotask(() => focusSessionInput(next))
     }
 
     window.addEventListener('keydown', onKeyDown, true)

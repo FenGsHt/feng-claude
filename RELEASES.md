@@ -5,6 +5,17 @@
 
 ---
 
+## v0.7.68 (2026-06-17)
+
+### 修复
+- **Alt+E/R / Alt+F 切换后焦点不在输入框**：改为重试式 focus，扛住停泊分屏布局还原时终端/composer 重挂载的时序；点击窗格也补一次稳健 focus
+
+### 性能
+- **多终端渲染优化**：xterm 改用 Canvas 渲染器（适合多终端，不占 WebGL context 配额，失败回退 DOM）
+- **分屏 header 重渲染优化**：`TerminalPaneHeader` 不再订阅整个 sessions/history 数组，只在自己会话变化时重渲染
+
+---
+
 ## v0.7.67 (2026-06-17)
 
 ### 修复

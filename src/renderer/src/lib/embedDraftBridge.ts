@@ -30,7 +30,22 @@ export function injectEmbedDraft(sessionId: string, text: string): boolean {
   return true
 }
 
-/** [2026-06-02] 聚焦外嵌输入框 */
+/**
+ * [2026-06-02] 聚焦外嵌输入框
+ * [2026-06-17] 改为重试式：Alt+E/R 还原停泊布局会重挂载 composer，focuser 回调要等
+ * useEffect 重新注册后才存在；单次调用常在注册前跑了而失效。跨 rAF 重试直到 focuser 就绪。
+ */
 export function focusEmbedInput(sessionId: string): void {
-  focusers.get(sessionId)?.()
+  let attempts = 0
+  const run = (): void => {
+    attempts++
+    const fn = focusers.get(sessionId)
+    if (fn) {
+      fn()
+      return
+    }
+    if (attempts >= 10) return
+    requestAnimationFrame(run)
+  }
+  run()
 }

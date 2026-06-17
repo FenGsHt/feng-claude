@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
+import { CanvasAddon } from 'xterm-addon-canvas'
 import 'xterm/css/xterm.css'
 import { emitTerminalCommittedLine } from '../../lib/terminalLineBridge'
 import { useSessionStore } from '../../store/sessionStore'
@@ -24,6 +25,20 @@ interface Props {
 
 // Map sessionId → Terminal instance (shared across re-renders)
 const terminals = new Map<string, { term: Terminal; fitAddon: FitAddon }>()
+
+// [2026-06-17] 已加载 Canvas 渲染器的终端实例。多终端分屏时 DOM 渲染器是主要性能瓶颈，
+// 改用 Canvas 渲染器（GPU 合成、不占 WebGL context 配额，适合多终端）。每实例仅加载一次，
+// 失败则静默回退到默认 DOM 渲染器。必须在 term.open() 之后加载。
+const canvasLoaded = new WeakSet<Terminal>()
+function ensureCanvasRenderer(term: Terminal): void {
+  if (canvasLoaded.has(term)) return
+  try {
+    term.loadAddon(new CanvasAddon())
+    canvasLoaded.add(term)
+  } catch {
+    // 回退到 DOM 渲染器（addon 加载失败不影响终端可用）
+  }
+}
 
 /** 当前行缓冲，遇 \r/\n 提交为「最后一问」候选（与 PTY send 并行） */
 const terminalLineBuffers = new Map<string, string>()
@@ -133,6 +148,11 @@ export function destroyTerminal(sessionId: string): void {
     pendingFitRafBySession.delete(sessionId)
   }
   clearPendingBottomScroll(sessionId)
+  const focusRaf = pendingFocusRafBySession.get(sessionId)
+  if (focusRaf !== undefined) {
+    cancelAnimationFrame(focusRaf)
+    pendingFocusRafBySession.delete(sessionId)
+  }
   terminalLineBuffers.delete(sessionId)
   userInputBuffers.delete(sessionId)
   useUserPromptStore.getState().clearSession(sessionId)
@@ -147,9 +167,47 @@ export function writeToTerminal(sessionId: string, data: string): void {
   terminals.get(sessionId)?.term.write(data)
 }
 
-/** 将键盘焦点交给对应 xterm（例如从侧栏拖放路径后便于继续输入） */
+/** [2026-06-17] 重试式 focus 的 rAF 句柄，避免同一 session 叠多条重试链 */
+const pendingFocusRafBySession = new Map<string, number>()
+
+/**
+ * 将键盘焦点交给对应 xterm（例如从侧栏拖放路径后便于继续输入）。
+ * [2026-06-17] 改为重试式：Alt+E/R 还原停泊布局会重挂载终端，单次 microtask focus 常在
+ * textarea 接入 DOM 前就跑了而静默失败；Alt+F 切窗格、点击输入无反应同因焦点落点未稳定。
+ * 跨 rAF 重试，直到 textarea 真正连入 DOM 且 document.activeElement 落到它身上（或重试上限）。
+ */
 export function focusTerminal(sessionId: string): void {
-  terminals.get(sessionId)?.term.focus()
+  const prev = pendingFocusRafBySession.get(sessionId)
+  if (prev !== undefined) {
+    cancelAnimationFrame(prev)
+    pendingFocusRafBySession.delete(sessionId)
+  }
+  let attempts = 0
+  const tryFocus = (): void => {
+    attempts++
+    const entry = terminals.get(sessionId)
+    const ta = entry?.term.textarea as HTMLTextAreaElement | undefined
+    // 仅当 textarea 已接入 DOM 且容器有尺寸（非隐藏 tab）时才尝试 focus
+    if (ta && ta.isConnected && (entry!.term.element?.clientHeight ?? 0) > 0) {
+      try {
+        entry!.term.focus()
+        ta.focus()
+      } catch {
+        // ignore — 下一帧再试
+      }
+      if (document.activeElement === ta) {
+        pendingFocusRafBySession.delete(sessionId)
+        return
+      }
+    }
+    if (attempts >= 10) {
+      pendingFocusRafBySession.delete(sessionId)
+      return
+    }
+    const raf = requestAnimationFrame(tryFocus)
+    pendingFocusRafBySession.set(sessionId, raf)
+  }
+  tryFocus()
 }
 
 /** 返回 xterm 内部 textarea，用于触发 IME 激活（click+focus） */
@@ -402,6 +460,8 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
 
     if (!term.element) {
       term.open(container)
+      // [2026-06-17] open 后启用 Canvas 渲染器（多终端 DOM 渲染性能优化）
+      ensureCanvasRenderer(term)
     } else {
       // [2026-05-27] 重挂载（布局切换/tab 恢复）：将 element 移入新容器后强制刷新 canvas，
       // 防止 display:none 或 DOM 移动后 xterm 画布残留旧内容。

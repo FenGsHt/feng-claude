@@ -8,13 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.67 主要更新
+### v0.7.68 主要更新
 
-- **统计面板成本算法修复**：汇总卡费用、今日明细分项费用、柱状图 tooltip 每日费用统一改为按模型定价（官方 Claude vs 第三方分开），不再用单一价格混算
-- **顶部 tab 宽度收紧**：内边距/间距/最小宽下调，徽章加最大宽截断，整体更紧凑
-- **分屏拖动比例保留**：split 比例随停泊/还原保留，切换窗口不再重置成五五分
-- **分屏快捷键拆分**：`Alt+E/R` 窗口间切换；`Alt+F` 窗口内多终端间切换
-- **底部 MODELS 价格固定用所属 profile 定价 + Token 归因守卫**
+- **切换焦点修复**：Alt+E/R / Alt+F 切换、点击窗格后焦点稳健落到输入框（重试式 focus，扛住分屏布局还原时的重挂载时序）
+- **多终端性能优化**：xterm 改用 Canvas 渲染器；分屏 header 不再被其他终端状态变化牵连重渲染
+- **统计面板成本算法修复**：费用统一按模型定价（官方 Claude vs 第三方分开）
+- **顶部 tab 宽度收紧** + **分屏拖动比例保留** + **底部 MODELS 价格固定用所属 profile 定价**
 
 ### v0.7.51 主要更新
 
@@ -193,13 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.67 Highlights
+### v0.7.68 Highlights
 
-- **Stats panel cost fix**: summary-card cost, today-detail breakdown costs, and the bar-chart tooltip daily cost now all price per model (official Claude vs third-party separately) instead of mixing everything at one rate
-- **Tighter top tabs**: reduced padding/gap/min-width, badges get max-width truncation for a more compact bar
-- **Split ratio preserved**: split ratio kept through park/restore, no longer resets to 50/50 when switching windows
-- **Split-pane shortcut split**: `Alt+E/R` switches between windows; `Alt+F` cycles terminals within a window
-- **Bottom MODELS pricing fixed to owning profile + token attribution guard**
+- **Switch-focus fix**: after Alt+E/R / Alt+F or clicking a pane, focus reliably lands in the input box (retry-based focus that survives pane re-mount during split-layout restore)
+- **Multi-terminal performance**: xterm now uses the Canvas renderer; split-pane headers no longer re-render on other terminals' status changes
+- **Stats panel cost fix**: costs now price per model (official Claude vs third-party separately)
+- **Tighter top tabs** + **split ratio preserved** + **bottom MODELS pricing fixed to owning profile**
 
 ### v0.7.51 Highlights
 

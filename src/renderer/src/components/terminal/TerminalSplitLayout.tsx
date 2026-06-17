@@ -13,6 +13,7 @@ import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequest
 // import { sendRawPtyInput, wakeTerminal } from './XTerminal'
 // import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { wakeTerminal } from './XTerminal'
+import { focusSessionInput } from '../../lib/sessionFocus'
 
 interface PaneLeafProps {
   sessionId: string
@@ -75,7 +76,12 @@ export function PaneLeafShell({
         className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-sm transition-shadow ${
           focused ? 'ring-1 ring-[var(--theme-focus-ring)] ring-inset' : 'ring-1 ring-transparent'
         }`}
-        onMouseDown={() => setActiveSession(sessionId)}
+        onMouseDown={() => {
+          setActiveSession(sessionId)
+          // [2026-06-17] 点击窗格时稳健聚焦输入框：xterm 自带 mousedown focus 在刚重挂载/
+          // 切窗格后偶发不生效（点击没反应），重试式 focus 兜底确保第一次键入就能进入。
+          focusSessionInput(sessionId)
+        }}
       >
         {embedBeta ? (
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">

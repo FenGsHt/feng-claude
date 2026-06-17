@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import type { CreateSessionMode } from '../../types/paneLayout'
 import { getSplitWorkdirCandidates } from '../../lib/recentWorkdirs'
@@ -126,8 +126,9 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const restartSession = useSessionStore((s) => s.restartSession)
   const setActiveSession = useSessionStore((s) => s.setActiveSession)
   const loadHistory = useSessionStore((s) => s.loadHistory)
-  const history = useSessionStore((s) => s.history)
-  const sessions = useSessionStore((s) => s.sessions)
+  // [2026-06-17] 不再订阅整个 history / sessions 数组：原先任一会话状态变化（streaming 时
+  // running/idle 频繁切换）都会让每个分屏 header 重渲染 + 重算 candidates，N 个窗格 N 倍开销。
+  // candidates 仅在打开分屏弹窗时才需要，改为打开时即时计算（getState 读取最新值）。
   // [2026-06-05] 所有清单的未完成待办总数 —— >0 时显示按钮，点击打开待办面板挑选清单运行
   const pendingTodoCount = useTodoListStore((s) =>
     s.lists.reduce((n, l) => n + l.items.filter((todo) => todo.status === 'pending').length, 0)
@@ -148,10 +149,8 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
   const speechRecordingRef = useRef(false)
   const focusedRef = useRef(focused)
 
-  const candidates = useMemo(
-    () => getSplitWorkdirCandidates(history, sessions),
-    [history, sessions]
-  )
+  // [2026-06-17] 分屏候选目录改为打开弹窗时即时计算并存入 state（不再订阅 sessions/history）
+  const [splitCandidates, setSplitCandidates] = useState<ReturnType<typeof getSplitWorkdirCandidates>>([])
 
   /* [2026-05-11] 顶栏一键切换当前 session 的外嵌/终端模式（每 session 独立） */
   const toggleEmbedVersusTerminal = useCallback(() => {
@@ -347,6 +346,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       }
       return
     }
+    setSplitCandidates(dirs)
     setSplitMode(mode)
   }
 
@@ -517,7 +517,7 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
       {splitMode != null && splitMode !== 'split-worktree' && (
         <SplitWorkdirDialog
           open
-          candidates={candidates}
+          candidates={splitCandidates}
           mode={splitMode}
           currentWorkdir={sess?.workdir}
           onPick={(workdir) => {

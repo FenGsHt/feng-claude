@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.68] - 2026-06-17
+
+### 修复 | Bug Fixes
+- **Alt+E/R / Alt+F 切换后焦点不在输入框**：切窗口还原停泊分屏布局时终端正在重挂载，原一次性 `term.focus()`（microtask）在 textarea 接入 DOM 前就跑了而静默失败。改为重试式 focus（跨 rAF 重试直到 textarea 真正连入 DOM 且 `document.activeElement` 落到它）；外嵌 composer 的 focus 同样改为重试式；新增 `sessionFocus` 按会话模式路由到正确输入框（xterm/composer）；点击窗格也补一次稳健 focus，修复「点击输入框没反应」
+
+### 性能 | Performance
+- **多终端渲染优化**：分屏多终端时 xterm 默认 DOM 渲染器是主要瓶颈，改用 Canvas 渲染器 addon（GPU 合成、不占 WebGL context 配额，适合多终端；失败静默回退 DOM）
+- **分屏 header 重渲染优化**：`TerminalPaneHeader` 不再订阅整个 `sessions`/`history` 数组 —— 原先任一会话 running/idle 切换都会让每个分屏 header 重渲染 + 重算候选目录（N 窗格 N 倍）；候选目录改为打开分屏弹窗时即时计算，header 现在只在自己会话变化时重渲染
+
 ## [0.7.67] - 2026-06-17
 
 ### 修复 | Bug Fixes
