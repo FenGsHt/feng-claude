@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.71] - 2026-06-18
+
+### 修复 | Bug Fixes
+- **切换配置时 xterm 鼠标事件崩溃**：`restartSession` 调用 `destroyTerminal` 销毁 xterm 内部 `_renderService` 后，React 尚未卸载旧 `XTerminal` 组件，终端 DOM 元素仍挂载并持续派发 `mousemove`，触发 `MouseService.getMouseReportCoords` 访问已为 null 的 `_renderService.dimensions` 报错。修复方案：在 `dispose()` 前先调用 `element.remove()` 将终端元素从 DOM 移除，从源头切断鼠标事件
+
 ## [0.7.70] - 2026-06-17
 
 ### 修复 | Bug Fixes

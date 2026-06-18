@@ -146,6 +146,9 @@ export function destroyTerminal(sessionId: string): void {
   useUserPromptStore.getState().clearSession(sessionId)
   const entry = terminals.get(sessionId)
   if (entry) {
+    // Remove element from DOM before dispose so xterm's internal mouse handlers
+    // don't fire on the detached element after _renderService is nulled.
+    entry.term.element?.remove()
     entry.term.dispose()
     terminals.delete(sessionId)
   }

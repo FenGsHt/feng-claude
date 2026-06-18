@@ -5,6 +5,13 @@
 
 ---
 
+## v0.7.71 (2026-06-18)
+
+### 修复
+- **切换配置时 xterm 鼠标崩溃**：`destroyTerminal` 在 `dispose()` 前先移除终端 DOM 元素，避免 `_renderService` 已销毁时 `mousemove` 仍在派发导致 `Cannot read properties of undefined (reading 'dimensions')` 报错
+
+---
+
 ## v0.7.70 (2026-06-17)
 
 ### 修复

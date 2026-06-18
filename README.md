@@ -8,12 +8,9 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.70 主要更新
+### v0.7.71 主要更新
 
-- **稳定性修复**：回退 Canvas 渲染器（多终端卡死/切换花屏/分屏 TUI 溢出的根因），恢复稳定的 DOM 渲染器
-- **焦点被调试浏览器抢走修复**：重试式 focus 加 `hasFocus` 守卫，主窗口没焦点不抢
-- **分屏后 TUI 超出 pane 被截断修复**：分屏结构变化时强制所有窗格按当前尺寸重新 fit
-- **保留优化**：分屏 header 不再被其他终端状态变化牵连重渲染
+- **切换配置时 xterm 鼠标崩溃修复**：`destroyTerminal` 在 `dispose()` 前先移除终端 DOM 元素，避免 `_renderService` 已销毁时 `mousemove` 仍在派发引发崩溃
 
 ### v0.7.51 主要更新
 
@@ -192,12 +189,9 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.70 Highlights
+### v0.7.71 Highlights
 
-- **Stability fix**: reverted the Canvas renderer (root cause of multi-terminal freezes / garbled switching / split-pane TUI overflow), back to the stable DOM renderer
-- **Focus-steal fix**: retry-based focus now guarded by `hasFocus`, won't yank focus from the debug browser when the main window isn't focused
-- **Split-pane TUI overflow fix**: all panes re-fit to their current size when the split structure changes
-- **Kept optimization**: split-pane headers no longer re-render on other terminals' status changes
+- **xterm crash fix on profile switch**: `destroyTerminal` now removes the terminal DOM element before calling `dispose()`, preventing `mousemove` events from reaching already-nulled `_renderService` and throwing `Cannot read properties of undefined (reading 'dimensions')`
 
 ### v0.7.51 Highlights
 
