@@ -1875,13 +1875,16 @@ export function setOverlayOpen(win: BrowserWindow, open: boolean): void {
 
 /** 切换前台显示的 session：把目标 session 的 active tab 提到顶层，刷新导航栏。
  *  若该 session 还没有浏览器（从未打开过），仅记录前台 id；面板保持当前内容直到它打开。 */
-export function setForegroundSession(sessionId: string): void {
+export function setForegroundSession(sessionId: string, shellOnly?: boolean): void {
   if (!sessionId || sessionId === foregroundSessionId) return
   // [2026-06-15] 不再强关旧 session 的 DevTools：内嵌 DevTools 随 webContents 持久，切回时仍在
   foregroundSessionId = sessionId
   if (!state.visible || !state.mainWin) return
   const sb = sessionBrowsers.get(sessionId)
   if (!sb || sb.tabs.length === 0) {
+    // [2026-06-18] 非 CC（shell-only）终端不自动创建调试浏览器：保持显示上一个 session 的网页。
+    // 仍设了 foregroundSessionId，手动点 header 浏览器按钮（showBrowserView）仍可为它开 tab。
+    if (shellOnly) return
     // 该 session 尚无 tab：保持面板可见但内容为空——这里直接为其建首个 tab，体验更顺
     showBrowserView(state.mainWin)
     return
@@ -1936,8 +1939,8 @@ export function registerBrowserViewIpc(): void {
   loadBrowserHistory()
   loadBrowserBookmarks()
 
-  ipcMain.on('browser-view:set-active-session', (_event, sessionId: string) => {
-    setForegroundSession(sessionId)
+  ipcMain.on('browser-view:set-active-session', (_event, sessionId: string, shellOnly?: boolean) => {
+    setForegroundSession(sessionId, shellOnly)
   })
   ipcMain.on('browser-view:destroy-session', (_event, sessionId: string) => {
     destroySessionBrowser(sessionId)

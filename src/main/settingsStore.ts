@@ -17,6 +17,12 @@ function filterEnvRecord(rec: Record<string, string | undefined | null>): Record
     Object.entries(rec).filter((entry): entry is [string, string] => entry[1] != null && entry[1] !== '')
   )
 }
+
+/** [2026-06-22] 声明 1M 上下文：给模型名追加 [1m] 后缀（Claude Code 发给上游前会剥掉）。
+ * 幂等——已带 [1m] 不重复追加；空模型名原样返回（由 filterEnvRecord 过滤）。 */
+function add1mSuffix(model: string, on?: boolean): string {
+  return on && model && !/\[1m\]$/i.test(model) ? `${model}[1m]` : model
+}
 export { DEFAULT_SETTINGS, createDefaultProfile }
 
 interface StoreSchema {
@@ -135,10 +141,10 @@ export class SettingsStore {
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
       ANTHROPIC_API_KEY: profile.authToken,
       ANTHROPIC_BASE_URL: profile.baseUrl,
-      ANTHROPIC_MODEL: profile.model,
-      ANTHROPIC_DEFAULT_SONNET_MODEL: profile.sonnetModel,
+      ANTHROPIC_MODEL: add1mSuffix(profile.model, profile.model1m),
+      ANTHROPIC_DEFAULT_SONNET_MODEL: add1mSuffix(profile.sonnetModel, profile.sonnetModel1m),
       ANTHROPIC_DEFAULT_HAIKU_MODEL: profile.haikuModel,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: profile.opusModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: add1mSuffix(profile.opusModel, profile.opusModel1m),
       CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
     })
@@ -152,10 +158,10 @@ export class SettingsStore {
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
       ANTHROPIC_API_KEY: profile.authToken,
       ANTHROPIC_BASE_URL: baseUrl,
-      ANTHROPIC_MODEL: profile.model,
-      ANTHROPIC_DEFAULT_SONNET_MODEL: profile.sonnetModel,
+      ANTHROPIC_MODEL: add1mSuffix(profile.model, profile.model1m),
+      ANTHROPIC_DEFAULT_SONNET_MODEL: add1mSuffix(profile.sonnetModel, profile.sonnetModel1m),
       ANTHROPIC_DEFAULT_HAIKU_MODEL: profile.haikuModel,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: profile.opusModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: add1mSuffix(profile.opusModel, profile.opusModel1m),
       CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
     })

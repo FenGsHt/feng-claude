@@ -843,39 +843,42 @@ export function SettingsPanel(): React.ReactElement {
             />
           </Field>
 
-          {/* All Models */}
+          {/* All Models — 默认/Sonnet/Opus 行带「1M」声明勾选（追加 [1m] 后缀），仅第三方配置生效 */}
           {(
             [
-              ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL'],
-              ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+              ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL', 'model1m'],
+              ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'sonnetModel1m'],
               ['haikuModel', 'Haiku Model', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
-              ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+              ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'opusModel1m'],
               ['subagentModel', 'Subagent Model', 'CLAUDE_CODE_SUBAGENT_MODEL'],
-            ] as [keyof ApiProfile, string, string][]
-          ).map(([key, label, hint]) => (
+            ] as [keyof ApiProfile, string, string, (keyof ApiProfile)?][]
+          ).map(([key, label, hint, oneMKey]) => (
             <Field key={key} label={label} hint={hint}>
-              <input
-                type="text"
-                value={activeProfile[key] as string}
-                onChange={(e) => handleProfileChange(key, e.target.value)}
-                placeholder="model-name"
-                className="field-input"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={activeProfile[key] as string}
+                  onChange={(e) => handleProfileChange(key, e.target.value)}
+                  placeholder="model-name"
+                  className="field-input flex-1"
+                />
+                {oneMKey && (
+                  <label
+                    className="flex items-center gap-1 text-[10px] text-claude-muted whitespace-nowrap cursor-pointer select-none"
+                    title={lang === 'zh' ? '声明该模型支持 1M 上下文（发给上游前自动去掉 [1m]）' : 'Declare 1M context for this model ([1m] is stripped before reaching your provider)'}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activeProfile[oneMKey])}
+                      onChange={() => handleProfileChange(oneMKey, !activeProfile[oneMKey] as ApiProfile[typeof oneMKey])}
+                    />
+                    1M
+                  </label>
+                )}
+              </div>
             </Field>
           ))}
 
-          {/* Context Window */}
-          <Field label={lang === 'zh' ? '上下文窗口' : 'Context Window'} hint="K tokens (e.g. 200 = 200K)">
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={activeProfile.contextWindow ?? ''}
-              onChange={(e) => handleProfileChange('contextWindow', e.target.value ? parseInt(e.target.value) || 0 : (undefined as any))}
-              placeholder={lang === 'zh' ? '例如：200' : 'e.g. 200'}
-              className="field-input"
-            />
-          </Field>
 
           {/* Disable experimental betas */}
           <div className="flex items-center justify-between py-1">
@@ -1404,39 +1407,42 @@ function ProfileEditor({
             />
           </Field>
 
-          {/* Models */}
+          {/* Models — 默认/Sonnet/Opus 行带「1M」声明勾选（追加 [1m] 后缀），仅第三方配置生效 */}
           {(
             [
-              ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL'],
-              ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+              ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL', 'model1m'],
+              ['sonnetModel', 'Sonnet Model', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'sonnetModel1m'],
               ['haikuModel', 'Haiku Model', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
-              ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+              ['opusModel', 'Opus Model', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'opusModel1m'],
               ['subagentModel', 'Subagent Model', 'CLAUDE_CODE_SUBAGENT_MODEL'],
-            ] as [keyof ApiProfile, string, string][]
-          ).map(([key, label, hint]) => (
+            ] as [keyof ApiProfile, string, string, (keyof ApiProfile)?][]
+          ).map(([key, label, hint, oneMKey]) => (
             <Field key={key} label={label} hint={hint}>
-              <input
-                type="text"
-                value={form[key] as string}
-                onChange={(e) => handleChange(key, e.target.value)}
-                placeholder="model-name"
-                className="field-input"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={form[key] as string}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  placeholder="model-name"
+                  className="field-input flex-1"
+                />
+                {oneMKey && (
+                  <label
+                    className="flex items-center gap-1 text-[10px] text-claude-muted whitespace-nowrap cursor-pointer select-none"
+                    title={lang === 'zh' ? '声明该模型支持 1M 上下文（发给上游前自动去掉 [1m]）' : 'Declare 1M context for this model ([1m] is stripped before reaching your provider)'}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form[oneMKey])}
+                      onChange={() => handleChange(oneMKey, !form[oneMKey] as ApiProfile[typeof oneMKey])}
+                    />
+                    1M
+                  </label>
+                )}
+              </div>
             </Field>
           ))}
 
-          {/* Context Window */}
-          <Field label={lang === 'zh' ? '上下文窗口' : 'Context Window'} hint="K tokens (e.g. 200 = 200K)">
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.contextWindow ?? ''}
-              onChange={(e) => handleChange('contextWindow', e.target.value ? parseInt(e.target.value) || 0 : (undefined as any))}
-              placeholder={lang === 'zh' ? '例如：200' : 'e.g. 200'}
-              className="field-input"
-            />
-          </Field>
 
           {/* Disable experimental betas */}
           <div className="flex items-center justify-between py-1">

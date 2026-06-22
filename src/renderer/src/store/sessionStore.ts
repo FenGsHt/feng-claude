@@ -342,7 +342,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   setActiveSession: (id: string) => {
     // [2026-06-12] 通知 main：调试浏览器面板跟随切换到该 session 的 tab
-    window.electronAPI.browserView?.setActiveSession?.(id)
+    // [2026-06-18] 非 CC（shell-only）终端不自动创建调试浏览器 —— 把 shellOnly 透传给 main
+    const targetShellOnly = get().sessions.find((s) => s.id === id)?.shellOnly ?? false
+    window.electronAPI.browserView?.setActiveSession?.(id, targetShellOnly)
     set((s) => {
       const curIds = s.layoutRoot ? collectLeafSessionIds(s.layoutRoot) : []
       // 目标已在当前布局里 → 仅切焦点，分屏不变

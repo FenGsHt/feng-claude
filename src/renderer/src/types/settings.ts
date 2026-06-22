@@ -80,8 +80,12 @@ export interface ApiProfile {
   opusModel: string
   /** 子代理模型 */
   subagentModel: string
-  /** 模型上下文窗口大小（K tokens, e.g. 200 = 200K） */
-  contextWindow?: number
+  /** [2026-06-22] 声明对应模型支持 1M 上下文：注入 env 时给模型名追加 [1m] 后缀（Claude Code 发给上游前会剥掉）。仅第三方配置生效。 */
+  model1m?: boolean
+  /** [2026-06-22] 同上，作用于 ANTHROPIC_DEFAULT_SONNET_MODEL */
+  sonnetModel1m?: boolean
+  /** [2026-06-22] 同上，作用于 ANTHROPIC_DEFAULT_OPUS_MODEL */
+  opusModel1m?: boolean
   /** 禁用实验性 Beta */
   disableExperimentalBetas: boolean
   /** [2026-04-28] 费用估算（每百万 token 价格） */

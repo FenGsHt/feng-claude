@@ -177,7 +177,7 @@ export function injectMockElectronAPI(): void {
         onBrowserViewStateChanged: listener,
         setToolsPanelWidth: (_width: number) => {},
         setOverlayOpen: (_open: boolean) => {},
-        setActiveSession: (_sessionId: string) => {},
+        setActiveSession: (_sessionId: string, _shellOnly?: boolean) => {},
         destroySession: (_sessionId: string) => {},
         migrateSession: (_oldId: string, _newId: string) => {}
       },

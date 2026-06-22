@@ -174,6 +174,8 @@
 | API Key | 服务商密钥 |
 | Base URL | API 端点（留空为 Anthropic 官方） |
 | 默认模型 | 新建会话使用的模型 |
+| 模型映射 | 默认 / Sonnet / Haiku / Opus / Subagent 各角色对应的实际请求模型 |
+| 1M 声明 | 默认 / Sonnet / Opus 行可勾选「1M」，向 Claude Code 声明该模型按 1M 上下文对待（注入时追加 `[1m]` 后缀，发给上游前自动剥掉）。仅第三方 Profile 生效 |
 | 定价 | 自定义每百万 token 的输入/输出/cacheCreate/cacheRead 价格（元） |
 
 #### 预设 Profile

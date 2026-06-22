@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.72] - 2026-06-22
+
+### 新功能 | Features
+- **模型 1M 上下文声明**：API 配置的「默认/Sonnet/Opus」模型行新增「1M」勾选框，勾选后注入 env 时给对应模型名追加 `[1m]` 后缀（`ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL`），向 Claude Code 声明该模型按 1M 上下文对待（影响自动压缩阈值等）。Claude Code 发给上游前会自动剥掉 `[1m]`，第三方端点收到的仍是原模型名。仅第三方配置生效，官方配置不注入任何变量、完全不受影响；幂等不重复追加。Haiku/Subagent 不提供（官方语义不支持/未验证）
+- **非 CC（shell-only）终端不自动创建调试浏览器**：调试浏览器面板打开时切到 shell-only 终端，不再自动为其新建浏览器 tab（保持显示上一个会话的网页）。`setActiveSession` 把 `shellOnly` 透传给 main，`setForegroundSession` 据此跳过自动建 tab；手动点 header 浏览器按钮仍可为其打开
+
+### 修复 | Bug Fixes
+- **标签组互切时终端显示另一个会话的旧内容**：两个分屏标签组互切时 React 按位置复用 `XTerminal` 组件（无 key），effect 把新会话终端 `appendChild` 进容器，但旧会话的 `term.element` 没被移除，导致容器内同时挂着两个终端、显示另一个会话的旧画面（需关掉同组另一终端才恢复）。修复：`XTerminal` cleanup 先于新 effect 执行时，把旧 `term.element` 从本容器摘除
+
+### 界面 | UI
+- **移除失效的「上下文窗口」字段**：API 配置里的「上下文窗口」数字框从未被注入 Claude Code（一直是摆设且易误导），已删除；声明上下文能力请用新的「1M」勾选
+
 ## [0.7.71] - 2026-06-18
 
 ### 修复 | Bug Fixes

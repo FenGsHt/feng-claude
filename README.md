@@ -8,9 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.71 主要更新
+### v0.7.72 主要更新
 
-- **切换配置时 xterm 鼠标崩溃修复**：`destroyTerminal` 在 `dispose()` 前先移除终端 DOM 元素，避免 `_renderService` 已销毁时 `mousemove` 仍在派发引发崩溃
+- **模型 1M 上下文声明**：API 配置的 默认/Sonnet/Opus 行新增「1M」勾选，注入时给模型名追加 `[1m]` 后缀向 Claude Code 声明 1M 上下文（发给上游前自动剥掉）。仅第三方配置生效
+- **非 CC 终端不自动创建调试浏览器**：浏览器面板打开时切到 shell-only 终端不再自动建浏览器 tab
+- **标签组互切终端显旧内容修复**：`XTerminal` cleanup 摘除旧会话的终端 DOM 元素，修复无 key 复用组件导致的旧元素残留
+- **移除失效的「上下文窗口」字段**：该数字框从未注入 Claude Code，已删除
 
 ### v0.7.51 主要更新
 
@@ -189,9 +192,12 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.71 Highlights
+### v0.7.72 Highlights
 
-- **xterm crash fix on profile switch**: `destroyTerminal` now removes the terminal DOM element before calling `dispose()`, preventing `mousemove` events from reaching already-nulled `_renderService` and throwing `Cannot read properties of undefined (reading 'dimensions')`
+- **Per-model 1M context declaration**: the Default/Sonnet/Opus model rows in an API profile now have a "1M" checkbox; when checked, a `[1m]` suffix is appended to the model name in the injected env to declare 1M context to Claude Code (stripped before reaching your provider). Third-party profiles only
+- **Shell-only terminals no longer auto-spawn the debug browser**: switching to a shell-only terminal while the browser panel is open no longer creates a new browser tab for it
+- **Fix: terminal showing another session's stale content on tab-group switch**: `XTerminal` cleanup now detaches the old session's terminal DOM element from its container, fixing the stale element left behind when React reuses the keyless component
+- **Removed the dead "Context Window" field**: it was never injected into Claude Code; use the new "1M" checkbox to declare context capability
 
 ### v0.7.51 Highlights
 

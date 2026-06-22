@@ -664,6 +664,14 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       ro.disconnect()
       if (fitTimer) clearTimeout(fitTimer)
       clearPendingBottomScroll(sessionId)
+      // [2026-06-18] 标签组互切时（两组都是分屏）React 按位置复用本组件、只改 sessionId（无 key），
+      // effect 会把新 session 的 term.element appendChild 进同一容器，但旧 session 的 element
+      // 不会被移除 → 容器里同时挂着两个终端，显示另一个 session 的旧内容（需关掉同组另一终端
+      // 触发 split→leaf 重挂才恢复）。cleanup 先于新 effect 执行，这里把旧 element 从本容器摘除，
+      // 确保新 session append 后容器内只有它自己。term 实例仍存活在全局 Map，重挂时会重新 append。
+      if (term.element && term.element.parentElement === container) {
+        term.element.remove()
+      }
     }
   }, [sessionId, scheduleFit])
 
