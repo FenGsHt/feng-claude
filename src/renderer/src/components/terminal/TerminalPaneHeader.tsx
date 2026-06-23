@@ -12,6 +12,7 @@ import { startRecognition, stopRecognition } from '../../services/speechRecognit
 import type { SpeechConfig } from '../../services/speechRecognition'
 import { wakeTerminal, focusTerminal, getTerminalTextarea } from './XTerminal'
 import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
+import { SessionConfigBadges } from './SessionConfigBadges'
 
 interface WorktreeInfo {
   path: string
@@ -373,27 +374,35 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
         }`}
         title={sess?.workdir ?? undefined}
       >
-        {/* Status dot */}
-        <span
-          className={`shrink-0 rounded-full transition-colors ${
-            sess?.status === 'running'
-              ? 'h-1.5 w-1.5 bg-amber-400 animate-pulse'
-              : sess?.status === 'waiting_input'
-                ? 'h-1.5 w-1.5 bg-green-400'
-                : sess?.status === 'error'
-                  ? 'h-1.5 w-1.5 bg-red-400'
-                  : 'h-1.5 w-1.5 bg-claude-muted/40'
-          }`}
-        />
+        {/* Left group: status dot + title + 配置/Telegram 徽章（占据弹性空间，把动作图标推到最右） */}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* Status dot */}
+          <span
+            className={`shrink-0 rounded-full transition-colors ${
+              sess?.status === 'running'
+                ? 'h-1.5 w-1.5 bg-amber-400 animate-pulse'
+                : sess?.status === 'waiting_input'
+                  ? 'h-1.5 w-1.5 bg-green-400'
+                  : sess?.status === 'error'
+                    ? 'h-1.5 w-1.5 bg-red-400'
+                    : 'h-1.5 w-1.5 bg-claude-muted/40'
+            }`}
+          />
 
-        {/* Title */}
-        <span
-          className={`min-w-0 flex-1 truncate text-[11px] font-medium leading-none ${
-            focused ? 'text-claude-text' : 'text-claude-muted'
-          }`}
-        >
-          {sess?.title ?? sessionId}
-        </span>
+          {/* Title */}
+          <span
+            className={`min-w-0 truncate text-[11px] font-medium leading-none ${
+              focused ? 'text-claude-text' : 'text-claude-muted'
+            }`}
+          >
+            {sess?.title ?? sessionId}
+          </span>
+
+          {/* [2026-06-22] 配置切换 + Telegram 频道徽章（自 TabBar 迁入，作用于本 pane 会话） */}
+          <div className="flex shrink-0 items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
+            <SessionConfigBadges sessionId={sessionId} focused={focused} />
+          </div>
+        </div>
 
         {/* [2026-06-15] tab 标题栏 token 统计已隐藏（详细统计见侧栏 Stats 面板） */}
 

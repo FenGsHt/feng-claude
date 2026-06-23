@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.73] - 2026-06-22
+
+### 修复 | Bug Fixes
+- **收藏当前页收藏错页面**：调试浏览器的「收藏」按钮原先信任导航栏缓存的 `currentUrl`，SPA 路由切换（hash/pushState）时它没跟上，导致收藏成切换前的旧页面甚至最初的 bing 首页。改为由主进程从前台 active tab 的实时 `webContents` 解析 URL 与标题（权威来源），无论缓存是否滞后都收藏当前真实页面；标题也取页面真值而非工具条标题
+
+### 界面 | UI
+- **配置/Telegram 徽章迁移到终端头部**：API 配置切换药丸与 Telegram 频道药丸从每个 tab 内移到下方终端 pane 头部（标题右侧），作用于该 pane 的会话；分屏时各 pane 各显示各自配置。tab 随之大幅瘦身，窗口可拉得更窄。抽出独立组件 `SessionConfigBadges`，切换/重启/预设流程逻辑不变
+
 ## [0.7.72] - 2026-06-22
 
 ### 新功能 | Features

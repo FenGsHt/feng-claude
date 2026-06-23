@@ -798,10 +798,10 @@ button svg { display: block; pointer-events: none; }
     else { btn.innerHTML = ICON_BM_OFF; btn.title = '收藏当前页'; btn.classList.remove('active') }
   })
   $('bookmark-btn').addEventListener('click', () => {
-    const url = currentUrl; if (!url || url === 'about:blank') return
-    const bookmarked = bookmarks.some(b => b.url === url)
-    if (bookmarked) ipcRenderer.send('browser-nav:bookmark-remove', { url })
-    else ipcRenderer.send('browser-nav:bookmark-add', { url, title: document.title || url })
+    // [2026-06-22] 收藏当前页：URL/标题改由主进程从实时 webContents 解析，不再用导航栏缓存的
+    // currentUrl —— SPA 路由切换（hash/pushState）时 currentUrl 可能没跟上，会收藏成切换前的旧页面
+    // （甚至初始的 bing 首页）。document.title 也是导航栏自己的标题而非页面标题，一并由主进程取真值。
+    ipcRenderer.send('browser-nav:bookmark-toggle')
   })
   ipcRenderer.send('browser-nav:bookmarks-get')
   // ── URL 下拉历史 ──────────────────────────────────────────────────────────
@@ -1969,6 +1969,16 @@ export function registerBrowserViewIpc(): void {
   })
 
   // 书签：加/删/查
+  // [2026-06-22] 收藏切换：从前台 active tab 的实时 webContents 解析 URL+标题，权威来源，
+  // 避免依赖导航栏缓存的 currentUrl（SPA 路由切换时可能滞后导致收藏错页面）。
+  ipcMain.on('browser-nav:bookmark-toggle', () => {
+    const wc = state.view?.webContents
+    if (!wc) return
+    const url = wc.getURL()
+    if (!url || url === 'about:blank') return
+    if (isBookmarked(url)) removeBookmark(url)
+    else addBookmark(url, wc.getTitle() || url)
+  })
   ipcMain.on('browser-nav:bookmark-add', (_event, { url, title }: { url: string; title: string }) => {
     addBookmark(url, title)
   })

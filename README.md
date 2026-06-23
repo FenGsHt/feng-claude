@@ -8,6 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.73 主要更新
+
+- **收藏当前页修复**：「收藏」改由主进程从实时页面解析 URL+标题，修复 SPA 路由切换后收藏成旧页面/bing 首页
+- **配置/Telegram 徽章迁移到终端头部**：两枚药丸从 tab 移到 pane 头部标题右侧（作用于该 pane 会话），tab 瘦身、窗口可更窄
+
 ### v0.7.72 主要更新
 
 - **模型 1M 上下文声明**：API 配置的 默认/Sonnet/Opus 行新增「1M」勾选，注入时给模型名追加 `[1m]` 后缀向 Claude Code 声明 1M 上下文（发给上游前自动剥掉）。仅第三方配置生效
@@ -191,6 +196,11 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.73 Highlights
+
+- **Bookmark fix**: "bookmark" now resolves the URL + title in main from the live page, fixing bookmarking the old page / bing homepage after SPA route changes
+- **Profile/Telegram badges moved to the terminal header**: both pills moved out of each tab into the pane header (next to the title), scoped to that pane's session — tabs slim down and the window can shrink further
 
 ### v0.7.72 Highlights
 
