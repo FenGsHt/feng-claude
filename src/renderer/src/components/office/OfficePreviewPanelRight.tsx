@@ -153,7 +153,8 @@ export function OfficePreviewPanel(): React.ReactElement | null {
         className="cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
         style={{
           position: 'fixed',
-          top: 32,
+          // [2026-06-22] 下移到 TabBar 之下（标题栏 32 + TabBar 32 = 64），与调试浏览器一致，避免压住满宽 TabBar
+          top: 64,
           bottom: 0,
           right: width,
           width: 8,
@@ -166,7 +167,8 @@ export function OfficePreviewPanel(): React.ReactElement | null {
         className="flex flex-col h-full bg-claude-surface border-l border-claude-border overflow-hidden"
         style={{
           position: 'fixed',
-          top: 32,
+          // [2026-06-22] 下移到 TabBar 之下，与调试浏览器一致
+          top: 64,
           bottom: 0,
           right: 0,
           width,

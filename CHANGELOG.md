@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.74] - 2026-06-22
+
+### 界面 | UI
+- **TabBar 满宽 + 调试浏览器/Office 面板下移到 TabBar 之下**：原先调试浏览器或 Office 预览面板出现时，整个 `main`（含 TabBar）被 `marginRight` 挤到左半，TabBar 缩成一块。现把 `marginRight` 只作用于 TabBar 下方的内容区，TabBar 始终横跨整行；调试浏览器（含其自身标签条）与 Office 面板整体下移到 TabBar 之下右侧（`CHROME_TOP = 标题栏 + TabBar`），拖拽手柄同步下移避免遮挡右侧标签
+
 ## [0.7.73] - 2026-06-22
 
 ### 修复 | Bug Fixes

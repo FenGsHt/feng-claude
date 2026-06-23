@@ -137,6 +137,10 @@ function saveSessionTabs(): void {
 
 const DEFAULT_PORT = 3100
 const TITLEBAR_H = 32
+// [2026-06-22] TabBar 与 TitleBar 是同款 h-9 border-b 元素，沿用 TITLEBAR_H 的有效高度约定（32）。
+// 调试浏览器整体下移到 TabBar 之下，让 TabBar 满宽。
+const TABBAR_H = TITLEBAR_H
+const CHROME_TOP = TITLEBAR_H + TABBAR_H   // 浏览器视图顶部 = 标题栏 + TabBar（64）
 const NAVBAR_H = 86   // [2026-06-15] 三行：标签条(26) + 控制行(34) + 收藏栏(26)
 const ROUTINE_PANEL_H = 250  // Routine 回放面板展开高度
 let routinePanelH = 0        // 0 = 关闭，ROUTINE_PANEL_H = 打开
@@ -290,7 +294,7 @@ function setBounds(win: BrowserWindow): void {
   const viewW = Math.round(effectiveWidth * state.splitRatio)
   const viewX = effectiveWidth - viewW
 
-  const contentY = TITLEBAR_H + NAVBAR_H
+  const contentY = CHROME_TOP + NAVBAR_H
   const contentH = bounds.height - contentY
 
   // [2026-04-30] 计算浏览器内容、分隔线、DevTools 的布局
@@ -314,7 +318,7 @@ function setBounds(win: BrowserWindow): void {
   if (state.navView && !state.navView.webContents.isDestroyed()) {
     state.navView.setBounds({
       x: viewX,
-      y: TITLEBAR_H,
+      y: CHROME_TOP,
       width: viewW,
       height: NAVBAR_H + routinePanelH + saveBarH + urlDropdownH + routineDropH
     })
@@ -1123,7 +1127,7 @@ function computeContentBounds(win: BrowserWindow): { x: number; y: number; width
   const effectiveWidth = bounds.width - state.toolsPanelWidth
   const viewW = Math.round(effectiveWidth * state.splitRatio)
   const viewX = effectiveWidth - viewW
-  const contentY = TITLEBAR_H + NAVBAR_H
+  const contentY = CHROME_TOP + NAVBAR_H
   return { x: viewX, y: contentY, width: Math.max(1, viewW), height: Math.max(1, bounds.height - contentY) }
 }
 

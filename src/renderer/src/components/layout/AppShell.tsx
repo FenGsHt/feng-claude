@@ -134,14 +134,18 @@ export function AppShell(): React.ReactElement {
           className="w-1 shrink-0 cursor-col-resize hover:bg-amber-500/40 active:bg-amber-500/60 transition-colors"
           style={{ marginLeft: -1 }}
         />
-        <main
-          className="flex flex-col flex-1 overflow-hidden min-w-0"
-          style={browserPanel.visible || officePanelWidth > 0
-            ? { marginRight: browserPanel.width + officePanelWidth + 6 }
-            : undefined}
-        >
+        {/* [2026-06-22] marginRight 只作用于 TabBar 下方的内容区，让 TabBar 始终满宽（不被
+            调试浏览器/Office 面板挤到左半）；调试浏览器与 Office 面板下移到 TabBar 之下。 */}
+        <main className="flex flex-col flex-1 overflow-hidden min-w-0">
           <TabBar />
-          {splitContent}
+          <div
+            className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0"
+            style={browserPanel.visible || officePanelWidth > 0
+              ? { marginRight: browserPanel.width + officePanelWidth + 6 }
+              : undefined}
+          >
+            {splitContent}
+          </div>
         </main>
         {/* Browser panel resize handle (fixed, left edge of native WebContentsView) */}
         {browserPanel.visible && (
@@ -150,7 +154,9 @@ export function AppShell(): React.ReactElement {
             className="cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
             style={{
               position: 'fixed',
-              top: 32,
+              // [2026-06-22] 浏览器下移到 TabBar 之下（标题栏 32 + TabBar 32 = 64）；手柄随之下移，
+              // 否则竖条会压在右侧满宽 TabBar 上挡点击。
+              top: 64,
               bottom: 0,
               right: browserPanel.width + officePanelWidth,
               width: 8,

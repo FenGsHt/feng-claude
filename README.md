@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.74 主要更新
+
+- **TabBar 满宽 + 调试浏览器/Office 面板下移到 TabBar 之下**：调试浏览器/Office 面板出现时不再把 TabBar 挤成一块，TabBar 横跨整行，两个右侧面板排到它下方
+
 ### v0.7.73 主要更新
 
 - **收藏当前页修复**：「收藏」改由主进程从实时页面解析 URL+标题，修复 SPA 路由切换后收藏成旧页面/bing 首页
@@ -196,6 +200,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.74 Highlights
+
+- **Full-width TabBar + debug browser/Office panel moved below the TabBar**: opening the debug browser or Office panel no longer squeezes the TabBar into a corner — the TabBar spans the full row and both right-side panels drop below it
 
 ### v0.7.73 Highlights
 
