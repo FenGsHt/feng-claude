@@ -125,7 +125,7 @@ export class ClaudeSessionWatcher {
     }
   }
 
-  watchSession(sessionId: string, workdir: string, opts?: { scrollbackBase64?: string | null }): void {
+  watchSession(sessionId: string, workdir: string, opts?: { scrollbackBase64?: string | null; shellOnly?: boolean }): void {
     const projectDirName = workdirToProjectDirName(workdir)
     const projectDir = join(this.claudeConfigDir, 'projects', projectDirName)
 
@@ -136,7 +136,11 @@ export class ClaudeSessionWatcher {
     const existing = this.watchedProjectDirs.get(projectDir)
     if (existing) {
       existing.linkedSessionIds.add(sessionId)
-      existing.primarySessionId = sessionId  // [2026-06-15] newest session owns global attribution
+      // [2026-06-15] newest session owns global attribution
+      // [2026-06-23] 但 shell-only 会话（lazygit 等）不跑 Claude，不应抢占 token 归因 primary，
+      // 否则同目录的官方/第三方 Claude 会话的 token 会被记到这个 shell 会话的 profile 上
+      // （实测：官方窗口 + 同目录 qwen 配置的 lazygit 窗口，claude token 被记进 qwen 桶）。
+      if (!opts?.shellOnly) existing.primarySessionId = sessionId
       this.sessions.set(sessionId, existing)
       /* [2026-05-06] 同一目录新开标签：把该项目已有 JSONL 全量同步到新 session（无 scrollback，避免重复） */
       if (this.shouldEmitTranscript()) {

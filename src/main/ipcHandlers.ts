@@ -429,7 +429,7 @@ export function registerIpcHandlers(
       )
       // Start watching JSONL for accurate per-session token counting
       const embedBeta = settings.embedClaudeOutputBeta === true
-      sessionWatcher.watchSession(sessionId, workdir, embedBeta ? { scrollbackBase64: scrollback } : undefined)
+      sessionWatcher.watchSession(sessionId, workdir, { scrollbackBase64: embedBeta ? scrollback : null, shellOnly })
       // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
       // ensureClaudeHudPluginDefaults()
       scheduleEnsureClaudeHudAfterSession()

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.75] - 2026-06-23
+
+### 修复 | Bug Fixes
+- **Token 归属错误（同目录多窗口 / shell-only 抢占 primary）**：同一工作目录开两个窗口（如官方配置窗口 + 同目录 qwen 配置的 lazygit 窗口）时，token watcher 按目录共享、以「最近创建的会话」作全局归因 primary，导致官方会话实际跑出的 claude token 被记到那个只用来跑 lazygit 的 qwen 配置桶里（统计里凭空出现没用过的配置，量和实际用的几乎相等）。两层修复：① `watchSession` 传入 `shellOnly`，shell-only 会话（lazygit 等不跑 Claude）不再抢占归因 primary；② `reattributeProfileByModel` 改为对称——`claude-*` token 若被标到「默认模型非 claude」的第三方配置，归回官方（保留中转型 claude 配置不误改）
+
 ## [0.7.74] - 2026-06-22
 
 ### 界面 | UI

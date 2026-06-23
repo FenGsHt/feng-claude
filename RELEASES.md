@@ -5,6 +5,13 @@
 
 ---
 
+## v0.7.75 (2026-06-23)
+
+### 修复
+- **Token 归属错误（同目录多窗口 / shell-only）**：同目录开官方窗口 + 另一个仅跑 lazygit 的第三方配置窗口时，claude token 被错记到该第三方配置桶。修复：shell-only 会话不再抢占 token 归因 primary；并让 `claude-*` token 在被标到非 claude 第三方配置时归回官方
+
+---
+
 ## v0.7.74 (2026-06-22)
 
 ### 界面

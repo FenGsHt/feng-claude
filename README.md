@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.75 主要更新
+
+- **Token 归属修复（同目录多窗口 / shell-only）**：同目录开官方窗口 + 仅跑 lazygit 的第三方配置窗口时，claude token 被错记到该第三方配置桶。修复：shell-only 会话不再抢占 token 归因 primary，且 claude token 被标到非 claude 配置时归回官方
+
 ### v0.7.74 主要更新
 
 - **TabBar 满宽 + 调试浏览器/Office 面板下移到 TabBar 之下**：调试浏览器/Office 面板出现时不再把 TabBar 挤成一块，TabBar 横跨整行，两个右侧面板排到它下方
@@ -200,6 +204,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.75 Highlights
+
+- **Token attribution fix (same-dir multi-window / shell-only)**: with an official window and a same-directory third-party-profile window used only for lazygit, Claude tokens were mis-attributed to that third-party profile. Fixed: shell-only sessions no longer claim the token-attribution primary, and `claude-*` tokens labeled under a non-claude profile are re-attributed to official
 
 ### v0.7.74 Highlights
 

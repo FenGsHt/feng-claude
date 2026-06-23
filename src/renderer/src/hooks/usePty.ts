@@ -29,10 +29,25 @@ import { OFFICIAL_PROFILE_ID } from '../types/settings'
 // 官方配置只可能产生 claude-* 模型，故归到官方但 model 非 claude 时按模型唯一匹配改归正确 profile。
 let cachedProfiles: Array<{ id: string; model?: string }> = []
 function reattributeProfileByModel(profileId: string | undefined, model?: string): string | undefined {
-  if (!profileId || profileId !== OFFICIAL_PROFILE_ID) return profileId
-  if (!model || model.toLowerCase().startsWith('claude-')) return profileId
-  const matches = cachedProfiles.filter((p) => p.model && p.model === model)
-  return matches.length === 1 ? matches[0].id : profileId
+  if (!model) return profileId
+  const isClaude = model.toLowerCase().startsWith('claude-')
+  // [2026-06-23] claude-* 只可能来自官方账户。同目录多标签共享 watcher 时 primary 可能落到一个
+  // 第三方配置的会话上（如 qwen3.7-plus），导致实际跑的 claude token 被记到该第三方桶里。
+  // 若会话被标到「自身默认模型为非 claude」的第三方配置，但 token 模型是 claude-*，归回官方。
+  // （保留中转型第三方配置：其默认模型本就是 claude-*，不应被改归。）
+  if (isClaude) {
+    if (profileId && profileId !== OFFICIAL_PROFILE_ID) {
+      const p = cachedProfiles.find((pp) => pp.id === profileId)
+      if (p && p.model && !p.model.toLowerCase().startsWith('claude-')) return OFFICIAL_PROFILE_ID
+    }
+    return profileId
+  }
+  // 非 claude 模型但会话标到官方：按模型唯一匹配改归正确的第三方配置
+  if (profileId === OFFICIAL_PROFILE_ID) {
+    const matches = cachedProfiles.filter((p) => p.model && p.model === model)
+    return matches.length === 1 ? matches[0].id : profileId
+  }
+  return profileId
 }
 
 /**
