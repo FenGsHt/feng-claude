@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.76] - 2026-06-25
+
+### 修复 | Bug Fixes
+- **打开文本编辑器时左侧 CC 终端变黑**：`AppShell` 里 `TerminalPanel` 在「无编辑器/横向分屏/纵向分屏」三种树位置间切换，开/关 txt 会改变其父节点类型 → React 卸载并重建 `TerminalPanel`，xterm 在未稳定的分屏布局里来不及重绘而变黑（关掉 txt 再次重挂才恢复）。改为让 `TerminalPanel` 始终保持在同一树位置（容器首个子节点），编辑器仅作为兄弟节点按需挂到旁边，终端不再重挂载
+- **一窗口两终端切换后调试浏览器地址栏显示旧 URL**：切到「没有浏览器的另一个终端」时 `foregroundSessionId` 指向它，但右侧仍显示本会话浏览器；地址栏更新原本按 `foregroundSessionId` 判断，于是显示中页面的后续 SPA 导航不再更新地址栏，停在旧 URL。改为按「本 tab 即当前实际显示的 view」(`view === state.view`) 判断，地址栏始终跟随正在显示的页面
+
 ## [0.7.75] - 2026-06-23
 
 ### 修复 | Bug Fixes

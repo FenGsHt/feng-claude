@@ -1049,9 +1049,15 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
   const isForegroundActive = (): boolean =>
     sid === foregroundSessionId && getActiveTab(sid)?.id === tab.id
 
+  // [2026-06-25] 地址栏应跟随「当前实际显示的浏览器 view」，而非 foregroundSessionId。
+  // 一窗口两终端时，切到「没有浏览器的另一个终端」会让 foregroundSessionId 指向它，但右侧仍显示
+  // 本会话的浏览器；若仍按 foregroundSessionId 判断，本会话之后的 SPA 导航就不再更新地址栏，
+  // 地址栏停在旧 URL（用户报告：切换两个终端后地址栏显示该页的旧 URL）。改判「本 tab 即当前显示 view」。
+  const isDisplayedTab = (): boolean => view === state.view
+
   view.webContents.on('did-navigate', (_, navUrl) => {
     tab._lastUrl = navUrl  // [2026-06-15] 记录已完成的导航 URL，供 did-start-loading 对比重载
-    if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
+    if (isDisplayedTab()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
     addToHistory(navUrl, tab.title)
     // [2026-06-12] 录制中：记录导航并在新页面重注入 recorder（导航清空了注入脚本）
     if (routineMgr.isRecording(sid)) {
@@ -1061,7 +1067,7 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
     }
   })
   view.webContents.on('did-navigate-in-page', (_, navUrl) => {
-    if (isForegroundActive()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
+    if (isDisplayedTab()) { updateNavUrl(navUrl); updateNavBackForward(); saveLastBrowserUrl(navUrl) }
     // 只有路径/query 变化才记录；纯 hash 跳转（锚点）不写历史
     const prevUrl = browserHistory[0]?.url ?? ''
     if (navUrl.split('#')[0] !== prevUrl.split('#')[0]) addToHistory(navUrl, tab.title)

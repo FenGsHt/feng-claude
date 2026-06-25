@@ -8,6 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.76 主要更新
+
+- **打开文本编辑器时左侧终端变黑修复**：`TerminalPanel` 改为始终保持同一树位置，开/关 txt 不再重挂载终端导致变黑
+- **两终端切换后地址栏显示旧 URL 修复**：地址栏更新改按「当前实际显示的浏览器 view」判断，不再受前台会话错位影响
+
 ### v0.7.75 主要更新
 
 - **Token 归属修复（同目录多窗口 / shell-only）**：同目录开官方窗口 + 仅跑 lazygit 的第三方配置窗口时，claude token 被错记到该第三方配置桶。修复：shell-only 会话不再抢占 token 归因 primary，且 claude token 被标到非 claude 配置时归回官方
@@ -204,6 +209,11 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.76 Highlights
+
+- **Fix: left terminal goes black when opening the text editor**: `TerminalPanel` now stays at one stable tree position, so toggling the editor no longer remounts the terminal (which left it black)
+- **Fix: stale URL in the debug browser's address bar after switching terminals**: the address bar now tracks the actually-displayed browser view instead of `foregroundSessionId`, so it no longer freezes on the old URL
 
 ### v0.7.75 Highlights
 

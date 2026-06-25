@@ -87,40 +87,32 @@ export function AppShell(): React.ReactElement {
   }, [officePanelWidth])
 
   // ── Main content: terminal + optional editor split ──────────
-  const editorPane = editorVisible ? <TextEditorPanel /> : null
-
-  const splitContent = editorVisible ? (
-    splitDirection === 'horizontal' ? (
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        <div className="flex-1 overflow-hidden min-w-0">
-          <TerminalPanel />
-        </div>
-        {/* Horizontal split handle */}
-        <div
-          onMouseDown={startEditorResize}
-          className="w-1 shrink-0 cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
-        />
-        <div className="flex flex-col overflow-hidden shrink-0 border-l border-claude-border" style={{ width: splitSize }}>
-          {editorPane}
-        </div>
+  // [2026-06-24] TerminalPanel 始终保持在同一树位置（容器的首个子节点），编辑器只是作为兄弟节点
+  // 按需挂到旁边。否则开/关编辑器会改变 TerminalPanel 的父节点类型 → React 卸载并重建 TerminalPanel
+  // → xterm 重挂载、在未稳定的分屏布局里来不及重绘 → 终端变黑（关掉编辑器再次重挂才恢复）。
+  const horizontalSplit = splitDirection === 'horizontal'
+  const splitContent = (
+    <div className={`flex flex-1 overflow-hidden min-h-0 min-w-0 ${editorVisible && !horizontalSplit ? 'flex-col' : ''}`}>
+      <div className="flex-1 overflow-hidden min-w-0 min-h-0">
+        <TerminalPanel />
       </div>
-    ) : (
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <div className="flex-1 overflow-hidden min-h-0">
-          <TerminalPanel />
-        </div>
-        {/* Vertical split handle */}
-        <div
-          onMouseDown={startEditorResize}
-          className="h-1 shrink-0 cursor-row-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
-        />
-        <div className="flex flex-col overflow-hidden shrink-0 border-t border-claude-border" style={{ height: splitSize }}>
-          {editorPane}
-        </div>
-      </div>
-    )
-  ) : (
-    <TerminalPanel />
+      {editorVisible && (
+        <>
+          <div
+            onMouseDown={startEditorResize}
+            className={horizontalSplit
+              ? 'w-1 shrink-0 cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors'
+              : 'h-1 shrink-0 cursor-row-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors'}
+          />
+          <div
+            className={`flex flex-col overflow-hidden shrink-0 ${horizontalSplit ? 'border-l' : 'border-t'} border-claude-border`}
+            style={horizontalSplit ? { width: splitSize } : { height: splitSize }}
+          >
+            <TextEditorPanel />
+          </div>
+        </>
+      )}
+    </div>
   )
 
   return (
