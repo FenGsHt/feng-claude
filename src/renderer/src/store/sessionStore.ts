@@ -626,6 +626,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       layoutRoot = { type: 'leaf', sessionId: ids[0] }
     }
 
+    // [2026-06-25] 恢复停泊的分屏组，逐组校验 slot 有效性（无效的丢弃）。否则重启后这些分屏组
+    // 会丢失，其会话退化成扁平独立 tab。
+    const parkedLayouts: PaneNode[] = []
+    if (ids.length > 0 && Array.isArray(pw.parkedLayouts)) {
+      for (const tree of pw.parkedLayouts) {
+        if (!persistedSlotsValid(tree, ids.length)) continue
+        const live = persistedPaneToLive(tree, ids)
+        if (live) parkedLayouts.push(live)
+      }
+    }
+
     for (const sess of sessions) {
       await upsertWorkdirHistory(sess)
     }
@@ -636,7 +647,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activeSessionId = ids[idx]
     }
 
-    set({ sessions, layoutRoot, activeSessionId, parkedLayouts: [] })
+    set({ sessions, layoutRoot, activeSessionId, parkedLayouts })
     await get().loadHistory()
   },
 

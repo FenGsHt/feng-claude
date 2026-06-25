@@ -23,7 +23,8 @@ export function paneNodeToPersisted(root: PaneNode, idToSlot: Map<string, number
 export function workspaceToPersisted(
   sessions: Session[],
   layoutRoot: PaneNode | null,
-  activeSessionId: string | null
+  activeSessionId: string | null,
+  parkedLayouts: PaneNode[] = []
 ): PersistedWorkspace | null {
   if (sessions.length === 0) return null
 
@@ -34,6 +35,17 @@ export function workspaceToPersisted(
     layoutPersisted = paneNodeToPersisted(layoutRoot, idToSlot)
   } else {
     layoutPersisted = { type: 'leaf', slot: 0 }
+  }
+
+  // [2026-06-25] 持久化停泊的分屏组，否则切到别的 tab 把分屏组停泊后重启会丢失分屏，
+  // 该组会话变回扁平的独立 tab。含未知会话的组（理论上不会发生）跳过。
+  const parkedPersisted: PersistedPaneNode[] = []
+  for (const tree of parkedLayouts) {
+    try {
+      parkedPersisted.push(paneNodeToPersisted(tree, idToSlot))
+    } catch {
+      /* skip parked group referencing an unknown session */
+    }
   }
 
   let activeSlotIndex = 0
@@ -62,6 +74,7 @@ export function workspaceToPersisted(
     // Only include embedModeSlots if at least one session has embedMode on
     embedModeSlots: embedModeSlots.some(Boolean) ? embedModeSlots : undefined,
     layoutRoot: layoutPersisted,
+    parkedLayouts: parkedPersisted.length > 0 ? parkedPersisted : undefined,
     activeSlotIndex
   }
 }
@@ -104,6 +117,11 @@ export function parsePersistedWorkspace(raw: unknown): PersistedWorkspace | null
   if (o.sessionWorkdirs.some((w) => typeof w !== 'string')) return null
   if (typeof o.activeSlotIndex !== 'number' || o.activeSlotIndex < 0) return null
   if (o.layoutRoot !== null && typeof o.layoutRoot !== 'object') return null
+  // [2026-06-25] parkedLayouts 浅校验；slot 越界由 restore 时 persistedSlotsValid 逐组过滤
+  if (o.parkedLayouts !== undefined) {
+    if (!Array.isArray(o.parkedLayouts)) return null
+    if (o.parkedLayouts.some((t) => !t || typeof t !== 'object')) return null
+  }
   // [2026-04-28] Validate profileIds if present
   if (o.profileIds !== undefined && Array.isArray(o.profileIds)) {
     if (o.profileIds.some((id) => typeof id !== 'string')) return null

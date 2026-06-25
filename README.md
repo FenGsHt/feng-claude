@@ -8,6 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.77 主要更新
+
+- **单终端只填一半高度修复（v0.7.76 回归）**：外层容器补上 `flex flex-col`，终端恢复撑满
+- **重启后分屏组被拆成独立 tab 修复**：持久化并恢复停泊的分屏组（`parkedLayouts`），重启后分屏不再丢失
+
 ### v0.7.76 主要更新
 
 - **打开文本编辑器时左侧终端变黑修复**：`TerminalPanel` 改为始终保持同一树位置，开/关 txt 不再重挂载终端导致变黑
@@ -209,6 +214,11 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.77 Highlights
+
+- **Fix: terminal only fills half the height with a single terminal (v0.7.76 regression)**: the wrapper now has `flex flex-col`, so the terminal fills the full height again
+- **Fix: split groups broken into separate tabs after restart**: parked split groups (`parkedLayouts`) are now persisted and restored, so a two-terminal split survives a restart
 
 ### v0.7.76 Highlights
 

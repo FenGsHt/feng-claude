@@ -30,6 +30,9 @@ export interface PersistedWorkspace {
   /** [2026-05-11] 每个 slot 的外嵌模式（终端 vs 外嵌 UI） */
   embedModeSlots?: boolean[]
   layoutRoot: PersistedPaneNode | null
+  /** [2026-06-25] 停泊的分屏组（切到别的 tab 时当前分屏组会被停泊）。不持久化会导致重启后分屏组
+   *  的会话变回扁平独立 tab。仅含 split 树（单格 leaf 无需停泊）。 */
+  parkedLayouts?: PersistedPaneNode[]
   /** 上次激活的会话在 sessionWorkdirs 中的下标 */
   activeSlotIndex: number
 }

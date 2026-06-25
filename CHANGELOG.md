@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.77] - 2026-06-25
+
+### 修复 | Bug Fixes
+- **单终端时终端只填一半高度（v0.7.76 回归）**：上版为避免开关编辑器重挂载终端，给 `TerminalPanel` 套了外层 div，但该 div 是普通块级元素（无 `display:flex`），导致 `TerminalPanel` 的 `flex-1` 失效、塌成内容高度只填一半。给该 div 补上 `flex flex-col` 即恢复撑满
+- **重启后分屏组被拆成独立 tab**：一窗口两终端（分屏）时若切到别的 tab，当前分屏组会被「停泊」进 `parkedLayouts`，而 workspace 快照从不持久化 `parkedLayouts`，重启后分屏丢失、其会话退化成两个扁平 tab。现持久化并恢复 `parkedLayouts`（逐组校验 slot 有效性）
+
 ## [0.7.76] - 2026-06-25
 
 ### 修复 | Bug Fixes

@@ -93,7 +93,9 @@ export function AppShell(): React.ReactElement {
   const horizontalSplit = splitDirection === 'horizontal'
   const splitContent = (
     <div className={`flex flex-1 overflow-hidden min-h-0 min-w-0 ${editorVisible && !horizontalSplit ? 'flex-col' : ''}`}>
-      <div className="flex-1 overflow-hidden min-w-0 min-h-0">
+      {/* [2026-06-25] 必须是 flex 容器（flex-col），否则 TerminalPanel 的 flex-1 无 flex 父级 → 失效，
+          终端塌成内容高度只填一半。 */}
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0 min-h-0">
         <TerminalPanel />
       </div>
       {editorVisible && (

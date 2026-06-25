@@ -14,7 +14,7 @@ export function useWorkspacePersistence(enabled: boolean): void {
 
     const flush = (): void => {
       const s = useSessionStore.getState()
-      const pw = workspaceToPersisted(s.sessions, s.layoutRoot, s.activeSessionId)
+      const pw = workspaceToPersisted(s.sessions, s.layoutRoot, s.activeSessionId, s.parkedLayouts)
       void savePersistedWorkspace(pw)
     }
 
