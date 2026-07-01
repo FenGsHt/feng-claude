@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.78] - 2026-07-01
+
+### 修复 | Bug Fixes
+- **新用户无法替换第三方 API 地址（`~/.claude/settings.json` 的 `env` 块覆盖）**：不少第三方中转教程会让用户把 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` 写进 Claude CLI 的 `settings.json` 的 `env` 块。该块优先级高于本软件为每个 PTY 会话注入的进程环境变量，导致用户在软件里换了 API 配置也「改不动」，请求仍打到旧地址报错（如 400）。现在启动时自动剥离 `settings.json` 中这三个冲突的 `ANTHROPIC_*` 键（保留 env 中其它自定义变量、剥离前备份原文件），让软件注入的配置成为唯一真相源；官方配置模式下不接管环境变量，跳过处理
+
 ## [0.7.77] - 2026-06-25
 
 ### 修复 | Bug Fixes

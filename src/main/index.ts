@@ -17,7 +17,8 @@ import { registerIpcHandlers } from './ipcHandlers'
 import {
   ensureClaudeHudPluginDefaults,
   mergeSkipDangerousPromptFromApp,
-  migrateLegacyClaudeSessionDirOnce
+  migrateLegacyClaudeSessionDirOnce,
+  stripConflictingAnthropicEnv
 } from './claudeSessionConfigDir'
 import { setupAutoUpdater, checkForUpdates } from './autoUpdater'
 import { installBuiltinSkills } from './builtinSkills'
@@ -119,6 +120,13 @@ function createWindow(): BrowserWindow {
 
   // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
   mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
+
+  // [2026-07-01] 剥离 ~/.claude/settings.json 里冲突的 ANTHROPIC_* env 键：
+  // 该 env 块（常来自第三方中转教程）优先级高于 GUI 注入的进程环境变量，会导致
+  // 用户在软件里换配置也「改不动」baseUrl/token。官方配置模式下不接管环境变量，跳过。
+  if (!settingsStore.getActiveProfile().isOfficial) {
+    stripConflictingAnthropicEnv()
+  }
 
   // [2026-04-29] MCP 迁移：从旧的 settings.json 迁移 mcpServers 到 .claude.json
   listMcpServersForMigration()

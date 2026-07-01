@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.78 主要更新
+
+- **新用户无法替换第三方 API 地址修复**：Claude CLI 的 `~/.claude/settings.json` 若有 `env` 块硬编码了 `ANTHROPIC_BASE_URL/AUTH_TOKEN/API_KEY`（常来自第三方中转教程），会覆盖软件注入的环境变量，导致换配置也「改不动」、请求打到旧地址报错。现在启动时自动剥离这三个冲突键（保留其它变量并备份原文件），软件内配置成为唯一真相源
+
 ### v0.7.77 主要更新
 
 - **单终端只填一半高度修复（v0.7.76 回归）**：外层容器补上 `flex flex-col`，终端恢复撑满
@@ -214,6 +218,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.78 Highlights
+
+- **Fix: new users can't override the third-party API URL**: if Claude CLI's `~/.claude/settings.json` has an `env` block hard-coding `ANTHROPIC_BASE_URL/AUTH_TOKEN/API_KEY` (common in third-party proxy guides), it overrode the per-session env vars this app injects, so changing the API config in the app had no effect and requests kept hitting the old URL (e.g. 400). The app now strips those three conflicting keys on startup (keeping any other custom vars, backing up the file first), making the in-app config the single source of truth
 
 ### v0.7.77 Highlights
 

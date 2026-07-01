@@ -330,3 +330,59 @@ export function mergeSkipDangerousPromptFromApp(skip: boolean): void {
     console.warn('[claude-gui] mergeSkipDangerousPrompt 写入失败:', e)
   }
 }
+
+/**
+ * [2026-07-01] 剥离 ~/.claude/settings.json 中冲突的 ANTHROPIC_* env 键。
+ *
+ * 背景：不少第三方中转教程会让用户把 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
+ * ANTHROPIC_API_KEY 写进 Claude CLI 的 settings.json 的 `env` 块。CLI 启动时该 `env`
+ * 块优先级高于继承来的进程环境变量，会盖掉本 GUI 为每个 PTY 会话注入的 baseUrl/token
+ * （见 ptyManager.ts buildPtyEnv）。结果：用户在软件里换了配置也「改不动」，请求仍打到
+ * 旧地址报错。这里在启动同步时把这些键剥掉，让 GUI 注入的配置成为唯一真相源。
+ *
+ * 仅删除我们接管的三个 ANTHROPIC_* 键，保留 env 里其它自定义变量；剥离前备份原文件。
+ */
+export function stripConflictingAnthropicEnv(): void {
+  const path = join(claudeSessionConfigDir(), 'settings.json')
+  if (!existsSync(path)) return
+
+  let base: SettingsJson
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    base = parsed as SettingsJson
+  } catch {
+    // 交由 ensureClaudeHudPluginDefaults 的损坏处理路径备份重建，这里不重复处理
+    return
+  }
+
+  const env = base.env
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return
+
+  const CONFLICT_KEYS = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY']
+  const envRecord = env as Record<string, unknown>
+  const removed = CONFLICT_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(envRecord, k))
+  if (removed.length === 0) return
+
+  // 剥离前备份原文件，可回溯
+  try {
+    const bak = `${path}.env-backup.${Date.now()}.bak`
+    writeFileSync(bak, readFileSync(path, 'utf-8'), 'utf-8')
+    console.log('[claude-gui] 剥离冲突 env 前已备份 settings.json →', bak)
+  } catch (e) {
+    console.warn('[claude-gui] 备份 settings.json 失败（继续剥离）:', e)
+  }
+
+  for (const k of removed) delete envRecord[k]
+  // env 若被清空则整块删除，保持文件干净
+  if (Object.keys(envRecord).length === 0) {
+    delete base.env
+  }
+
+  try {
+    writeFileSync(path, `${JSON.stringify(base, null, 2)}\n`, 'utf-8')
+    console.log('[claude-gui] 已剥离 settings.json 中冲突的 env 键:', removed.join(', '))
+  } catch (e) {
+    console.warn('[claude-gui] 剥离冲突 env 写入失败:', e)
+  }
+}
