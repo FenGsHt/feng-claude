@@ -103,6 +103,9 @@ function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = fals
     FENG_CLAUDE_BROWSER_PORT: String(getBrowserServerPort() || 3100),
     // [2026-06-12] 当前终端 session 的唯一 id，供 browser-tools MCP 按 session 隔离调试浏览器 tab
     FENG_CLAUDE_SESSION_ID: sessionId,
+    // [2026-07-08] 禁用 CC 全屏 TUI 模式。全屏模式使用 alternate screen buffer + 自定义渲染，
+    // 与 xterm.js wrapper 冲突导致截断/滚动失效/重复显示。纯文本输出更适配我们的 GUI。
+    CLAUDE_NO_FULLSCREEN: '1',
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     FORCE_COLOR: '3',
@@ -737,6 +740,12 @@ export class PtyManager {
     telegramChannel?: TelegramChannelSessionConfig
   ): Promise<{ pid: number; telegramChannel?: TelegramChannelSessionConfig }> {
     const s = settings ?? this.settingsStore.get()
+    // [2026-07-08] macOS 上 workdir 不存在时 posix_spawn 会失败（posix_spawnp failed）。
+    // 回退到 home 目录，避免整个 session 创建失败。
+    const resolvedWorkdir = existsSync(workdir) ? workdir : homedir()
+    if (resolvedWorkdir !== workdir) {
+      console.warn('[PTY] workdir not found, falling back to home:', workdir, '→', resolvedWorkdir)
+    }
     // [2026-06-11] 仅当该目录确有 Claude 对话历史时才 --continue：
     // 无历史时带 --continue 会报 "No conversation found to continue" 并退回空 shell
     // （依赖事后检测降级，但叠加 --channels/--add-dir 等启动行时降级时序不稳定）。
@@ -801,7 +810,8 @@ export class PtyManager {
 
     // [2026-05-06] Daemon mode: shell survives Electron restart on all platforms
     if (shellOnly && s.terminal?.useTmux) {
-      const result = await this.createDaemonSession(sessionId, workdir, shell, ptyEnv)
+      // [2026-07-09] 用 resolvedWorkdir 而非原始 workdir，确保 daemon 路径也受 workdir 不存在时的 home 回退保护
+      const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
       return { ...result, telegramChannel: preparedTelegram.config }
     }
 
@@ -809,7 +819,7 @@ export class PtyManager {
       name: 'xterm-256color',
       cols: 120,
       rows: 40,
-      cwd: workdir,
+      cwd: resolvedWorkdir,
       env: ptyEnv,
       ...getWindowsPtySpawnExtras()
     })

@@ -74,7 +74,7 @@ export function PaneLeafShell({
       <TerminalPaneHeader sessionId={sessionId} focused={focused} />
       <div
         role="presentation"
-        className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-sm transition-shadow ${
+        className={`relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-sm transition-shadow ${
           focused ? 'ring-1 ring-[var(--theme-focus-ring)] ring-inset' : 'ring-1 ring-transparent'
         }`}
         onMouseDown={() => {

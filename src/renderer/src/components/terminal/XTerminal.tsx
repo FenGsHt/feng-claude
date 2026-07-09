@@ -154,8 +154,16 @@ export function destroyTerminal(sessionId: string): void {
   }
 }
 
+// [2026-07-08] 剥离 CC 2.1.201+ 的 DEC mode 2026 同步输出序列（BSU/ESU）。
+// xterm.js 5.3.0 不支持这些序列，未知序列通常被忽略，但剥离更安全。
+const DEC2026_SEQ = /\x1b\[\?2026[hl]/g
+
 export function writeToTerminal(sessionId: string, data: string): void {
-  terminals.get(sessionId)?.term.write(data)
+  const entry = terminals.get(sessionId)
+  if (!entry) return
+  // 剥离同步输出序列，避免 xterm.js 遇到未知序列时的边缘情况
+  const cleaned = data.includes('\x1b[?2026') ? data.replace(DEC2026_SEQ, '') : data
+  entry.term.write(cleaned)
 }
 
 /**
@@ -264,7 +272,10 @@ export function wakeTerminal(sessionId: string): void {
 /** 恢复历史 scrollback：创建（或复用）terminal 实例并写入 base64 编码的原始终端数据 */
 export function preFillTerminal(sessionId: string, rawBase64: string): void {
   const { term } = getOrCreateTerminal(sessionId)
-  const bytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0))
+  const raw = atob(rawBase64)
+  // [2026-07-08] scrollback 缓冲存的是原始 PTY 数据，可能含 DEC 2026 序列；回放时也需剥离
+  const cleaned = raw.includes('\x1b[?2026') ? raw.replace(DEC2026_SEQ, '') : raw
+  const bytes = Uint8Array.from(cleaned, (c) => c.charCodeAt(0))
   term.write(bytes)
   // After replaying raw PTY bytes (which may contain alternate-screen switches,
   // absolute cursor positions, etc.), restore the terminal to a clean state so
@@ -639,6 +650,29 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
     // [2026-04-23] 原先立即 fit() + 80ms debounce；打包后 ResizeObserver 连发易与 xterm 内部 idle 队列打架，改为 220ms + rAF 合并
     // fit()
     scheduleFit()
+    // [2026-07-08] 强制延迟 fit：CC 2.1.204 的全屏 TUI 可能影响布局稳定时间，
+    // 多次延迟 fit 确保容器尺寸完全稳定后再计算行数。
+    const forceFitTimeouts = [300, 600, 1000].map((delay) =>
+      window.setTimeout(() => scheduleFit(), delay)
+    )
+    // [2026-07-08] 关键修复：用 ResizeObserver 测量父元素高度，强制设置 inline style。
+    // flex 布局在多层嵌套中高度传递不可靠，导致 fit() 拿到错误高度。
+    // 直接测量父元素高度并设置为 inline style，确保 fit() 一定能拿到正确尺寸。
+    const parentEl = container.parentElement
+    let parentRo: ResizeObserver | null = null
+    if (parentEl) {
+      const updateHeight = (): void => {
+        const h = parentEl.clientHeight
+        if (h > 0 && container.style.height !== `${h}px`) {
+          container.style.height = `${h}px`
+          // 高度变化后立即 fit
+          scheduleFit()
+        }
+      }
+      updateHeight()
+      parentRo = new ResizeObserver(updateHeight)
+      parentRo.observe(parentEl)
+    }
     let fitTimer: ReturnType<typeof setTimeout> | null = null
     const debouncedFit = (): void => {
       if (fitTimer) clearTimeout(fitTimer)
@@ -655,6 +689,8 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
         cancelAnimationFrame(raf)
         pendingFitRafBySession.delete(sessionId)
       }
+      forceFitTimeouts.forEach((id) => clearTimeout(id))
+      if (parentRo) parentRo.disconnect()
       dataSub.dispose()
       term.textarea.removeEventListener('paste', onPasteFiles, true)
       term.textarea.removeEventListener('keydown', onKeyDownClipboardPaste, true)
@@ -742,7 +778,9 @@ export function XTerminal({ sessionId, active }: Props): React.ReactElement {
       className={`flex-1 overflow-hidden xterm-theme-${resolvedTheme}`}
       style={{
         /* [2026-05-07] 背景色跟随 registry 的 terminal palette，避免新增主题时漏改。 */
-        background: getThemeDefinition(resolvedTheme).terminal.background
+        background: getThemeDefinition(resolvedTheme).terminal.background,
+        /* [2026-07-08] 强制高度：通过 ResizeObserver 测量父元素高度并设置为 inline style，
+            绕过 flex 布局高度传递不可靠的问题。fit() 据此计算正确的行数。 */
       }}
       onContextMenu={onContextMenu}
     />

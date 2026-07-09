@@ -91,29 +91,49 @@ export function AppShell(): React.ReactElement {
   // 按需挂到旁边。否则开/关编辑器会改变 TerminalPanel 的父节点类型 → React 卸载并重建 TerminalPanel
   // → xterm 重挂载、在未稳定的分屏布局里来不及重绘 → 终端变黑（关掉编辑器再次重挂才恢复）。
   const horizontalSplit = splitDirection === 'horizontal'
-  const splitContent = (
-    <div className={`flex flex-1 overflow-hidden min-h-0 min-w-0 ${editorVisible && !horizontalSplit ? 'flex-col' : ''}`}>
-      {/* [2026-06-25] 必须是 flex 容器（flex-col），否则 TerminalPanel 的 flex-1 无 flex 父级 → 失效，
-          终端塌成内容高度只填一半。 */}
-      <div className="flex flex-col flex-1 overflow-hidden min-w-0 min-h-0">
+
+  // 编辑器面板 + 分割线（按方向选择布局）
+  const editorSection = editorVisible ? (
+    horizontalSplit ? (
+      <>
+        <div
+          onMouseDown={startEditorResize}
+          className="w-1 shrink-0 cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
+        />
+        <div className="flex flex-col overflow-hidden shrink-0 border-l border-claude-border" style={{ width: splitSize }}>
+          <TextEditorPanel />
+        </div>
+      </>
+    ) : (
+      <>
+        <div
+          onMouseDown={startEditorResize}
+          className="h-1 shrink-0 cursor-row-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors"
+        />
+        <div className="flex flex-col overflow-hidden shrink-0 border-t border-claude-border" style={{ height: splitSize }}>
+          <TextEditorPanel />
+        </div>
+      </>
+    )
+  ) : null
+
+  // [2026-07-08] 用 JS 计算终端可用高度，完全绕过 flex 布局。
+  // TitleBar 32px + TabBar 32px = 64px。终端区域 = 100vh - 64px。
+  // 这确保 xterm 容器有确定高度，fit() 一定能拿到正确尺寸。
+  const TERMINAL_TOP_OFFSET = 64 // TitleBar + TabBar
+  const splitContent = editorVisible && horizontalSplit ? (
+    <div className="flex flex-row overflow-hidden" style={{ height: `calc(100vh - ${TERMINAL_TOP_OFFSET}px)` }}>
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         <TerminalPanel />
       </div>
-      {editorVisible && (
-        <>
-          <div
-            onMouseDown={startEditorResize}
-            className={horizontalSplit
-              ? 'w-1 shrink-0 cursor-col-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors'
-              : 'h-1 shrink-0 cursor-row-resize hover:bg-amber-500/50 active:bg-amber-500 transition-colors'}
-          />
-          <div
-            className={`flex flex-col overflow-hidden shrink-0 ${horizontalSplit ? 'border-l' : 'border-t'} border-claude-border`}
-            style={horizontalSplit ? { width: splitSize } : { height: splitSize }}
-          >
-            <TextEditorPanel />
-          </div>
-        </>
-      )}
+      {editorSection}
+    </div>
+  ) : (
+    <div className="flex flex-col overflow-hidden" style={{ height: `calc(100vh - ${TERMINAL_TOP_OFFSET}px)` }}>
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        <TerminalPanel />
+      </div>
+      {editorSection}
     </div>
   )
 
@@ -133,7 +153,7 @@ export function AppShell(): React.ReactElement {
         <main className="flex flex-col flex-1 overflow-hidden min-w-0">
           <TabBar />
           <div
-            className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0"
+            className="overflow-hidden min-h-0 min-w-0"
             style={browserPanel.visible || officePanelWidth > 0
               ? { marginRight: browserPanel.width + officePanelWidth + 6 }
               : undefined}
