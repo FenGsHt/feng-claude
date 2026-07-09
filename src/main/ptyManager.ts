@@ -741,9 +741,16 @@ export class PtyManager {
   ): Promise<{ pid: number; telegramChannel?: TelegramChannelSessionConfig }> {
     const s = settings ?? this.settingsStore.get()
     // [2026-07-08] macOS 上 workdir 不存在时 posix_spawn 会失败（posix_spawnp failed）。
-    // 回退到 home 目录，避免整个 session 创建失败。
-    const resolvedWorkdir = existsSync(workdir) ? workdir : homedir()
-    if (resolvedWorkdir !== workdir) {
+    // [2026-07-09] 增强检查：确保是目录而非文件，否则回退到 home 目录。
+    let resolvedWorkdir = homedir()
+    try {
+      const stat = require('fs').statSync(workdir)
+      if (stat.isDirectory()) {
+        resolvedWorkdir = workdir
+      } else {
+        console.warn('[PTY] workdir is not a directory, falling back to home:', workdir)
+      }
+    } catch {
       console.warn('[PTY] workdir not found, falling back to home:', workdir, '→', resolvedWorkdir)
     }
     // [2026-06-11] 仅当该目录确有 Claude 对话历史时才 --continue：
