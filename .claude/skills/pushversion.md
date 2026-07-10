@@ -1,3 +1,8 @@
+---
+name: pushversion
+description: Bump version, update changelogs, and push to trigger GitHub builds.
+---
+
 # PushVersion Skill
 
 ## Description
@@ -60,7 +65,7 @@ Add new section after the instruction block:
 - **<feature>**: <description>
 
 ### 修复
-- **fix>**: <description>
+- **<fix>**: <description>
 ```
 
 ### 7. Update README.md
