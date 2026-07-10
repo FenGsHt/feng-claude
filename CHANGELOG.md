@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.82] - 2026-07-11
+
+### 新功能 | Features
+- **iTerm2 集成（macOS 打包版）**：新增「使用 iTerm2」选项，启用后在 iTerm2 中打开终端而非内置 xterm。采用 daemon + relay 架构：feng-claude 创建 daemon session（Unix socket），通过 AppleScript 打开 iTerm2 窗口运行 relay 脚本连接 socket 代理 I/O。保留 session 管理、token 统计、scrollback 等功能。仅 macOS 打包版本显示该选项，开发模式隐藏。iTerm2 与 tmux 选项互斥
+
+### 修复 | Bug Fixes
+- **Claude Code 运行时被误判为 shell prompt 导致重复启动**：`looksLikeShellPrompt` 把 Claude Code 的进度条（`16%`）、权限选择菜单（`bypass permissions`）、思考状态（`Thought for`/`Waiting.`/`Gallivanting` 等）误判为 shell prompt，触发自动重启发送重复的 `claude --permission-mode` 命令。增加 Claude 运行时特征检测，匹配到这些关键词时不判定为 shell prompt
+- **macOS 交通灯按钮遮挡侧边栏标题**：左侧边栏面板标题栏和顶部 TitleBar 在 macOS 上未为交通灯按钮留出空间，导致红黄绿按钮覆盖在内容上。增加 `electronAPI.platform` 暴露平台信息，macOS 下左侧 padding 70px
+- **`posix_spawnp failed` 错误**：node-pty 的 `spawn-helper` 缺少执行权限导致 PTY 创建失败。添加 `postinstall` 脚本自动修复权限；增加 shell 路径验证，若配置的 shell 不存在则回退到 `/bin/zsh` → `/bin/bash` → `/bin/sh`；workdir 不存在时回退到 home 目录并记录日志
+
 ## [0.7.78] - 2026-07-01
 
 ### 修复 | Bug Fixes

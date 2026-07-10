@@ -5,6 +5,18 @@
 
 ---
 
+## v0.7.82 (2026-07-11)
+
+### 新功能
+- **iTerm2 集成（macOS 打包版）**：设置中新增「使用 iTerm2」选项，启用后在 iTerm2 中打开终端而非内置 xterm。采用 daemon + relay 架构，feng-claude 创建 daemon session，通过 AppleScript 打开 iTerm2 窗口运行 relay 脚本连接 socket 代理 I/O。保留 session 管理、token 统计、scrollback 等功能。仅 macOS 打包版本显示该选项，开发模式隐藏
+
+### 修复
+- **Claude Code 运行时被误判为 shell prompt 导致重复启动**：进度条（`16%`）、权限选择菜单、思考状态（`Thought for`/`Waiting.` 等）被误判为 shell prompt，触发自动重启发送重复命令。增加 Claude 运行时特征检测
+- **macOS 交通灯按钮遮挡侧边栏标题**：TitleBar 和 Sidebar 面板标题栏在 macOS 下左侧增加 70px padding
+- **`posix_spawnp failed` 错误**：修复 node-pty `spawn-helper` 权限问题；增加 shell 路径验证和 workdir 回退逻辑
+
+---
+
 ## v0.7.78 (2026-07-01)
 
 ### 修复

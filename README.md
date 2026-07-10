@@ -8,6 +8,13 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.82 主要更新
+
+- **iTerm2 集成（macOS 打包版）**：设置中新增「使用 iTerm2」选项，启用后在 iTerm2 中打开终端。采用 daemon + relay 架构，保留 session 管理、token 统计等功能
+- **Claude 运行时误判修复**：进度条、权限菜单、思考状态不再被误判为 shell prompt，解决重复启动问题
+- **macOS 交通灯按钮适配**：TitleBar 和侧边栏标题栏在 macOS 下左侧增加 padding，避免遮挡
+- **`posix_spawnp failed` 修复**：修复 node-pty 权限问题，增加 shell 路径验证和 workdir 回退
+
 ### v0.7.78 主要更新
 
 - **新用户无法替换第三方 API 地址修复**：Claude CLI 的 `~/.claude/settings.json` 若有 `env` 块硬编码了 `ANTHROPIC_BASE_URL/AUTH_TOKEN/API_KEY`（常来自第三方中转教程），会覆盖软件注入的环境变量，导致换配置也「改不动」、请求打到旧地址报错。现在启动时自动剥离这三个冲突键（保留其它变量并备份原文件），软件内配置成为唯一真相源
@@ -218,6 +225,13 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.82 Highlights
+
+- **iTerm2 integration (macOS packaged)**: new "Use iTerm2" option opens the terminal in iTerm2 instead of the built-in xterm. Uses a daemon + relay architecture, preserving session management, token stats, etc. Only visible in packaged macOS builds
+- **Fix: false shell prompt detection triggering repeated relaunches**: Claude's progress bars (`16%`), permission menus, and thinking states (`Thought for`/`Waiting.` etc.) are no longer misdetected as shell prompts
+- **macOS traffic light button adaptation**: TitleBar and sidebar panel headers now have left padding on macOS to avoid being covered by traffic light buttons
+- **Fix: `posix_spawnp failed` error**: fixed node-pty `spawn-helper` permissions; added shell path validation and workdir fallback logic
 
 ### v0.7.78 Highlights
 
