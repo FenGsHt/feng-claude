@@ -58,7 +58,11 @@ export function TitleBar(): React.ReactElement {
   return (
     <div
       className="flex items-center h-9 px-2 bg-claude-surface border-b border-claude-border select-none shrink-0"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      style={{
+        WebkitAppRegion: 'drag' as React.CSSProperties,
+        // [2026-07-10] macOS 交通灯按钮适配：左侧留出约 70px 空间（交通灯按钮占约 60px + 间距）
+        paddingLeft: window.electronAPI?.platform === 'darwin' ? '70px' : undefined
+      }}
     >
       {/* Left: logo + app name + version */}
       <div className="flex items-center gap-1.5 w-40 shrink-0">

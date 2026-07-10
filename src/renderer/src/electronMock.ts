@@ -12,6 +12,7 @@ export function injectMockElectronAPI(): void {
     const listener = (_cb: unknown) => () => {}
 
     ;(window as any).electronAPI = {
+      platform: 'darwin' as NodeJS.Platform,
       readClipboardTextSync: () => '',
       writeClipboardText: (_text: string) => {},
       saveClipboardImage: async (_base64: string) => ({ success: false, path: '' }),

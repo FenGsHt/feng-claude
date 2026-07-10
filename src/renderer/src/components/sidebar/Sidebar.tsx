@@ -251,7 +251,13 @@ export function Sidebar({ width }: { width: number }): React.ReactElement {
       {/* Content panel */}
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         {/* Panel header */}
-        <div className="flex items-center h-9 px-3 border-b border-claude-border shrink-0">
+        <div
+          className="flex items-center h-9 px-3 border-b border-claude-border shrink-0"
+          style={{
+            // [2026-07-10] macOS 交通灯按钮适配：左侧留出约 70px 空间（交通灯按钮占约 60px + 间距）
+            paddingLeft: window.electronAPI?.platform === 'darwin' ? '70px' : undefined
+          }}
+        >
           <span className="text-[11px] font-semibold text-claude-muted uppercase tracking-wider">
             {TABS.find((t) => t.id === activeTab)?.label}
           </span>

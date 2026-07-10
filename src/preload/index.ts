@@ -8,6 +8,9 @@ import type { PersistedWorkspace } from '../renderer/src/types/workspace'
 import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, PetGameCommentPayload, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUpdateWorktreePayload, GitUpdateWorktreeResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult, WhatsNewShouldShowResult, OfficeCLIStatus, OfficePreviewOpenResult } from '../renderer/src/types/ipc'
 
 const electronAPI = {
+  // [2026-07-10] 平台信息，供渲染进程做 macOS 交通灯按钮适配
+  platform: process.platform,
+
   readClipboardTextSync: (): string => {
     const v = ipcRenderer.sendSync(IPC.CLIPBOARD_READ_TEXT_SYNC)
     return typeof v === 'string' ? v : ''
