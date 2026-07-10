@@ -1261,8 +1261,8 @@ export function SettingsPanel(): React.ReactElement {
             </button>
           </div>
         )}
-        {/* [2026-07-10] iTerm2 模式（仅 macOS） */}
-        {!navigator.userAgent.includes('Windows') && (
+        {/* [2026-07-10] iTerm2 模式（仅 macOS 打包版本） */}
+        {!navigator.userAgent.includes('Windows') && window.electronAPI?.isPackaged === true && (
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-xs text-claude-text">{t.settings.terminalUseITerm2}</div>
