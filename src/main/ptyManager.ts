@@ -775,7 +775,15 @@ export class PtyManager {
 
     const isWindows = process.platform === 'win32'
     const customShell = s.terminal?.shell?.trim()
-    const shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL ?? 'bash'))
+    let shell = customShell || (isWindows ? 'cmd.exe' : (process.env.SHELL || '/bin/zsh'))
+
+    // [2026-07-10] 验证 shell 是否存在，避免 posix_spawnp 失败
+    if (!isWindows && shell && !existsSync(shell)) {
+      console.warn('[PTY] shell not found:', shell, '— trying fallback')
+      const fallbacks = ['/bin/zsh', '/bin/bash', '/bin/sh']
+      shell = fallbacks.find(fb => existsSync(fb)) || '/bin/sh'
+      console.log('[PTY] using fallback shell:', shell)
+    }
 
     // [2026-06-03] Telegram 单会话锁：已有其他 session 持有 bot，则本 session 用隔离目录，避免多进程争抢同一 Telegram bot
     // [2026-06-15] 增加跨实例文件锁：多窗口=多 app 实例，内存锁互不可见；同一 token 全局只允许一个实例轮询
@@ -821,6 +829,17 @@ export class PtyManager {
       const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
       return { ...result, telegramChannel: preparedTelegram.config }
     }
+
+    // [2026-07-10] 诊断日志：posix_spawnp 失败时查看实际参数
+    console.log('[PTY] spawn params:', {
+      shell,
+      shellExists: existsSync(shell),
+      cwd: resolvedWorkdir,
+      cwdExists: existsSync(resolvedWorkdir),
+      customShell: customShell,
+      envSHELL: process.env.SHELL,
+      platform: process.platform
+    })
 
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
