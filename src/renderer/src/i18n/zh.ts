@@ -254,6 +254,8 @@ export const zh = {
     terminalShellPlaceholder: '留空使用平台默认（Windows: cmd.exe / Unix: $SHELL）',
     terminalUseTmux: '持久化 Shell 会话',
     terminalUseTmuxDesc: '空控制台在后台保持运行，重启 app 后自动恢复 lazygit 等 TUI 程序（跨平台，无需额外依赖）',
+    terminalUseITerm2: '使用 iTerm2',
+    terminalUseITerm2Desc: '在 iTerm2 中打开终端（仅 macOS，需要已安装 iTerm2）',
     /** [2026-05-08] Telegram 官方插件依赖 Bun；与主进程 augmentPathWithBunInstallDirs 说明一致 */
     telegramBunHint:
       '官方 Telegram Channel 插件依赖 Bun。安装：https://bun.sh（Windows PowerShell：irm bun.sh/install.ps1 | iex）。Feng 会自动将用户目录下的 .bun/bin 加入内嵌终端 PATH；若 Bun 装在其他目录，请将该 bin 加入系统 PATH 并重启 Feng。',

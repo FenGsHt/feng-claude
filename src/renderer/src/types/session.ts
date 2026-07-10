@@ -43,6 +43,8 @@ export interface Session {
   telegramChannel?: TelegramChannelSessionConfig
   /** [2026-05-11] 该 session 的外嵌模式（独立于全局设置，false = 终端模式，true = 外嵌模式）*/
   embedMode?: boolean
+  /** [2026-07-10] 该 session 在 iTerm2 中运行（仅 macOS） */
+  iterm2Mode?: boolean
 }
 
 export interface HistoryRecord {

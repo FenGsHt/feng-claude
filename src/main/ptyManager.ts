@@ -17,6 +17,7 @@ import { getConfigDir } from './configDir'
 import { getProxyPort } from './apiProxyServer'
 import { getBrowserServerPort, registerSessionWorkdir } from './browserViewManager'
 import { hasClaudeConversationHistory } from './claudeSessionWatcher'
+import { isITerm2Installed, openITerm2Session } from './iterm2Launcher'
 
 /* [2026-04-23] 壳提示符检测：原 SHELL_PROMPT_RE、CLAUDE_READY_RE 已替换为 stripAnsi + looksLikeShellPrompt；resume 改用 CLI `--continue`。 */
 
@@ -869,6 +870,32 @@ export class PtyManager {
       // [2026-07-09] 用 resolvedWorkdir 而非原始 workdir，确保 daemon 路径也受 workdir 不存在时的 home 回退保护
       const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
       return { ...result, telegramChannel: preparedTelegram.config }
+    }
+
+    // [2026-07-10] iTerm2 mode: open session in iTerm2 instead of built-in terminal (macOS only)
+    if (s.terminal?.useITerm2 && process.platform === 'darwin') {
+      if (!isITerm2Installed()) {
+        console.warn('[PTY] iTerm2 mode enabled but iTerm2 is not installed, falling back to built-in terminal')
+        // Fall through to normal PTY creation below
+      } else {
+        // Create daemon session and open iTerm2 window
+        const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
+        // Get socket path from daemon state
+        const statePath = daemonStatePath(resolvedWorkdir)
+        const daemonState = readDaemonState(statePath)
+        if (daemonState?.pipe) {
+          const iterm2Result = openITerm2Session(daemonState.pipe, shell, resolvedWorkdir, 120, 40)
+          if (!iterm2Result.success) {
+            console.warn('[PTY] Failed to open iTerm2 session:', iterm2Result.error)
+          } else {
+            console.log('[PTY] Opened iTerm2 session for', sessionId)
+            return { ...result, telegramChannel: preparedTelegram.config, iterm2Mode: true }
+          }
+        } else {
+          console.warn('[PTY] Daemon state not found, cannot open iTerm2 session')
+        }
+        // If iTerm2 failed, fall through to normal PTY creation
+      }
     }
 
     // [2026-07-10] 诊断日志：posix_spawnp 失败时查看实际参数

@@ -204,6 +204,8 @@ export interface ClaudeSettings {
     useTmux?: boolean
     /** [2026-06-04] Windows：使用 ConPTY 替代 WinPTY；ConPTY 对 TUI 应用（lazygit/vim）显示更好，但部分环境有 AttachConsole 兼容性问题 */
     useConpty?: boolean
+    /** [2026-07-10] 使用 iTerm2 替代内置终端（仅 macOS） */
+    useITerm2?: boolean
   }
   /** [2026-05-02] 语音识别配置 */
   speech?: {

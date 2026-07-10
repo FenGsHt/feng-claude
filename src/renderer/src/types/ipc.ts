@@ -270,6 +270,8 @@ export interface SessionCreateOk {
   profileId?: string
   /** [2026-05-08] Effective Telegram Channel config used for this session */
   telegramChannel?: TelegramChannelSessionConfig
+  /** [2026-07-10] Session is running in iTerm2 (macOS only) */
+  iterm2Mode?: boolean
 }
 
 export interface SessionCreateErr {

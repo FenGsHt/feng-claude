@@ -33,6 +33,11 @@ export function PaneLeafShell({
     const sess = s.sessions.find((x) => x.id === sessionId)
     return sess?.embedMode ?? false
   })
+  /* [2026-07-10] iTerm2 模式 */
+  const iterm2Mode = useSessionStore((s) => {
+    const sess = s.sessions.find((x) => x.id === sessionId)
+    return sess?.iterm2Mode ?? false
+  })
   const nativeTerminalRequest = useNativeTerminalRequestStore((s) => s.bySession[sessionId])
   const openNativeTerminal = useNativeTerminalRequestStore((s) => s.openNativeTerminal)
   const dismissNativeTerminal = useNativeTerminalRequestStore((s) => s.dismissNativeTerminal)
@@ -137,6 +142,15 @@ export function PaneLeafShell({
               <TerminalDropZone sessionId={sessionId}>
                 <XTerminal sessionId={sessionId} active={focused || overlayVisible} />
               </TerminalDropZone>
+            </div>
+          </div>
+        ) : iterm2Mode ? (
+          /* [2026-07-10] iTerm2 模式：显示提示信息 */
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-[#1a1a1a] text-claude-muted">
+            <div className="space-y-3 text-center">
+              <div className="text-4xl">⌘</div>
+              <p className="text-sm">此会话正在 iTerm2 中运行</p>
+              <p className="text-xs opacity-60">切换到 iTerm2 应用查看终端</p>
             </div>
           </div>
         ) : (

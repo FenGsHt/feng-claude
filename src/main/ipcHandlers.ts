@@ -440,7 +440,8 @@ export function registerIpcHandlers(
         workdir,
         scrollback,
         profileId: profile.id,
-        telegramChannel: result.telegramChannel
+        telegramChannel: result.telegramChannel,
+        iterm2Mode: (result as any).iterm2Mode ?? false
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

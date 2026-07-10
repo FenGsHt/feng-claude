@@ -245,6 +245,8 @@ export const en: Translations = {
     terminalShellPlaceholder: 'Leave empty for platform default (Windows: cmd.exe / Unix: $SHELL)',
     terminalUseTmux: 'Persistent Shell Sessions',
     terminalUseTmuxDesc: 'Keep shell-only consoles running in the background so reopening the app restores lazygit and other TUI programs (cross-platform, no extra dependencies)',
+    terminalUseITerm2: 'Use iTerm2',
+    terminalUseITerm2Desc: 'Open terminal in iTerm2 (macOS only, requires iTerm2 to be installed)',
     /** [2026-05-08] Matches main-process augmentPathWithBunInstallDirs behavior */
     telegramBunHint:
       'The official Telegram Channel plugin requires Bun. Install from https://bun.sh (Windows PowerShell: irm bun.sh/install.ps1 | iex). Feng prepends ~/.bun/bin to the embedded terminal PATH when that folder exists. If Bun is installed elsewhere, add its bin directory to your system PATH and restart Feng.',
