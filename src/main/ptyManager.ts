@@ -28,9 +28,50 @@ function stripAnsiForPromptMatch(s: string): string {
     .replace(/\x1b\][^\x1b]*\x1b\\/g, '')
 }
 
-/** 回到交互式 shell：Windows cmd 路径>；Unix 常见行尾 `$`（bash）、`%`（zsh）、`#`（root）。 */
+/**
+ * 回到交互式 shell：Windows cmd 路径>；Unix 常见行尾 `$`（bash）、`%`（zsh）、`#`（root）。
+ * [2026-07-10] 增加 Claude 运行时特征检测：若 buffer 包含 Claude 特有输出（Thought/Waiting/Cooked 等），
+ * 说明 Claude 仍在运行，不判定为 shell prompt，防止误触发重启。
+ */
 function looksLikeShellPrompt(buffer: string): boolean {
   const tail = stripAnsiForPromptMatch(buffer).slice(-512)
+
+  // [2026-07-10] Claude 运行时特征：如果 buffer 包含这些关键词，说明 Claude 还在运行
+  const claudeRunningPatterns = [
+    /Thought for/i,
+    /Thinking for/i,
+    /Waiting\./i,
+    /Cooked for/i,
+    /Crunched for/i,
+    /Gallivanting/i,
+    /Pollinating/i,
+    /Sautéed for/i,
+    /Perambulating/i,
+    /\.\.\./,  // Claude 思考时的省略号
+    // [2026-07-10] 权限选择菜单特征
+    /permissions/i,
+    /shift\+tab/i,
+    /to cycle/i,
+    /for agents/i,
+    // Claude Code 交互式选择菜单
+    /choose/i,
+    /select/i,
+    /\(ctrl\+o to expand\)/i,
+    // [2026-07-10] 进度条特征（如 Context ██░░░░░░░░ 16%）
+    /Context\s+█/,
+    /\d+%/,  // 百分比进度
+    //,  // Claude Code 提示符
+    /╌/,  // 分隔线
+    /───/,  // 分隔线
+    /⏵⏵/  // 选择菜单箭头
+  ]
+  for (const pattern of claudeRunningPatterns) {
+    if (pattern.test(tail)) return false
+  }
+
+  // [2026-07-10] 调试：记录清理后的 tail 内容
+  console.log('[PTY] looksLikeShellPrompt tail:', JSON.stringify(tail.slice(-200)))
+
   if (/[A-Za-z]:\\[^\r\n]*>\s*$/m.test(tail)) return true
   if (process.platform !== 'win32') {
     if (/[\r\n][^\r\n]*?\$\s*$/m.test(tail)) return true
@@ -875,12 +916,14 @@ export class PtyManager {
     if (!shellOnly) {
       setTimeout(() => {
         session.firstAutoLaunchAt = Date.now()
-        ptyProcess.write(claudeLaunchLine(s, isWindows, {
+        const launchCmd = claudeLaunchLine(s, isWindows, {
           continueSession: effectiveResume,
           telegramChannelEnabled: session.telegramChannelLaunchEnabled,
           telegramStateDirAbs: session.telegramStateDirAbs,
           ptyShell: session.ptyShell
-        }))
+        })
+        console.log('[PTY] first auto-launch:', launchCmd.trim())
+        ptyProcess.write(launchCmd)
         session.claudeRunning = true
       }, 300)
     } else if (s.terminal?.useTmux) {
@@ -934,11 +977,13 @@ export class PtyManager {
             session.claudeRunning = true
             session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
-            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
+            const launchCmd = claudeLaunchLine(settings, process.platform === 'win32', {
               telegramChannelEnabled: session.telegramChannelLaunchEnabled,
               telegramStateDirAbs: session.telegramStateDirAbs,
               ptyShell: session.ptyShell
-            }))
+            })
+            console.log('[PTY] relaunch after --continue failure:', launchCmd.trim())
+            ptyProcess.write(launchCmd)
           }
         }, 300)
         return
@@ -953,6 +998,8 @@ export class PtyManager {
         sinceFirstLaunch >= SHELL_RELAUNCH_GRACE_MS &&
         looksLikeShellPrompt(session.buffer)
       ) {
+        // [2026-07-10] 调试日志：记录触发重启的 buffer 内容
+        console.warn('[PTY] shell prompt detected, relaunching. sinceFirstLaunch:', sinceFirstLaunch, 'buffer:', JSON.stringify(session.buffer.slice(-200)))
         session.claudeRunning = false
         session.relaunchPending = true
         session.buffer = ''
