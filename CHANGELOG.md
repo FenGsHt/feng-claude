@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.83] - 2026-07-28
+
+### 新功能 | Features
+- **macOS 窗口生命周期优化**：`Command+W` 隐藏窗口并保留现有 PTY 会话，从程序坞再次打开时恢复原窗口，不再重新创建应用状态
+- **开发模式退出清理**：新增开发启动包装器与 PTY daemon 关闭协议，`npm run dev` 使用 `Ctrl+C` 后会清理本项目 Electron 进程
+
+### 修复 | Bug Fixes
+- **macOS 重开窗口 IPC 重复注册**：窗口恢复时替换窗口级 IPC handler，并避免 BrowserView IPC 重复注册，修复 `Attempted to register a second handler` 崩溃
+- **终端刷新输出控制码**：刷新按钮只重绘 xterm，不再向 PTY 发送伪造 resize，避免出现 `^[[?...R` 控制序列
+- **Claude 启动命令被截断**：移除基于 shell prompt 猜测的自动重启逻辑，避免第二次写入与首次启动竞争并产生 `ude: command not found`
+- **第三方 API 环境冲突**：仅注入 `ANTHROPIC_AUTH_TOKEN`，清理继承的超大输出预算，并用独立变量声明 1M 上下文
+- **macOS Electron 兼容性**：升级 Electron 至 43.2.0
+
 ## [0.7.82] - 2026-07-11
 
 ### 新功能 | Features

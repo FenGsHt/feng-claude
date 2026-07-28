@@ -8,6 +8,13 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.83 主要更新
+
+- **macOS 窗口恢复**：`Command+W` 隐藏并保留现有会话，从程序坞重新打开时恢复原窗口
+- **开发进程可靠退出**：停止 `npm run dev` 时清理 PTY daemon 与残留的 Electron Dock 图标
+- **终端稳定性修复**：解决刷新控制码、重复 IPC handler、Claude 启动命令被截断等问题
+- **第三方 API 环境修复**：避免重复认证变量和异常输出预算，保留可靠的 1M 上下文配置
+
 ### v0.7.82 主要更新
 
 - **iTerm2 集成（macOS 打包版）**：设置中新增「使用 iTerm2」选项，启用后在 iTerm2 中打开终端。采用 daemon + relay 架构，保留 session 管理、token 统计等功能
@@ -225,6 +232,13 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.83 Highlights
+
+- **macOS window restoration**: `Command+W` hides the window while preserving PTY sessions; Dock activation restores the existing window
+- **Reliable development shutdown**: stopping `npm run dev` cleans up PTY daemons and stale Electron Dock processes
+- **Terminal stability fixes**: prevents refresh control-code noise, duplicate IPC handlers, and truncated Claude launch commands
+- **Third-party API environment fixes**: avoids duplicate credentials and oversized output budgets while preserving 1M context configuration
 
 ### v0.7.82 Highlights
 
