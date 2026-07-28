@@ -174,6 +174,15 @@ export function registerIpcHandlers(
   sessionWatcher: ClaudeSessionWatcher,
   testManager: TestManager
 ): void {
+  // macOS keeps the main process alive after the last window closes. Reopening
+  // from the Dock creates fresh window-scoped managers, so replace the previous
+  // handlers before capturing those new instances. Without this, ipcMain.handle
+  // throws on the first duplicated channel (for example clipboard:saveImage).
+  for (const channel of new Set(Object.values(IPC))) {
+    ipcMain.removeHandler(channel)
+    ipcMain.removeAllListeners(channel)
+  }
+
   // [2026-04-30] ensure 合并 HUD 后再次写入 skip 标志，且须能读取 settingsStore（故放在 register 内）
   const scheduleEnsureClaudeHudAfterSession = (): void => {
     if (hudEnsureAfterSessionScheduled) return

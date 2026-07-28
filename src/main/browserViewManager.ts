@@ -1945,7 +1945,13 @@ export function destroySessionBrowser(sessionId: string): void {
 
 // ─ IPC ────────────────────────────────────────────────────────────────
 
+let browserViewIpcRegistered = false
+
 export function registerBrowserViewIpc(): void {
+  // Browser view IPC is process-scoped. On macOS a Dock re-open creates a new
+  // BrowserWindow while the Electron main process is still alive.
+  if (browserViewIpcRegistered) return
+  browserViewIpcRegistered = true
   loadBrowserHistory()
   loadBrowserBookmarks()
 

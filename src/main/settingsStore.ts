@@ -18,10 +18,20 @@ function filterEnvRecord(rec: Record<string, string | undefined | null>): Record
   )
 }
 
-/** [2026-06-22] 声明 1M 上下文：给模型名追加 [1m] 后缀（Claude Code 发给上游前会剥掉）。
- * 幂等——已带 [1m] 不重复追加；空模型名原样返回（由 filterEnvRecord 过滤）。 */
-function add1mSuffix(model: string, on?: boolean): string {
-  return on && model && !/\[1m\]$/i.test(model) ? `${model}[1m]` : model
+/**
+ * DashScope's coding endpoint accepts the raw model ID, but rejects a literal
+ * `[1m]` suffix. Keep profile values provider-safe even when an older saved
+ * profile already contains the suffix.
+ */
+function rawModelId(model: string): string {
+  return model.replace(/\[1m\]$/i, '')
+}
+
+/** Use Claude Code's documented context-window setting instead of model suffixes. */
+function contextWindow(profile: ApiProfile): string | undefined {
+  return profile.model1m || profile.sonnetModel1m || profile.opusModel1m
+    ? '1000000'
+    : undefined
 }
 export { DEFAULT_SETTINGS, createDefaultProfile }
 
@@ -139,13 +149,16 @@ export class SettingsStore {
     if (profile.isOfficial) return {}
     return filterEnvRecord({
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
-      ANTHROPIC_API_KEY: profile.authToken,
+      // Claude Code treats AUTH_TOKEN and API_KEY as mutually exclusive.
+      // DashScope's Anthropic-compatible Claude Code integration uses
+      // ANTHROPIC_AUTH_TOKEN, so do not inject the same credential twice.
       ANTHROPIC_BASE_URL: profile.baseUrl,
-      ANTHROPIC_MODEL: add1mSuffix(profile.model, profile.model1m),
-      ANTHROPIC_DEFAULT_SONNET_MODEL: add1mSuffix(profile.sonnetModel, profile.sonnetModel1m),
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: profile.haikuModel,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: add1mSuffix(profile.opusModel, profile.opusModel1m),
-      CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
+      ANTHROPIC_MODEL: rawModelId(profile.model),
+      ANTHROPIC_DEFAULT_SONNET_MODEL: rawModelId(profile.sonnetModel),
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: rawModelId(profile.haikuModel),
+      ANTHROPIC_DEFAULT_OPUS_MODEL: rawModelId(profile.opusModel),
+      CLAUDE_CODE_SUBAGENT_MODEL: rawModelId(profile.subagentModel),
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: contextWindow(profile),
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
     })
   }
@@ -156,13 +169,15 @@ export class SettingsStore {
     const baseUrl = proxyUrl ?? profile.baseUrl
     return filterEnvRecord({
       ANTHROPIC_AUTH_TOKEN: profile.authToken,
-      ANTHROPIC_API_KEY: profile.authToken,
+      // Keep this mutually exclusive with ANTHROPIC_AUTH_TOKEN. See the
+      // non-proxy path above for the DashScope compatibility rationale.
       ANTHROPIC_BASE_URL: baseUrl,
-      ANTHROPIC_MODEL: add1mSuffix(profile.model, profile.model1m),
-      ANTHROPIC_DEFAULT_SONNET_MODEL: add1mSuffix(profile.sonnetModel, profile.sonnetModel1m),
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: profile.haikuModel,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: add1mSuffix(profile.opusModel, profile.opusModel1m),
-      CLAUDE_CODE_SUBAGENT_MODEL: profile.subagentModel,
+      ANTHROPIC_MODEL: rawModelId(profile.model),
+      ANTHROPIC_DEFAULT_SONNET_MODEL: rawModelId(profile.sonnetModel),
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: rawModelId(profile.haikuModel),
+      ANTHROPIC_DEFAULT_OPUS_MODEL: rawModelId(profile.opusModel),
+      CLAUDE_CODE_SUBAGENT_MODEL: rawModelId(profile.subagentModel),
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: contextWindow(profile),
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: profile.disableExperimentalBetas ? '1' : '0'
     })
   }

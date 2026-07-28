@@ -448,7 +448,10 @@ export function TerminalPaneHeader({ sessionId, focused }: Props): React.ReactEl
             </HeaderBtn>
           )}
           {/* [2026-05-27] 刷新终端画面（TUI 应用切回后乱码时手动补救） */}
-          <HeaderBtn title="刷新终端 (Refresh)" onClick={() => wakeTerminal(sessionId)}>
+          <HeaderBtn
+            title="刷新终端 (Refresh)"
+            onClick={() => wakeTerminal(sessionId, { notifyPtyResize: false })}
+          >
             <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
               <path d="M9.5 5.5A4 4 0 1 1 8 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
               <path d="M8 1v2h-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>

@@ -5,7 +5,7 @@
   "description": "A third-party GUI wrapper for Claude Code CLI",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev.mjs",
     "dev:renderer": "vite src/renderer --port 5173",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -65,7 +65,7 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
-    "electron": "^31.0.2",
+    "electron": "^43.2.0",
     "electron-builder": "^24.13.3",
     "electron-rebuild": "^3.2.9",
     "electron-vite": "^2.3.0",

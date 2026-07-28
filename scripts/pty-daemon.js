@@ -22,6 +22,7 @@
  *   Client → Server:
  *     {t:'i', d:<string>}   input to PTY
  *     {t:'r', c:<cols>, r:<rows>} resize PTY
+ *     {t:'shutdown'}        terminate this daemon (development cleanup only)
  */
 
 function arg(name) {
@@ -125,6 +126,16 @@ function cleanup() {
   if (process.platform !== 'win32') try { fs.unlinkSync(pipePath) } catch { /* ignore */ }
 }
 
+let shuttingDown = false
+function shutdown() {
+  if (shuttingDown) return
+  shuttingDown = true
+  try { ptyProc.kill() } catch { /* already exited */ }
+  try { server.close() } catch { /* ignore */ }
+  cleanup()
+  process.exit(0)
+}
+
 // ── IPC server ───────────────────────────────────────────────────────
 const server = net.createServer(socket => {
   clients.add(socket)
@@ -144,6 +155,7 @@ const server = net.createServer(socket => {
         const msg = JSON.parse(line)
         if (msg.t === 'i') ptyProc.write(msg.d)
         else if (msg.t === 'r') ptyProc.resize(msg.c, msg.r)
+        else if (msg.t === 'shutdown') shutdown()
       } catch { /* bad JSON, ignore */ }
     }
   })

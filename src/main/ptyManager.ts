@@ -64,14 +64,11 @@ function looksLikeShellPrompt(buffer: string): boolean {
     //,  // Claude Code 提示符
     /╌/,  // 分隔线
     /───/,  // 分隔线
-    /⏵⏵/  // 选择菜单箭头
+    /⏵/  // 选择菜单箭头
   ]
   for (const pattern of claudeRunningPatterns) {
     if (pattern.test(tail)) return false
   }
-
-  // [2026-07-10] 调试：记录清理后的 tail 内容
-  console.log('[PTY] looksLikeShellPrompt tail:', JSON.stringify(tail.slice(-200)))
 
   if (/[A-Za-z]:\\[^\r\n]*>\s*$/m.test(tail)) return true
   if (process.platform !== 'win32') {
@@ -105,11 +102,16 @@ const PTY_ENV_STRIP = [
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_MODEL',
+  // A shell-level 1M output budget can make compatible providers spend minutes
+  // preparing a trivial reply. Profiles do not manage this setting, so never
+  // inherit it into an embedded Claude Code session.
+  'ANTHROPIC_MAX_TOKENS',
   // [2026-06-01] 切换配置时防止旧配置的 model 变量残留（profile 无此字段时 filterEnvRecord 不会覆盖）
   'ANTHROPIC_DEFAULT_SONNET_MODEL',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
   'ANTHROPIC_DEFAULT_OPUS_MODEL',
-  'CLAUDE_CODE_SUBAGENT_MODEL'
+  'CLAUDE_CODE_SUBAGENT_MODEL',
+  'CLAUDE_CODE_MAX_CONTEXT_TOKENS'
 ] as const
 
 /** [2026-05-08] Bun 默认装在 ~/.bun/bin；Electron 包壳启动时常继承不到用户后来在终端里改的 PATH，Telegram 等官方插件会 spawn bun 失败。 */
@@ -898,17 +900,6 @@ export class PtyManager {
       }
     }
 
-    // [2026-07-10] 诊断日志：posix_spawnp 失败时查看实际参数
-    console.log('[PTY] spawn params:', {
-      shell,
-      shellExists: existsSync(shell),
-      cwd: resolvedWorkdir,
-      cwdExists: existsSync(resolvedWorkdir),
-      customShell: customShell,
-      envSHELL: process.env.SHELL,
-      platform: process.platform
-    })
-
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols: 120,
@@ -943,14 +934,12 @@ export class PtyManager {
     if (!shellOnly) {
       setTimeout(() => {
         session.firstAutoLaunchAt = Date.now()
-        const launchCmd = claudeLaunchLine(s, isWindows, {
+        ptyProcess.write(claudeLaunchLine(s, isWindows, {
           continueSession: effectiveResume,
           telegramChannelEnabled: session.telegramChannelLaunchEnabled,
           telegramStateDirAbs: session.telegramStateDirAbs,
           ptyShell: session.ptyShell
-        })
-        console.log('[PTY] first auto-launch:', launchCmd.trim())
-        ptyProcess.write(launchCmd)
+        }))
         session.claudeRunning = true
       }, 300)
     } else if (s.terminal?.useTmux) {
@@ -1004,51 +993,19 @@ export class PtyManager {
             session.claudeRunning = true
             session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
-            const launchCmd = claudeLaunchLine(settings, process.platform === 'win32', {
-              telegramChannelEnabled: session.telegramChannelLaunchEnabled,
-              telegramStateDirAbs: session.telegramStateDirAbs,
-              ptyShell: session.ptyShell
-            })
-            console.log('[PTY] relaunch after --continue failure:', launchCmd.trim())
-            ptyProcess.write(launchCmd)
-          }
-        }, 300)
-        return
-      }
-
-      /* [2026-04-23] 曾在此检测就绪后发 `/resume`；已改为首启命令行 `claude --continue`（见 claudeLaunchLine）。 */
-
-      const sinceFirstLaunch = session.firstAutoLaunchAt ? Date.now() - session.firstAutoLaunchAt : 0
-      if (
-        session.claudeRunning &&
-        !session.relaunchPending &&
-        sinceFirstLaunch >= SHELL_RELAUNCH_GRACE_MS &&
-        looksLikeShellPrompt(session.buffer)
-      ) {
-        // [2026-07-10] 调试日志：记录触发重启的 buffer 内容
-        console.warn('[PTY] shell prompt detected, relaunching. sinceFirstLaunch:', sinceFirstLaunch, 'buffer:', JSON.stringify(session.buffer.slice(-200)))
-        session.claudeRunning = false
-        session.relaunchPending = true
-        session.buffer = ''
-        // Re-launch claude after a short delay
-        setTimeout(() => {
-          session.relaunchPending = false
-          if (this.sessions.has(sessionId)) {
-            session.claudeRunning = true
-            session.firstAutoLaunchAt = Date.now()
-            const settings = this.settingsStore.get()
-            // Relaunch without --continue: only the initial launch uses it
-            /* [2026-05-08] 原仅 claudeLaunchLine(settings, platform)，未带 telegramChannelEnabled，
-             * 首次启动若很快出现类似 cmd 提示符的输出，会误判「已回 shell」并在 ~500ms 再写一行 claude，
-             * 该行丢失 --channels，用户误以为 Telegram Channel 从未启用。 */
             ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
               telegramChannelEnabled: session.telegramChannelLaunchEnabled,
               telegramStateDirAbs: session.telegramStateDirAbs,
               ptyShell: session.ptyShell
             }))
           }
-        }, 500)
+        }, 300)
+        return
       }
+
+      // Do not infer that Claude exited merely because output resembles a shell prompt.
+      // Terminal capability probes can produce the same sequences while Claude is starting;
+      // auto-writing a second command races with the first and can corrupt it (e.g. `ude`).
     })
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -1324,8 +1281,17 @@ export class PtyManager {
     const session = this.sessions.get(sessionId)
     if (session) {
       if (session.daemonSocket) {
-        // Daemon sessions: disconnect but leave daemon running
-        try { session.daemonSocket.destroy() } catch { /* ignore */ }
+        // Packaged builds retain daemon sessions across app restarts. In dev,
+        // however, Ctrl+C should leave no Electron-in-Node-mode process (and
+        // therefore no stale Dock icon) behind.
+        if (!app.isPackaged) {
+          // end(data) flushes the shutdown command before closing the client
+          // side; write() followed by destroy() can discard it.
+          try { session.daemonSocket.end(JSON.stringify({ t: 'shutdown' }) + '\n') } catch { /* ignore */ }
+        } else {
+          // Daemon sessions: disconnect but leave the packaged-app daemon running.
+          try { session.daemonSocket.destroy() } catch { /* ignore */ }
+        }
       } else {
         this.flushScrollback(session)
         const proc = session.ptyProcess

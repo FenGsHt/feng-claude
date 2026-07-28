@@ -249,12 +249,20 @@ export function getTerminalTextarea(sessionId: string): HTMLTextAreaElement | nu
 }
 
 /** [2026-05-07] 浮窗挂载同一 xterm 时，布局稳定前 fit 可能吃到 0 尺寸；显式唤醒重绘 */
-export function wakeTerminal(sessionId: string): void {
+export function wakeTerminal(sessionId: string, options?: { notifyPtyResize?: boolean }): void {
   const entry = terminals.get(sessionId)
   if (!entry) return
   try {
     entry.fitAddon.fit()
-    window.electronAPI?.resizePty(sessionId, entry.term.cols, entry.term.rows)
+    // A visual-only refresh must not synthesize SIGWINCH. Claude Code responds
+    // to a resize by querying terminal capabilities/cursor position; if it exits
+    // during that exchange, those response sequences can be echoed by the shell.
+    // Real layout changes are already reported by the resize observers.
+    // Resizing is opt-in: the mounted terminal's ResizeObserver reports real
+    // geometry changes. Callers of this helper generally only need a repaint.
+    if (options?.notifyPtyResize === true) {
+      window.electronAPI?.resizePty(sessionId, entry.term.cols, entry.term.rows)
+    }
   } catch {
     // ignore hidden/detached terminal fit errors
   }

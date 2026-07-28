@@ -67,6 +67,20 @@ function migrateLegacyScrollbackOnce(): void {
 
 let ptyManager: PtyManager
 let mainWindow: BrowserWindow
+let isQuitting = false
+
+/** electron-vite sends SIGINT/SIGTERM to the Electron child when its dev
+ * launcher is stopped with Ctrl+C. Explicitly close dev-only persistent PTY
+ * daemons before exiting, otherwise their Electron-in-Node-mode processes
+ * remain visible in the macOS Dock. */
+let devSignalShutdownStarted = false
+function shutdownForDevSignal(): void {
+  if (devSignalShutdownStarted) return
+  devSignalShutdownStarted = true
+  try { ptyManager?.flushAll() } catch { /* ignore */ }
+  try { ptyManager?.closeAll() } catch { /* ignore */ }
+  app.exit(0)
+}
 
 function createWindow(): BrowserWindow {
   ensureClaudeHudPluginDefaults()
@@ -96,6 +110,16 @@ function createWindow(): BrowserWindow {
     if (firstShow) {
       firstShow = false
       win.show()
+    }
+  })
+
+  // Keep the macOS application and its PTY sessions alive when the user closes
+  // its last window with Cmd+W / the traffic-light button. Dock activation then
+  // restores this same window instead of constructing a fresh application view.
+  win.on('close', (event) => {
+    if (process.platform === 'darwin' && !isQuitting) {
+      event.preventDefault()
+      win.hide()
     }
   })
 
@@ -212,6 +236,11 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  if (is.dev) {
+    process.once('SIGINT', shutdownForDevSignal)
+    process.once('SIGTERM', shutdownForDevSignal)
+  }
+
   // 允许渲染进程请求麦克风权限（语音识别功能）
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media')
@@ -262,11 +291,18 @@ app.whenReady().then(() => {
     setTimeout(() => checkForUpdates(), 3000)
   }
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+      return
+    }
+    const win = !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getAllWindows()[0]
+    win?.show()
+    win?.focus()
   })
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
   stopApiProxy()            // [2026-04-30] 关闭 API 容灾代理
   ptyManager?.flushAll()   // save scrollback
   ptyManager?.closeAll()   // kill PTY child processes so they don't keep the process alive
@@ -278,4 +314,3 @@ app.on('window-all-closed', () => {
   ptyManager?.closeAll()
   if (process.platform !== 'darwin') app.quit()
 })
-

@@ -551,7 +551,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (result.scrollback) {
       preFillTerminal(result.sessionId, result.scrollback)
     }
-    // [2026-06-02] 切换配置后终端可能显示异常，延迟 wake 确保 XTerminal 完成挂载
+    // [2026-06-02] 切换配置后终端可能显示异常，延迟重绘确保 XTerminal 完成挂载。
+    // 尺寸变化由 XTerminal 的 ResizeObserver 上报；这里不能额外发送 SIGWINCH，
+    // 否则 Claude Code 的终端查询响应可能在 shell 中回显成 ^[[?...R。
     setTimeout(() => wakeTerminal(result.sessionId), 200)
     setTimeout(() => wakeTerminal(result.sessionId), 600)
   },

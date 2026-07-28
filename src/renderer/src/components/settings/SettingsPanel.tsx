@@ -843,7 +843,7 @@ export function SettingsPanel(): React.ReactElement {
             />
           </Field>
 
-          {/* All Models — 默认/Sonnet/Opus 行带「1M」声明勾选（追加 [1m] 后缀），仅第三方配置生效 */}
+          {/* All Models — 默认/Sonnet/Opus 行带「1M」上下文声明，仅第三方配置生效 */}
           {(
             [
               ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL', 'model1m'],
@@ -865,7 +865,7 @@ export function SettingsPanel(): React.ReactElement {
                 {oneMKey && (
                   <label
                     className="flex items-center gap-1 text-[10px] text-claude-muted whitespace-nowrap cursor-pointer select-none"
-                    title={lang === 'zh' ? '声明该模型支持 1M 上下文（发给上游前自动去掉 [1m]）' : 'Declare 1M context for this model ([1m] is stripped before reaching your provider)'}
+                    title={lang === 'zh' ? '启用 1M 上下文窗口（不会把 [1m] 后缀发送给上游）' : 'Enable a 1M context window without sending a [1m] suffix upstream'}
                   >
                     <input
                       type="checkbox"
@@ -1434,7 +1434,7 @@ function ProfileEditor({
             />
           </Field>
 
-          {/* Models — 默认/Sonnet/Opus 行带「1M」声明勾选（追加 [1m] 后缀），仅第三方配置生效 */}
+          {/* Models — 默认/Sonnet/Opus 行带「1M」上下文声明，仅第三方配置生效 */}
           {(
             [
               ['model', lang === 'zh' ? '默认模型' : 'Default Model', 'ANTHROPIC_MODEL', 'model1m'],
@@ -1456,7 +1456,7 @@ function ProfileEditor({
                 {oneMKey && (
                   <label
                     className="flex items-center gap-1 text-[10px] text-claude-muted whitespace-nowrap cursor-pointer select-none"
-                    title={lang === 'zh' ? '声明该模型支持 1M 上下文（发给上游前自动去掉 [1m]）' : 'Declare 1M context for this model ([1m] is stripped before reaching your provider)'}
+                    title={lang === 'zh' ? '启用 1M 上下文窗口（不会把 [1m] 后缀发送给上游）' : 'Enable a 1M context window without sending a [1m] suffix upstream'}
                   >
                     <input
                       type="checkbox"
