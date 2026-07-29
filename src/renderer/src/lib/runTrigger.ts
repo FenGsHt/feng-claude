@@ -2,7 +2,7 @@
  *  供定时调度器与面板「立即运行」按钮共用；不改动触发器的排程状态。 */
 import { useSessionStore } from '../store/sessionStore'
 import { useTodoListStore } from '../store/todoListStore'
-import { submitEmbedSessionInput } from '../components/terminal/XTerminal'
+import { submitEmbedSessionInput } from '../components/terminal/terminalRuntime'
 import { runTodoList } from './runTodos'
 import type { Trigger } from '../store/triggerStore'
 

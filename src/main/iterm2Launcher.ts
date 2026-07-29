@@ -68,7 +68,19 @@ export function openITerm2Session(
 
   // Build the command to run in iTerm2
   const nodeExe = process.execPath
-  const relayCmd = `${nodeExe} "${relayScript}" --socket "${socketPath}" --cols ${cols} --rows ${rows}`
+  const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`
+  const relayCmd = [
+    shellQuote(nodeExe),
+    shellQuote(relayScript),
+    '--socket',
+    shellQuote(socketPath),
+    '--cols',
+    String(cols),
+    '--rows',
+    String(rows)
+  ].join(' ')
+  // AppleScript string literals need their own escaping, independent of shell quoting.
+  const appleScriptRelayCmd = relayCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
   // AppleScript to open iTerm2 and run the relay command
   const appleScript = `
@@ -76,7 +88,7 @@ export function openITerm2Session(
       activate
       set newWindow to (create window with default profile)
       tell current session of newWindow
-        write text "${relayCmd}"
+        write text "${appleScriptRelayCmd}"
       end tell
     end tell
   `

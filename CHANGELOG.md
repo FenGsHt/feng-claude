@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.84] - 2026-07-29
+
+### 修复 | Bug Fixes
+- **macOS Claude 启动命令被控制码截断**：zsh/bash 首次启动改由 shell 参数直接执行 Claude，不再通过 PTY 模拟键盘输入；避免终端能力响应、鼠标事件和 prompt 插件把 `claude` 截成 `ude`
+- **历史滚屏污染新会话终端状态**：回放 scrollback 时过滤鼠标追踪、焦点、粘贴模式和终端能力查询，并在回放结束后复位交互模式，防止 `^[[?...R` / `^[[<...M` 控制码进入新 shell
+- **开发模式意外弹出 iTerm2**：iTerm2 模式仅允许在 macOS 打包版启用，源码开发版始终使用软件内嵌终端
+- **iTerm2 启动与回退稳定性**：修复 AppleScript 与 shell 双层引号转义；外置启动失败时正确断开 daemon，再安全回退内嵌 PTY
+- **Vite 热更新刷屏**：将终端运行时控制函数从 `XTerminal.tsx` 拆到独立模块，使 React 组件入口保持单一组件导出，消除 `Could not Fast Refresh` 重复失效
+
 ## [0.7.83] - 2026-07-28
 
 ### 新功能 | Features

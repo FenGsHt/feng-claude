@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
-import { sendPtyInterruptSignal } from '../terminal/XTerminal'
+import { sendPtyInterruptSignal } from '../terminal/terminalRuntime'
 
 export function InputArea(): React.ReactElement {
   const [text, setText] = useState('')

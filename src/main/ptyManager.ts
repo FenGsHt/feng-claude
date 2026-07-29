@@ -3,7 +3,7 @@ import { getWindowsPtySpawnExtras } from './winPtySpawnExtras'
 import { createHash } from 'crypto'
 import { spawnSync, spawn as spawnProc } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, unlinkSync } from 'fs'
-import { dirname, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { homedir } from 'os'
 import * as net from 'net'
 import { request as httpsRequest } from 'https'
@@ -320,6 +320,30 @@ function claudeLaunchLine(
   return `${prefix}${line}\r`
 }
 
+/** POSIX shells may still be loading a plugin-heavy rc file after the PTY exists.
+ * Queue a harmless OSC marker through the shell and launch Claude only after the
+ * marker is emitted, proving that startup and line-editor initialization finished. */
+function shellReadyMarker(sessionId: string): string {
+  return `\x1b]777;feng-shell-ready;${sessionId}\x07`
+}
+
+function shellReadyProbe(sessionId: string): string {
+  // Emit the invisible marker, then clear the probe command and any terminal
+  // capability replies from the visible viewport before Claude starts.
+  return `printf '\\033]777;feng-shell-ready;${sessionId}\\007\\033[2J\\033[H'\r`
+}
+
+const SHELL_READY_SETTLE_MS = 300
+
+function quotePosixShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function supportsDirectPosixLaunch(shell: string): boolean {
+  const name = basename(shell).toLowerCase()
+  return name === 'zsh' || name === 'bash'
+}
+
 interface PtySession {
   id: string
   ptyProcess?: pty.IPty     // undefined for daemon sessions
@@ -328,6 +352,8 @@ interface PtySession {
   buffer: string
   relaunchPending: boolean
   firstAutoLaunchAt: number
+  createdAt: number
+  startupControlLogCount: number
   scrollbackChunks: Buffer[]
   scrollbackSize: number
   usedContinue: boolean
@@ -874,14 +900,54 @@ export class PtyManager {
       return { ...result, telegramChannel: preparedTelegram.config }
     }
 
-    // [2026-07-10] iTerm2 mode: open session in iTerm2 instead of built-in terminal (macOS only)
-    if (s.terminal?.useITerm2 && process.platform === 'darwin') {
+    // [2026-07-28] 与设置界面保持一致：iTerm2 只允许在 macOS 打包版启用。
+    // 开发版即使残留了 useITerm2=true，也必须使用内嵌终端，避免 npm run dev 弹出外部窗口。
+    if (s.terminal?.useITerm2 && process.platform === 'darwin' && app.isPackaged) {
       if (!isITerm2Installed()) {
         console.warn('[PTY] iTerm2 mode enabled but iTerm2 is not installed, falling back to built-in terminal')
         // Fall through to normal PTY creation below
       } else {
         // Create daemon session and open iTerm2 window
-        const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
+        let iTermLaunchStarted = false
+        let iTermLaunchFallback: NodeJS.Timeout | undefined
+        let iTermLaunchSettle: NodeJS.Timeout | undefined
+        let iTermShellReady = false
+        let iTermProbeOutput = ''
+        const iTermMarker = shellReadyMarker(sessionId)
+        const launchITermClaudeOnce = (): void => {
+          if (iTermLaunchStarted) return
+          const daemonSession = this.sessions.get(sessionId)
+          if (!daemonSession?.daemonSocket) return
+          iTermLaunchStarted = true
+          if (iTermLaunchFallback) clearTimeout(iTermLaunchFallback)
+          if (iTermLaunchSettle) clearTimeout(iTermLaunchSettle)
+          daemonSession.firstAutoLaunchAt = Date.now()
+          this.writeRaw(daemonSession, claudeLaunchLine(s, false, {
+            continueSession: effectiveResume,
+            telegramChannelEnabled: preparedTelegram.launchEnabled,
+            telegramStateDirAbs: preparedTelegram.stateDirAbs,
+            ptyShell: shell
+          }))
+          daemonSession.claudeRunning = true
+        }
+        const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv, {
+          forwardOutput: false,
+          onOutput: (data) => {
+            if (iTermLaunchStarted) return
+            const combined = iTermProbeOutput + data
+            if (combined.includes(iTermMarker)) {
+              iTermShellReady = true
+              if (iTermLaunchFallback) {
+                clearTimeout(iTermLaunchFallback)
+                iTermLaunchFallback = undefined
+              }
+            }
+            iTermProbeOutput = combined.slice(-(iTermMarker.length - 1))
+            if (!iTermShellReady) return
+            if (iTermLaunchSettle) clearTimeout(iTermLaunchSettle)
+            iTermLaunchSettle = setTimeout(launchITermClaudeOnce, SHELL_READY_SETTLE_MS)
+          }
+        })
         // Get socket path from daemon state
         const statePath = daemonStatePath(resolvedWorkdir)
         const daemonState = readDaemonState(statePath)
@@ -891,16 +957,46 @@ export class PtyManager {
             console.warn('[PTY] Failed to open iTerm2 session:', iterm2Result.error)
           } else {
             console.log('[PTY] Opened iTerm2 session for', sessionId)
+            // A freshly-created daemon contains only the shell. Queue a marker
+            // through that shell and launch Claude after its rc files finish.
+            // Reused daemons may already be inside Claude, so leave them intact.
+            if (!result.reused) {
+              this.writeRaw(this.sessions.get(sessionId)!, shellReadyProbe(sessionId))
+              iTermLaunchFallback = setTimeout(launchITermClaudeOnce, 5000)
+            }
             return { ...result, telegramChannel: preparedTelegram.config, iterm2Mode: true }
           }
         } else {
           console.warn('[PTY] Daemon state not found, cannot open iTerm2 session')
         }
-        // If iTerm2 failed, fall through to normal PTY creation
+        // If iTerm2 failed, detach its daemon before creating the built-in PTY.
+        // The daemon socket must never replay old scrollback into the fallback
+        // terminal under the same session ID.
+        this.detachDaemonForFallback(sessionId, !result.reused)
       }
     }
 
-    const ptyProcess = pty.spawn(shell, [], {
+    const initialClaudeLine = claudeLaunchLine(s, isWindows, {
+      continueSession: effectiveResume,
+      telegramChannelEnabled: preparedTelegram.launchEnabled,
+      telegramStateDirAbs: preparedTelegram.stateDirAbs,
+      ptyShell: shell
+    })
+    // [2026-07-29] zsh/bash 首启不再通过 PTY 模拟键盘输入命令。终端能力响应、鼠标事件和
+    // prompt 插件都可能与 write('claude...') 竞争并吞掉开头字符；让 shell 在 rc 加载完成后
+    // 直接执行 argv 中的命令，从输入通道上彻底隔离启动过程。Claude 退出后再进入交互 shell。
+    const directPosixLaunch = !isWindows && !shellOnly && supportsDirectPosixLaunch(shell)
+    const shellArgs = directPosixLaunch
+      ? ['-ilc', `${initialClaudeLine.replace(/\r$/, '')}; exec ${quotePosixShellArg(shell)} -il`]
+      : []
+    console.log('[PTY][startup]', {
+      sessionId,
+      mode: directPosixLaunch ? 'shell-argv' : (isWindows ? 'delayed-pty' : (shellOnly ? 'shell-only' : 'ready-probe')),
+      shell: basename(shell),
+      resume: effectiveResume
+    })
+
+    const ptyProcess = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: 120,
       rows: 40,
@@ -909,18 +1005,17 @@ export class PtyManager {
       ...getWindowsPtySpawnExtras()
     })
 
-    // Auto-launch claude CLI after shell is ready
-    /* [2026-04-23] 须在首次 write 之后再置 true：原先初始为 true 时，cmd/bash 会先打出壳提示符，
-     * looksLikeShellPrompt 误判为「Claude 已退出」并在 ~500ms 再次 claudeLaunchLine，与上方 300ms 首启叠加 → 终端里出现第二条启动命令 */
+    // Auto-launch Claude only after the shell has finished loading its rc/plugins.
     const session: PtySession = {
       id: sessionId,
       ptyProcess,
       workdir,
-      /* [2026-04-23] 原 true — 见上 setTimeout 注释；壳提示符早于首次自动启动会触发「重回 shell → 重跑 claude」逻辑 */
-      claudeRunning: false,
+      claudeRunning: directPosixLaunch,
       buffer: '',
       relaunchPending: false,
-      firstAutoLaunchAt: 0,
+      firstAutoLaunchAt: directPosixLaunch ? Date.now() : 0,
+      createdAt: Date.now(),
+      startupControlLogCount: 0,
       scrollbackChunks: [],
       scrollbackSize: 0,
       usedContinue: effectiveResume,
@@ -930,18 +1025,36 @@ export class PtyManager {
       ptyShell: shell
     }
 
+    let launchStarted = directPosixLaunch
+    let launchFallbackTimer: NodeJS.Timeout | undefined
+    let launchSettleTimer: NodeJS.Timeout | undefined
+    let shellReady = false
+    let probeOutput = ''
+    const readyMarker = shellReadyMarker(sessionId)
+    const launchClaudeOnce = (): void => {
+      if (launchStarted || shellOnly || !this.sessions.has(sessionId)) return
+      launchStarted = true
+      if (launchFallbackTimer) clearTimeout(launchFallbackTimer)
+      if (launchSettleTimer) clearTimeout(launchSettleTimer)
+      session.firstAutoLaunchAt = Date.now()
+      console.log('[PTY][startup]', { sessionId, mode: 'pty-write', atMs: Date.now() - session.createdAt })
+      ptyProcess.write(initialClaudeLine)
+      session.claudeRunning = true
+    }
+
     // [2026-05-06] Shell-only 会话不自动启动 Claude Code，直接保持 shell 状态
     if (!shellOnly) {
-      setTimeout(() => {
-        session.firstAutoLaunchAt = Date.now()
-        ptyProcess.write(claudeLaunchLine(s, isWindows, {
-          continueSession: effectiveResume,
-          telegramChannelEnabled: session.telegramChannelLaunchEnabled,
-          telegramStateDirAbs: session.telegramStateDirAbs,
-          ptyShell: session.ptyShell
-        }))
-        session.claudeRunning = true
-      }, 300)
+      if (directPosixLaunch) {
+        // The shell argv owns the initial launch; no bytes are injected into ZLE.
+      } else if (isWindows) {
+        setTimeout(launchClaudeOnce, 300)
+      } else {
+        // The probe itself is queued by the shell while .zshrc/.bashrc loads.
+        // Its OSC output cannot be confused with an echoed command because the
+        // command contains printable backslash escapes, not a literal ESC byte.
+        setTimeout(() => ptyProcess.write(shellReadyProbe(sessionId)), 50)
+        launchFallbackTimer = setTimeout(launchClaudeOnce, 5000)
+      }
     } else if (s.terminal?.useTmux) {
       // [2026-05-06] tmux 持久化：先确认 tmux 可用，再 attach/新建会话
       const tmuxAvailable = spawnSync('tmux', ['-V'], { timeout: 2000 }).status === 0
@@ -955,6 +1068,25 @@ export class PtyManager {
 
     ptyProcess.onData((data: string) => {
       if (this.win.isDestroyed()) return
+
+      if (!isWindows && !launchStarted) {
+        // The marker may be split across PTY chunks. Once observed, wait until
+        // zsh and prompt plugins stop writing briefly; sending Claude in the
+        // same tick can lose its leading characters while ZLE returns to input.
+        const combined = probeOutput + data
+        if (combined.includes(readyMarker)) {
+          shellReady = true
+          if (launchFallbackTimer) {
+            clearTimeout(launchFallbackTimer)
+            launchFallbackTimer = undefined
+          }
+        }
+        probeOutput = combined.slice(-(readyMarker.length - 1))
+        if (shellReady) {
+          if (launchSettleTimer) clearTimeout(launchSettleTimer)
+          launchSettleTimer = setTimeout(launchClaudeOnce, SHELL_READY_SETTLE_MS)
+        }
+      }
 
       this.win.webContents.send(IPC.PTY_OUTPUT, {
         sessionId,
@@ -1035,8 +1167,9 @@ export class PtyManager {
     sessionId: string,
     workdir: string,
     shell: string,
-    ptyEnv: Record<string, string>
-  ): Promise<{ pid: number }> {
+    ptyEnv: Record<string, string>,
+    routeOptions?: { forwardOutput?: boolean; onOutput?: (data: string) => void }
+  ): Promise<{ pid: number; reused: boolean }> {
     mkdirSync(daemonDir(), { recursive: true })
     const statePath = daemonStatePath(workdir)
     const session: PtySession = {
@@ -1046,6 +1179,8 @@ export class PtyManager {
       buffer: '',
       relaunchPending: false,
       firstAutoLaunchAt: 0,
+      createdAt: Date.now(),
+      startupControlLogCount: 0,
       scrollbackChunks: [],
       scrollbackSize: 0,
       usedContinue: false,
@@ -1061,8 +1196,8 @@ export class PtyManager {
     if (existing?.pipe) {
       const socket = await tryConnectDaemon(existing.pipe)
       if (socket) {
-        this.routeDaemonSocket(sessionId, session, socket)
-        return { pid: existing.pid }
+        this.routeDaemonSocket(sessionId, session, socket, routeOptions)
+        return { pid: existing.pid, reused: true }
       }
     }
 
@@ -1114,13 +1249,19 @@ export class PtyManager {
       throw new Error('[pty-daemon] Daemon started but could not connect to pipe')
     }
 
-    this.routeDaemonSocket(sessionId, session, socket)
-    return { pid: state.pid }
+    this.routeDaemonSocket(sessionId, session, socket, routeOptions)
+    return { pid: state.pid, reused: false }
   }
 
-  private routeDaemonSocket(sessionId: string, session: PtySession, socket: net.Socket): void {
+  private routeDaemonSocket(
+    sessionId: string,
+    session: PtySession,
+    socket: net.Socket,
+    options?: { forwardOutput?: boolean; onOutput?: (data: string) => void }
+  ): void {
     session.daemonSocket = socket
     let lineBuf = ''
+    const forwardOutput = options?.forwardOutput !== false
 
     socket.on('data', (chunk: Buffer) => {
       if (this.win.isDestroyed()) return
@@ -1134,9 +1275,15 @@ export class PtyManager {
           if (msg.t === 's' && msg.d) {
             // Initial scrollback replay — decode and forward as terminal output
             const raw = Buffer.from(msg.d, 'base64').toString()
-            this.win.webContents.send(IPC.PTY_OUTPUT, { sessionId, data: raw, timestamp: Date.now() })
+            options?.onOutput?.(raw)
+            if (forwardOutput) {
+              this.win.webContents.send(IPC.PTY_OUTPUT, { sessionId, data: raw, timestamp: Date.now() })
+            }
           } else if (msg.t === 'o' && msg.d) {
-            this.win.webContents.send(IPC.PTY_OUTPUT, { sessionId, data: msg.d, timestamp: Date.now() })
+            options?.onOutput?.(msg.d)
+            if (forwardOutput) {
+              this.win.webContents.send(IPC.PTY_OUTPUT, { sessionId, data: msg.d, timestamp: Date.now() })
+            }
           } else if (msg.t === 'x') {
             if (!this.win.isDestroyed()) {
               this.win.webContents.send(IPC.PTY_STATUS, { sessionId, status: 'exited', exitCode: msg.code ?? 0 })
@@ -1160,6 +1307,21 @@ export class PtyManager {
     })
 
     socket.on('error', () => { try { socket.destroy() } catch { /* ignore */ } })
+  }
+
+  private detachDaemonForFallback(sessionId: string, shutdown: boolean): void {
+    const session = this.sessions.get(sessionId)
+    const socket = session?.daemonSocket
+    if (socket) {
+      socket.removeAllListeners()
+      try {
+        if (shutdown) socket.end(JSON.stringify({ t: 'shutdown' }) + '\n')
+        else socket.destroy()
+      } catch {
+        // already closed
+      }
+    }
+    this.sessions.delete(sessionId)
   }
 
   // [2026-06-04] ConPTY 单次写入缓冲约 4KB，超出会截断；分块写入避免丢字
@@ -1211,6 +1373,27 @@ export class PtyManager {
     }
     try {
       const via: 'daemon' | 'pty' = session.daemonSocket ? 'daemon' : 'pty'
+      // [2026-07-29] 启动阶段只记录“纯控制序列”，不记录普通键入/粘贴内容，避免泄露用户文本。
+      // 用于确认 xterm 的鼠标、光标位置、设备能力响应是否在 Claude 接管前进入了 shell。
+      if (
+        Date.now() - session.createdAt < 15_000 &&
+        session.startupControlLogCount < 40 &&
+        data.includes('\x1b')
+      ) {
+        const withoutControlSequences = data
+          .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+          .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
+        if (withoutControlSequences.length === 0) {
+          session.startupControlLogCount++
+          console.log('[PTY][startup-input]', {
+            sessionId,
+            atMs: Date.now() - session.createdAt,
+            via,
+            bytes,
+            control: JSON.stringify(data)
+          })
+        }
+      }
       if (data.length > PtyManager.PASTE_CHUNK) {
         this.writeChunked(session, data)
       } else {

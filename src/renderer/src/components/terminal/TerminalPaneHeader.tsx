@@ -10,7 +10,7 @@ import { useTodoListStore } from '../../store/todoListStore'
 import { WorktreeDialog } from './WorktreeDialog'
 import { startRecognition, stopRecognition } from '../../services/speechRecognition'
 import type { SpeechConfig } from '../../services/speechRecognition'
-import { wakeTerminal, focusTerminal, getTerminalTextarea } from './XTerminal'
+import { wakeTerminal, focusTerminal, getTerminalTextarea } from './terminalRuntime'
 import { useEmbedClaudeOutputBeta } from '../../hooks/useEmbedClaudeOutputBeta'
 import { SessionConfigBadges } from './SessionConfigBadges'
 

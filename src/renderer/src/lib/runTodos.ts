@@ -1,7 +1,7 @@
 /** [2026-06-05] 把某个命名清单交给当前会话的 Claude 执行 —— 面板/ pane 头部共用。 */
 import { useSessionStore } from '../store/sessionStore'
 import { useTodoListStore, todosToMarkdown } from '../store/todoListStore'
-import { submitEmbedSessionInput } from '../components/terminal/XTerminal'
+import { submitEmbedSessionInput } from '../components/terminal/terminalRuntime'
 import { navigateToTodoListTab } from '../components/sidebar/sidebarNav'
 
 /** 确保 workdir/.gitignore 含某条目，缺失则追加（不存在则创建）。避免 .feng-todos.md 被误提交。 */

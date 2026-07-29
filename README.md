@@ -8,6 +8,13 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.84 主要更新
+
+- **macOS 终端启动可靠性**：zsh/bash 直接执行 Claude，修复控制码竞争导致 `claude` 被截成 `ude`
+- **历史滚屏安全回放**：过滤鼠标追踪和终端查询等副作用序列，新会话不再显示 `^[[?...R` / `^[[<...M`
+- **内嵌/iTerm2 行为修复**：开发版固定使用内嵌终端，打包版 iTerm2 修复路径转义与失败回退
+- **开发热更新修复**：拆分终端组件和运行时模块，消除 Vite Fast Refresh 刷屏
+
 ### v0.7.83 主要更新
 
 - **macOS 窗口恢复**：`Command+W` 隐藏并保留现有会话，从程序坞重新打开时恢复原窗口
@@ -232,6 +239,13 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.84 Highlights
+
+- **Reliable macOS terminal startup**: zsh/bash launches Claude directly, preventing terminal-control races from truncating `claude` to `ude`
+- **Safe scrollback replay**: filters mouse tracking and terminal queries so restored history cannot inject `^[[?...R` / `^[[<...M` sequences into a new shell
+- **Embedded/iTerm2 behavior fixes**: development builds always use the embedded terminal; packaged iTerm2 mode now handles path escaping and fallback cleanup correctly
+- **Development HMR fix**: separates the terminal React component from its runtime helpers, eliminating Vite Fast Refresh invalidation spam
 
 ### v0.7.83 Highlights
 

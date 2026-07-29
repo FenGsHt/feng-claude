@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
 import { registerEmbedDraftInjector, registerEmbedFocus } from '../../lib/embedDraftBridge'
-import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './XTerminal'
+import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './terminalRuntime'
 import { usePtyAlternateScreenStore, clearPtyAlternateScreenSession } from '../../store/ptyAlternateScreenStore'
 import { useSessionStore } from '../../store/sessionStore'
 import {

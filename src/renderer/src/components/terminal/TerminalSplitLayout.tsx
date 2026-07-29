@@ -10,9 +10,9 @@ import { ClaudeTranscriptPane } from './ClaudeTranscriptPane'
 import { EmbedSessionComposer } from './EmbedSessionComposer'
 import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 /* [2026-05-07] 浮窗 × 不再强制退出 PTY，移除关闭路径中的输入/echo 清理依赖。 */
-// import { sendRawPtyInput, wakeTerminal } from './XTerminal'
+// import { sendRawPtyInput, wakeTerminal } from './terminalRuntime'
 // import { setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
-import { wakeTerminal, refreshTerminalView } from './XTerminal'
+import { wakeTerminal, refreshTerminalView } from './terminalRuntime'
 import { focusSessionInput } from '../../lib/sessionFocus'
 import { collectLeafSessionIds } from '../../lib/paneLayout'
 

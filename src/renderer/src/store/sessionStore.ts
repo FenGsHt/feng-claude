@@ -8,7 +8,7 @@ import {
   removeSessionFromLayout,
   replaceLeafWithSplit
 } from '../lib/paneLayout'
-import { destroyTerminal, focusTerminal, preFillTerminal, wakeTerminal } from '../components/terminal/XTerminal'
+import { destroyTerminal, focusTerminal, preFillTerminal, wakeTerminal } from '../components/terminal/terminalRuntime'
 import { useEmbedAwaitingReplyStore } from './embedAwaitingReplyStore'
 import { clearEmbedTurnLatency } from './embedTurnLatencyStore'
 import { clearEmbedPtyEchoBuffer } from '../lib/embedPtyTranscriptEcho'
@@ -254,6 +254,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       profileId: sessionProfileId ?? undefined,
       profileName: sessionProfileName,
       shellOnly: shellOnly || undefined,
+      iterm2Mode: result.iterm2Mode || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel,
       embedMode: defaultEmbedMode || undefined
     }
@@ -530,6 +531,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       profileId: result.profileId ?? targetProfileId,
       profileName: restartProfileName,
       shellOnly: sess.shellOnly,
+      iterm2Mode: result.iterm2Mode || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel
     }
 
@@ -606,6 +608,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             ? resolveProfileName(restoreSettings, result.profileId ?? profileId)
             : undefined,
           shellOnly: shellOnly || undefined,
+          iterm2Mode: result.iterm2Mode || undefined,
           telegramChannel: result.telegramChannel ?? telegramChannel,
           embedMode: pw.embedModeSlots?.[i] ?? undefined
         })
