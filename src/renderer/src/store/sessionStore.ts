@@ -17,6 +17,7 @@ import { useTranscriptStore } from './transcriptStore'
 import { useTokenUsageStore } from './tokenUsageStore'
 import { useToolCallStore } from './toolCallStore'
 import { clearTokenUsageBuffer, resetAllTokenUsageParsing } from '../lib/claudeTokenUsageParse'
+import { sanitizeHistoryPrompt } from '../lib/historyPromptSanitize'
 import type { PersistedWorkspace } from '../types/workspace'
 import { persistedPaneToLive, persistedSlotsValid } from '../lib/workspaceSerialize'
 import type { SessionCreateOk, SessionCreateErr } from '../types/ipc'
@@ -36,14 +37,8 @@ const SKIP_TERMINAL_LINES = new Set(['claude', 'clear', 'exit', 'cls'])
 
 
 function normalizeCommittedTerminalLine(raw: string): string | null {
-  // [2026-04-28] Strip ANSI escape sequences and orphaned cursor codes
-  // Arrow keys send \x1b[A/B/C/D; ESC (code 27) is filtered out in XTerminal
-  // leaving orphan [A, [B, etc. in the buffer.
-  let s = raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')  // full CSI sequences
-  s = s.replace(/\x1b[()][AB012]/g, '')               // charset sequences
-  s = s.replace(/\x1b[\[\](){}#%;><=~^_\\]/g, '')     // orphaned ESC + intro char
-  s = s.replace(/\[[0-9;]*[A-Za-z]/g, '')             // orphaned CSI (ESC already stripped)
-  s = s.replace(/\r/g, '').trim()
+  // xterm 会把设备属性、DEC 模式和鼠标报告作为输入回传；它们不能成为历史标题。
+  const s = sanitizeHistoryPrompt(raw)
   if (!s) return null
   const capped = s.length > 200 ? s.slice(0, 200) : s
   const lower = capped.toLowerCase()
@@ -59,11 +54,7 @@ function workdirToHistoryId(workdir: string): string {
 
 /** [2026-05-06] 外嵌输入框提交的原文：不做 SKIP_TERMINAL_LINES，否则侧栏 lastUserPrompt 常被清空 */
 function sanitizeEmbedPromptForHistory(raw: string): string | null {
-  let s = raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-  s = s.replace(/\x1b[()][AB012]/g, '')
-  s = s.replace(/\x1b[\[\](){}#%;><=~^_\\]/g, '')
-  s = s.replace(/\[[0-9;]*[A-Za-z]/g, '')
-  s = s.replace(/\r/g, '').trim()
+  const s = sanitizeHistoryPrompt(raw)
   if (!s) return null
   return s.length > 300 ? s.slice(0, 300) : s
 }

@@ -8,6 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.86 主要更新
+
+- **历史名称乱码修复**：过滤 xterm 回传的终端能力响应，侧边栏不再显示 `[<…M`、`[?…c`、`[?…$y` 等控制序列
+- **旧历史自动清理**：已有乱码记录无需删除，升级后会恢复真实提问或回退显示文件夹名
+
 ### v0.7.85 主要更新
 
 - **跨平台打包恢复**：CI 升级至 Node.js 22.12 并更新 Electron 重建工具，修复 Electron 43.2.0 的原生模块 ABI 识别失败
@@ -244,6 +249,11 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.86 Highlights
+
+- **Readable history names**: filters terminal capability responses returned by xterm so `[<…M`, `[?…c`, and `[?…$y` sequences no longer become sidebar history titles
+- **Existing history repaired automatically**: previously stored artifacts are cleaned on read, preserving real prompts or falling back to the folder name
 
 ### v0.7.85 Highlights
 
