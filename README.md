@@ -8,6 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.85 主要更新
+
+- **跨平台打包恢复**：CI 升级至 Node.js 22.12 并更新 Electron 重建工具，修复 Electron 43.2.0 的原生模块 ABI 识别失败
+- **构建任务独立执行**：单个平台失败不再自动取消 Windows、macOS 和 Linux 的其他打包任务
+
 ### v0.7.84 主要更新
 
 - **macOS 终端启动可靠性**：zsh/bash 直接执行 Claude，修复控制码竞争导致 `claude` 被截成 `ude`
@@ -239,6 +244,11 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.85 Highlights
+
+- **Cross-platform packaging restored**: CI now uses Node.js 22.12 and an updated Electron rebuild toolchain, fixing native-module ABI detection for Electron 43.2.0
+- **Independent platform jobs**: a failure on one platform no longer cancels the remaining Windows, macOS, and Linux builds
 
 ### v0.7.84 Highlights
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.85] - 2026-07-29
+
+### 修复 | Bug Fixes
+- **Electron 43 GitHub 打包失败**：GitHub Actions 构建环境升级至 Node.js 22.12，并更新 Electron 原生模块重建工具，使 `node-pty` 能正确识别 Electron 43.2.0 ABI
+- **跨平台任务被连带取消**：构建矩阵关闭 `fail-fast`，单个平台失败时 Windows、macOS 与 Linux 的其他任务仍会继续执行，便于独立诊断
+
 ## [0.7.84] - 2026-07-29
 
 ### 修复 | Bug Fixes
