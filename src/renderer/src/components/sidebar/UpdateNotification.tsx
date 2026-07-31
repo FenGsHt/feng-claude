@@ -14,6 +14,8 @@ export function UpdateNotification(): React.ReactElement | null {
   const [browserPanelWidth, setBrowserPanelWidth] = useState(0)
   const { lang } = useI18n()
   const zh = lang === 'zh'
+  const isMac = window.electronAPI?.platform === 'darwin'
+  const isAppleSilicon = window.electronAPI?.arch === 'arm64'
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return
@@ -22,7 +24,6 @@ export function UpdateNotification(): React.ReactElement | null {
       setDismissed(false)
       // Auto-dismiss transient states
       if (payload.status === 'not-available') setTimeout(() => setDismissed(true), 2000)
-      if (payload.status === 'error')         setTimeout(() => setDismissed(true), 6000)
     })
     const unsubProgress = window.electronAPI.onUpdateProgress((payload) => {
       setProgress(payload)
@@ -49,8 +50,9 @@ export function UpdateNotification(): React.ReactElement | null {
   // Only show during download / ready / error; hide for not-available / checking
   if (!['available', 'downloaded', 'error'].includes(status.status) && !progress) return null
 
-  const isDownloading = !!progress && status.status !== 'downloaded'
+  const isDownloading = !isMac && !!progress && status.status !== 'downloaded'
   const isError      = status.status === 'error'
+  const isManualMacUpdate = isMac && status.status === 'available'
 
   // 浏览器面板打开时，通知定位在面板左侧（+16px 间距）
   const rightOffset = browserPanelWidth > 0 ? browserPanelWidth + 16 : 16
@@ -75,6 +77,10 @@ export function UpdateNotification(): React.ReactElement | null {
                 <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.2"/>
                 <path d="M3.5 6.5l2 2 4-4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
+            ) : isManualMacUpdate ? (
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0 text-amber-400">
+                <path d="M6.5 1.5v6M4 5l2.5 2.5L9 5M2 10.5h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             ) : (
               <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0 text-amber-400 animate-spin" style={{ animationDuration: '2s' }}>
                 <path d="M6.5 1A5.5 5.5 0 1 1 1 6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
@@ -85,7 +91,7 @@ export function UpdateNotification(): React.ReactElement | null {
               {isError      && (zh ? '更新出错' : 'Update Failed')}
               {isReady      && (zh ? '更新已就绪' : 'Update Ready')}
               {isDownloading && (zh ? '后台下载更新中…' : 'Downloading update…')}
-              {status.status === 'available' && !progress && (zh ? '发现新版本' : 'New version found')}
+              {status.status === 'available' && !isDownloading && (zh ? '发现新版本' : 'New version found')}
             </span>
 
             <button
@@ -129,10 +135,25 @@ export function UpdateNotification(): React.ReactElement | null {
 
           {/* Error detail */}
           {isError && status.error && (
-            <div className="text-[10px] text-red-400 truncate">{status.error}</div>
+            <div className="text-[10px] text-red-400 break-words">{status.error}</div>
           )}
 
           {/* Actions */}
+          {isManualMacUpdate && (
+            <div className="space-y-1.5 pt-0.5">
+              <button
+                onClick={() => window.electronAPI?.downloadUpdate()}
+                className="w-full py-1.5 text-[11px] font-medium bg-amber-500 hover:bg-amber-400 text-black rounded transition-colors"
+              >
+                {zh
+                  ? `下载 ${isAppleSilicon ? 'Apple Silicon' : 'Intel'} DMG`
+                  : `Download ${isAppleSilicon ? 'Apple Silicon' : 'Intel'} DMG`}
+              </button>
+              <div className="text-[9px] text-claude-muted">
+                {zh ? '下载后打开 DMG，拖入“应用程序”完成覆盖安装。' : 'Open the DMG and replace the app in Applications.'}
+              </div>
+            </div>
+          )}
           {isReady && (
             <div className="flex gap-2 pt-0.5">
               <button

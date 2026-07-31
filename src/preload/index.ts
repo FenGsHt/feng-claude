@@ -10,6 +10,7 @@ import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, S
 const electronAPI = {
   // [2026-07-10] 平台信息，供渲染进程做 macOS 交通灯按钮适配
   platform: process.platform,
+  arch: process.arch,
   // [2026-07-10] 是否打包版本，供渲染进程判断是否显示打包版专属功能
   isPackaged: process.resourcesPath != null,
 

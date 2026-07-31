@@ -8,10 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
-### v0.7.86 主要更新
+### v0.7.87 主要更新
 
-- **历史名称乱码修复**：过滤 xterm 回传的终端能力响应，侧边栏不再显示 `[<…M`、`[?…c`、`[?…$y` 等控制序列
-- **旧历史自动清理**：已有乱码记录无需删除，升级后会恢复真实提问或回退显示文件夹名
+- **macOS 更新不再卡住**：发现新版后提供适合 Apple Silicon 或 Intel 的 DMG 下载按钮，不再尝试未签名应用无法可靠完成的静默自动安装
+- **更新资源链接修复**：统一 DMG、ZIP 与更新元数据的文件名，避免 GitHub Release 下载地址 404
+- **更新错误可追踪**：失败信息保持显示，并写入本地更新日志
 
 ### v0.7.85 主要更新
 
@@ -250,10 +251,11 @@ MIT
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
 
-### v0.7.86 Highlights
+### v0.7.87 Highlights
 
-- **Readable history names**: filters terminal capability responses returned by xterm so `[<…M`, `[?…c`, and `[?…$y` sequences no longer become sidebar history titles
-- **Existing history repaired automatically**: previously stored artifacts are cleaned on read, preserving real prompts or falling back to the folder name
+- **macOS updates no longer stall**: update notices now offer the matching Apple Silicon or Intel DMG instead of attempting an unreliable silent install for unsigned builds
+- **Consistent release asset URLs**: DMG, ZIP, and update metadata now use matching filenames, preventing GitHub Release 404 errors
+- **Visible update diagnostics**: failures remain visible and are also written to a local update log
 
 ### v0.7.85 Highlights
 

@@ -20,6 +20,7 @@ export function TitleBar(): React.ReactElement {
   const sessions = useSessionStore((s) => s.sessions)
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const { lang } = useI18n()
+  const isMac = window.electronAPI?.platform === 'darwin'
 
   const [version, setVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
@@ -84,13 +85,15 @@ export function TitleBar(): React.ReactElement {
           <div
             className="flex items-center gap-2 text-[11px] animate-pulse cursor-pointer"
             onClick={handleDownload}
-            title={lang === 'zh' ? '点击下载更新' : 'Click to download update'}
+            title={lang === 'zh'
+              ? (isMac ? '在浏览器中下载 macOS 安装包' : '点击下载更新')
+              : (isMac ? 'Download the macOS installer in your browser' : 'Click to download update')}
           >
             <span className="text-green-400 font-medium">
               {lang === 'zh' ? '发现新版本' : 'New version'} v{updateStatus.version}
             </span>
             <button className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
-              {lang === 'zh' ? '下载' : 'Download'}
+              {lang === 'zh' ? (isMac ? '下载 DMG' : '下载') : (isMac ? 'Download DMG' : 'Download')}
             </button>
           </div>
         ) : updateStatus?.status === 'downloaded' ? (

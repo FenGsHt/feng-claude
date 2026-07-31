@@ -35,6 +35,8 @@ nsis:
 mac:
   # [2026-06-09] 同时构建 Apple Silicon (arm64) 与 Intel (x64)，否则默认仅出 runner 架构包
   # [2026-07-09] 自动更新需要 zip 格式（electron-updater 不支持 dmg 更新）
+  # [2026-07-31] 使用无空格的固定产物名，确保 latest-mac.yml URL 与 GitHub asset 完全一致
+  artifactName: '${name}-${version}-${arch}.${ext}'
   target:
     - target: dmg
       arch:

@@ -13,6 +13,7 @@ export function injectMockElectronAPI(): void {
 
     ;(window as any).electronAPI = {
       platform: 'darwin' as NodeJS.Platform,
+      arch: 'arm64',
       isPackaged: false, // 浏览器预览时视为非打包版本
       readClipboardTextSync: () => '',
       writeClipboardText: (_text: string) => {},

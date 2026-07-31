@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.87] - 2026-07-31
+
+### 修复 | Bug Fixes
+- **macOS 更新流程卡住**：未签名的 macOS 版本改为仅检查新版并提供与本机架构匹配的 DMG 下载入口，不再尝试无法可靠完成的静默下载与自动替换
+- **macOS 更新资源 404**：统一 DMG、ZIP 与 `latest-mac.yml` 的产物命名，修复更新元数据和 GitHub Release 实际文件名不一致的问题
+- **更新错误不可见**：下载资源等真实错误不再被误判为发布同步延迟而隐藏；错误提示保持显示，并写入本地 `update.log` 便于排查
+
 ## [0.7.86] - 2026-07-29
 
 ### 修复 | Bug Fixes

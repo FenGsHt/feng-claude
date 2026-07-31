@@ -18,6 +18,7 @@ export function SettingsPanel(): React.ReactElement {
   const { t, lang } = useI18n()
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
+  const isMac = window.electronAPI?.platform === 'darwin'
 
   // Update status
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null)
@@ -1306,7 +1307,16 @@ export function SettingsPanel(): React.ReactElement {
 
         {/* Check update */}
         <button
-          onClick={() => { setChecking(true); window.electronAPI?.checkForUpdates() }}
+          onClick={() => {
+            if (updateStatus?.status === 'available' && isMac) {
+              window.electronAPI?.downloadUpdate()
+            } else if (updateStatus?.status === 'downloaded') {
+              window.electronAPI?.installUpdate()
+            } else {
+              setChecking(true)
+              window.electronAPI?.checkForUpdates()
+            }
+          }}
           disabled={checking}
           className={`w-full py-1.5 rounded text-xs font-medium transition-colors ${
             updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
@@ -1317,14 +1327,18 @@ export function SettingsPanel(): React.ReactElement {
           {checking
             ? (lang === 'zh' ? '检查中...' : 'Checking...')
             : updateStatus?.status === 'available'
-              ? (lang === 'zh' ? `发现新版本 ${updateStatus.version}` : `Update ${updateStatus.version} available`)
+              ? (lang === 'zh'
+                ? `${isMac ? '下载 DMG' : '发现新版本'} ${updateStatus.version}`
+                : `${isMac ? 'Download DMG' : 'Update'} ${updateStatus.version}${isMac ? '' : ' available'}`)
               : updateStatus?.status === 'downloaded'
                 ? (lang === 'zh' ? '安装更新' : 'Install update')
                 : (lang === 'zh' ? '检查更新' : 'Check for updates')}
         </button>
         {updateStatus?.status === 'available' && (
           <p className="text-[10px] text-amber-400 mt-1">
-            {lang === 'zh' ? '正在后台下载…' : 'Downloading in background…'}
+            {isMac
+              ? (lang === 'zh' ? '将在浏览器中下载适合本机架构的安装包。' : 'Downloads the installer for this Mac in your browser.')
+              : (lang === 'zh' ? '正在后台下载…' : 'Downloading in background…')}
           </p>
         )}
         {updateStatus?.status === 'downloaded' && (
