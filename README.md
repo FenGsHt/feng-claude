@@ -8,6 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.88 主要更新
+
+- **macOS 安装不再提示已损坏**：DMG/ZIP 中的应用现在具有完整 ad-hoc 签名
+- **只需系统设置放行**：首次打开被拦截后，进入「隐私与安全性」点击「仍要打开」即可，无需执行 `xattr`
+- **签名完整性保护**：应用本体、Electron Framework 或 Helper 校验失败时，打包会立即中止
+
 ### v0.7.87 主要更新
 
 - **macOS 更新不再卡住**：发现新版后提供适合 Apple Silicon 或 Intel 的 DMG 下载按钮，不再尝试未签名应用无法可靠完成的静默自动安装
@@ -250,6 +256,12 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.88 Highlights
+
+- **No more false “app is damaged” warning on macOS**: apps inside the DMG/ZIP now carry a complete ad-hoc signature
+- **Privacy & Security override works**: after the first blocked launch, users can click “Open Anyway” without running `xattr`
+- **Signature integrity guard**: packaging stops if the app, Electron Framework, or any Helper fails verification
 
 ### v0.7.87 Highlights
 

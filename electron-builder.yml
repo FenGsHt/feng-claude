@@ -15,6 +15,9 @@ files:
 asarUnpack:
   - resources/**
   - node_modules/node-pty/**
+# [2026-07-31] 在生成 DMG/ZIP 前为未签名的 macOS App 补完整 ad-hoc 签名，
+# 保证 Gatekeeper 能校验包完整性并允许用户从「隐私与安全性」手动放行。
+afterPack: scripts/after-pack.cjs
 win:
   executableName: feng-claude
   forceCodeSigning: false
@@ -46,7 +49,7 @@ mac:
       arch:
         - arm64
         - x64
-  # 未签名分发：Gatekeeper 仍会拦，用户需「右键打开」或 `xattr -cr <App>`
+  # 无 Developer ID 分发：afterPack 会补 ad-hoc 签名；首次启动仍需在「隐私与安全性」点「仍要打开」
   identity: null
 linux:
   target:

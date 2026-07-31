@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.88] - 2026-07-31
+
+### 修复 | Bug Fixes
+- **macOS 安装包误报“已损坏”**：在 DMG/ZIP 生成前为整个应用及其 Electron Framework、Helper 补充完整的 ad-hoc 签名并执行严格校验；首次启动被 Gatekeeper 拦截后，可直接在「隐私与安全性」中选择「仍要打开」，无需再执行 `xattr`
+- **macOS 签名构建保护**：签名或任一嵌套组件校验失败时立即中止打包，避免发布完整性异常的安装包
+
 ## [0.7.87] - 2026-07-31
 
 ### 修复 | Bug Fixes
