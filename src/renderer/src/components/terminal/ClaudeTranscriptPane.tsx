@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom'
 import { useTranscriptStore } from '../../store/transcriptStore'
 import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useEmbedInterruptSuppressStore } from '../../store/embedInterruptSuppressStore'
+import { useAgentRunStore } from '../../store/agentRunStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useToolCallStore } from '../../store/toolCallStore'
 import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 import type { ClaudeTranscriptEntry, ClaudeTurnTokenUsage } from '../../types/ipc'
 import { formatLatencyMs, formatTokenCount } from '../../lib/formatTokens'
-import { useNativeTerminalRequestStore } from '../../store/nativeTerminalRequestStore'
 import { useThemeStore } from '../../store/themeStore'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
@@ -1355,12 +1355,8 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   const interruptSuppress = useEmbedInterruptSuppressStore(
     (s) => s.suppressWorkingBarBySession[sessionId] === true
   )
-  const sessionStatus =
-    useSessionStore((s) => s.sessions.find((x) => x.id === sessionId)?.status ?? 'idle')
+  const agentRunning = useAgentRunStore((s) => s.activeBySession[sessionId] === true)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
-  const sessionBusy = sessionStatus === 'running'
-  const nativeTerminalRequest = useNativeTerminalRequestStore((s) => s.bySession[sessionId])
-  const nativeTerminalInteractionActive = nativeTerminalRequest?.needed === true
   const runtimeStatus = useClaudeRuntimeStatusStore((s) => s.bySession[sessionId])
   const latestTool = useToolCallStore((s) => s.calls.find((c) => c.sessionId === sessionId))
   const focusedToolCall = useToolCallStore((s) => s.selected)
@@ -1404,15 +1400,6 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     }
     markManyRevealed(sessionId, preRevealIds)
   }
-
-  // 重启后「历史 + PTY running」不应触发 loading bar：记录首次加载时的条目数
-  // 只要没有新条目出现，就认为是历史恢复，抑制 loading bar
-  const startupEntryCountRef = useRef(-1)
-  if (startupEntryCountRef.current === -1 && entries.length > 0) {
-    startupEntryCountRef.current = entries.length
-  }
-  const hadHistoryOnMount = startupEntryCountRef.current > 0
-  const hasNewEntriesSinceMount = !hadHistoryOnMount || entries.length > startupEntryCountRef.current
 
   const effectiveHistoryStartIndex =
     historyStartIndex ??
@@ -1530,14 +1517,13 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     []
   )
 
-  /* [2026-05-06] 原在出现首条非 user 转录时 clearPending，导致思考/工具阶段不再显示等待；改为仅 idle 时清除 */
-  /* [2026-05-08] idle 时同步清中断抑制，否则 suppress 长期占用导致下一轮 behavior 异常 */
+  /* [2026-08-02] 外嵌回复完成只认消息网关，不再使用常驻 PTY 的 idle/running。 */
   useEffect(() => {
-    if (sessionStatus === 'idle') {
+    if (!agentRunning) {
       useEmbedAwaitingReplyStore.getState().clearPending(sessionId)
       useEmbedInterruptSuppressStore.getState().clear(sessionId)
     }
-  }, [sessionStatus, sessionId])
+  }, [agentRunning, sessionId])
 
   /* [2026-05-06] 原用 entries 原始末尾：助手完成后斜杠 PTY 回显会在尾部追加 event，导致误判非 assistant、
    * 静默计时被反复打断；且 echo 每 90ms 合并也会重置计时。改为跳过末尾 ptyEcho + assistant 内容指纹。 */
@@ -1591,15 +1577,13 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
     runtimeStatus && Date.now() - runtimeStatus.updatedAt < RUNTIME_STATUS_FRESH_MS
   )
 
-  // PTY running + 无新条目 = 重启历史恢复，视同完成；有新条目才是真实运行中的间隙
-  // [2026-05-12] 加 pendingReply 条件：用户刚发送消息、本轮对话未完成时，即使中间 assistant 快照
-  // 后 1 秒没变化也不应清除 loading，避免工具执行期 sessionBusy 短暂 idle 导致 loading 闪烁
+  // [2026-08-02] 网关完成后允许助手尾部静默判定收起；PTY 进程本身仍会常驻运行。
   const suppressBarAfterAssistantDone =
     assistantTailQuiet &&
     lastMeaningfulEntry?.kind === 'assistant' &&
     !latestToolFresh &&
     !pendingReply &&
-    (!sessionBusy || !hasNewEntriesSinceMount)
+    !agentRunning
 
   useEffect(() => {
     if (suppressBarAfterAssistantDone) {
@@ -1629,34 +1613,9 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
    * 且 claudeSessionWatcher 在从未出现 JSONL usage 前不会发 idle，导致空会话底部条永久「处理中」。 */
   const assistantStreaming =
     lastMeaningfulEntry?.kind === 'assistant' && !assistantTailQuiet
-  const transcriptSignalsActiveWork =
-    lastMeaningfulEntry?.kind === 'thinking' ||
-    lastMeaningfulEntry?.kind === 'tool' ||
-    assistantStreaming
-  /* [2026-05-11] Claude Code 刚进入 Deliberating 时，JSONL 可能还没有 thinking/tool/assistant，
-   * 此时最新有效条目仍是用户消息；只要 PTY running 且是本轮新条目，就显示等待中 loading。 */
-  const initialDeliberatingActive =
-    sessionBusy &&
-    lastMeaningfulEntry?.kind === 'user' &&
-    visibleEntries.length > 0 &&
-    hasNewEntriesSinceMount
-
   const showAiWorkingBar =
-    /* [2026-05-08] 用户已 Ctrl+C：在 PTY 仍为 running 时也收起处理中条，避免假 loading */
     !interruptSuppress &&
-    /* [2026-05-11] 原曾在 nativeTerminalInteractionActive 时隐藏；用户要求终端交互态也显示 loading。 */
-    /* [2026-05-07] 原只看 sessionBusy/pending；工具调用期间 token 暂停会让 loading 短暂消失。 */
-    /* [2026-05-07] 若转录尾部已是 thinking/tool，说明 Claude 仍在处理中，即使 status 暂为 idle 也显示 loading。 */
-    Boolean(
-      pendingReply ||
-        latestToolFresh ||
-        runtimeStatusFresh ||
-        userWaitingFallbackActive ||
-        transcriptSignalsActiveWork ||
-        initialDeliberatingActive ||
-        // PTY running + 有新条目 = Claude 仍在工作；避免重启历史恢复误触发
-        (sessionBusy && visibleEntries.length > 0 && hasNewEntriesSinceMount)
-    ) &&
+    Boolean(pendingReply || agentRunning) &&
     !suppressBarAfterAssistantDone
 
   useEffect(() => {
@@ -1670,21 +1629,21 @@ export function ClaudeTranscriptPane({ sessionId, className = '' }: Props): Reac
   }, [showAiWorkingBar, sessionId])
 
   const aiWorkingLabel = useMemo(() => {
-    if (runtimeStatusFresh && runtimeStatus) {
+    if (agentRunning && runtimeStatusFresh && runtimeStatus) {
       return runtimeStatus.detail
         ? `${runtimeStatus.label} (${runtimeStatus.detail})`
         : runtimeStatus.label
     }
     return deriveAiWorkingLabel({
-      sessionBusy,
+      sessionBusy: agentRunning,
       pendingReply: pendingReply || userWaitingFallbackActive,
       lastKind: lastMeaningfulEntry?.kind,
       latestToolName: latestTool?.name,
-      toolFresh: latestToolFresh,
+      toolFresh: agentRunning && latestToolFresh,
       assistantStreaming
     })
   }, [
-    sessionBusy,
+    agentRunning,
     pendingReply,
     runtimeStatus,
     runtimeStatusFresh,

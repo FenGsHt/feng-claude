@@ -157,6 +157,20 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
             dropOnePendingTokenDelta(sessionId)
           }
         }
+        // [2026-07-31] 消息网关的 stream-json delta 与最终 assistant 消息共享 runId。
+        // 以 messageId 覆盖同一气泡，避免流式文本被逐段追加成数百个重复气泡。
+        if (row.kind === 'assistant' && row.messageId) {
+          const last = merged[merged.length - 1]
+          if (last?.kind === 'assistant' && last.messageId === row.messageId) {
+            const isDelta = row.text.length < last.text.length || row.text.startsWith(last.text)
+            merged[merged.length - 1] = {
+              ...last,
+              ...row,
+              text: isDelta ? (row.text.startsWith(last.text) ? row.text : last.text + row.text) : row.text
+            }
+            continue
+          }
+        }
         if (row.kind === 'user' && merged.length > 0) {
           const last = merged[merged.length - 1]
           if (

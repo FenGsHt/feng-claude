@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
-import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, PtyInputAckPayload, SessionCreateResult, ToolCallPayload } from '../renderer/src/types/ipc'
+import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, PtyInputAckPayload, SessionCreateResult, ToolCallPayload, AgentSendPayload, AgentSendResult, AgentEventPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
 import type { ClaudeSettings, ApiProfile, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
@@ -212,6 +212,19 @@ const electronAPI = {
       callback(payload)
     ipcRenderer.on(IPC.CLAUDE_TRANSCRIPT_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.CLAUDE_TRANSCRIPT_UPDATE, handler)
+  },
+
+  // [2026-07-31] 消息代理模式：不经 PTY / ANSI，直接使用 Claude 的 JSON 流协议。
+  agentSend: (payload: AgentSendPayload): Promise<AgentSendResult> =>
+    ipcRenderer.invoke(IPC.AGENT_SEND, payload),
+
+  agentCancel: (sessionId: string): Promise<{ cancelled: boolean }> =>
+    ipcRenderer.invoke(IPC.AGENT_CANCEL, { sessionId }),
+
+  onAgentEvent: (callback: (payload: AgentEventPayload) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: AgentEventPayload): void => callback(payload)
+    ipcRenderer.on(IPC.AGENT_EVENT, handler)
+    return () => ipcRenderer.removeListener(IPC.AGENT_EVENT, handler)
   },
 
   workspace: {

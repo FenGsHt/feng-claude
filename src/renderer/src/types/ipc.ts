@@ -68,6 +68,11 @@ export const IPC = {
   /** [2026-05-06] Beta：Claude Code 会话 JSONL 解析后的对话条目（仅设置 embedClaudeOutputBeta 时主进程推送） */
   CLAUDE_TRANSCRIPT_UPDATE: 'claude-transcript:update',
 
+  /** [2026-07-31] 非 PTY 的结构化 Claude 消息网关 */
+  AGENT_SEND: 'agent:send',
+  AGENT_CANCEL: 'agent:cancel',
+  AGENT_EVENT: 'agent:event',
+
   /** 主进程同步读剪贴板文本，供终端 Ctrl+V 注入（避免渲染进程剪贴板 API 失效） */
   CLIPBOARD_READ_TEXT_SYNC: 'clipboard:readTextSync',
   /** 主进程写剪贴板，供终端 Ctrl+Shift+C 复制 */
@@ -385,6 +390,29 @@ export interface ClaudeTranscriptPayload {
   entries: ClaudeTranscriptEntry[]
   /** true = 全量替换（含历史 JSONL 回填），默认 false 为增量追加 */
   replace?: boolean
+}
+
+/** [2026-07-31] GUI / Telegram 等通道统一发给消息网关的入站消息。 */
+export interface AgentSendPayload {
+  sessionId: string
+  workdir: string
+  text: string
+  profileId?: string
+}
+
+export interface AgentSendResult {
+  accepted: boolean
+  queued: number
+  error?: string
+}
+
+export interface AgentEventPayload {
+  sessionId: string
+  runId: string
+  type: 'queued' | 'running' | 'assistant_delta' | 'tool' | 'completed' | 'cancelled' | 'error'
+  text?: string
+  toolName?: string
+  queued?: number
 }
 
 export interface PetAskPayload {

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.89] - 2026-08-03
+
+### 新功能 | Features
+- **结构化消息代理模式**：外嵌聊天改用 Claude Code `stream-json` 通道，按会话独立排队、续接上下文并支持中断；输入不再模拟 PTY 键盘，回复不再依赖 ANSI/TUI 解析
+- **macOS 应用内更新**：发现新版本后可直接在应用内下载匹配 Apple Silicon 或 Intel 架构的 DMG，显示下载进度并在完成后自动打开安装包
+
+### 修复 | Bug Fixes
+- **macOS Dock 退出卡死**：应用退出采用非阻塞 PTY 清理并关闭消息网关、API 代理和后台任务，修复右键「退出」后仍需强制退出的问题
+- **外嵌聊天状态混乱**：消息发送、流式回复、工具调用、完成、错误与取消改由网关事件统一驱动，避免隐藏终端状态干扰聊天界面
+
 ## [0.7.88] - 2026-07-31
 
 ### 修复 | Bug Fixes

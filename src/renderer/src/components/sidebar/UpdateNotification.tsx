@@ -22,6 +22,7 @@ export function UpdateNotification(): React.ReactElement | null {
     const unsubStatus = window.electronAPI.onUpdateStatus((payload) => {
       setStatus(payload)
       setDismissed(false)
+      if (payload.status === 'checking' || payload.status === 'available') setProgress(null)
       // Auto-dismiss transient states
       if (payload.status === 'not-available') setTimeout(() => setDismissed(true), 2000)
     })
@@ -50,9 +51,9 @@ export function UpdateNotification(): React.ReactElement | null {
   // Only show during download / ready / error; hide for not-available / checking
   if (!['available', 'downloaded', 'error'].includes(status.status) && !progress) return null
 
-  const isDownloading = !isMac && !!progress && status.status !== 'downloaded'
+  const isDownloading = status.status === 'available' && !!progress
   const isError      = status.status === 'error'
-  const isManualMacUpdate = isMac && status.status === 'available'
+  const isManualMacUpdate = isMac && status.status === 'available' && !isDownloading
 
   // 浏览器面板打开时，通知定位在面板左侧（+16px 间距）
   const rightOffset = browserPanelWidth > 0 ? browserPanelWidth + 16 : 16
@@ -90,7 +91,7 @@ export function UpdateNotification(): React.ReactElement | null {
             <span className="text-[12px] font-semibold text-claude-text flex-1 leading-none">
               {isError      && (zh ? '更新出错' : 'Update Failed')}
               {isReady      && (zh ? '更新已就绪' : 'Update Ready')}
-              {isDownloading && (zh ? '后台下载更新中…' : 'Downloading update…')}
+              {isDownloading && (zh ? '应用内下载更新中…' : 'Downloading update in app…')}
               {status.status === 'available' && !isDownloading && (zh ? '发现新版本' : 'New version found')}
             </span>
 
@@ -146,11 +147,11 @@ export function UpdateNotification(): React.ReactElement | null {
                 className="w-full py-1.5 text-[11px] font-medium bg-amber-500 hover:bg-amber-400 text-black rounded transition-colors"
               >
                 {zh
-                  ? `下载 ${isAppleSilicon ? 'Apple Silicon' : 'Intel'} DMG`
-                  : `Download ${isAppleSilicon ? 'Apple Silicon' : 'Intel'} DMG`}
+                  ? `应用内下载 ${isAppleSilicon ? 'Apple Silicon' : 'Intel'} DMG`
+                  : `Download ${isAppleSilicon ? 'Apple Silicon' : 'Intel'} DMG in app`}
               </button>
               <div className="text-[9px] text-claude-muted">
-                {zh ? '下载后打开 DMG，拖入“应用程序”完成覆盖安装。' : 'Open the DMG and replace the app in Applications.'}
+                {zh ? '下载完成后将自动打开 DMG，再拖入“应用程序”完成覆盖安装。' : 'The DMG opens automatically after download; replace the app in Applications.'}
               </div>
             </div>
           )}
@@ -160,11 +161,11 @@ export function UpdateNotification(): React.ReactElement | null {
                 onClick={() => window.electronAPI?.installUpdate()}
                 className="flex-1 py-1.5 text-[11px] font-medium bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
               >
-                {zh ? '立即重启安装' : 'Restart & Install'}
+                {isMac ? (zh ? '重新打开 DMG' : 'Reopen DMG') : (zh ? '立即重启安装' : 'Restart & Install')}
               </button>
               <button
                 onClick={() => setDismissed(true)}
-                title={zh ? '退出时自动安装' : 'Installs automatically on quit'}
+                title={isMac ? (zh ? '稍后手动安装' : 'Install manually later') : (zh ? '退出时自动安装' : 'Installs automatically on quit')}
                 className="px-2.5 py-1.5 text-[11px] text-claude-muted hover:text-claude-text border border-claude-border rounded transition-colors"
               >
                 {zh ? '稍后' : 'Later'}

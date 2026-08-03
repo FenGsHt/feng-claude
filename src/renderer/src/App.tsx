@@ -9,6 +9,8 @@ import { useTriggerScheduler } from './hooks/useTriggerScheduler'
 import { useWorkspacePersistence } from './hooks/useWorkspacePersistence'
 import { useTheme } from './hooks/useTheme'
 import { useSessionStore } from './store/sessionStore'
+import { useAgentRunStore } from './store/agentRunStore'
+import { useEmbedAwaitingReplyStore } from './store/embedAwaitingReplyStore'
 import { parsePersistedWorkspace } from './lib/workspaceSerialize'
 import { loadPersistedWorkspace } from './lib/workspaceIpc'
 import { fallbackWhatsNewCopy, getWhatsNewCopy } from './lib/whatsNewCatalog'
@@ -17,6 +19,22 @@ export default function App(): React.ReactElement {
   useTheme()
   usePty()
   useTriggerScheduler()
+
+  useEffect(
+    () =>
+      window.electronAPI.onAgentEvent((event) => {
+        useAgentRunStore.getState().applyEvent(event)
+        if (
+          event.type === 'assistant_delta' ||
+          event.type === 'completed' ||
+          event.type === 'cancelled' ||
+          event.type === 'error'
+        ) {
+          useEmbedAwaitingReplyStore.getState().clearPending(event.sessionId)
+        }
+      }),
+    []
+  )
 
   const [bootstrapped, setBootstrapped] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)

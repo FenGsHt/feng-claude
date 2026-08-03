@@ -1505,6 +1505,36 @@ export class PtyManager {
     }
   }
 
+  /** [2026-08-03] 应用整体退出专用的非阻塞清理。
+   * macOS 上 node-pty 的 proc.kill() 偶发同步卡住，导致 Dock「退出」永远走不到
+   * process.exit。退出应用时无需等待 PTY 回收：先保存滚动缓存，再通过系统信号
+   * 通知进程并释放本地句柄；主进程退出会继续关闭剩余 PTY 文件描述符。 */
+  closeAllForAppExit(): void {
+    if (process.platform !== 'darwin') {
+      this.closeAll()
+      return
+    }
+    for (const [sessionId, session] of [...this.sessions.entries()]) {
+      this.flushScrollback(session)
+      if (session.daemonSocket) {
+        if (!app.isPackaged) {
+          try { session.daemonSocket.end(JSON.stringify({ t: 'shutdown' }) + '\n') } catch { /* ignore */ }
+        } else {
+          try { session.daemonSocket.destroy() } catch { /* ignore */ }
+        }
+      } else if (session.ptyProcess?.pid) {
+        try { process.kill(session.ptyProcess.pid, 'SIGTERM') } catch { /* already dead */ }
+      }
+      if (this.telegramOwnerSessionId === sessionId) {
+        this.telegramOwnerSessionId = null
+        if (session.telegramChannelLaunchEnabled && session.telegramStateDirAbs) {
+          clearTelegramOwnerLock(session.telegramStateDirAbs)
+        }
+      }
+      this.sessions.delete(sessionId)
+    }
+  }
+
   private flushScrollback(session: PtySession): void {
     if (session.scrollbackChunks.length === 0) return
     try {

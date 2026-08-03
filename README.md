@@ -8,6 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.89 主要更新
+
+- **消息代理模式**：外嵌聊天通过 Claude Code 结构化 JSON 流通信，不再模拟键盘或解析终端控制码
+- **macOS 应用内更新**：直接下载匹配 Apple Silicon/Intel 的 DMG，显示进度并自动打开安装包
+- **Dock 退出修复**：右键选择「退出」会可靠清理 PTY 和后台服务，不再需要强制退出
+
 ### v0.7.88 主要更新
 
 - **macOS 安装不再提示已损坏**：DMG/ZIP 中的应用现在具有完整 ad-hoc 签名
@@ -256,6 +262,12 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.89 Highlights
+
+- **Message gateway mode**: embedded chat now uses Claude Code structured JSON streams instead of simulated keystrokes or terminal-control parsing
+- **In-app macOS updates**: downloads the matching Apple Silicon/Intel DMG with progress and opens it automatically when ready
+- **Reliable Dock quit**: quitting from the Dock now cleans up PTYs and background services without requiring Force Quit
 
 ### v0.7.88 Highlights
 

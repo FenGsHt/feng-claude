@@ -29,6 +29,7 @@ import { startBrowserServer, registerBrowserViewIpc, toggleBrowserView, startEle
 import { ensureBrowserToolsMcpRegistered, ensureVisualAgentMcpRegistered } from './mcpManager'
 import { ensureOfficeCliMcpRegistered } from './officeCliManager'
 import { startApiProxy, stopApiProxy } from './apiProxyServer'
+import { AgentGateway } from './agentGateway'
 
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
 function migrateLegacyTokenDataOnce(): void {
@@ -66,8 +67,27 @@ function migrateLegacyScrollbackOnce(): void {
 }
 
 let ptyManager: PtyManager
+let agentGateway: AgentGateway
 let mainWindow: BrowserWindow
 let isQuitting = false
+let shutdownCleanupStarted = false
+let pluginEnsureTimer: NodeJS.Timeout | undefined
+
+/** [2026-08-03] macOS Dock「退出」必须收口所有后台句柄。
+ * 窗口关闭在 macOS 上平时会被转换为 hide，因此退出流程不能依赖
+ * window-all-closed；统一在这里清 PTY、消息网关、代理和后台轮询。 */
+function cleanupForAppExit(): void {
+  if (shutdownCleanupStarted) return
+  shutdownCleanupStarted = true
+  if (pluginEnsureTimer) {
+    clearInterval(pluginEnsureTimer)
+    pluginEnsureTimer = undefined
+  }
+  try { stopApiProxy() } catch { /* ignore */ }
+  try { ptyManager?.flushAll() } catch { /* ignore */ }
+  try { ptyManager?.closeAllForAppExit() } catch { /* ignore */ }
+  try { agentGateway?.closeAll() } catch { /* ignore */ }
+}
 
 /** electron-vite sends SIGINT/SIGTERM to the Electron child when its dev
  * launcher is stopped with Ctrl+C. Explicitly close dev-only persistent PTY
@@ -77,8 +97,8 @@ let devSignalShutdownStarted = false
 function shutdownForDevSignal(): void {
   if (devSignalShutdownStarted) return
   devSignalShutdownStarted = true
-  try { ptyManager?.flushAll() } catch { /* ignore */ }
-  try { ptyManager?.closeAll() } catch { /* ignore */ }
+  isQuitting = true
+  cleanupForAppExit()
   app.exit(0)
 }
 
@@ -136,11 +156,12 @@ function createWindow(): BrowserWindow {
     settingsStore.get().embedClaudeOutputBeta === true
   )
   ptyManager = new PtyManager(win, settingsStore)
+  agentGateway = new AgentGateway(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
   const testManager = new TestManager(win)
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager, agentGateway)
 
   // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
   mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
@@ -285,7 +306,7 @@ app.whenReady().then(() => {
   installBuiltinSkills()
   createWindow()
   /* 用户在本应用内 /plugin install 后无需重启 Electron，轮询合并 statusLine */
-  setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)
+  pluginEnsureTimer = setInterval(() => ensureClaudeHudPluginDefaults(), 20_000)
   // Check for updates after 3 seconds (only in production)
   if (app.isPackaged) {
     setTimeout(() => checkForUpdates(), 3000)
@@ -303,14 +324,25 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isQuitting = true
-  stopApiProxy()            // [2026-04-30] 关闭 API 容灾代理
-  ptyManager?.flushAll()   // save scrollback
-  ptyManager?.closeAll()   // kill PTY child processes so they don't keep the process alive
-  // Hard-exit after 1 s as a backstop (e.g. NSIS installer update flow)
-  setTimeout(() => process.exit(0), 1000).unref()
+  cleanupForAppExit()
+  // [2026-08-03] macOS 的原生 Quit 已进入 application termination 阶段后，
+  // Node 定时器可能不再被调度；此前 1 秒兜底因此永远不触发，进程留在 Dock。
+  // 所有持久化/清理均为同步操作，完成后直接退出主进程。
+  // Electron 43/macOS 会把 process.exit() 再代理回应用 termination 状态机，
+  // 在原生 Dock Quit 回调内形成“已退出但进程仍存活”。reallyExit 直接结束
+  // Node 主进程；此时同步持久化和所有资源清理均已完成。
+  const nodeProcess = process as NodeJS.Process & { reallyExit?: (code?: number) => never }
+  if (typeof nodeProcess.reallyExit === 'function') nodeProcess.reallyExit(0)
+  process.kill(process.pid, 'SIGKILL')
+})
+
+app.on('will-quit', () => {
+  isQuitting = true
+  cleanupForAppExit()
 })
 
 app.on('window-all-closed', () => {
   ptyManager?.closeAll()
+  agentGateway?.closeAll()
   if (process.platform !== 'darwin') app.quit()
 })

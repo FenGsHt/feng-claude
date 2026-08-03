@@ -86,8 +86,8 @@ export function TitleBar(): React.ReactElement {
             className="flex items-center gap-2 text-[11px] animate-pulse cursor-pointer"
             onClick={handleDownload}
             title={lang === 'zh'
-              ? (isMac ? '在浏览器中下载 macOS 安装包' : '点击下载更新')
-              : (isMac ? 'Download the macOS installer in your browser' : 'Click to download update')}
+              ? (isMac ? '在应用内下载 macOS 安装包' : '点击下载更新')
+              : (isMac ? 'Download the macOS installer in app' : 'Click to download update')}
           >
             <span className="text-green-400 font-medium">
               {lang === 'zh' ? '发现新版本' : 'New version'} v{updateStatus.version}
@@ -103,10 +103,10 @@ export function TitleBar(): React.ReactElement {
             title={lang === 'zh' ? '点击安装更新' : 'Click to install update'}
           >
             <span className="text-green-400 font-medium">
-              {lang === 'zh' ? '已下载，点击安装' : 'Ready, click to install'}
+              {lang === 'zh' ? (isMac ? 'DMG 已下载' : '已下载，点击安装') : (isMac ? 'DMG downloaded' : 'Ready, click to install')}
             </span>
             <button className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30">
-              {lang === 'zh' ? '安装并重启' : 'Install & Restart'}
+              {isMac ? (lang === 'zh' ? '打开 DMG' : 'Open DMG') : (lang === 'zh' ? '安装并重启' : 'Install & Restart')}
             </button>
           </div>
         ) : activeSession ? (

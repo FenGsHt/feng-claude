@@ -393,11 +393,11 @@ export function SettingsPanel(): React.ReactElement {
         </p>
       </div>
 
-      {/* [2026-05-06] 外嵌 Beta：会话 JSONL 驱动的应用内摘要面板 */}
+      {/* [2026-07-31] 消息代理模式：GUI 走 Claude stream-json，不再解析 PTY 控制码。 */}
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <label className="flex items-center justify-between cursor-pointer">
           <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
-            {lang === 'zh' ? '外嵌输出 Beta' : 'Embedded output (Beta)'}
+            {lang === 'zh' ? '消息代理模式' : 'Message gateway mode'}
           </span>
           <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors"
             style={{ backgroundColor: form.embedClaudeOutputBeta ? '#f59e0b' : undefined }}>
@@ -413,8 +413,8 @@ export function SettingsPanel(): React.ReactElement {
         </label>
         <p className="mt-1 text-[9px] leading-snug text-claude-muted">
           {lang === 'zh'
-            ? '开启后隐藏传统终端，仅用本界面查看会话摘要并发消息（底层仍为 PTY）。关闭则恢复 xterm。'
-            : 'Hides the classic terminal; chat UI + JSONL transcript only (PTY still runs). Off restores xterm.'}
+            ? '聊天通过结构化消息流与 Claude 通信，不再模拟键盘或解析终端控制码。终端交互请切回经典终端模式。'
+            : 'Chat uses Claude structured message streams instead of simulated keystrokes or terminal control codes. Switch to classic terminal for TUI interaction.'}
         </p>
       </div>
 
@@ -1328,16 +1328,16 @@ export function SettingsPanel(): React.ReactElement {
             ? (lang === 'zh' ? '检查中...' : 'Checking...')
             : updateStatus?.status === 'available'
               ? (lang === 'zh'
-                ? `${isMac ? '下载 DMG' : '发现新版本'} ${updateStatus.version}`
-                : `${isMac ? 'Download DMG' : 'Update'} ${updateStatus.version}${isMac ? '' : ' available'}`)
+                ? `${isMac ? '应用内下载 DMG' : '发现新版本'} ${updateStatus.version}`
+                : `${isMac ? 'Download DMG in app' : 'Update'} ${updateStatus.version}${isMac ? '' : ' available'}`)
               : updateStatus?.status === 'downloaded'
-                ? (lang === 'zh' ? '安装更新' : 'Install update')
+                ? (isMac ? (lang === 'zh' ? '重新打开 DMG' : 'Reopen DMG') : (lang === 'zh' ? '安装更新' : 'Install update'))
                 : (lang === 'zh' ? '检查更新' : 'Check for updates')}
         </button>
         {updateStatus?.status === 'available' && (
           <p className="text-[10px] text-amber-400 mt-1">
             {isMac
-              ? (lang === 'zh' ? '将在浏览器中下载适合本机架构的安装包。' : 'Downloads the installer for this Mac in your browser.')
+              ? (lang === 'zh' ? '将在应用内下载，完成后自动打开 DMG。' : 'Downloads in app and opens the DMG automatically.')
               : (lang === 'zh' ? '正在后台下载…' : 'Downloading in background…')}
           </p>
         )}
@@ -1346,7 +1346,7 @@ export function SettingsPanel(): React.ReactElement {
             onClick={() => window.electronAPI?.installUpdate()}
             className="w-full mt-1 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-500"
           >
-            {lang === 'zh' ? '立即重启安装' : 'Restart & Install'}
+            {isMac ? (lang === 'zh' ? '重新打开 DMG' : 'Reopen DMG') : (lang === 'zh' ? '立即重启安装' : 'Restart & Install')}
           </button>
         )}
         {updateStatus?.status === 'error' && (

@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEmbedPtyResize } from '../../hooks/useEmbedPtyResize'
 import { registerEmbedDraftInjector, registerEmbedFocus } from '../../lib/embedDraftBridge'
-import { sendPtyInterruptSignal, sendRawPtyInput, submitEmbedSessionInput } from './terminalRuntime'
-import { usePtyAlternateScreenStore, clearPtyAlternateScreenSession } from '../../store/ptyAlternateScreenStore'
+import { cancelEmbedAgentRun, sendRawPtyInput, submitEmbedSessionInput } from './terminalRuntime'
 import { useSessionStore } from '../../store/sessionStore'
 import {
   filterSlashCommands,
@@ -167,7 +166,6 @@ export function EmbedSessionComposer({
   onTerminalHover
 }: Props): React.ReactElement {
   const { t } = useI18n()
-  const alternateScreen = usePtyAlternateScreenStore((s) => s.bySession[sessionId] === true)
   const [draft, setDraft] = useState('')
   const [cursor, setCursor] = useState(0)
   const [selectedSlash, setSelectedSlash] = useState(0)
@@ -220,14 +218,13 @@ export function EmbedSessionComposer({
   /* [2026-05-12] 斜杠 TUI 交互态不再单独显示「强制退出」，与 running 等场景统一用「中断」退出（仍走单 Ctrl+C + clearNativeTerminal）。 */
   /* [2026-05-12] 斜杠交互时 nativeTerminalNeeded 常为 true；若仍要求 !nativeTerminalInteractionActive 会导致无「中断」可点。 */
   const showInterrupt =
-    !alternateScreen &&
-    (slashInteractiveMode ||
+    slashInteractiveMode ||
       (!nativeTerminalInteractionActive &&
         /* [2026-05-11] 原把 sessionStatus=running 当作“Claude 正在干活”，但它也表示 Claude Code 进程正常待命。
          * 空输入时点「中断」会发送双 Ctrl+C，可能直接退出 Claude Code 并触发重启，造成双实例。 */
         (sessionStatus === 'waiting_input' ||
           pendingReply ||
-          transcriptSignalsWork)))
+          transcriptSignalsWork))
   /* [2026-05-07] slash TUI 由内嵌 xterm 负责 fit/resize；Composer 固定 resize 会让 /skills 搜索框布局错乱。 */
   // useEmbedPtyResize(sessionId, true)
   useEmbedPtyResize(sessionId, !slashInteractiveMode && !nativeTerminalOverlayVisible, rootRef)
@@ -619,7 +616,7 @@ export function EmbedSessionComposer({
 
   /* [2026-05-08] 发送正文顺序：draftMirrorRef(onChange 首行同步，不被 PTY 快照 setDraft 污染) > DOM > draft；勿把 taRef 作唯一来源以免受控 value 仍为「在吗」时传入 send */
   const send = useCallback((): void => {
-    if (alternateScreen) return
+    // 代理模式不受隐藏 PTY 的 alternate-screen 状态影响。
     if (embedSendBusyRef.current) return
     const t = (draftMirrorRef.current || taRef.current?.value || draft).replace(/\r\n/g, '\n')
     if (!t.trim() && attachedImages.length === 0) return
@@ -658,7 +655,7 @@ export function EmbedSessionComposer({
     } else {
       lastPlainEmbedSentRef.current = finalText
     }
-    setSlashInteractiveMode(isSlash)
+    setSlashInteractiveMode(false)
     submitEmbedSessionInput(sessionId, finalText)
 
     // 清理附件
@@ -680,7 +677,7 @@ export function EmbedSessionComposer({
     requestAnimationFrame(() => {
       if (!isSlash) taRef.current?.focus()
     })
-  }, [alternateScreen, attachedImages, draft, pushInputHistory, sessionId, workdir])
+  }, [attachedImages, draft, pushInputHistory, sessionId, workdir])
 
   /** [2026-05-06] Ctrl/Cmd+Enter 在光标处插入换行（Enter 单独用于发送） */
   const insertNewlineAtCursor = useCallback((): void => {
@@ -728,17 +725,11 @@ export function EmbedSessionComposer({
 
   /* [2026-05-12] 斜杠 TUI 与 running 等统一走「中断」：斜杠态调用 exitSlashInteraction（单 Ctrl+C + clearNativeTerminal），否则双 Ctrl+C。 */
   const interruptGeneration = useCallback((): void => {
-    if (alternateScreen) return
-    if (slashInteractiveMode) {
-      exitSlashInteraction()
-      return
-    }
+    if (slashInteractiveMode) return
     if (nativeTerminalInteractionActive) return
     if (!(sessionStatus === 'waiting_input' || pendingReply || transcriptSignalsWork)) return
-    sendPtyInterruptSignal(sessionId)
+    cancelEmbedAgentRun(sessionId)
   }, [
-    alternateScreen,
-    exitSlashInteraction,
     nativeTerminalInteractionActive,
     pendingReply,
     sessionId,
@@ -750,11 +741,11 @@ export function EmbedSessionComposer({
   const sendPtyControlKey = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
       /* [2026-05-12] 原 Ctrl+Enter / Ctrl+C 调 exitSlashInteraction；与「仅中断按钮退出」一致，改由按钮处理，此处只吞键以免误输入 readOnly 框。 */
-      if (!slashInteractiveMode || alternateScreen) return false
+      if (!slashInteractiveMode) return false
       e.preventDefault()
       return true
     },
-    [alternateScreen, slashInteractiveMode]
+    [slashInteractiveMode]
   )
 
   const setDraftFromHistory = useCallback((text: string): void => {
@@ -771,7 +762,7 @@ export function EmbedSessionComposer({
 
   const handleHistoryKey = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-      if (slashInteractiveMode || alternateScreen || slashMenuOpen) return false
+      if (slashInteractiveMode || slashMenuOpen) return false
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false
       if (draft.includes('\n')) return false
@@ -809,7 +800,6 @@ export function EmbedSessionComposer({
       return true
     },
     [
-      alternateScreen,
       cursor,
       draft,
       inputHistory,
@@ -968,70 +958,19 @@ export function EmbedSessionComposer({
           </div>
         </div>
       )}
-      {alternateScreen ? (
-        <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-[var(--theme-accent-border)] bg-[var(--theme-accent-bg)] px-3 py-2.5">
-          <p className="text-[10px] leading-relaxed text-[var(--theme-accent-text)]">
-            已检测到终端备用缓冲区（全屏 TUI，如 Ink 的{' '}
-            <kbd className="rounded border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-px font-mono text-[9px]">
-              /help
-            </kbd>
-            ）。外嵌按行输入与此类界面不兼容，已自动暂停；请用顶栏切换到「经典终端」逐键操作，或点击下方向 PTY 发送常用退出键。退出备用缓冲区后此处会自动恢复。
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              title="发送 Ctrl+C 到 PTY"
-              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
-              onClick={() => sendRawPtyInput(sessionId, '\x03')}
-            >
-              Ctrl+C
-            </button>
-            <button
-              type="button"
-              title="发送 Esc 到 PTY"
-              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
-              onClick={() => sendRawPtyInput(sessionId, '\x1b')}
-            >
-              Esc
-            </button>
-            <button
-              type="button"
-              title="发送 q 并换行"
-              className="rounded-md border border-[var(--theme-accent-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-[var(--theme-accent-text)] transition hover:bg-[var(--theme-accent-bg)]"
-              onClick={() => {
-                const nl =
-                  typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent) ? '\r' : '\n'
-                sendRawPtyInput(sessionId, `q${nl}`)
-              }}
-            >
-              q ↵
-            </button>
-            {/* [2026-05-12] 误检逃生门：若备用屏状态系误判（如 MCP 启动噪声），可强制解除而不向 PTY 发送任何内容 */}
-            <button
-              type="button"
-              title="强制解除备用屏锁定（不向终端发送任何内容，仅重置外嵌状态）"
-              className="rounded-md border border-[var(--theme-panel-border)] bg-[var(--theme-panel-bg-soft)] px-2 py-1 text-[9px] font-medium text-claude-muted transition hover:text-claude-text hover:bg-[var(--theme-panel-bg-soft)]"
-              onClick={() => clearPtyAlternateScreenSession(sessionId)}
-            >
-              强制恢复
-            </button>
-          </div>
-        </div>
-      ) : (
-        <details className="mx-auto mb-2 max-w-3xl">
-          <summary className="cursor-pointer select-none text-center text-[9px] text-claude-muted/50 transition-colors hover:text-claude-muted/80">
-              快捷键说明
-            </summary>
-            <p className="mt-1 text-center text-[9px] leading-relaxed text-claude-muted/75">
-              <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
-              发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
-              换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
-              命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
-              <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
-              填入/历史 · running / 等待确认或斜杠交互时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 斜杠交互时用「中断」退出 TUI · 文件拖入上方可插入 @ 路径
-            </p>
-          </details>
-        )}
+      <details className="mx-auto mb-2 max-w-3xl">
+        <summary className="cursor-pointer select-none text-center text-[9px] text-claude-muted/50 transition-colors hover:text-claude-muted/80">
+          快捷键说明
+        </summary>
+        <p className="mt-1 text-center text-[9px] leading-relaxed text-claude-muted/75">
+          <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">Enter</kbd>{' '}
+          发送 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Ctrl+Enter</kbd>{' '}
+          换行 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1.5 py-0.5 font-mono text-[9px]">/</kbd>{' '}
+          命令面板 · <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">↑↓</kbd>{' '}
+          <kbd className="rounded-md border border-[var(--theme-kbd-border)] bg-[var(--theme-kbd-bg)] px-1 py-0.5 font-mono">Tab</kbd>{' '}
+          填入/历史 · running / 等待确认或斜杠交互时可「中断」· 中断（含终端 Ctrl+C）后上次普通提问可回到输入框 · 斜杠交互时用「中断」退出 TUI · 文件拖入上方可插入 @ 路径
+        </p>
+      </details>
       {/* [2026-05-12] 原 items-end：多行输入时按钮贴底，与圆环/输入框视觉中线不齐；改为 items-center 整行垂直居中 */}
       <div className="mx-auto flex max-w-3xl min-h-0 items-center gap-2">
         <div className="relative min-h-0 flex-1">
@@ -1152,7 +1091,7 @@ export function EmbedSessionComposer({
           <textarea
             ref={taRef}
             value={draft}
-            disabled={alternateScreen || isProcessDead}
+            disabled={isProcessDead}
             readOnly={slashInteractiveMode}
             onChange={(e) => {
               historyCursorRef.current = null
@@ -1174,14 +1113,12 @@ export function EmbedSessionComposer({
             placeholder={
               isProcessDead
                 ? '进程已退出，请点击上方"重启 Claude"…'
-                : alternateScreen
-                ? '全屏终端界面进行中，输入已暂停…'
                 : slashInteractiveMode
                   ? '斜杠命令交互中：请在上方内嵌终端操作；点「中断」退出'
                   : '输入消息… Enter 发送 · Tab 填入命令 · Ctrl+Enter 换行 · / 打开命令 · @ 引用文件'
             }
             className={`fo-embed-composer-textarea min-h-[36px] max-h-[200px] w-full overflow-auto rounded-xl border border-[var(--theme-accent-border)] bg-[var(--theme-field-bg)] px-3 py-2 text-[12px] leading-relaxed text-claude-text shadow shadow-black/25 placeholder:text-claude-muted/70 focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${
-              alternateScreen || isProcessDead ? 'cursor-not-allowed opacity-45' : ''
+              isProcessDead ? 'cursor-not-allowed opacity-45' : ''
             }`}
             spellCheck={false}
             aria-expanded={slashMenuOpen || atMenuOpen}
@@ -1208,11 +1145,9 @@ export function EmbedSessionComposer({
           <button
             type="button"
             onClick={() => send()}
-            disabled={isProcessDead || alternateScreen || slashInteractiveMode}
+            disabled={isProcessDead || slashInteractiveMode}
             title={
-              alternateScreen
-                ? t.common.embedSendBlockedAlt
-                : slashInteractiveMode
+              slashInteractiveMode
                   ? t.common.embedSendBlockedSlash
                   : undefined
             }

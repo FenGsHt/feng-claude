@@ -26,6 +26,7 @@ import { startApiProxy, stopApiProxy, isApiProxyRunning } from './apiProxyServer
 import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 import { PetLogStore } from './petLogStore'
 import { getLastSeenWhatsNewVersion, setLastSeenWhatsNewVersion } from './appMetaStore'
+import type { AgentGateway } from './agentGateway'
 
 const petLogStore = new PetLogStore()
 
@@ -172,7 +173,8 @@ export function registerIpcHandlers(
   settingsStore: SettingsStore,
   workspaceStore: WorkspaceStore,
   sessionWatcher: ClaudeSessionWatcher,
-  testManager: TestManager
+  testManager: TestManager,
+  agentGateway: AgentGateway
 ): void {
   // macOS keeps the main process alive after the last window closes. Reopening
   // from the Dock creates fresh window-scoped managers, so replace the previous
@@ -474,10 +476,21 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {
+    agentGateway.close(sessionId)
     ptyManager.closeSession(sessionId)
     sessionWatcher.unwatchSession(sessionId)
     return { success: true }
   })
+
+  // [2026-07-31] 外嵌消息模式：每个 GUI session 独立排队，不把文本写进 PTY。
+  ipcMain.handle(IPC.AGENT_SEND, async (_e, payload) => {
+    sessionWatcher.unwatchSession(payload.sessionId)
+    return agentGateway.enqueue(payload)
+  })
+
+  ipcMain.handle(IPC.AGENT_CANCEL, async (_e, { sessionId }) => ({
+    cancelled: agentGateway.cancel(sessionId)
+  }))
 
   // ── PTY I/O ─────────────────────────────────────────────────
   /* [2026-05-08] 原仅转发 PTY；经典终端 Ctrl+C 与外嵌「中断」同源，渲染层需据此把上次普通提问填回输入框 */
