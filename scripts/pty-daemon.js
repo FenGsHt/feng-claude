@@ -13,6 +13,8 @@
  *   --rows <number>          initial terminal rows (default 40)
  *   --state-file <path>      path to write session state JSON
  *   --resources-path <path>  Electron resourcesPath (for finding node-pty in prod)
+ *   --node-pty-path <path>   exact node-pty runtime directory
+ *   --error-file <path>      startup error log read by the parent process
  *
  * Client protocol (newline-delimited JSON):
  *   Server → Client:
@@ -38,11 +40,23 @@ const rows = parseInt(arg('rows') || '40', 10)
 const stateFile = arg('state-file')
 const resourcesPath = arg('resources-path')
 const nodePtyPath = arg('node-pty-path')  // explicit path passed by spawner (most reliable)
+const errorFile = arg('error-file')
 
 const net = require('net')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+
+function reportError(error) {
+  const message = error && error.stack ? error.stack : String(error)
+  if (errorFile) {
+    try {
+      fs.mkdirSync(path.dirname(errorFile), { recursive: true })
+      fs.writeFileSync(errorFile, message + '\n', 'utf8')
+    } catch { /* fall through to stderr */ }
+  }
+  process.stderr.write('[pty-daemon] ' + message + '\n')
+}
 
 // ── Load node-pty ────────────────────────────────────────────────────
 // Try multiple paths: explicit arg → packaged (asar.unpacked) → fallback
@@ -58,7 +72,7 @@ for (const p of ptySearchPaths) {
   try { pty = require(p); break } catch { /* try next */ }
 }
 if (!pty) {
-  process.stderr.write('[pty-daemon] Cannot load node-pty. Tried:\n' + ptySearchPaths.join('\n') + '\n')
+  reportError('Cannot load node-pty. Tried:\n' + ptySearchPaths.join('\n'))
   process.exit(1)
 }
 
@@ -93,14 +107,20 @@ function getScrollbackBase64() {
 // ── Spawn PTY ────────────────────────────────────────────────────────
 // [2026-05-12] 与主进程一致：默认 useConpty:false，避免无控制台时 AttachConsole failed；FENG_USE_CONPTY=1 强制 ConPTY
 const winPtyOpts = process.platform === 'win32' ? { useConpty: process.env.FENG_USE_CONPTY === '1' } : {}
-const ptyProc = pty.spawn(shellArg, [], {
-  name: 'xterm-256color',
-  cols,
-  rows,
-  cwd,
-  env: process.env, // inherits env vars passed by Electron on spawn
-  ...winPtyOpts
-})
+let ptyProc
+try {
+  ptyProc = pty.spawn(shellArg, [], {
+    name: 'xterm-256color',
+    cols,
+    rows,
+    cwd,
+    env: process.env, // inherits env vars passed by Electron on spawn
+    ...winPtyOpts
+  })
+} catch (error) {
+  reportError(error)
+  process.exit(1)
+}
 
 const clients = new Set()
 
@@ -187,7 +207,7 @@ server.listen(pipePath, () => {
 })
 
 server.on('error', err => {
-  process.stderr.write('[pty-daemon] server error: ' + err.message + '\n')
+  reportError('server error: ' + err.message)
   cleanup()
   process.exit(1)
 })

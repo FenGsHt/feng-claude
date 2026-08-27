@@ -8,6 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.90 主要更新
+
+- **macOS 会话创建修复**：避免 Gatekeeper 单独拦截 `node-pty` 内部辅助程序，创建和重启会话恢复正常
+- **自动回退内嵌终端**：iTerm2 或持久终端启动失败时不再卡住，自动切回软件内终端
+- **PTY 错误诊断**：守护进程失败会立即显示真实原因，不再固定等待超时
+
 ### v0.7.89 主要更新
 
 - **消息代理模式**：外嵌聊天通过 Claude Code 结构化 JSON 流通信，不再模拟键盘或解析终端控制码
@@ -262,6 +268,12 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.90 Highlights
+
+- **macOS session creation fix**: avoids Gatekeeper separately blocking node-pty's nested helper after the main app has been approved
+- **Automatic embedded-terminal fallback**: failed iTerm2 or persistent-terminal startup now falls back in-app instead of stalling
+- **Actionable PTY diagnostics**: daemon startup failures return their real cause immediately instead of ending in a generic timeout
 
 ### v0.7.89 Highlights
 

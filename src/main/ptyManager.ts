@@ -2,7 +2,16 @@ import * as pty from 'node-pty'
 import { getWindowsPtySpawnExtras } from './winPtySpawnExtras'
 import { createHash } from 'crypto'
 import { spawnSync, spawn as spawnProc } from 'child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, unlinkSync } from 'fs'
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  symlinkSync,
+  unlinkSync
+} from 'fs'
 import { basename, dirname, join } from 'path'
 import { homedir } from 'os'
 import * as net from 'net'
@@ -748,12 +757,13 @@ function tryConnectDaemon(pipePath: string): Promise<net.Socket | null> {
 }
 
 /** Wait for daemon to write its state file after spawning. Polls every 50ms up to 8s. */
-function waitForDaemonState(statePath: string): Promise<DaemonState | null> {
+function waitForDaemonState(statePath: string, hasExited?: () => boolean): Promise<DaemonState | null> {
   return new Promise(resolve => {
     const deadline = Date.now() + 8000
     const check = (): void => {
       const state = readDaemonState(statePath)
       if (state?.pid && state?.pipe) { resolve(state); return }
+      if (hasExited?.()) { resolve(null); return }
       if (Date.now() > deadline) { resolve(null); return }
       setTimeout(check, 50)
     }
@@ -780,6 +790,42 @@ function resolveDaemonScript(): string | null {
   } catch (e) {
     console.warn('[pty-daemon] failed to copy script:', e)
     return null
+  }
+}
+
+/**
+ * [2026-08-27] Unsigned macOS downloads can be manually approved as an app while
+ * Gatekeeper still rejects node-pty's nested spawn-helper. Copying the runtime
+ * into userData gives the app an owned runtime copy that can be executed after
+ * the main app itself has been approved.
+ */
+function resolveDaemonNodePtyPath(): string {
+  const bundledPath = app.isPackaged
+    ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty')
+    : join(app.getAppPath(), 'node_modules', 'node-pty')
+
+  if (!app.isPackaged || process.platform !== 'darwin') return bundledPath
+
+  const runtimePath = join(
+    app.getPath('userData'),
+    'pty-runtime',
+    `node-pty-${app.getVersion()}-${process.arch}`
+  )
+  const runtimeModule = join(runtimePath, 'build', 'Release', 'pty.node')
+  const runtimeHelper = join(runtimePath, 'build', 'Release', 'spawn-helper')
+  const readyMarker = join(runtimePath, '.ready')
+
+  try {
+    if (!existsSync(readyMarker) || !existsSync(runtimeModule) || !existsSync(runtimeHelper)) {
+      mkdirSync(dirname(runtimePath), { recursive: true })
+      cpSync(bundledPath, runtimePath, { recursive: true, force: true })
+      writeFileSync(readyMarker, `${app.getVersion()}-${process.arch}\n`, 'utf8')
+    }
+    chmodSync(runtimeHelper, 0o755)
+    return runtimePath
+  } catch (error) {
+    console.warn('[pty-daemon] failed to prepare macOS runtime copy; using bundled runtime:', error)
+    return bundledPath
   }
 }
 
@@ -896,8 +942,12 @@ export class PtyManager {
     // [2026-05-06] Daemon mode: shell survives Electron restart on all platforms
     if (shellOnly && s.terminal?.useTmux) {
       // [2026-07-09] 用 resolvedWorkdir 而非原始 workdir，确保 daemon 路径也受 workdir 不存在时的 home 回退保护
-      const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
-      return { ...result, telegramChannel: preparedTelegram.config }
+      try {
+        const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv)
+        return { ...result, telegramChannel: preparedTelegram.config }
+      } catch (error) {
+        console.warn('[PTY] Persistent shell daemon failed, falling back to built-in terminal:', error)
+      }
     }
 
     // [2026-07-28] 与设置界面保持一致：iTerm2 只允许在 macOS 打包版启用。
@@ -930,49 +980,56 @@ export class PtyManager {
           }))
           daemonSession.claudeRunning = true
         }
-        const result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv, {
-          forwardOutput: false,
-          onOutput: (data) => {
-            if (iTermLaunchStarted) return
-            const combined = iTermProbeOutput + data
-            if (combined.includes(iTermMarker)) {
-              iTermShellReady = true
-              if (iTermLaunchFallback) {
-                clearTimeout(iTermLaunchFallback)
-                iTermLaunchFallback = undefined
+        let result: { pid: number; reused: boolean } | null = null
+        try {
+          result = await this.createDaemonSession(sessionId, resolvedWorkdir, shell, ptyEnv, {
+            forwardOutput: false,
+            onOutput: (data) => {
+              if (iTermLaunchStarted) return
+              const combined = iTermProbeOutput + data
+              if (combined.includes(iTermMarker)) {
+                iTermShellReady = true
+                if (iTermLaunchFallback) {
+                  clearTimeout(iTermLaunchFallback)
+                  iTermLaunchFallback = undefined
+                }
               }
+              iTermProbeOutput = combined.slice(-(iTermMarker.length - 1))
+              if (!iTermShellReady) return
+              if (iTermLaunchSettle) clearTimeout(iTermLaunchSettle)
+              iTermLaunchSettle = setTimeout(launchITermClaudeOnce, SHELL_READY_SETTLE_MS)
             }
-            iTermProbeOutput = combined.slice(-(iTermMarker.length - 1))
-            if (!iTermShellReady) return
-            if (iTermLaunchSettle) clearTimeout(iTermLaunchSettle)
-            iTermLaunchSettle = setTimeout(launchITermClaudeOnce, SHELL_READY_SETTLE_MS)
-          }
-        })
-        // Get socket path from daemon state
-        const statePath = daemonStatePath(resolvedWorkdir)
-        const daemonState = readDaemonState(statePath)
-        if (daemonState?.pipe) {
-          const iterm2Result = openITerm2Session(daemonState.pipe, shell, resolvedWorkdir, 120, 40)
-          if (!iterm2Result.success) {
-            console.warn('[PTY] Failed to open iTerm2 session:', iterm2Result.error)
-          } else {
-            console.log('[PTY] Opened iTerm2 session for', sessionId)
-            // A freshly-created daemon contains only the shell. Queue a marker
-            // through that shell and launch Claude after its rc files finish.
-            // Reused daemons may already be inside Claude, so leave them intact.
-            if (!result.reused) {
-              this.writeRaw(this.sessions.get(sessionId)!, shellReadyProbe(sessionId))
-              iTermLaunchFallback = setTimeout(launchITermClaudeOnce, 5000)
-            }
-            return { ...result, telegramChannel: preparedTelegram.config, iterm2Mode: true }
-          }
-        } else {
-          console.warn('[PTY] Daemon state not found, cannot open iTerm2 session')
+          })
+        } catch (error) {
+          console.warn('[PTY] iTerm2 daemon failed, falling back to built-in terminal:', error)
         }
-        // If iTerm2 failed, detach its daemon before creating the built-in PTY.
-        // The daemon socket must never replay old scrollback into the fallback
-        // terminal under the same session ID.
-        this.detachDaemonForFallback(sessionId, !result.reused)
+        if (result) {
+          // Get socket path from daemon state
+          const statePath = daemonStatePath(resolvedWorkdir)
+          const daemonState = readDaemonState(statePath)
+          if (daemonState?.pipe) {
+            const iterm2Result = openITerm2Session(daemonState.pipe, shell, resolvedWorkdir, 120, 40)
+            if (!iterm2Result.success) {
+              console.warn('[PTY] Failed to open iTerm2 session:', iterm2Result.error)
+            } else {
+              console.log('[PTY] Opened iTerm2 session for', sessionId)
+              // A freshly-created daemon contains only the shell. Queue a marker
+              // through that shell and launch Claude after its rc files finish.
+              // Reused daemons may already be inside Claude, so leave them intact.
+              if (!result.reused) {
+                this.writeRaw(this.sessions.get(sessionId)!, shellReadyProbe(sessionId))
+                iTermLaunchFallback = setTimeout(launchITermClaudeOnce, 5000)
+              }
+              return { ...result, telegramChannel: preparedTelegram.config, iterm2Mode: true }
+            }
+          } else {
+            console.warn('[PTY] Daemon state not found, cannot open iTerm2 session')
+          }
+          // If iTerm2 failed, detach its daemon before creating the built-in PTY.
+          // The daemon socket must never replay old scrollback into the fallback
+          // terminal under the same session ID.
+          this.detachDaemonForFallback(sessionId, !result.reused)
+        }
       }
     }
 
@@ -1212,13 +1269,15 @@ export class PtyManager {
     // Remove stale state file before spawning
     try { unlinkSync(statePath) } catch { /* ignore */ }
 
-    // Compute the exact node-pty path so the daemon can load it regardless of __dirname
-    const nodePtyPath = app.isPackaged
-      ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty')
-      : join(app.getAppPath(), 'node_modules', 'node-pty')
-
+    // Compute the exact node-pty path so the daemon can load it regardless of __dirname.
+    // On packaged macOS this resolves to a userData runtime copy to avoid Gatekeeper
+    // rejecting node-pty's nested spawn-helper after the main app was approved.
     const electronExe = process.execPath
     const daemonHash = createHash('md5').update(workdir.replace(/\\/g, '/').toLowerCase()).digest('hex').slice(0, 12)
+    const nodePtyPath = resolveDaemonNodePtyPath()
+    const errorPath = join(daemonDir(), `${daemonHash}.error.log`)
+    try { unlinkSync(errorPath) } catch { /* ignore */ }
+
     const child = spawnProc(electronExe, [scriptPath,
       '--id', daemonHash,
       '--shell', shell,
@@ -1227,7 +1286,8 @@ export class PtyManager {
       '--rows', '40',
       '--state-file', statePath,
       '--resources-path', process.resourcesPath ?? '',
-      '--node-pty-path', nodePtyPath
+      '--node-pty-path', nodePtyPath,
+      '--error-file', errorPath
     ], {
       detached: true,
       stdio: 'ignore',
@@ -1235,10 +1295,16 @@ export class PtyManager {
     })
     child.unref()
 
-    const state = await waitForDaemonState(statePath)
+    const state = await waitForDaemonState(statePath, () => child.exitCode !== null)
     if (!state) {
       if (this.telegramOwnerSessionId === sessionId) this.telegramOwnerSessionId = null
       this.sessions.delete(sessionId)
+      try {
+        const detail = readFileSync(errorPath, 'utf8').trim().slice(-2000)
+        if (detail) throw new Error(`[pty-daemon] Failed to start: ${detail}`)
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('[pty-daemon]')) throw error
+      }
       throw new Error('[pty-daemon] Timed out waiting for daemon to start')
     }
 

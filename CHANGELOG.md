@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.90] - 2026-08-27
+
+### 修复 | Bug Fixes
+- **macOS 创建会话无响应**：打包版首次使用持久终端时，将 `node-pty` 运行组件复制到应用数据目录后再启动，避免主应用已在「隐私与安全性」放行但内部 `spawn-helper` 仍被 Gatekeeper 拒绝
+- **PTY daemon 超时不可诊断**：守护进程启动失败时立即记录并返回真实错误，不再隐藏异常后固定等待 8 秒
+- **外置终端失败阻断会话**：iTerm2 或持久 shell 守护进程启动失败时自动退回软件内嵌终端，创建与重启会话不再静默失败
+
 ## [0.7.89] - 2026-08-03
 
 ### 新功能 | Features
