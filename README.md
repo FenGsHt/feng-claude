@@ -8,6 +8,11 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.91 主要更新
+
+- **macOS 应用内下载修复**：正确识别更新包真实大小，完整 DMG 不再被误判为下载不完整
+- **进度显示修复**：不再出现 `0 KB` 总大小或异常百分比；未知大小会显示不确定进度
+
 ### v0.7.90 主要更新
 
 - **macOS 会话创建修复**：避免 Gatekeeper 单独拦截 `node-pty` 内部辅助程序，创建和重启会话恢复正常
@@ -268,6 +273,11 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.91 Highlights
+
+- **Fixed in-app macOS downloads**: correctly reads the installer size so complete DMGs are no longer rejected as incomplete
+- **Reliable progress display**: no more `0 KB` totals or invalid percentages; unknown-size downloads use an indeterminate indicator
 
 ### v0.7.90 Highlights
 

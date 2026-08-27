@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.91] - 2026-08-27
+
+### 修复 | Bug Fixes
+- **macOS 应用内下载误报失败**：正确解析 Electron 返回的 `content-length` 字符串，避免把完整 DMG 的总大小错误读取为首字符 `1`，从而显示异常百分比并误报下载不完整
+- **下载进度异常显示**：进度百分比限制在有效范围；服务器未提供总大小时改为显示不确定进度，不再展示 `0 KB` 和超大百分比
+
 ## [0.7.90] - 2026-08-27
 
 ### 修复 | Bug Fixes

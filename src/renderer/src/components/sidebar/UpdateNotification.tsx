@@ -3,6 +3,7 @@ import type { UpdateStatusPayload, UpdateProgressPayload } from '../../types/ipc
 import { useI18n } from '../../i18n'
 
 function fmtBytes(b: number): string {
+  if (!Number.isFinite(b) || b <= 0) return '0 KB'
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
   return `${(b / (1024 * 1024)).toFixed(1)} MB`
 }
@@ -54,6 +55,10 @@ export function UpdateNotification(): React.ReactElement | null {
   const isDownloading = status.status === 'available' && !!progress
   const isError      = status.status === 'error'
   const isManualMacUpdate = isMac && status.status === 'available' && !isDownloading
+  const hasKnownDownloadTotal = !!progress && Number.isFinite(progress.total) && progress.total > 0
+  const safeDownloadPercent = hasKnownDownloadTotal && progress
+    ? Math.min(Math.max(progress.percent, 0), 100)
+    : 0
 
   // 浏览器面板打开时，通知定位在面板左侧（+16px 间距）
   const rightOffset = browserPanelWidth > 0 ? browserPanelWidth + 16 : 16
@@ -123,13 +128,20 @@ export function UpdateNotification(): React.ReactElement | null {
             <div>
               <div className="h-1 bg-claude-bg rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-amber-400 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(progress!.percent, 100)}%` }}
+                  className={`h-full bg-amber-400 rounded-full transition-all duration-300 ${hasKnownDownloadTotal ? '' : 'animate-pulse'}`}
+                  style={{ width: hasKnownDownloadTotal ? `${safeDownloadPercent}%` : '35%' }}
                 />
               </div>
               <div className="flex justify-between text-[9px] text-claude-muted mt-0.5">
-                <span>{fmtBytes(progress!.transferred)} / {fmtBytes(progress!.total)}</span>
-                <span>{Math.round(progress!.percent)}%</span>
+                <span>
+                  {fmtBytes(progress!.transferred)}
+                  {hasKnownDownloadTotal && ` / ${fmtBytes(progress!.total)}`}
+                </span>
+                <span>
+                  {hasKnownDownloadTotal
+                    ? `${Math.round(safeDownloadPercent)}%`
+                    : (zh ? '大小未知' : 'Size unknown')}
+                </span>
               </div>
             </div>
           )}

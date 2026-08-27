@@ -10,6 +10,14 @@ let availableVersion: string | null = null
 let macDownloadInProgress = false
 let downloadedMacInstaller: { version: string; path: string } | null = null
 
+/** Electron net headers are string[] by type but can be plain strings at runtime. */
+function parseContentLength(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (!raw) return 0
+  const parsed = Number(raw)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0
+}
+
 function updaterLog(level: 'ERROR' | 'INFO' | 'WARN' | 'DEBUG', message: unknown): void {
   const text = typeof message === 'string' ? message : String(message)
   const consoleMethod = level === 'ERROR' ? console.error
@@ -200,7 +208,7 @@ function downloadMacInstaller(version: string, url: string, fileName: string): v
 
   output.once('error', fail)
   request.once('error', fail)
-  request.on('response', (response) => {
+  request.once('response', (response) => {
     const statusCode = response.statusCode ?? 0
     if (statusCode < 200 || statusCode >= 300) {
       response.resume()
@@ -208,8 +216,13 @@ function downloadMacInstaller(version: string, url: string, fileName: string): v
       return
     }
 
-    const rawTotal = response.headers['content-length']?.[0]
-    total = rawTotal ? Number(rawTotal) : 0
+    // [2026-08-27] Electron 43 returns content-length as a plain string on macOS.
+    // Reading [0] from it reduced "133799065" to "1", producing billion-percent
+    // progress and rejecting an otherwise complete DMG as 133799065/1 bytes.
+    total = parseContentLength(
+      response.headers['content-length'] as string | string[] | undefined
+    )
+    updaterLog('INFO', `macOS installer response: HTTP ${statusCode}, content-length=${total || 'unknown'}`)
     mainWindow?.webContents.send(IPC.UPDATE_PROGRESS, {
       percent: 0,
       bytesPerSecond: 0,
