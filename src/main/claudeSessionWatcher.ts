@@ -14,11 +14,15 @@ export type { TokenUsageUpdatePayload }
 
 /**
  * Claude Code project directory naming:
- *   Replace every `:`, `\`, `/`, `_` in the workdir path with `-`
+ *   Keep ASCII letters, digits and existing hyphens; replace every other
+ *   character (including `:`, `\`, `/`, `_` and non-ASCII path characters)
+ *   with `-`.
  *   e.g. "D:\git2\python_file\python_file\feng-test" → "D--git2-python-file-python-file-feng-test"
  */
 function workdirToProjectDirName(workdir: string): string {
-  return workdir.replace(/[:\\/_]/g, '-')
+  // [2026-08-31] Claude Code 不会把中文等非 ASCII 字符原样放进 projects 目录，而是逐字符替换为
+  // 连字符。原实现仅替换路径分隔符，导致中文目录下找不到实际 JSONL，token 统计完全不更新。
+  return workdir.replace(/[^a-zA-Z0-9-]/g, '-')
 }
 
 /**

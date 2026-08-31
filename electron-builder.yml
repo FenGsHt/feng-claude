@@ -23,9 +23,6 @@ win:
   forceCodeSigning: false
   target:
     - nsis
-    - portable
-portable:
-  artifactName: '${name}-${version}-portable.${ext}'
 nsis:
   artifactName: '${name}-${version}-setup.${ext}'
   oneClick: false
@@ -36,7 +33,7 @@ nsis:
   uninstallDisplayName: '${productName}'
   createDesktopShortcut: always
 mac:
-  # [2026-06-09] 同时构建 Apple Silicon (arm64) 与 Intel (x64)，否则默认仅出 runner 架构包
+  # [2026-08-31] 仅支持 Apple Silicon；不再构建 Intel (x64) 包。
   # [2026-07-09] 自动更新需要 zip 格式（electron-updater 不支持 dmg 更新）
   # [2026-07-31] 使用无空格的固定产物名，确保 latest-mac.yml URL 与 GitHub asset 完全一致
   artifactName: '${name}-${version}-${arch}.${ext}'
@@ -44,17 +41,11 @@ mac:
     - target: dmg
       arch:
         - arm64
-        - x64
     - target: zip
       arch:
         - arm64
-        - x64
   # 无 Developer ID 分发：afterPack 会补 ad-hoc 签名；首次启动仍需在「隐私与安全性」点「仍要打开」
   identity: null
-linux:
-  target:
-    - AppImage
-
 # Auto update configuration
 publish:
   - provider: github

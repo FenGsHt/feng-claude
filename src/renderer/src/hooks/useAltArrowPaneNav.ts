@@ -62,22 +62,24 @@ export function useAltArrowPaneNav(enabled: boolean): void {
       return true
     }
 
-    // [2026-06-15] 调试浏览器/DevTools 聚焦时，Alt+E/R 的 keydown 进的是那个 webContents，
+    // [2026-08-29] macOS 的 Option+E/R/F 会产生重音/特殊字符，必须按物理按键 code
+    // 识别并阻止默认输入；不能依赖 KeyboardEvent.key。
+    // 调试浏览器/DevTools 聚焦时，Alt+E/R 的 keydown 进的是那个 webContents，
     // 渲染窗口收不到；由主进程拦截后通过该 IPC 转发到这里执行切换。
     const offSwitch = window.electronAPI.onBrowserSwitchSession((dir) => switchTab(dir))
 
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
-        const k = e.key.toLowerCase()
+        const k = e.code
         // Alt+E/R：窗口（tab 组）间切换
-        if (k === 'e' || k === 'r') {
+        if (k === 'KeyE' || k === 'KeyR') {
           e.preventDefault()
           e.stopPropagation()
-          switchTab(k === 'e' ? 'prev' : 'next')
+          switchTab(k === 'KeyE' ? 'prev' : 'next')
           return
         }
         // Alt+F：当前窗口内多终端（分屏窗格）间切换
-        if (k === 'f') {
+        if (k === 'KeyF') {
           if (cyclePane()) { e.preventDefault(); e.stopPropagation() }
           return
         }

@@ -926,18 +926,42 @@ function browserNavigate(url: string): void {
 const devToolsKeyWired = new WeakSet<Electron.WebContents>()
 function maybeHandleSessionSwitchKey(event: Electron.Event, input: Electron.Input): boolean {
   if (input.type !== 'keyDown' || !input.alt || input.control || input.shift || input.meta) return false
-  const k = input.key.toLowerCase()
-  if (k !== 'e' && k !== 'r') return false
+  // [2026-08-29] Option+E/R 在 macOS 的 key 会变为重音/特殊字符；code 保留物理按键。
+  const k = input.code
+  if (k !== 'KeyE' && k !== 'KeyR') return false
   event.preventDefault()
-  state.mainWin?.webContents.send('app:browser-switch-session', { dir: k === 'e' ? 'prev' : 'next' })
+  state.mainWin?.webContents.send('app:browser-switch-session', { dir: k === 'KeyE' ? 'prev' : 'next' })
   return true
+}
+
+/** 内嵌浏览器及其 DevTools 获得焦点时，仍保留与主窗口一致的全局快捷键。 */
+function maybeHandleBrowserGlobalShortcut(event: Electron.Event, input: Electron.Input): boolean {
+  if (input.type !== 'keyDown') return false
+  const cmdOrCtrl = input.control || (process.platform === 'darwin' && input.meta)
+  if (!cmdOrCtrl || !input.shift) return false
+
+  // [2026-08-29] 使用 code，避免不同键盘布局导致按键识别不一致。
+  if (input.code === 'KeyD') {
+    event.preventDefault()
+    if (state.mainWin) toggleBrowserView(state.mainWin)
+    return true
+  }
+  if (input.code === 'KeyQ') {
+    event.preventDefault()
+    void startElementPicker()
+    return true
+  }
+  return false
 }
 function attachDevToolsKeyForwarding(viewWc: Electron.WebContents): void {
   const attach = (): void => {
     const dwc = viewWc.devToolsWebContents
     if (dwc && !devToolsKeyWired.has(dwc)) {
       devToolsKeyWired.add(dwc)
-      dwc.on('before-input-event', (e, input) => { maybeHandleSessionSwitchKey(e, input) })
+      dwc.on('before-input-event', (e, input) => {
+        if (maybeHandleSessionSwitchKey(e, input)) return
+        maybeHandleBrowserGlobalShortcut(e, input)
+      })
     }
   }
   if (viewWc.isDevToolsOpened()) attach()
@@ -1027,10 +1051,7 @@ function createBrowserTab(sid: string, win: BrowserWindow): BrowserTab {
   view.webContents.on('before-input-event', (event, input) => {
     // [2026-06-15] 浏览器内容聚焦时 Alt+E/R 仍能切换会话
     if (maybeHandleSessionSwitchKey(event, input)) return
-    if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'q') {
-      event.preventDefault()
-      void startElementPicker()
-    }
+    maybeHandleBrowserGlobalShortcut(event, input)
   })
 
   // [2026-06-15] 检测 DevTools 触发的同 URL 重载：标记抑制，防止父窗口被激活弹到前台

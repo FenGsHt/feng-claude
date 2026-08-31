@@ -8,6 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.92 主要更新
+
+- **发布包精简**：仅发布 Windows 安装包和 macOS Apple Silicon（arm64）DMG，不再构建 Linux、Windows portable 或 macOS Intel（x64）版本
+- **中文路径 Token 统计修复**：中文工作目录可正确匹配 Claude Code 会话 JSONL，新的 token 用量恢复统计
+- **macOS 快捷键修复**：`Option+E/R/F/M` 不再输出特殊字符；内嵌浏览器/DevTools 里也可使用 `Command+Shift+D/Q`
+
 ### v0.7.91 主要更新
 
 - **macOS 应用内下载修复**：正确识别更新包真实大小，完整 DMG 不再被误判为下载不完整
@@ -273,6 +279,12 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.92 Highlights
+
+- **Simplified release assets**: ships only the Windows installer and the Apple Silicon (arm64) macOS DMG; Linux, Windows portable, and macOS Intel (x64) builds are no longer produced
+- **Token tracking for non-ASCII paths**: Chinese workspaces now resolve to Claude Code's JSONL project directory correctly, so new usage is counted again
+- **macOS shortcut fixes**: `Option+E/R/F/M` no longer inserts special characters; `Command+Shift+D/Q` also works while the embedded browser or DevTools has focus
 
 ### v0.7.91 Highlights
 

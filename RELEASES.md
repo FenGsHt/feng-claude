@@ -5,6 +5,17 @@
 
 ---
 
+## v0.7.92 (2026-08-31)
+
+### 发布
+- **发布包精简**：仅提供 Windows 安装包和 macOS Apple Silicon（arm64）DMG；移除 Linux、Windows portable 与 macOS Intel（x64）构建
+
+### 修复
+- **中文工作目录 Token 统计恢复**：应用现在能按 Claude Code 的规则定位中文路径对应的 JSONL，对话产生的新用量会正常写入统计
+- **macOS 快捷键恢复**：`Option+E/R/F/M` 不再输出特殊字符；浏览器/DevTools 聚焦时 `Command+Shift+D/Q` 仍可用
+
+---
+
 ## v0.7.91 (2026-08-27)
 
 ### 修复

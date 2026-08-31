@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.92] - 2026-08-31
+
+### 发布 | Release
+- **精简双平台发布**：GitHub Actions 仅构建 Windows 安装版与 macOS Apple Silicon（arm64）版；不再发布 Linux、Windows portable 或 macOS Intel（x64）包
+
+### 修复 | Bug Fixes
+- **中文路径 Token 用量统计**：按 Claude Code 的目录命名规则处理中文等非 ASCII 工作目录，正确监听 `~/.claude/projects` 中的 JSONL，新会话 token 用量恢复更新
+- **macOS Option 字母快捷键**：`Option+E/R/F` 和默认语音快捷键 `Option+M` 改按物理按键识别，不再输入重音或特殊字符；内嵌浏览器/DevTools 获得焦点时仍可使用 `Command+Shift+D/Q`
+
 ## [0.7.91] - 2026-08-27
 
 ### 修复 | Bug Fixes

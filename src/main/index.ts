@@ -31,6 +31,17 @@ import { ensureOfficeCliMcpRegistered } from './officeCliManager'
 import { startApiProxy, stopApiProxy } from './apiProxyServer'
 import { AgentGateway } from './agentGateway'
 
+/**
+ * macOS 的 Option + 字母会把 input.key 转成重音或特殊字符（如 Option+M → µ），
+ * 而 input.code 始终是物理按键。配置型快捷键优先兼容两种表示。
+ */
+function shortcutKeyMatches(input: Electron.Input, configuredKey: string): boolean {
+  const expected = configuredKey.trim().toLowerCase()
+  if (input.key.toLowerCase() === expected) return true
+  const physicalKey = input.code.replace(/^(Key|Digit)/, '').toLowerCase()
+  return physicalKey === expected
+}
+
 /** 一次性把旧路径的 token-data.json 迁移到新路径（打包版首次升级时） */
 function migrateLegacyTokenDataOnce(): void {
   const newPath = join(getConfigDir(), 'token-data.json')
@@ -218,17 +229,17 @@ function createWindow(): BrowserWindow {
     // [2026-06-09] Mac 上接受 Cmd（meta）；其他平台 meta 是 Win 键，仍只认 Ctrl
     const cmdOrCtrl = input.control || (process.platform === 'darwin' && input.meta)
     // Ctrl/Cmd+Shift+D — toggle embedded browser
-    if (input.type === 'keyDown' && cmdOrCtrl && input.shift && input.key.toLowerCase() === 'd') {
+    if (input.type === 'keyDown' && cmdOrCtrl && input.shift && input.code === 'KeyD') {
       event.preventDefault()
       toggleBrowserView(win)
     }
     // Ctrl/Cmd+Shift+Q — element picker
-    if (input.type === 'keyDown' && cmdOrCtrl && input.shift && input.key.toLowerCase() === 'q') {
+    if (input.type === 'keyDown' && cmdOrCtrl && input.shift && input.code === 'KeyQ') {
       event.preventDefault()
       void startElementPicker()
     }
     // [2026-05-01] 在主进程拦截 Ctrl/Cmd+Shift+C，绕过 Electron 菜单加速器
-    if (cmdOrCtrl && input.shift && !input.alt && input.type === 'keyDown' && input.key.toLowerCase() === 'c') {
+    if (cmdOrCtrl && input.shift && !input.alt && input.type === 'keyDown' && input.code === 'KeyC') {
       event.preventDefault()
       win.webContents.send('terminal:copy-selection')
     }
@@ -243,7 +254,8 @@ function createWindow(): BrowserWindow {
           (mods.includes('alt') === input.alt) &&
           (mods.includes('ctrl') === input.control) &&
           (mods.includes('shift') === input.shift) &&
-          input.key.toLowerCase() === key.toLowerCase()
+          // [2026-08-29] Option + 字母在 macOS 上 input.key 不是原字母。
+          shortcutKeyMatches(input, key)
         if (matches) {
           event.preventDefault()
           win.webContents.send('speech:toggle')

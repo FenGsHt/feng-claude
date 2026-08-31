@@ -116,9 +116,6 @@ jobs:
           - os: macos-latest
             platform: mac
             artifact: mac
-          - os: ubuntu-latest
-            platform: linux
-            artifact: linux
 
     runs-on: ${{ matrix.os }}
 
@@ -195,12 +192,6 @@ jobs:
           name: mac
           path: dist-build/mac
 
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux
-          path: dist-build/linux
-
       # [2026-04-23] 覆盖同名 asset，避免重复跑 workflow 时旧文件残留；与 action 默认一致但显式写出便于维护
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
@@ -208,8 +199,14 @@ jobs:
           tag_name: ${{ steps.tag.outputs.TAG }}
           overwrite: true
           files: |
-            dist-build/win/*
-            dist-build/mac/*
-            dist-build/linux/*
+            # Windows：安装器 + 自动更新所需的差分文件与元数据
+            dist-build/win/*-setup.exe
+            dist-build/win/*-setup.exe.blockmap
+            dist-build/win/latest.yml
+            # macOS：仅 Apple Silicon DMG；ZIP 及其元数据供应用内自动更新使用
+            dist-build/mac/*-arm64.dmg
+            dist-build/mac/*-arm64.zip
+            dist-build/mac/*-arm64.zip.blockmap
+            dist-build/mac/latest-mac.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
