@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.93 主要更新
+
+- **macOS Finder 拖放修复**：Finder 文件可再次直接拖入终端；复制文件后按 `Command+V` 和消息代理输入框粘贴文件也会正确插入 Claude 的 `@路径` 引用
+
 ### v0.7.92 主要更新
 
 - **发布包精简**：仅发布 Windows 安装包和 macOS Apple Silicon（arm64）DMG，不再构建 Linux、Windows portable 或 macOS Intel（x64）版本
@@ -279,6 +283,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.93 Highlights
+
+- **macOS Finder drag-and-drop fix**: files dropped from Finder, copied with `Command+V`, or pasted into the message gateway now correctly insert an `@path` reference for Claude
 
 ### v0.7.92 Highlights
 

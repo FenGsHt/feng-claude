@@ -23,6 +23,7 @@ import { useEmbedAwaitingReplyStore } from '../../store/embedAwaitingReplyStore'
 import { useTokenUsageStore } from '../../store/tokenUsageStore'
 import { useOsc9ProgressStore } from '../../store/osc9ProgressStore'
 import { formatTokenCount } from '../../lib/formatTokens'
+import { getElectronFilePath } from '../../lib/electronFilePath'
 import { useI18n } from '../../i18n'
 
 /*
@@ -520,7 +521,11 @@ export function EmbedSessionComposer({
       ? Array.from(items).filter((it) => it.type?.startsWith('image/'))
       : []
     const hasImage = imageItems.length > 0
-    const hasFileWithRef = files && files.length > 0 && (files[0] as File & { path?: string }).path
+    // Electron 43 不再可靠提供 File.path；Finder 复制的文件通过 webUtils 获取本地路径。
+    const pastedFilePaths = files
+      ? Array.from(files).map(getElectronFilePath).filter(Boolean)
+      : []
+    const hasFileWithRef = pastedFilePaths.length > 0
 
     if (!hasImage && !hasFileWithRef) return
 
@@ -550,13 +555,8 @@ export function EmbedSessionComposer({
       })
     }
 
-    // 处理本地文件（有 path 的）
-    if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i] as File & { path?: string }
-        if (f.path) filePaths.push(f.path)
-      }
-    }
+    // 处理 Finder/资源管理器复制的本地文件。
+    filePaths.push(...pastedFilePaths)
 
     if (pending === 0) flushRefs([], filePaths, insertPos, wd)
 

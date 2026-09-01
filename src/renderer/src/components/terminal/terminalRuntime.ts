@@ -12,6 +12,7 @@ import { markEmbedUserMessageSent } from '../../store/embedTurnLatencyStore'
 import { beginSlashPtyEchoRound, setEmbedSlashPtyEchoActive } from '../../lib/embedPtyTranscriptEcho'
 import { isBracketedPasteModeActive } from '../../lib/bracketedPasteMode'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
+import { getElectronFilePath } from '../../lib/electronFilePath'
 import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
 import { DARK_THEME, useResolvedTheme } from '../../hooks/useTheme'
 import { getThemeDefinition } from '../../theme/themeRegistry'
@@ -610,9 +611,11 @@ export function useXTerminal({ sessionId, active }: Props) {
         ? Array.from(items).find((it) => it.type?.startsWith('image/'))
         : undefined
 
-      // 检测有本地路径的文件（资源管理器复制）
-      const hasFileWithPath =
-        files && files.length > 0 && !!(files[0] as File & { path?: string }).path
+      // 检测有本地路径的文件（Finder/资源管理器复制）。Electron 43 不再可靠提供 File.path。
+      const pastedFilePaths = files
+        ? Array.from(files).map(getElectronFilePath).filter(Boolean)
+        : []
+      const hasFileWithPath = pastedFilePaths.length > 0
 
       if (!imgItem && !hasFileWithPath) return
 
@@ -623,11 +626,9 @@ export function useXTerminal({ sessionId, active }: Props) {
         useSessionStore.getState().sessions.find((s) => s.id === sessionId)?.workdir ?? ''
 
       // 本地文件（有 path）→ 直接格式化 @引用，发到 PTY（原有行为）
-      if (hasFileWithPath && files) {
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i] as File & { path?: string }
-          if (!f.path) continue
-          const ref = formatFileRefForClaudeCode(f.path, wd, false)
+      if (hasFileWithPath) {
+        for (const filePath of pastedFilePaths) {
+          const ref = formatFileRefForClaudeCode(filePath, wd, false)
           bufferUserInput(sessionId, ref)
           window.electronAPI?.sendInput(sessionId, `${ref} `)
         }

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.93] - 2026-09-01
+
+### 修复 | Bug Fixes
+- **macOS Finder 文件拖放**：改用 Electron 官方 `webUtils.getPathForFile` 获取本地文件路径，恢复 Finder 文件直接拖入终端、复制文件后按 `Command+V`，以及消息代理输入框粘贴文件的 `@路径` 引用
+
 ## [0.7.92] - 2026-08-31
 
 ### 发布 | Release

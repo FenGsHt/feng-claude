@@ -7,6 +7,7 @@ import {
 } from '../../lib/claudeRef'
 import { CC_SLASH_DRAG_MIME, CC_SLASH_PLAIN_PREFIX } from '../../lib/ccSlashDrag'
 import { injectEmbedDraft } from '../../lib/embedDraftBridge'
+import { getElectronFilePath } from '../../lib/electronFilePath'
 import { isOfficeFile } from '../office/officeFileDetector'
 import { focusTerminal } from './terminalRuntime'
 
@@ -39,13 +40,13 @@ export function TerminalDropZone({
     types.includes('text/uri-list') ||
     types.some((t) => t.toLowerCase() === 'files')
 
-  /** Electron 下 File 带 path；否则尝试 text/uri-list */
+  /** Electron 下通过 webUtils 读取 File 的本地路径；否则尝试 text/uri-list。 */
   const pathsFromOsDrop = (e: React.DragEvent): string[] => {
     const out: string[] = []
     const { files } = e.dataTransfer
     for (let i = 0; i < files.length; i++) {
-      const f = files[i] as File & { path?: string }
-      if (f.path) out.push(f.path)
+      const path = getElectronFilePath(files[i])
+      if (path) out.push(path)
     }
     if (out.length > 0) return out
     const raw = e.dataTransfer.getData('text/uri-list')

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC } from '../renderer/src/types/ipc'
 import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, PtyInputAckPayload, SessionCreateResult, ToolCallPayload, AgentSendPayload, AgentSendResult, AgentEventPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
@@ -22,6 +22,9 @@ const electronAPI = {
   writeClipboardText: (text: string): void => {
     ipcRenderer.send(IPC.CLIPBOARD_WRITE_TEXT, text)
   },
+
+  // [2026-09-01] Electron 43 起 File.path 不再可靠；Finder 拖放须通过官方 webUtils 取得本地路径。
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   saveClipboardImage: (base64Data: string, workdir?: string): Promise<{ success: boolean; path: string }> => {
     return ipcRenderer.invoke(IPC.CLIPBOARD_SAVE_IMAGE, base64Data, workdir)

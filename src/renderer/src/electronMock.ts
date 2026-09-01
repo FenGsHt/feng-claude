@@ -17,6 +17,7 @@ export function injectMockElectronAPI(): void {
       isPackaged: false, // 浏览器预览时视为非打包版本
       readClipboardTextSync: () => '',
       writeClipboardText: (_text: string) => {},
+      getPathForFile: (_file: File) => '',
       saveClipboardImage: async (_base64: string) => ({ success: false, path: '' }),
       deleteFile: async (_path: string) => ({ success: true }),
       revealFile: async (_path: string) => ({ success: true }),
