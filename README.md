@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.94 主要更新
+
+- **macOS 调试浏览器关闭修复**：关闭调试浏览器后会立即恢复终端布局；从程序坞重新打开窗口也不会在右侧留下黑色空白
+
 ### v0.7.93 主要更新
 
 - **macOS Finder 拖放修复**：Finder 文件可再次直接拖入终端；复制文件后按 `Command+V` 和消息代理输入框粘贴文件也会正确插入 Claude 的 `@路径` 引用
@@ -283,6 +287,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.94 Highlights
+
+- **macOS debug-browser close fix**: closing the embedded debug browser now restores the terminal layout immediately, including after reopening the window from the Dock—no right-side black gap remains
 
 ### v0.7.93 Highlights
 

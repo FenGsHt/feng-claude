@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.94] - 2026-09-04
+
+### 修复 | Bug Fixes
+- **macOS 调试浏览器关闭残留空白**：关闭内嵌调试浏览器时，向所有存活窗口同步关闭状态；从程序坞重开窗口后，终端右侧不再残留浏览器宽度对应的黑色空白
+
 ## [0.7.93] - 2026-09-01
 
 ### 修复 | Bug Fixes

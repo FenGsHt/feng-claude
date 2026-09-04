@@ -271,14 +271,16 @@ let overlayHiddenWhileVisible = false
 // ── 布局计算 ───────────────────────────────────────────────────────
 
 function notifyBrowserState(): void {
-  const wins = BrowserWindow.getAllWindows()
-  const mainWin = wins[0]
-  if (mainWin?.webContents && state.view) {
-    const bounds = mainWin.getContentBounds()
+  // [2026-09-04] macOS 点 Dock 重开应用时，Electron 主进程会保留，而 state.mainWin
+  // 可能暂时仍指向旧窗口。只发给它会使新窗口的 AppShell 收不到 visible:false，留下
+  // 浏览器宽度对应的黑色空白。向所有存活窗口同步，实际承载 AppShell 的窗口必能复位。
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) continue
+    const bounds = win.getContentBounds()
     // [2026-05-01] 与 setBounds 一致，使用去掉 Tools 面板后的有效宽度
     const effectiveWidth = bounds.width - state.toolsPanelWidth
     const viewW = state.visible ? Math.round(effectiveWidth * state.splitRatio) : 0
-    mainWin.webContents.send('browser-view:state-changed', {
+    win.webContents.send('browser-view:state-changed', {
       visible: state.visible,
       width: viewW
     })
