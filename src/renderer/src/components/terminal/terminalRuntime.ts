@@ -13,7 +13,6 @@ import { beginSlashPtyEchoRound, setEmbedSlashPtyEchoActive } from '../../lib/em
 import { isBracketedPasteModeActive } from '../../lib/bracketedPasteMode'
 import { formatFileRefForClaudeCode } from '../../lib/claudeRef'
 import { getElectronFilePath } from '../../lib/electronFilePath'
-import { isPtyAlternateScreenActive } from '../../store/ptyAlternateScreenStore'
 import { DARK_THEME, useResolvedTheme } from '../../hooks/useTheme'
 import { getThemeDefinition } from '../../theme/themeRegistry'
 
@@ -339,50 +338,53 @@ export function commitUserPrompt(sessionId: string): void {
 export function submitEmbedSessionInput(sessionId: string, text: string): void {
   const raw = text.replace(/\r\n/g, '\n').trimEnd()
   if (!raw.length) return
+  const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId)
+  if (!session) return
   /* [2026-07-31] 外嵌聊天不再模拟键盘输入。终端/TUI 保持在经典终端模式中使用；
    * 这里直接把消息交给主进程网关，stdout 只按 Claude stream-json 解析。 */
   const firstLine = raw.split('\n')[0]?.trimStart() ?? ''
-  if (/^\/[a-zA-Z]/.test(firstLine)) {
+  if (session.embedMode && /^\/[a-zA-Z]/.test(firstLine)) {
     useTranscriptStore.getState().append(sessionId, [{
       kind: 'event',
       text: '代理模式不执行终端斜杠命令；请切换到经典终端模式后使用。'
     }])
     return
   }
-  const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId)
-  if (!session) return
-  useEmbedInterruptSuppressStore.getState().clear(sessionId)
-  bufferUserInput(sessionId, `${raw}\n`)
-  useSessionStore.getState().recordEmbedLastUserPrompt(sessionId, raw)
-  useTranscriptStore.getState().append(sessionId, [{ kind: 'user', text: raw, clientEcho: true }])
-  useEmbedAwaitingReplyStore.getState().markPending(sessionId)
-  markEmbedUserMessageSent(sessionId)
-  void window.electronAPI.agentSend({
-    sessionId,
-    workdir: session.workdir,
-    profileId: session.profileId,
-    text: raw
-  }).then((result) => {
-    if (result.accepted) return
-    useEmbedAwaitingReplyStore.getState().clearPending(sessionId)
-    useTranscriptStore.getState().append(sessionId, [{
-      kind: 'event',
-      text: `消息代理未启动：${result.error ?? '未知错误'}`
-    }])
-  }).catch((error: unknown) => {
-    useEmbedAwaitingReplyStore.getState().clearPending(sessionId)
-    useTranscriptStore.getState().append(sessionId, [{
-      kind: 'event',
-      text: `消息代理未启动：${error instanceof Error ? error.message : String(error)}`
-    }])
-  })
-  // 保留旧路径只作旧 preload 热更新兼容；正常版本始终具备 agentSend。
-  if (window.electronAPI.agentSend) return
 
-  /* Legacy PTY input path retained below temporarily for reference while the
-   * message gateway replaces the old external-output implementation. */
-  /* [2026-05-06] 备用缓冲区（全屏 TUI）下整行提交不会进入应用逻辑；由检测层阻断避免错乱 */
-  if (isPtyAlternateScreenActive(sessionId)) return
+  // [2026-09-09] 触发器/待办也复用此入口。此前无论会话显示模式如何都启动
+  // 独立消息代理；经典终端因而收不到倒计时到期后的“继续”等指令，用户看起来像
+  // 触发器完全失效。只在消息代理会话中调用 agent gateway，经典终端继续走下方 PTY。
+  if (session.embedMode && window.electronAPI.agentSend) {
+    useEmbedInterruptSuppressStore.getState().clear(sessionId)
+    bufferUserInput(sessionId, `${raw}\n`)
+    useSessionStore.getState().recordEmbedLastUserPrompt(sessionId, raw)
+    useTranscriptStore.getState().append(sessionId, [{ kind: 'user', text: raw, clientEcho: true }])
+    useEmbedAwaitingReplyStore.getState().markPending(sessionId)
+    markEmbedUserMessageSent(sessionId)
+    void window.electronAPI.agentSend({
+      sessionId,
+      workdir: session.workdir,
+      profileId: session.profileId,
+      text: raw
+    }).then((result) => {
+      if (result.accepted) return
+      useEmbedAwaitingReplyStore.getState().clearPending(sessionId)
+      useTranscriptStore.getState().append(sessionId, [{
+        kind: 'event',
+        text: `消息代理未启动：${result.error ?? '未知错误'}`
+      }])
+    }).catch((error: unknown) => {
+      useEmbedAwaitingReplyStore.getState().clearPending(sessionId)
+      useTranscriptStore.getState().append(sessionId, [{
+        kind: 'event',
+        text: `消息代理未启动：${error instanceof Error ? error.message : String(error)}`
+      }])
+    })
+    return
+  }
+
+  // 经典终端（包括 macOS 默认模式）：将指令写入正在运行的 Claude PTY。这里不能因
+  // Claude Code 处于 TUI/备用屏幕而拒绝写入；触发器和待办正需要在该状态下自动投递。
   /* [2026-05-08] 新一轮用户提交时取消「中断后隐藏 loading」抑制，否则永远不显示处理中 */
   useEmbedInterruptSuppressStore.getState().clear(sessionId)
   // [2026-05-12] 只有 /word（字母开头）才是 Claude Code slash 命令；/** / /* 路径等不能误判

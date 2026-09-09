@@ -8,6 +8,10 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.95 主要更新
+
+- **经典终端触发器修复**：倒计时、定时和重复任务会正确发送到当前 Claude Code 终端；消息代理模式仍保持独立投递
+
 ### v0.7.94 主要更新
 
 - **macOS 调试浏览器关闭修复**：关闭调试浏览器后会立即恢复终端布局；从程序坞重新打开窗口也不会在右侧留下黑色空白
@@ -287,6 +291,10 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.95 Highlights
+
+- **Classic-terminal trigger fix**: countdown, scheduled, and repeating triggers now deliver to the active Claude Code terminal; message-gateway sessions continue to use their isolated delivery path
 
 ### v0.7.94 Highlights
 

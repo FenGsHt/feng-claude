@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.95] - 2026-09-09
+
+### 修复 | Bug Fixes
+- **经典终端触发器执行**：倒计时、定时与重复触发器会按会话模式投递；经典终端直接写入当前 Claude Code PTY，消息代理模式才使用独立网关，Claude Code 处于 TUI 时也能正常执行
+
 ## [0.7.94] - 2026-09-04
 
 ### 修复 | Bug Fixes
