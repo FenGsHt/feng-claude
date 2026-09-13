@@ -3,7 +3,7 @@ import { IPC } from '../renderer/src/types/ipc'
 import type { PtyOutputPayload, PtyStatusPayload, PtyIntrSentPayload, PtyInputAckPayload, SessionCreateResult, ToolCallPayload, AgentSendPayload, AgentSendResult, AgentEventPayload } from '../renderer/src/types/ipc'
 import type { FileTreeNode } from '../renderer/src/types/fs'
 import type { HistoryRecord } from '../renderer/src/types/session'
-import type { ClaudeSettings, ApiProfile, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
+import type { ClaudeSettings, ApiProfile, CliProvider, TelegramChannelSessionConfig } from '../renderer/src/types/settings'
 import type { PersistedWorkspace } from '../renderer/src/types/workspace'
 import type { TokenUsageUpdatePayload, PluginEntry, McpEntry, McpServerConfig, SkillEntry, PetAskPayload, PetAskResult, PetGameCommentPayload, ContentBankGeneratePayload, ContentBankGenerateResult, GitWorktreeListResult, GitWorktreeCreatePayload, GitWorktreeCreateResult, GitWorktreeRemovePayload, GitWorktreeRemoveResult, GitBranchListResult, GitMergeBranchPayload, GitMergeBranchResult, GitUpdateWorktreePayload, GitUpdateWorktreeResult, GitUnmergedCommitsPayload, GitUnmergedCommitsResult, PetLogRecord, UpdateStatusPayload, UpdateProgressPayload, ProfileAddPayload, ProfileUpdatePayload, ProfileDeletePayload, ProfileSetActivePayload, ProfileResult, TestFrameworkInfo, TestOutputPayload, TestStatusPayload, TestRunPayload, ClaudeTranscriptPayload, TelegramChannelCheckResult, WhatsNewShouldShowResult, OfficeCLIStatus, OfficePreviewOpenResult } from '../renderer/src/types/ipc'
 
@@ -44,9 +44,10 @@ const electronAPI = {
     resume?: boolean,
     profileId?: string,
     shellOnly?: boolean,
-    telegramChannel?: TelegramChannelSessionConfig
+    telegramChannel?: TelegramChannelSessionConfig,
+    cliProvider?: CliProvider
   ): Promise<SessionCreateResult> =>
-    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId, shellOnly, telegramChannel }),
+    ipcRenderer.invoke(IPC.SESSION_CREATE, { workdir, resume, profileId, shellOnly, telegramChannel, cliProvider }),
 
   closeSession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC.SESSION_CLOSE, { sessionId }),

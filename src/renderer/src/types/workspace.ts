@@ -1,4 +1,4 @@
-import type { TelegramChannelSessionConfig } from './settings'
+import type { CliProvider, TelegramChannelSessionConfig } from './settings'
 
 /** 持久化到磁盘的 workspace 快照（与会话 UUID 无关，用 slot 指向 sessionWorkdirs 下标） */
 
@@ -29,6 +29,8 @@ export interface PersistedWorkspace {
   telegramChannelSlots?: Array<TelegramChannelSessionConfig | undefined>
   /** [2026-05-11] 每个 slot 的外嵌模式（终端 vs 外嵌 UI） */
   embedModeSlots?: boolean[]
+  /** 每个标签创建时锁定的 CLI，恢复后不受当前全局下拉框影响。 */
+  cliProviderSlots?: CliProvider[]
   layoutRoot: PersistedPaneNode | null
   /** [2026-06-25] 停泊的分屏组（切到别的 tab 时当前分屏组会被停泊）。不持久化会导致重启后分屏组
    *  的会话变回扁平独立 tab。仅含 split 树（单格 leaf 无需停泊）。 */

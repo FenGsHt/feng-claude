@@ -7,6 +7,16 @@ import { v4 as uuidv4 } from 'uuid'
  */
 export type ClaudePermissionPreset = 'acceptEdits' | 'bypassPermissions'
 
+/** 终端中启动的 Coding Agent CLI。Claude 保持默认，Codex 使用本机 `codex login` 的登录态。 */
+export type CliProvider = 'claude' | 'codex'
+
+export interface CodexCliSettings {
+  /** 空值时由 ~/.codex/config.toml 决定模型。 */
+  model?: string
+  /** 空值时由 Codex 配置决定。 */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
+}
+
 export type AppLanguage = 'zh' | 'en'
 
 /**
@@ -152,6 +162,10 @@ export interface TelegramChannelSessionConfig {
 
 export interface ClaudeSettings {
   language: AppLanguage
+  /** 当前新建会话所使用的 CLI；历史配置缺失时一律回退 Claude。 */
+  cliProvider?: CliProvider
+  /** Codex app-server / CLI 的可选会话覆盖项。 */
+  codex?: CodexCliSettings
   permissionPreset: ClaudePermissionPreset
   /** [2026-04-29] UI 主题，存入 electron-store 以便跨重启持久化 */
   theme?: ThemeMode
@@ -161,6 +175,8 @@ export interface ClaudeSettings {
    * [2026-05-06] Beta：用应用内面板展示 Claude Code 会话 JSONL 中的对话摘要（需开启后才解析与推送，不影响默认终端）
    */
   embedClaudeOutputBeta?: boolean
+  /** Codex app-server 的结构化消息代理；仅 Codex 模式生效。 */
+  embedCodexOutputBeta?: boolean
   /**
    * 填项目根路径（内含 `.claude/skills`）。非空时启动 Claude 附加 `--add-dir`，
    * 任意 cwd 会话也会合并该目录下的 skills（见 Claude Code 文档）。
@@ -264,12 +280,15 @@ const DEFAULT_PROFILE_ID = 'default'
 
 export const DEFAULT_SETTINGS: ClaudeSettings = {
   language: 'zh',
+  cliProvider: 'claude',
   permissionPreset: 'acceptEdits',
   sharedSkillAddDir: '',
   skipDangerousModePermissionPrompt: false,
   profiles: [createDefaultProfile('Default', DEFAULT_PROFILE_ID)],
   activeProfileId: DEFAULT_PROFILE_ID,
   embedClaudeOutputBeta: false,
+  embedCodexOutputBeta: false,
+  codex: {},
   telegramChannel: {
     enabled: false,
     defaultStateDirId: 'telegram',
@@ -296,6 +315,7 @@ export function migrateOldSettings(old: Record<string, unknown>): ClaudeSettings
   }
   return {
     language: String(old.language ?? 'zh') as AppLanguage,
+    cliProvider: 'claude',
     permissionPreset: String(old.permissionPreset ?? 'acceptEdits') as ClaudePermissionPreset,
     sharedSkillAddDir: String(old.sharedSkillAddDir ?? ''),
     skipDangerousModePermissionPrompt: Boolean(old.skipDangerousModePermissionPrompt),

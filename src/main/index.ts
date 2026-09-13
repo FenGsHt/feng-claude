@@ -30,6 +30,7 @@ import { ensureBrowserToolsMcpRegistered, ensureVisualAgentMcpRegistered } from 
 import { ensureOfficeCliMcpRegistered } from './officeCliManager'
 import { startApiProxy, stopApiProxy } from './apiProxyServer'
 import { AgentGateway } from './agentGateway'
+import { CodexGateway } from './codexGateway'
 
 /**
  * macOS 的 Option + 字母会把 input.key 转成重音或特殊字符（如 Option+M → µ），
@@ -79,6 +80,7 @@ function migrateLegacyScrollbackOnce(): void {
 
 let ptyManager: PtyManager
 let agentGateway: AgentGateway
+let codexGateway: CodexGateway
 let mainWindow: BrowserWindow
 let isQuitting = false
 let shutdownCleanupStarted = false
@@ -98,6 +100,7 @@ function cleanupForAppExit(): void {
   try { ptyManager?.flushAll() } catch { /* ignore */ }
   try { ptyManager?.closeAllForAppExit() } catch { /* ignore */ }
   try { agentGateway?.closeAll() } catch { /* ignore */ }
+  try { codexGateway?.closeAll() } catch { /* ignore */ }
 }
 
 /** electron-vite sends SIGINT/SIGTERM to the Electron child when its dev
@@ -168,11 +171,12 @@ function createWindow(): BrowserWindow {
   )
   ptyManager = new PtyManager(win, settingsStore)
   agentGateway = new AgentGateway(win, settingsStore)
+  codexGateway = new CodexGateway(win, settingsStore)
   const fsHandler = new FileSystemHandler()
   const historyStore = new HistoryStore()
   const testManager = new TestManager(win)
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager, agentGateway)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager, agentGateway, codexGateway)
 
   // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
   mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
@@ -356,5 +360,6 @@ app.on('will-quit', () => {
 app.on('window-all-closed', () => {
   ptyManager?.closeAll()
   agentGateway?.closeAll()
+  codexGateway?.closeAll()
   if (process.platform !== 'darwin') app.quit()
 })

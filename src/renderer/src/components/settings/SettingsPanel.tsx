@@ -370,6 +370,73 @@ export function SettingsPanel(): React.ReactElement {
         </div>
       </div>
 
+      {/* CLI provider */}
+      <div className="px-3 pb-2 border-t border-claude-border pt-2">
+        <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
+          {lang === 'zh' ? '终端 Agent' : 'Terminal agent'}
+        </div>
+        <select
+          value={form.cliProvider ?? 'claude'}
+          onChange={(e) => {
+            const cliProvider = e.target.value as ClaudeSettings['cliProvider']
+            setForm((prev) => ({
+              ...prev,
+              cliProvider,
+              // 消息代理是 Claude stream-json 协议，切换 Codex 时绝不能遗留开启状态。
+              embedClaudeOutputBeta: cliProvider === 'codex' ? false : prev.embedClaudeOutputBeta
+            }))
+            setSaved(false)
+          }}
+          className="field-input mt-1"
+        >
+          <option value="claude">Claude Code（默认）</option>
+          <option value="codex">Codex CLI</option>
+        </select>
+        <p className="mt-1 text-[9px] leading-snug text-claude-muted">
+          {(form.cliProvider ?? 'claude') === 'codex'
+            ? (lang === 'zh'
+              ? '新会话将运行本机 codex，并使用其 ~/.codex 登录态与配置。消息代理、工具事件与 token 统计已适配 Codex；Telegram Channel 和 Claude API 配置仅适用于 Claude。请先在系统终端执行 codex login。'
+              : 'New sessions run local codex with its ~/.codex login and config. Message gateway, tool events, and token accounting support Codex; Telegram Channel and Claude API profiles remain Claude-only. Run codex login first.')
+            : (lang === 'zh'
+              ? '新会话默认运行 Claude Code；API 配置、消息代理和 Telegram Channel 均适用于 Claude。'
+              : 'New sessions run Claude Code; API profiles, message gateway, and Telegram Channel apply to Claude.')}
+        </p>
+        {(form.cliProvider ?? 'claude') === 'codex' && (
+          <div className="mt-2 space-y-2 rounded border border-claude-border bg-claude-bg/40 p-2">
+            <label className="block text-[10px] text-claude-muted">
+              {lang === 'zh' ? 'Codex 模型（留空使用 Codex 默认）' : 'Codex model (empty uses Codex default)'}
+              <input
+                value={form.codex?.model ?? ''}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, codex: { ...prev.codex, model: e.target.value } }))
+                  setSaved(false)
+                }}
+                placeholder={lang === 'zh' ? '例如 gpt-5.6-terra' : 'e.g. gpt-5.6-terra'}
+                className="field-input mt-1 w-full"
+              />
+            </label>
+            <label className="block text-[10px] text-claude-muted">
+              {lang === 'zh' ? '推理强度' : 'Reasoning effort'}
+              <select
+                value={form.codex?.reasoningEffort ?? ''}
+                onChange={(e) => {
+                  const effort = e.target.value || undefined
+                  setForm((prev) => ({ ...prev, codex: { ...prev.codex, reasoningEffort: effort as NonNullable<ClaudeSettings['codex']>['reasoningEffort'] } }))
+                  setSaved(false)
+                }}
+                className="field-input mt-1 w-full"
+              >
+                <option value="">{lang === 'zh' ? '跟随 Codex 配置' : 'Use Codex configuration'}</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+              </select>
+            </label>
+          </div>
+        )}
+      </div>
+
       {/* Developer Mode toggle */}
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <label className="flex items-center justify-between cursor-pointer">
@@ -393,7 +460,7 @@ export function SettingsPanel(): React.ReactElement {
         </p>
       </div>
 
-      {/* [2026-07-31] 消息代理模式：GUI 走 Claude stream-json，不再解析 PTY 控制码。 */}
+      {/* 消息代理模式：Codex 走 app-server，Claude 走 stream-json，均不解析 PTY 控制码。 */}
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <label className="flex items-center justify-between cursor-pointer">
           <span className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">
@@ -402,19 +469,26 @@ export function SettingsPanel(): React.ReactElement {
           <div className="relative w-8 h-4 rounded-full bg-claude-border transition-colors"
             style={{ backgroundColor: form.embedClaudeOutputBeta ? '#f59e0b' : undefined }}>
             <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-              style={{ transform: form.embedClaudeOutputBeta ? 'translateX(16px)' : 'translateX(0)' }} />
+              style={{ transform: ((form.cliProvider ?? 'claude') === 'codex' ? form.embedCodexOutputBeta : form.embedClaudeOutputBeta) ? 'translateX(16px)' : 'translateX(0)' }} />
           </div>
           <input
             type="checkbox"
             className="sr-only"
-            checked={!!form.embedClaudeOutputBeta}
-            onChange={(e) => handleChange('embedClaudeOutputBeta' as never, e.target.checked as never)}
+            checked={(form.cliProvider ?? 'claude') === 'codex' ? !!form.embedCodexOutputBeta : !!form.embedClaudeOutputBeta}
+            onChange={(e) => handleChange(
+              ((form.cliProvider ?? 'claude') === 'codex' ? 'embedCodexOutputBeta' : 'embedClaudeOutputBeta') as never,
+              e.target.checked as never
+            )}
           />
         </label>
         <p className="mt-1 text-[9px] leading-snug text-claude-muted">
-          {lang === 'zh'
-            ? '聊天通过结构化消息流与 Claude 通信，不再模拟键盘或解析终端控制码。终端交互请切回经典终端模式。'
-            : 'Chat uses Claude structured message streams instead of simulated keystrokes or terminal control codes. Switch to classic terminal for TUI interaction.'}
+          {(form.cliProvider ?? 'claude') === 'codex'
+            ? (lang === 'zh'
+              ? '聊天通过 Codex app-server 的线程、消息和工具事件通信，并同步该线程的 token 用量；不再模拟键盘或解析终端控制码。'
+              : 'Chat uses Codex app-server thread, message, and tool events with per-thread token usage instead of simulated keystrokes or terminal parsing.')
+            : (lang === 'zh'
+              ? '聊天通过结构化消息流与 Claude 通信，不再模拟键盘或解析终端控制码。终端交互请切回经典终端模式。'
+              : 'Chat uses Claude structured message streams instead of simulated keystrokes or terminal control codes. Switch to classic terminal for TUI interaction.')}
         </p>
       </div>
 
@@ -499,6 +573,13 @@ export function SettingsPanel(): React.ReactElement {
             <span className="text-[9px] text-orange-400">{telegramReconnectResult}</span>
           )}
         </div>
+        {(form.cliProvider ?? 'claude') === 'codex' && (
+          <p className="mb-2 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[9px] leading-snug text-amber-300">
+            {lang === 'zh'
+              ? '当前 Telegram Channel 使用 Claude 官方插件，不能附着到 Codex。切回 Claude 后才会启用；Codex 的 Telegram 中继需要独立的 Bot 授权与访问白名单。'
+              : 'Telegram Channel uses Claude’s official plugin and cannot attach to Codex. Switch back to Claude to enable it; a Codex relay needs its own bot authorization and access allowlist.'}
+          </p>
+        )}
         <label className="mb-2 flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"

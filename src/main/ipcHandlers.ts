@@ -27,6 +27,7 @@ import { checkForUpdates, downloadUpdate, installUpdate } from './autoUpdater'
 import { PetLogStore } from './petLogStore'
 import { getLastSeenWhatsNewVersion, setLastSeenWhatsNewVersion } from './appMetaStore'
 import type { AgentGateway } from './agentGateway'
+import type { CodexGateway } from './codexGateway'
 
 const petLogStore = new PetLogStore()
 
@@ -174,7 +175,8 @@ export function registerIpcHandlers(
   workspaceStore: WorkspaceStore,
   sessionWatcher: ClaudeSessionWatcher,
   testManager: TestManager,
-  agentGateway: AgentGateway
+  agentGateway: AgentGateway,
+  codexGateway: CodexGateway
 ): void {
   // macOS keeps the main process alive after the last window closes. Reopening
   // from the Dock creates fresh window-scoped managers, so replace the previous
@@ -337,6 +339,18 @@ export function registerIpcHandlers(
     const prev = settingsStore.get()
     // Merge with defaults to sanitize — unknown/missing keys fall back to safe values
     const merged = { ...DEFAULT_SETTINGS, ...(settings && typeof settings === 'object' ? settings : {}) }
+    merged.cliProvider = merged.cliProvider === 'codex' ? 'codex' : 'claude'
+    // Claude 与 Codex 各自保留独立的消息网关；Telegram Channel 仍是 Claude
+    // 官方插件专属，切换 Codex 时不能继续使用 Claude 的 stream-json 开关。
+    if (merged.cliProvider === 'codex') merged.embedClaudeOutputBeta = false
+    const codex = merged.codex && typeof merged.codex === 'object' ? merged.codex : {}
+    merged.codex = {
+      model: typeof codex.model === 'string' ? codex.model : '',
+      reasoningEffort: ['low', 'medium', 'high', 'xhigh'].includes(String(codex.reasoningEffort))
+        ? codex.reasoningEffort
+        : undefined
+    }
+    merged.embedCodexOutputBeta = merged.embedCodexOutputBeta === true
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
     // [2026-04-29] 同步到 CLAUDE_CONFIG_DIR/settings.json，Claude Code 才识别 skipDangerousModePermissionPrompt
     mergeSkipDangerousPromptFromApp(Boolean(merged.skipDangerousModePermissionPrompt))
@@ -347,7 +361,7 @@ export function registerIpcHandlers(
       stopApiProxy()
     }
     /* [2026-05-06] 首次打开外嵌 Beta：把已在跑的会话对应项目 JSONL 全量推到前端 */
-    if (merged.embedClaudeOutputBeta === true && prev.embedClaudeOutputBeta !== true) {
+    if (merged.cliProvider === 'claude' && merged.embedClaudeOutputBeta === true && prev.embedClaudeOutputBeta !== true) {
       try {
         sessionWatcher.hydrateAllActiveTranscripts()
       } catch (e) {
@@ -418,6 +432,12 @@ export function registerIpcHandlers(
       const profileId = payload.profileId as string | undefined
       const shellOnly = payload.shellOnly === true
       const settings = settingsStore.get()
+      // Workspace restores carry a provider snapshot. A previously opened Codex
+      // tab must not silently turn into Claude merely because the global picker
+      // was changed after it was saved.
+      const sessionSettings = payload.cliProvider
+        ? { ...settings, cliProvider: payload.cliProvider }
+        : settings
 
       // [2026-04-28] 获取指定的 profile 或使用全局激活的
       // [2026-05-27] OFFICIAL_PROFILE_ID 是虚拟 profile，不在 profiles 数组中，需显式处理
@@ -433,17 +453,20 @@ export function registerIpcHandlers(
         sessionId,
         workdir,
         profile,
-        settings,
+        sessionSettings,
         resume,
         shellOnly,
         payload.telegramChannel
       )
       // Start watching JSONL for accurate per-session token counting
-      const embedBeta = settings.embedClaudeOutputBeta === true
-      sessionWatcher.watchSession(sessionId, workdir, { scrollbackBase64: embedBeta ? scrollback : null, shellOnly })
+      const isClaudeCli = sessionSettings.cliProvider !== 'codex'
+      const embedBeta = isClaudeCli && sessionSettings.embedClaudeOutputBeta === true
+      if (isClaudeCli) {
+        sessionWatcher.watchSession(sessionId, workdir, { scrollbackBase64: embedBeta ? scrollback : null, shellOnly })
+      }
       // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
       // ensureClaudeHudPluginDefaults()
-      scheduleEnsureClaudeHudAfterSession()
+      if (isClaudeCli) scheduleEnsureClaudeHudAfterSession()
       return {
         ok: true as const,
         sessionId,
@@ -452,7 +475,8 @@ export function registerIpcHandlers(
         scrollback,
         profileId: profile.id,
         telegramChannel: result.telegramChannel,
-        iterm2Mode: (result as any).iterm2Mode ?? false
+        iterm2Mode: (result as any).iterm2Mode ?? false,
+        cliProvider: sessionSettings.cliProvider === 'codex' ? 'codex' : 'claude'
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -477,6 +501,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.SESSION_CLOSE, async (_e, { sessionId }) => {
     agentGateway.close(sessionId)
+    codexGateway.close(sessionId)
     ptyManager.closeSession(sessionId)
     sessionWatcher.unwatchSession(sessionId)
     return { success: true }
@@ -484,12 +509,13 @@ export function registerIpcHandlers(
 
   // [2026-07-31] 外嵌消息模式：每个 GUI session 独立排队，不把文本写进 PTY。
   ipcMain.handle(IPC.AGENT_SEND, async (_e, payload) => {
+    if (payload.provider === 'codex') return codexGateway.enqueue(payload)
     sessionWatcher.unwatchSession(payload.sessionId)
     return agentGateway.enqueue(payload)
   })
 
   ipcMain.handle(IPC.AGENT_CANCEL, async (_e, { sessionId }) => ({
-    cancelled: agentGateway.cancel(sessionId)
+    cancelled: agentGateway.cancel(sessionId) || codexGateway.cancel(sessionId)
   }))
 
   // ── PTY I/O ─────────────────────────────────────────────────

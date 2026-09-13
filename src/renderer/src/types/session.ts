@@ -1,4 +1,4 @@
-import type { TelegramChannelSessionConfig } from './settings'
+import type { CliProvider, TelegramChannelSessionConfig } from './settings'
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool_result'
 export type MessageStatus = 'pending' | 'streaming' | 'done' | 'error'
@@ -37,6 +37,8 @@ export interface Session {
   /** [2026-06-11] 启动时该 profile 的名称快照；标签徽章用它而非实时读设置，
    *  否则在设置里改名/换模型后会错误地改动已运行 session 的徽章 */
   profileName?: string
+  /** 创建时锁定的 CLI，避免后来切换全局设置影响已有会话。 */
+  cliProvider?: CliProvider
   /** [2026-05-06] 纯 Shell 会话：不自动启动 Claude Code */
   shellOnly?: boolean
   /** [2026-05-08] 官方 Telegram Channel：每会话独立 token/stateDir */

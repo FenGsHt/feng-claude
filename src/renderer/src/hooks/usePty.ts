@@ -357,7 +357,11 @@ export function usePty(): void {
         const session = useSessionStore.getState().sessions.find(s => s.id === sessionId)
         // [2026-06-16] 模型守卫：归到官方但 model 非 claude-* 时，按模型唯一匹配改归正确 profile，
         // 防止第三方模型（qwen/glm 等）token 因 primary 归因漏进官方配置桶
-        const profileId = reattributeProfileByModel(session?.profileId, model)
+        // Codex 的 token 来自本机 codex login / ChatGPT entitlement，不属于当前
+        // Claude API profile。仍按 model 记录总量，但不能把它伪造为某个 API 配置的消耗。
+        const profileId = session?.cliProvider === 'codex'
+          ? undefined
+          : reattributeProfileByModel(session?.profileId, model)
         useGlobalTokenStore.getState().ingest({
           input,
           output,

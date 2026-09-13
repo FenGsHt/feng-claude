@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Session, HistoryRecord } from '../types/session'
-import type { TelegramChannelSessionConfig, ClaudeSettings } from '../types/settings'
+import type { CliProvider, TelegramChannelSessionConfig, ClaudeSettings } from '../types/settings'
 import { OFFICIAL_PROFILE_ID, OFFICIAL_PROFILE } from '../types/settings'
 import type { PaneNode, CreateSessionMode } from '../types/paneLayout'
 import {
@@ -154,7 +154,7 @@ interface SessionStore {
    * @param profileId [2026-04-28] 指定使用的 API profile ID（可选）
    * @param shellOnly [2026-05-06] true 时仅打开 Shell，不自动启动 Claude Code
    */
-  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string, shellOnly?: boolean, telegramChannel?: TelegramChannelSessionConfig) => Promise<void>
+  createSession: (workdir: string, mode?: CreateSessionMode, splitFromSessionId?: string, resume?: boolean, profileId?: string, shellOnly?: boolean, telegramChannel?: TelegramChannelSessionConfig, cliProvider?: CliProvider) => Promise<void>
   closeSession: (id: string) => void
   setActiveSession: (id: string) => void
   /** [2026-06-16] 保存分屏拖动比例（path 为分屏树路径，sizes 为两侧百分比），用于切换窗口后还原 */
@@ -206,13 +206,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     resume?: boolean,
     profileId?: string,
     shellOnly?: boolean,
-    telegramChannel?: TelegramChannelSessionConfig
+    telegramChannel?: TelegramChannelSessionConfig,
+    cliProvider?: CliProvider
   ) => {
     /* [2026-04-23] 原先分屏时用「锚点 session 的 workdir」覆盖入参 workdir，导致用户在分屏对话框里选的目录/
      * 「其他文件夹」始终被忽略，PTY 永远在旧目录创建。
      * 正确行为：始终以调用方传入的 workdir 作为会话目录（分屏仅从 splitFromSessionId 决定插入位置）。
      */
-    const raw = await window.electronAPI.createSession(workdir, resume, profileId, shellOnly, telegramChannel)
+    const raw = await window.electronAPI.createSession(workdir, resume, profileId, shellOnly, telegramChannel, cliProvider)
     const result = normalizeCreateSessionResult(raw, workdir)
     /* [2026-04-23] 原假定 invoke 恒成功；主进程 PTY 失败时改为 ok 判别。
      * [2026-04-23] 若在 !ok 时 throw，App 启动与 restoreFromHistory 等路径未全部 try/catch，会 Uncaught (in promise)；失败时仅打日志并 return */
@@ -230,9 +231,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ? resolveProfileName(launchSettings, sessionProfileId)
       : undefined
     // [2026-05-11] 新 session 默认继承当前活跃 session 的外嵌/终端模式
-    const defaultEmbedMode = get().activeSessionId
-      ? get().sessions.find((s) => s.id === get().activeSessionId)?.embedMode ?? false
-      : (launchSettings?.embedClaudeOutputBeta === true)
+    const resolvedCliProvider = cliProvider ?? (launchSettings?.cliProvider === 'codex' ? 'codex' : 'claude')
+    const usesClaudeCli = resolvedCliProvider === 'claude'
+    const defaultEmbedMode = usesClaudeCli
+      ? (get().activeSessionId
+        ? get().sessions.find((s) => s.id === get().activeSessionId)?.embedMode ?? false
+        : (launchSettings?.embedClaudeOutputBeta === true))
+      : (launchSettings?.embedCodexOutputBeta === true)
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -244,6 +249,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ptyPid: result.pid,
       profileId: sessionProfileId ?? undefined,
       profileName: sessionProfileName,
+      cliProvider: result.cliProvider ?? resolvedCliProvider,
       shellOnly: shellOnly || undefined,
       iterm2Mode: result.iterm2Mode || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel,
@@ -471,13 +477,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
      *   恢复旧 session 时不会重读 .env，导致切回前一个 bot 后无响应。 */
     const skipResume = telegramChannelOverride !== undefined
     let result = normalizeCreateSessionResult(
-      await window.electronAPI.createSession(workdir, !skipResume, targetProfileId, sess.shellOnly, telegramChannel),
+      await window.electronAPI.createSession(workdir, !skipResume, targetProfileId, sess.shellOnly, telegramChannel, sess.cliProvider),
       workdir
     )
     if (!result.ok) {
       console.warn('[restartSession] 带 resume 创建失败，尝试普通启动:', result.error)
       result = normalizeCreateSessionResult(
-        await window.electronAPI.createSession(workdir, false, targetProfileId, sess.shellOnly, telegramChannel),
+        await window.electronAPI.createSession(workdir, false, targetProfileId, sess.shellOnly, telegramChannel, sess.cliProvider),
         workdir
       )
     }
@@ -521,6 +527,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ptyPid: result.pid,
       profileId: result.profileId ?? targetProfileId,
       profileName: restartProfileName,
+      cliProvider: result.cliProvider ?? sess.cliProvider ?? 'claude',
       shellOnly: sess.shellOnly,
       iterm2Mode: result.iterm2Mode || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel
@@ -566,10 +573,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // [2026-05-06] Shell-only sessions: restore=false, shellOnly=true
       const shellOnly = pw.shellOnlySlots?.[i] ?? false
       const telegramChannel = pw.telegramChannelSlots?.[i]
+      const cliProvider = pw.cliProviderSlots?.[i]
       try {
         // Shell-only 不带 --continue，直接开 shell；普通 session 恢复上次会话
         const result = normalizeCreateSessionResult(
-          await window.electronAPI.createSession(wd, shellOnly ? false : true, profileId, shellOnly, telegramChannel),
+          await window.electronAPI.createSession(wd, shellOnly ? false : true, profileId, shellOnly, telegramChannel, cliProvider),
           wd
         )
         /* [2026-04-23] 原仅 catch 网络式错误；结构化 ok:false 不会抛，须显式跳过以免误用字段 */
@@ -601,7 +609,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           shellOnly: shellOnly || undefined,
           iterm2Mode: result.iterm2Mode || undefined,
           telegramChannel: result.telegramChannel ?? telegramChannel,
-          embedMode: pw.embedModeSlots?.[i] ?? undefined
+          embedMode: pw.embedModeSlots?.[i] ?? undefined,
+          cliProvider: result.cliProvider ?? cliProvider ?? 'claude'
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently

@@ -242,6 +242,11 @@ export function TokenUsageWidget(): React.ReactElement {
   // 中转站等自定义 profile 也可能调用真正的 Claude 官方模型（Opus/Sonnet），
   // 这些应走官方定价表；只有非 claude-* 的第三方模型才用 singlePricing。
   function modelPricing(modelId: string): Pricing {
+    // Codex 的 ChatGPT 订阅用量不等于 API 按 token 计费。统计 token，但绝不能
+    // 套用当前 Claude/中转站的价格，否则侧栏会展示一笔虚假的人民币成本。
+    if (/^(gpt-|codex-|o[1-9](?:-|$))/.test(modelId.toLowerCase())) {
+      return { inputPerM: 0, outputPerM: 0, cacheCreatePerM: 0, cacheReadPerM: 0 }
+    }
     const key = modelToPricingKey(modelId)
     // claude-* 走官方固定定价；第三方模型走「拥有它的 profile」的定价，与激活 profile 无关
     if (key) return MODEL_PRICING[key] ?? DEFAULT_PRICING

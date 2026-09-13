@@ -62,6 +62,7 @@ export function workspaceToPersisted(
   const telegramChannelSlots = sessions.map((s) => s.telegramChannel)
   // [2026-05-11] Persist per-pane embed mode so it survives restarts.
   const embedModeSlots = sessions.map((s) => s.embedMode === true)
+  const cliProviderSlots = sessions.map((s) => s.cliProvider ?? 'claude')
 
   return {
     version: WORKSPACE_VERSION,
@@ -73,6 +74,8 @@ export function workspaceToPersisted(
     telegramChannelSlots: telegramChannelSlots.some(Boolean) ? telegramChannelSlots : undefined,
     // Only include embedModeSlots if at least one session has embedMode on
     embedModeSlots: embedModeSlots.some(Boolean) ? embedModeSlots : undefined,
+    // Claude is the legacy default; persist the vector only when Codex appears.
+    cliProviderSlots: cliProviderSlots.some((provider) => provider === 'codex') ? cliProviderSlots : undefined,
     layoutRoot: layoutPersisted,
     parkedLayouts: parkedPersisted.length > 0 ? parkedPersisted : undefined,
     activeSlotIndex
@@ -149,6 +152,10 @@ export function parsePersistedWorkspace(raw: unknown): PersistedWorkspace | null
   if (o.embedModeSlots !== undefined && Array.isArray(o.embedModeSlots)) {
     if (o.embedModeSlots.length !== o.sessionWorkdirs.length) return null
     if (o.embedModeSlots.some((v) => typeof v !== 'boolean')) return null
+  }
+  if (o.cliProviderSlots !== undefined && Array.isArray(o.cliProviderSlots)) {
+    if (o.cliProviderSlots.length !== o.sessionWorkdirs.length) return null
+    if (o.cliProviderSlots.some((v) => v !== 'claude' && v !== 'codex')) return null
   }
   return o as PersistedWorkspace
 }

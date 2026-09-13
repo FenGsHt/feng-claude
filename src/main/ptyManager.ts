@@ -136,6 +136,18 @@ export function augmentPathWithBunInstallDirs(basePath: string): string {
   return `${bunBin}${sep}${basePath}`
 }
 
+/** Finder 启动的 macOS 应用通常没有 shell 的 PATH；补齐 Codex 的常见安装目录。 */
+export function augmentPathWithCodexInstallDirs(basePath: string): string {
+  const sep = process.platform === 'win32' ? ';' : ':'
+  const candidates = [
+    join(homedir(), '.local', 'bin'),
+    process.platform === 'darwin' ? '/Applications/ChatGPT.app/Contents/Resources' : ''
+  ].filter((dir) => dir && existsSync(dir))
+  const normalized = new Set(basePath.split(sep).filter(Boolean).map((dir) => dir.replace(/[/\\]+$/g, '').toLowerCase()))
+  const missing = candidates.filter((dir) => !normalized.has(dir.replace(/[/\\]+$/g, '').toLowerCase()))
+  return missing.length > 0 ? `${missing.join(sep)}${basePath ? sep + basePath : ''}` : basePath
+}
+
 function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = false, sessionId = ''): Record<string, string> {
   const e = { ...(process.env as Record<string, string>) }
   for (const k of PTY_ENV_STRIP) {
@@ -159,6 +171,25 @@ function buildPtyEnv(claudeEnv: Record<string, string>, isOfficialProfile = fals
     // [2026-07-08] 禁用 CC 全屏 TUI 模式。全屏模式使用 alternate screen buffer + 自定义渲染，
     // 与 xterm.js wrapper 冲突导致截断/滚动失效/重复显示。纯文本输出更适配我们的 GUI。
     CLAUDE_NO_FULLSCREEN: '1',
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    FORCE_COLOR: '3',
+    CLICOLOR: '1',
+    CLICOLOR_FORCE: '1',
+    PATH: pathAugmented
+  }
+}
+
+/** Codex 使用自己的 ~/.codex 配置和登录态，不能继承或注入 Claude 的 API 配置。 */
+function buildCodexPtyEnv(sessionId = ''): Record<string, string> {
+  const e = { ...(process.env as Record<string, string>) }
+  const pathAugmented = augmentPathWithCodexInstallDirs(
+    augmentPathWithBunInstallDirs(e.PATH ?? process.env.PATH ?? '')
+  )
+  return {
+    ...e,
+    FENG_CLAUDE_BROWSER_PORT: String(getBrowserServerPort() || 3100),
+    FENG_CLAUDE_SESSION_ID: sessionId,
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
     FORCE_COLOR: '3',
@@ -327,6 +358,37 @@ function claudeLaunchLine(
       ? shellTelegramStateDirPrefix(opts.telegramStateDirAbs, isWindows, opts.ptyShell ?? (isWindows ? 'cmd.exe' : ''))
       : ''
   return `${prefix}${line}\r`
+}
+
+/** Codex TUI 的 classic-terminal 启动行。--no-alt-screen 避免 xterm.js 的备用屏缓冲区丢失内容。 */
+function codexLaunchLine(settings: ClaudeSettings, isWindows: boolean, continueSession = false): string {
+  const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
+  const args = ['codex', '--no-alt-screen']
+  const model = settings.codex?.model?.trim()
+  if (model) args.push('--model', quoteAddDirPath(model, isWindows))
+  const effort = settings.codex?.reasoningEffort
+  if (effort) args.push('-c', `model_reasoning_effort="${effort}"`)
+  if (mode === 'bypassPermissions') {
+    args.push('--dangerously-bypass-approvals-and-sandbox')
+  } else {
+    args.push('--sandbox', 'workspace-write', '--ask-for-approval', 'on-request')
+  }
+  if (continueSession) args.push('resume', '--last')
+  const addDir = (settings.sharedSkillAddDir ?? '').trim()
+  // Codex 的 --add-dir 代表额外可写目录；只在用户显式填写时透传，不复用 Claude skills 目录的自动处理。
+  if (addDir) args.push('--add-dir', quoteAddDirPath(addDir, isWindows))
+  return `${args.join(' ')}\r`
+}
+
+function cliLaunchLine(
+  settings: ClaudeSettings,
+  isWindows: boolean,
+  opts?: Parameters<typeof claudeLaunchLine>[2]
+): string {
+  if (settings.cliProvider === 'codex') {
+    return codexLaunchLine(settings, isWindows, opts?.continueSession === true)
+  }
+  return claudeLaunchLine(settings, isWindows, opts)
 }
 
 /** POSIX shells may still be loading a plugin-heavy rc file after the PTY exists.
@@ -856,6 +918,7 @@ export class PtyManager {
     telegramChannel?: TelegramChannelSessionConfig
   ): Promise<{ pid: number; telegramChannel?: TelegramChannelSessionConfig }> {
     const s = settings ?? this.settingsStore.get()
+    const usingCodex = s.cliProvider === 'codex'
     // [2026-07-08] macOS 上 workdir 不存在时 posix_spawn 会失败（posix_spawnp failed）。
     // [2026-07-09] 增强检查：确保是目录而非文件，否则回退到 home 目录。
     let resolvedWorkdir = homedir()
@@ -872,7 +935,9 @@ export class PtyManager {
     // [2026-06-11] 仅当该目录确有 Claude 对话历史时才 --continue：
     // 无历史时带 --continue 会报 "No conversation found to continue" 并退回空 shell
     // （依赖事后检测降级，但叠加 --channels/--add-dir 等启动行时降级时序不稳定）。
-    const effectiveResume = !!resume && hasClaudeConversationHistory(join(homedir(), '.claude'), workdir)
+    const effectiveResume = usingCodex
+      ? !!resume
+      : (!!resume && hasClaudeConversationHistory(join(homedir(), '.claude'), workdir))
     if (resume && !effectiveResume) {
       console.log('[PTY] resume requested but no conversation history for', workdir, '— launching without --continue')
     }
@@ -880,9 +945,9 @@ export class PtyManager {
     // 非全局配置的 session 直接使用 profile 自身的 baseUrl，避免多配置时 baseUrl 被全局覆盖。
     const isGlobalActiveProfile = profile.id === s.activeProfileId || profile.isOfficial === true
     const proxyUrl = (s.enableApiProxy && isGlobalActiveProfile) ? `http://127.0.0.1:${getProxyPort()}` : undefined
-    const claudeEnv = this.settingsStore.profileToEnvWithProxy(profile, proxyUrl)
+    const claudeEnv = usingCodex ? {} : this.settingsStore.profileToEnvWithProxy(profile, proxyUrl)
     // [2026-06-01] 诊断日志：确认实际注入的 model 环境变量（排查多配置混用问题）
-    console.log('[PTY] createSession profile:', profile.name, profile.id, {
+    console.log('[PTY] createSession provider:', usingCodex ? 'codex' : 'claude', 'profile:', profile.name, profile.id, {
       ANTHROPIC_MODEL: claudeEnv.ANTHROPIC_MODEL,
       ANTHROPIC_DEFAULT_SONNET_MODEL: claudeEnv.ANTHROPIC_DEFAULT_SONNET_MODEL,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: claudeEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL,
@@ -904,7 +969,7 @@ export class PtyManager {
     // [2026-06-03] Telegram 单会话锁：已有其他 session 持有 bot，则本 session 用隔离目录，避免多进程争抢同一 Telegram bot
     // [2026-06-15] 增加跨实例文件锁：多窗口=多 app 实例，内存锁互不可见；同一 token 全局只允许一个实例轮询
     let effectiveTelegramChannel = telegramChannel
-    if (preparedWouldEnableTelegram(sessionId, s, telegramChannel, shellOnly)) {
+    if (!usingCodex && preparedWouldEnableTelegram(sessionId, s, telegramChannel, shellOnly)) {
       const { stateDirId } = resolveTelegramStateDirId(s, telegramChannel)
       const tokenStateDir = telegramStateDir(stateDirId)
       const sameInstanceBlocked = !!(this.telegramOwnerSessionId && this.telegramOwnerSessionId !== sessionId && this.sessions.has(this.telegramOwnerSessionId))
@@ -919,7 +984,14 @@ export class PtyManager {
         console.log('[telegram-channel] session', sessionId, 'acquired Telegram owner lock (pid', process.pid, ')')
       }
     }
-    const preparedTelegram = prepareTelegramChannel(sessionId, s, effectiveTelegramChannel, shellOnly)
+    const preparedTelegram: PreparedTelegramChannel = usingCodex
+      ? {
+          config: effectiveTelegramChannel?.enabled
+            ? { ...effectiveTelegramChannel, enabled: false }
+            : effectiveTelegramChannel,
+          launchEnabled: false
+        }
+      : prepareTelegramChannel(sessionId, s, effectiveTelegramChannel, shellOnly)
 
     // [2026-05-09] 清空 Telegram 积压队列，防止旧消息在 bot 启动后被重新投递导致「Interrupted」级联
     if (preparedTelegram.launchEnabled && preparedTelegram.env?.TELEGRAM_BOT_TOKEN) {
@@ -931,7 +1003,7 @@ export class PtyManager {
     }
 
     const ptyEnv = {
-      ...buildPtyEnv(claudeEnv, profile.isOfficial === true, sessionId),
+      ...(usingCodex ? buildCodexPtyEnv(sessionId) : buildPtyEnv(claudeEnv, profile.isOfficial === true, sessionId)),
       // [2026-05-29] 禁止 Claude Code 自动更新（防止降级后被自动升回）
       ...(s.disableAutoUpdate ? { DISABLE_AUTOUPDATER: '1' } : {}),
       ...(preparedTelegram.env ?? {})
@@ -972,7 +1044,7 @@ export class PtyManager {
           if (iTermLaunchFallback) clearTimeout(iTermLaunchFallback)
           if (iTermLaunchSettle) clearTimeout(iTermLaunchSettle)
           daemonSession.firstAutoLaunchAt = Date.now()
-          this.writeRaw(daemonSession, claudeLaunchLine(s, false, {
+          this.writeRaw(daemonSession, cliLaunchLine(s, false, {
             continueSession: effectiveResume,
             telegramChannelEnabled: preparedTelegram.launchEnabled,
             telegramStateDirAbs: preparedTelegram.stateDirAbs,
@@ -1033,7 +1105,7 @@ export class PtyManager {
       }
     }
 
-    const initialClaudeLine = claudeLaunchLine(s, isWindows, {
+    const initialClaudeLine = cliLaunchLine(s, isWindows, {
       continueSession: effectiveResume,
       telegramChannelEnabled: preparedTelegram.launchEnabled,
       telegramStateDirAbs: preparedTelegram.stateDirAbs,
@@ -1182,7 +1254,7 @@ export class PtyManager {
             session.claudeRunning = true
             session.firstAutoLaunchAt = Date.now()
             const settings = this.settingsStore.get()
-            ptyProcess.write(claudeLaunchLine(settings, process.platform === 'win32', {
+            ptyProcess.write(cliLaunchLine(settings, process.platform === 'win32', {
               telegramChannelEnabled: session.telegramChannelLaunchEnabled,
               telegramStateDirAbs: session.telegramStateDirAbs,
               ptyShell: session.ptyShell

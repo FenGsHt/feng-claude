@@ -365,6 +365,7 @@ export function submitEmbedSessionInput(sessionId: string, text: string): void {
       sessionId,
       workdir: session.workdir,
       profileId: session.profileId,
+      provider: session.cliProvider,
       text: raw
     }).then((result) => {
       if (result.accepted) return

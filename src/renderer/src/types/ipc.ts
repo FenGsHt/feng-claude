@@ -1,5 +1,5 @@
 import type { HistoryRecord } from './session'
-import type { ApiProfile, TelegramChannelSessionConfig } from './settings'
+import type { ApiProfile, CliProvider, TelegramChannelSessionConfig } from './settings'
 
 export const IPC = {
   SESSION_CREATE: 'session:create',
@@ -258,6 +258,8 @@ export interface SessionCreatePayload {
   shellOnly?: boolean
   /** [2026-05-08] 官方 Telegram Channel 每会话配置 */
   telegramChannel?: TelegramChannelSessionConfig
+  /** 恢复工作区时锁定创建该标签的 CLI，不被后来全局设置覆盖。 */
+  cliProvider?: CliProvider
 }
 
 /** [2026-04-23] 原仅有成功字段；PTY spawn 失败时 invoke 抛错导致渲染层大量未捕获 rejection，改为判别联合 */
@@ -277,6 +279,8 @@ export interface SessionCreateOk {
   telegramChannel?: TelegramChannelSessionConfig
   /** [2026-07-10] Session is running in iTerm2 (macOS only) */
   iterm2Mode?: boolean
+  /** 实际启动的 CLI provider（供渲染层保存会话快照）。 */
+  cliProvider?: CliProvider
 }
 
 export interface SessionCreateErr {
@@ -398,6 +402,7 @@ export interface AgentSendPayload {
   workdir: string
   text: string
   profileId?: string
+  provider?: 'claude' | 'codex'
 }
 
 export interface AgentSendResult {

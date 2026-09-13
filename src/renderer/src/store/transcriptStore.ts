@@ -6,6 +6,44 @@ import { takeFirstAssistantLatencyMs } from './embedTurnLatencyStore'
 const pendingTokenDeltaBySession = new Map<string, ClaudeTurnTokenUsage[]>()
 const DEBUG_EMBED_MCP = true
 
+// 转录的权威历史在 ~/.claude/projects 的 JSONL 中；Renderer 不应无限期保存其完整副本。
+// 长会话的 thinking、工具参数和 Markdown 节点会比原始文本占用大得多，尤其在 macOS 上会被
+// Chromium 计入 renderer footprint。只留最近一段即可满足默认的尾部浏览，旧内容仍可从磁盘恢复。
+const MAX_ENTRIES_PER_SESSION = 1_000
+const MAX_TEXT_CHARS_PER_SESSION = 1_200_000
+const MAX_ENTRY_TEXT_CHARS = 120_000
+const MAX_TOOL_INPUT_CHARS = 32_000
+
+function truncateText(text: string, limit = MAX_ENTRY_TEXT_CHARS): string {
+  if (text.length <= limit) return text
+  return `${text.slice(0, limit)}\n\n[内容过长，已从内存转录中截断；完整记录仍保存在 Claude 会话文件中]`
+}
+
+function compactToolInput(input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!input) return input
+  try {
+    if (JSON.stringify(input).length <= MAX_TOOL_INPUT_CHARS) return input
+  } catch {
+    // 非 JSON 值不应出现在 IPC 数据中；不保留可疑的大对象以避免长驻内存。
+  }
+  return { _truncated: '工具参数过长，已从内存转录中省略' }
+}
+
+function compactTranscriptEntries(entries: ClaudeTranscriptEntry[]): ClaudeTranscriptEntry[] {
+  const recent: ClaudeTranscriptEntry[] = []
+  let textChars = 0
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i]!
+    const text = truncateText(entry.text)
+    // 预留少量对象元数据空间；文本是主要可控来源。
+    const cost = text.length + 512
+    if (recent.length >= MAX_ENTRIES_PER_SESSION || textChars + cost > MAX_TEXT_CHARS_PER_SESSION) break
+    recent.push({ ...entry, text, toolInput: compactToolInput(entry.toolInput) })
+    textChars += cost
+  }
+  return recent.reverse()
+}
+
 function usageSumTok(u?: ClaudeTurnTokenUsage): number {
   if (!u) return 0
   return u.input + u.output + u.cacheCreate + u.cacheRead
@@ -101,7 +139,7 @@ function mergePtyEchoText(prevText: string, incoming: string): string {
   const maybeMcp =
     /Manage MCP servers|User MCPs|Built-in MCPs/.test(combined) ||
     /View tools|Reconnect|Disable/.test(incoming)
-  if (!maybeMcp) return combined
+  if (!maybeMcp) return truncateText(combined)
   const normalized = normalizeMcpInteractiveText(combined)
   const latest = extractLatestMcpScreen(normalized)
   return latest.length > 14_000 ? latest.slice(-14_000) : latest
@@ -194,10 +232,11 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
         }
         merged.push(row)
       }
+      const compacted = compactTranscriptEntries(merged)
       return {
         bySession: {
           ...s.bySession,
-          [sessionId]: merged
+          [sessionId]: compacted
         }
       }
     })
@@ -226,15 +265,15 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
           ...prev.slice(0, -1),
           { ...last, text: mergedText }
         ]
-        return { bySession: { ...s.bySession, [sessionId]: next } }
+        return { bySession: { ...s.bySession, [sessionId]: compactTranscriptEntries(next) } }
       }
       return {
         bySession: {
           ...s.bySession,
-          [sessionId]: [
+          [sessionId]: compactTranscriptEntries([
             ...prev,
             { kind: 'event', text: mergePtyEchoText('', text), ptyEcho: true }
-          ]
+          ])
         }
       }
     })
@@ -273,7 +312,7 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
         return {
           bySession: {
             ...s.bySession,
-            [sessionId]: [...prev.slice(0, -1), { ...last, text }]
+            [sessionId]: compactTranscriptEntries([...prev.slice(0, -1), { ...last, text: truncateText(text) }])
           }
         }
       }
@@ -286,7 +325,7 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       return {
         bySession: {
           ...s.bySession,
-          [sessionId]: [...prev, { kind: 'event', text, ptyEcho: true }]
+          [sessionId]: compactTranscriptEntries([...prev, { kind: 'event', text: truncateText(text), ptyEcho: true }])
         }
       }
     })
@@ -296,7 +335,7 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       const startedAt = performance.now()
       pendingTokenDeltaBySession.delete(sessionId)
       const prev = s.bySession[sessionId] ?? []
-      const merged = mergeTranscriptReplace(prev, entries)
+      const merged = compactTranscriptEntries(mergeTranscriptReplace(prev, entries))
       const elapsedMs = Math.round(performance.now() - startedAt)
       if (elapsedMs > 30 || entries.length > 500) {
         console.log('[transcript-store:replace]', {

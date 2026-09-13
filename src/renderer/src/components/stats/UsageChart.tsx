@@ -238,6 +238,11 @@ export function UsageChart(): React.ReactElement {
     if (p.model && p.pricing && !modelOwnerPricing[p.model]) modelOwnerPricing[p.model] = p.pricing
   }
   const modelPricing = (modelId: string): Pricing => {
+    // Codex uses the user's ChatGPT/Codex entitlement. We keep its token totals
+    // but have no reliable API price, so never mislabel them as Claude spend.
+    if (/^(gpt-|codex-|o[1-9](?:-|$))/.test(modelId.toLowerCase())) {
+      return { inputPerM: 0, outputPerM: 0, cacheCreatePerM: 0, cacheReadPerM: 0 }
+    }
     const key = modelToPricingKey(modelId)
     if (key) return MODEL_PRICING[key] ?? DEFAULT_PRICING
     return modelOwnerPricing[modelId] ?? globalPricing ?? DEFAULT_PRICING
