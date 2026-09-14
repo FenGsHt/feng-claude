@@ -395,46 +395,12 @@ export function SettingsPanel(): React.ReactElement {
         <p className="mt-1 text-[9px] leading-snug text-claude-muted">
           {(form.cliProvider ?? 'claude') === 'codex'
             ? (lang === 'zh'
-              ? '新会话将运行本机 codex，并使用其 ~/.codex 登录态与配置。消息代理、工具事件与 token 统计已适配 Codex；Telegram Channel 和 Claude API 配置仅适用于 Claude。请先在系统终端执行 codex login。'
-              : 'New sessions run local codex with its ~/.codex login and config. Message gateway, tool events, and token accounting support Codex; Telegram Channel and Claude API profiles remain Claude-only. Run codex login first.')
+              ? '新会话将运行本机 codex，并只使用 codex login 与 ~/.codex 的官方配置。不会读取或覆盖 Claude API 配置、模型或推理强度。请先在系统终端执行 codex login。'
+              : 'New sessions run local codex and use only its codex login and ~/.codex configuration. Claude API profiles, model overrides, and reasoning overrides are not read or changed. Run codex login first.')
             : (lang === 'zh'
               ? '新会话默认运行 Claude Code；API 配置、消息代理和 Telegram Channel 均适用于 Claude。'
               : 'New sessions run Claude Code; API profiles, message gateway, and Telegram Channel apply to Claude.')}
         </p>
-        {(form.cliProvider ?? 'claude') === 'codex' && (
-          <div className="mt-2 space-y-2 rounded border border-claude-border bg-claude-bg/40 p-2">
-            <label className="block text-[10px] text-claude-muted">
-              {lang === 'zh' ? 'Codex 模型（留空使用 Codex 默认）' : 'Codex model (empty uses Codex default)'}
-              <input
-                value={form.codex?.model ?? ''}
-                onChange={(e) => {
-                  setForm((prev) => ({ ...prev, codex: { ...prev.codex, model: e.target.value } }))
-                  setSaved(false)
-                }}
-                placeholder={lang === 'zh' ? '例如 gpt-5.6-terra' : 'e.g. gpt-5.6-terra'}
-                className="field-input mt-1 w-full"
-              />
-            </label>
-            <label className="block text-[10px] text-claude-muted">
-              {lang === 'zh' ? '推理强度' : 'Reasoning effort'}
-              <select
-                value={form.codex?.reasoningEffort ?? ''}
-                onChange={(e) => {
-                  const effort = e.target.value || undefined
-                  setForm((prev) => ({ ...prev, codex: { ...prev.codex, reasoningEffort: effort as NonNullable<ClaudeSettings['codex']>['reasoningEffort'] } }))
-                  setSaved(false)
-                }}
-                className="field-input mt-1 w-full"
-              >
-                <option value="">{lang === 'zh' ? '跟随 Codex 配置' : 'Use Codex configuration'}</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-                <option value="xhigh">xhigh</option>
-              </select>
-            </label>
-          </div>
-        )}
       </div>
 
       {/* Developer Mode toggle */}
@@ -710,6 +676,8 @@ export function SettingsPanel(): React.ReactElement {
         ) : null}
       </div>
 
+      {/* Claude API profiles are intentionally unavailable in Codex mode. */}
+      {(form.cliProvider ?? 'claude') === 'claude' && <>
       <div className="px-3 pb-2 border-t border-claude-border pt-2">
         <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider mb-1">
           {lang === 'zh' ? 'API 配置' : 'API Configuration'}
@@ -983,6 +951,7 @@ export function SettingsPanel(): React.ReactElement {
           </div>
         </div>
       )}
+      </>}
 
       <div className="px-3 pb-2 text-[10px] font-semibold text-claude-muted uppercase tracking-wider border-t border-claude-border pt-2">
         {lang === 'zh' ? '权限设置' : 'Permissions'}
@@ -1062,7 +1031,7 @@ export function SettingsPanel(): React.ReactElement {
       </div>
 
       {/* Pricing - per profile (custom) or global (official) */}
-      {(activeProfile || isOfficialActive) && (
+      {(form.cliProvider ?? 'claude') === 'claude' && (activeProfile || isOfficialActive) && (
         <OfficialOrProfilePricing
           isOfficial={isOfficialActive}
           activeProfile={activeProfile ?? undefined}
@@ -1074,7 +1043,6 @@ export function SettingsPanel(): React.ReactElement {
           }}
         />
       )}
-
       {/* [2026-04-28] 宠物专用 API 配置 */}
       <div className="px-3 space-y-3 pb-4 border-t border-claude-border pt-2">
         <div className="text-[10px] font-semibold text-claude-muted uppercase tracking-wider">

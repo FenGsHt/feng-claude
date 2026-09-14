@@ -8,6 +8,12 @@
 
 一个基于 Electron + React 构建的 [Claude Code CLI](https://github.com/anthropics/claude-code) 第三方 GUI 包装器。
 
+### v0.7.96 主要更新
+
+- **Codex CLI 集成**：设置可切换 Claude Code 或 Codex CLI；经典终端、消息代理、Token 统计、侧栏命令及 Skills 均支持 Codex
+- **Codex 官方登录态**：Codex 只使用本机 `codex login` 与 `~/.codex` 配置，不显示或继承 Claude API Profile、应用内模型和推理覆盖
+- **恢复冲突自动回退**：恢复的 Codex 会话仍被其他进程占用时，自动启动新会话，不再落回 shell
+
 ### v0.7.95 主要更新
 
 - **经典终端触发器修复**：倒计时、定时和重复任务会正确发送到当前 Claude Code 终端；消息代理模式仍保持独立投递
@@ -291,6 +297,12 @@ MIT
 ## English
 
 A third-party GUI wrapper for [Claude Code CLI](https://github.com/anthropics/claude-code) built with Electron + React.
+
+### v0.7.96 Highlights
+
+- **Codex CLI integration**: switch between Claude Code and Codex CLI; classic terminal, message gateway, token tracking, sidebar commands, and Skills support Codex
+- **Official Codex configuration**: Codex uses only local `codex login` and `~/.codex`; Claude API profiles, in-app model overrides, and reasoning overrides are neither shown nor applied
+- **Safe resume fallback**: when the last Codex session is still owned by another process, Feng Claude starts a fresh session instead of leaving you at a shell prompt
 
 ### v0.7.95 Highlights
 

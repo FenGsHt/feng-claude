@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import type { SkillEntry } from '../../types/ipc'
 import { useI18n } from '../../i18n'
 import { useFocusWindow } from '../../hooks/useFocusWindow'
+import { useSessionStore } from '../../store/sessionStore'
+import type { CliProvider } from '../../types/settings'
 
 // ── Markdown viewer (lightweight) ────────────────────────────────────────────
 
@@ -49,11 +51,13 @@ function MarkdownPreview({ content }: { content: string }): React.ReactElement {
 function ContentModal({
   skill,
   content,
+  provider,
   onClose,
   onEdit
 }: {
   skill: SkillEntry
   content: string
+  provider: CliProvider
   onClose: () => void
   onEdit: () => void
 }): React.ReactElement {
@@ -74,7 +78,7 @@ function ContentModal({
         <div className="flex items-center gap-2 px-4 py-3 border-b border-claude-border shrink-0">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="text-[13px] font-semibold text-claude-text">/{skill.name}</span>
+              <span className="text-[13px] font-semibold text-claude-text">{provider === 'codex' ? '$' : '/'}{skill.name}</span>
               {skill.isFolder && (
                 <span className="text-[9px] px-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">{t.skills.folderBadge}</span>
               )}
@@ -112,12 +116,14 @@ function EditorModal({
   skill,
   initialContent,
   initialName,
+  provider,
   onSave,
   onClose
 }: {
   skill?: SkillEntry
   initialContent: string
   initialName?: string
+  provider: CliProvider
   onSave: (name: string, content: string, isFolder: boolean) => void
   onClose: () => void
 }): React.ReactElement {
@@ -151,7 +157,7 @@ function EditorModal({
       <div className="relative z-10 w-[520px] max-w-[94vw] max-h-[85vh] bg-claude-surface border border-claude-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-claude-border shrink-0">
           <span className="text-[13px] font-semibold text-claude-text flex-1">
-            {skill ? `${t.skills.editSkill} /${skill.name}` : t.skills.newSkill}
+            {skill ? `${t.skills.editSkill} ${provider === 'codex' ? '$' : '/'}${skill.name}` : t.skills.newSkill}
           </span>
           <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors">
             <svg width="9" height="9" viewBox="0 0 9 9">
@@ -165,9 +171,11 @@ function EditorModal({
           {/* Name */}
           {!skill && (
             <div>
-              <label className="text-[10px] text-claude-muted mb-0.5 block">{t.skills.skillName}</label>
+              <label className="text-[10px] text-claude-muted mb-0.5 block">
+                {provider === 'codex' ? 'Skill 名称（使用 $name）' : t.skills.skillName}
+              </label>
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-claude-muted font-mono">/</span>
+                <span className="text-[11px] text-claude-muted font-mono">{provider === 'codex' ? '$' : '/'}</span>
                 <input className={inputCls} placeholder="my-skill" value={name}
                   onChange={(e) => { setName(e.target.value); setError('') }} />
               </div>
@@ -186,7 +194,7 @@ function EditorModal({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full h-64 bg-claude-bg border border-claude-border rounded px-2 py-1.5 text-[11px] text-claude-text outline-none focus:border-amber-500/60 font-mono resize-none placeholder-claude-border leading-relaxed"
-              placeholder={`# My Skill\n\nDescribe what this skill does and how Claude should use it.\n\n## Instructions\n\n- Step 1\n- Step 2`}
+              placeholder={provider === 'codex' ? '---\nname: my-skill\ndescription: Brief description\n---\n\n# Instructions\n\n- Step 1\n- Step 2' : '# My Skill\n\nDescribe what this skill does and how Claude should use it.\n\n## Instructions\n\n- Step 1\n- Step 2'}
             />
           </div>
         </div>
@@ -210,11 +218,13 @@ function EditorModal({
 
 function SkillRow({
   skill,
+  provider,
   onView,
   onEdit,
   onDelete
 }: {
   skill: SkillEntry
+  provider: CliProvider
   onView: () => void
   onEdit: () => void
   onDelete: () => void
@@ -231,7 +241,7 @@ function SkillRow({
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-amber-400 font-mono">/{skill.name}</span>
+            <span className="text-[11px] font-semibold text-amber-400 font-mono">{provider === 'codex' ? '$' : '/'}{skill.name}</span>
             {skill.isFolder && (
               <span className="text-[9px] px-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
                 {t.skills.folderBadge}
@@ -284,7 +294,7 @@ function SkillRow({
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-const NEW_SKILL_TEMPLATE = `# Skill Name
+const CLAUDE_SKILL_TEMPLATE = `# Skill Name
 
 Brief description of what this skill does.
 
@@ -303,6 +313,18 @@ Describe the trigger conditions — when Claude should apply this skill.
 - Known pitfall or edge case
 `
 
+const CODEX_SKILL_TEMPLATE = `---
+name: my-skill
+description: Brief description of what this skill does.
+---
+
+# Instructions
+
+- Step 1
+- Step 2
+- Step 3
+`
+
 export function SkillsPanel(): React.ReactElement {
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -310,40 +332,42 @@ export function SkillsPanel(): React.ReactElement {
   const [viewing, setViewing] = useState<{ skill: SkillEntry; content: string } | null>(null)
   const [editing, setEditing] = useState<{ skill?: SkillEntry; content: string } | null>(null)
   const { t } = useI18n()
+  const activeProvider = useSessionStore((s) => s.sessions.find((session) => session.id === s.activeSessionId)?.cliProvider ?? 'claude')
+  const newSkillTemplate = activeProvider === 'codex' ? CODEX_SKILL_TEMPLATE : CLAUDE_SKILL_TEMPLATE
 
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await window.electronAPI.skills.list()
+      const list = await window.electronAPI.skills.list(activeProvider)
       setSkills(list)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeProvider])
 
   useEffect(() => { void reload() }, [reload])
 
   const openView = useCallback(async (skill: SkillEntry) => {
-    const content = await window.electronAPI.skills.get(skill.name, skill.source)
+    const content = await window.electronAPI.skills.get(skill.name, skill.source, activeProvider)
     setViewing({ skill, content })
-  }, [])
+  }, [activeProvider])
 
   const openEdit = useCallback(async (skill: SkillEntry) => {
-    const content = await window.electronAPI.skills.get(skill.name, skill.source)
+    const content = await window.electronAPI.skills.get(skill.name, skill.source, activeProvider)
     setViewing(null)
     setEditing({ skill, content })
-  }, [])
+  }, [activeProvider])
 
   const handleSave = useCallback(async (name: string, content: string, isFolder: boolean) => {
-    await window.electronAPI.skills.save(name, content, isFolder)
+    await window.electronAPI.skills.save(name, content, isFolder, activeProvider)
     setEditing(null)
     await reload()
-  }, [reload])
+  }, [activeProvider, reload])
 
   const handleDelete = useCallback(async (skill: SkillEntry) => {
-    await window.electronAPI.skills.delete(skill.name, skill.isFolder)
+    await window.electronAPI.skills.delete(skill.name, skill.isFolder, activeProvider)
     await reload()
-  }, [reload])
+  }, [activeProvider, reload])
 
   const filtered = query.trim()
     ? skills.filter((s) =>
@@ -365,7 +389,7 @@ export function SkillsPanel(): React.ReactElement {
           className="flex-1 bg-claude-bg border border-claude-border rounded px-2 py-1 text-[11px] text-claude-text placeholder-claude-border outline-none focus:border-amber-500/60 font-mono"
         />
         <button
-          onClick={() => setEditing({ content: NEW_SKILL_TEMPLATE })}
+          onClick={() => setEditing({ content: newSkillTemplate })}
           title={t.skills.newSkill}
           className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-amber-400 hover:bg-claude-border transition-colors"
         >
@@ -375,7 +399,7 @@ export function SkillsPanel(): React.ReactElement {
           </svg>
         </button>
         <button
-          onClick={() => window.electronAPI.skills.openDir()}
+          onClick={() => window.electronAPI.skills.openDir(activeProvider)}
           title={t.common.openFolder}
           className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-claude-muted hover:text-claude-text hover:bg-claude-border transition-colors"
         >
@@ -409,9 +433,9 @@ export function SkillsPanel(): React.ReactElement {
               <circle cx="20" cy="20" r="5" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M17.5 20h5M20 17.5v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
             </svg>
-            <p className="text-xs">{query ? t.skills.noMatch : t.skills.emptyDir}</p>
+            <p className="text-xs">{query ? t.skills.noMatch : activeProvider === 'codex' ? '~/.codex/skills/ 为空' : t.skills.emptyDir}</p>
             {!query && (
-              <button onClick={() => setEditing({ content: NEW_SKILL_TEMPLATE })}
+              <button onClick={() => setEditing({ content: newSkillTemplate })}
                 className="text-[11px] text-amber-400 hover:underline">
                 {t.skills.createFirst}
               </button>
@@ -422,6 +446,7 @@ export function SkillsPanel(): React.ReactElement {
             <SkillRow
               key={skill.name}
               skill={skill}
+              provider={activeProvider}
               onView={() => void openView(skill)}
               onEdit={() => void openEdit(skill)}
               onDelete={() => void handleDelete(skill)}
@@ -434,9 +459,9 @@ export function SkillsPanel(): React.ReactElement {
       <div className="shrink-0 px-3 py-1.5 border-t border-claude-border text-[9px] text-claude-muted text-center">
         {skills.length > 0 ? t.skills.footerSkillCount.replace('{count}', String(skills.length)) : ''}
         {skills.some(s => s.source === 'extra') ? (
-          <span>~/.claude/commands/ + extra dir</span>
+          <span>{activeProvider === 'codex' ? '~/.codex/skills/ + extra dir' : '~/.claude/commands/ + extra dir'}</span>
         ) : (
-          <span>~/.claude/commands/</span>
+          <span>{activeProvider === 'codex' ? '~/.codex/skills/' : '~/.claude/commands/'}</span>
         )}
       </div>
 
@@ -445,6 +470,7 @@ export function SkillsPanel(): React.ReactElement {
         <ContentModal
           skill={viewing.skill}
           content={viewing.content}
+          provider={activeProvider}
           onClose={() => setViewing(null)}
           onEdit={() => void openEdit(viewing.skill)}
         />
@@ -456,6 +482,7 @@ export function SkillsPanel(): React.ReactElement {
           skill={editing.skill}
           initialContent={editing.content}
           initialName={editing.skill?.name}
+          provider={activeProvider}
           onSave={handleSave}
           onClose={() => setEditing(null)}
         />

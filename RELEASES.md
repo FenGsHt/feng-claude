@@ -5,6 +5,17 @@
 
 ---
 
+## v0.7.96 (2026-09-15)
+
+### 新功能
+- **Codex CLI 集成**：可在设置中切换 Codex；经典终端、消息代理、Token 统计、Slash Commands 与 Skills 均已适配
+
+### 修复
+- **官方 Codex 配置**：Codex 仅使用本机 `codex login` 和 `~/.codex`，不会套用 Claude API Profile 或应用内模型覆盖
+- **恢复冲突自动回退**：恢复到被其他进程占用的 Codex 会话时自动新开会话，不再停在 shell
+
+---
+
 ## v0.7.95 (2026-09-09)
 
 ### 修复

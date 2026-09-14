@@ -12,6 +12,7 @@ import { HistoryStore } from './historyStore'
 import { SettingsStore } from './settingsStore'
 import { WorkspaceStore } from './workspaceStore'
 import { ClaudeSessionWatcher } from './claudeSessionWatcher'
+import { CodexSessionWatcher } from './codexSessionWatcher'
 import { TestManager } from './testManager'
 import { registerIpcHandlers } from './ipcHandlers'
 import {
@@ -81,6 +82,7 @@ function migrateLegacyScrollbackOnce(): void {
 let ptyManager: PtyManager
 let agentGateway: AgentGateway
 let codexGateway: CodexGateway
+let codexSessionWatcher: CodexSessionWatcher
 let mainWindow: BrowserWindow
 let isQuitting = false
 let shutdownCleanupStarted = false
@@ -101,6 +103,7 @@ function cleanupForAppExit(): void {
   try { ptyManager?.closeAllForAppExit() } catch { /* ignore */ }
   try { agentGateway?.closeAll() } catch { /* ignore */ }
   try { codexGateway?.closeAll() } catch { /* ignore */ }
+  try { codexSessionWatcher?.closeAll() } catch { /* ignore */ }
 }
 
 /** electron-vite sends SIGINT/SIGTERM to the Electron child when its dev
@@ -169,6 +172,7 @@ function createWindow(): BrowserWindow {
   const sessionWatcher = new ClaudeSessionWatcher(win, claudeConfigDir, () =>
     settingsStore.get().embedClaudeOutputBeta === true
   )
+  codexSessionWatcher = new CodexSessionWatcher(win)
   ptyManager = new PtyManager(win, settingsStore)
   agentGateway = new AgentGateway(win, settingsStore)
   codexGateway = new CodexGateway(win, settingsStore)
@@ -176,7 +180,7 @@ function createWindow(): BrowserWindow {
   const historyStore = new HistoryStore()
   const testManager = new TestManager(win)
 
-  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, testManager, agentGateway, codexGateway)
+  registerIpcHandlers(ptyManager, fsHandler, historyStore, settingsStore, workspaceStore, sessionWatcher, codexSessionWatcher, testManager, agentGateway, codexGateway)
 
   // [2026-04-29] 启动时把已保存的「跳过危险模式确认」写入 claude-session/settings.json
   mergeSkipDangerousPromptFromApp(Boolean(settingsStore.get().skipDangerousModePermissionPrompt))
@@ -361,5 +365,6 @@ app.on('window-all-closed', () => {
   ptyManager?.closeAll()
   agentGateway?.closeAll()
   codexGateway?.closeAll()
+  codexSessionWatcher?.closeAll()
   if (process.platform !== 'darwin') app.quit()
 })

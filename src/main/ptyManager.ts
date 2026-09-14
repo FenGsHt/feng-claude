@@ -364,10 +364,8 @@ function claudeLaunchLine(
 function codexLaunchLine(settings: ClaudeSettings, isWindows: boolean, continueSession = false): string {
   const mode = settings.permissionPreset ?? DEFAULT_SETTINGS.permissionPreset
   const args = ['codex', '--no-alt-screen']
-  const model = settings.codex?.model?.trim()
-  if (model) args.push('--model', quoteAddDirPath(model, isWindows))
-  const effort = settings.codex?.reasoningEffort
-  if (effort) args.push('-c', `model_reasoning_effort="${effort}"`)
+  // Model / reasoning come exclusively from the user's local Codex setup.
+  // Do not let a stale Feng Claude profile or former in-app override change it.
   if (mode === 'bypassPermissions') {
     args.push('--dangerously-bypass-approvals-and-sandbox')
   } else {
@@ -429,6 +427,8 @@ interface PtySession {
   scrollbackSize: number
   usedContinue: boolean
   continueFallbackDone: boolean
+  /** 创建时锁定 provider；工作区恢复时全局设置可能已切换，resume 降级不能误启动另一种 CLI。 */
+  cliProvider: ClaudeSettings['cliProvider']
   /** [2026-05-08] 与会话创建时 prepareTelegramChannel.launchEnabled 一致；shell 误判或 Claude 退出后的自动重跑须沿用，否则会丢掉 --channels */
   telegramChannelLaunchEnabled: boolean
   /** [2026-05-09] 供 claude 启动行再次注入 TELEGRAM_STATE_DIR（子进程未继承 PTY env 时仍指向正确 channels 子目录） */
@@ -1149,6 +1149,7 @@ export class PtyManager {
       scrollbackSize: 0,
       usedContinue: effectiveResume,
       continueFallbackDone: false,
+      cliProvider: s.cliProvider,
       telegramChannelLaunchEnabled: preparedTelegram.launchEnabled,
       telegramStateDirAbs: preparedTelegram.stateDirAbs,
       ptyShell: shell
@@ -1236,13 +1237,17 @@ export class PtyManager {
       // Keep a rolling buffer of recent output to match multi-chunk prompts
       session.buffer = (session.buffer + data).slice(-512)
 
-      // [2026-04-28] --continue 失败时 Claude 打印 "No conversation found to continue" 并退回 shell
-      // 检测到后立即降级为不带 --continue 重新启动，避免停在空 shell。
+      // --continue / `codex resume --last` 失败后都不能停在空 shell：
+      // Claude 无历史时会打印 No conversation found；Codex 若最后一次全局会话
+      // 仍由另一进程写入，则会报 active writer。两者均退回不带 resume 的新会话。
+      const claudeResumeMissing = session.buffer.includes('No conversation found to continue')
+      const codexResumeBlocked = session.cliProvider === 'codex' &&
+        /(?:thread\/resume failed|already has an active writer|failed to resume session)/i.test(session.buffer)
       if (
         session.usedContinue &&
         !session.continueFallbackDone &&
         !session.relaunchPending &&
-        session.buffer.includes('No conversation found to continue')
+        (claudeResumeMissing || codexResumeBlocked)
       ) {
         session.continueFallbackDone = true
         session.claudeRunning = false
@@ -1253,7 +1258,9 @@ export class PtyManager {
           if (this.sessions.has(sessionId)) {
             session.claudeRunning = true
             session.firstAutoLaunchAt = Date.now()
-            const settings = this.settingsStore.get()
+            // Provider is captured with the session. The user may have switched
+            // the global picker while a saved workspace is still restoring.
+            const settings = { ...this.settingsStore.get(), cliProvider: session.cliProvider }
             ptyProcess.write(cliLaunchLine(settings, process.platform === 'win32', {
               telegramChannelEnabled: session.telegramChannelLaunchEnabled,
               telegramStateDirAbs: session.telegramStateDirAbs,

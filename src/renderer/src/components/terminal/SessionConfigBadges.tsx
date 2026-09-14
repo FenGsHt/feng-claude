@@ -225,7 +225,10 @@ export function SessionConfigBadges({ sessionId, focused }: { sessionId: string;
     return fromGlobal || 'telegram'
   }, [sess?.telegramChannel, settings?.telegramChannel, telegramPresets])
 
-  if (!sess) return null
+  // Codex 会话只跟随本机 `codex login` 与 ~/.codex 配置；没有可切换的
+  // Feng Claude API profile，也不支持 Claude 专属 Telegram Channel。
+  // 旧工作区快照可能带着第三方 profile 名，仍须在此直接隐藏。
+  if (!sess || sess.cliProvider === 'codex') return null
 
   const getProfileName = (): string => {
     // [2026-06-11] 优先用启动时快照，避免设置里改名/换模型后改动已运行 session 的徽章

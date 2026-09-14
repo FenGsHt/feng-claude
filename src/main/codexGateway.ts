@@ -111,8 +111,6 @@ export class CodexGateway {
       await this.ensureThread(sessionId, next.request.workdir)
       const current = this.sessions.get(sessionId)
       if (!current || current.activeRunId !== next.runId || !current.threadId) return
-      const requestedModel = this.settingsStore.get().codex?.model?.trim()
-      if (requestedModel) current.model = requestedModel
       const turn = await this.request('turn/start', {
         threadId: current.threadId,
         input: [{ type: 'text', text: next.request.text, text_elements: [] }],
@@ -149,8 +147,7 @@ export class CodexGateway {
       // app-server approval request 后无限等待更符合「大部分自动批准」的语义。
       approvalPolicy: 'never',
       sandbox: bypass ? 'danger-full-access' : 'workspace-write',
-      ...(settings.codex?.model?.trim() ? { model: settings.codex.model.trim() } : {}),
-      ...(settings.codex?.reasoningEffort ? { config: { model_reasoning_effort: settings.codex.reasoningEffort } } : {})
+      // Follow the local Codex login/config; application profiles never override it.
     }
   }
 
@@ -168,8 +165,7 @@ export class CodexGateway {
             excludeTmpdirEnvVar: false,
             excludeSlashTmp: false
           },
-      ...(settings.codex?.model?.trim() ? { model: settings.codex.model.trim() } : {}),
-      ...(settings.codex?.reasoningEffort ? { effort: settings.codex.reasoningEffort } : {})
+      // Follow the local Codex login/config; application profiles never override it.
     }
   }
 

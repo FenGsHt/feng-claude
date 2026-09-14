@@ -12,6 +12,7 @@ import type { HistoryStore } from './historyStore'
 import type { SettingsStore } from './settingsStore'
 import type { WorkspaceStore } from './workspaceStore'
 import type { ClaudeSessionWatcher } from './claudeSessionWatcher'
+import type { CodexSessionWatcher } from './codexSessionWatcher'
 import type { TestManager } from './testManager'
 import { ensureClaudeHudPluginDefaults, mergeSkipDangerousPromptFromApp } from './claudeSessionConfigDir'
 import { listPlugins, setPluginEnabled, refreshMarketplaces } from './pluginManager'
@@ -174,6 +175,7 @@ export function registerIpcHandlers(
   settingsStore: SettingsStore,
   workspaceStore: WorkspaceStore,
   sessionWatcher: ClaudeSessionWatcher,
+  codexSessionWatcher: CodexSessionWatcher,
   testManager: TestManager,
   agentGateway: AgentGateway,
   codexGateway: CodexGateway
@@ -345,10 +347,14 @@ export function registerIpcHandlers(
     if (merged.cliProvider === 'codex') merged.embedClaudeOutputBeta = false
     const codex = merged.codex && typeof merged.codex === 'object' ? merged.codex : {}
     merged.codex = {
-      model: typeof codex.model === 'string' ? codex.model : '',
-      reasoningEffort: ['low', 'medium', 'high', 'xhigh'].includes(String(codex.reasoningEffort))
-        ? codex.reasoningEffort
-        : undefined
+      // Codex 模式不再透传应用内模型 / 推理覆盖；完全跟随用户的官方
+      // `codex login` 与 ~/.codex/config.toml 配置。
+      model: merged.cliProvider === 'codex' ? '' : (typeof codex.model === 'string' ? codex.model : ''),
+      reasoningEffort: merged.cliProvider === 'codex'
+        ? undefined
+        : (['low', 'medium', 'high', 'xhigh'].includes(String(codex.reasoningEffort))
+            ? codex.reasoningEffort
+            : undefined)
     }
     merged.embedCodexOutputBeta = merged.embedCodexOutputBeta === true
     settingsStore.set(merged as ReturnType<typeof settingsStore.get>)
@@ -438,14 +444,20 @@ export function registerIpcHandlers(
       const sessionSettings = payload.cliProvider
         ? { ...settings, cliProvider: payload.cliProvider }
         : settings
+      const usingCodex = sessionSettings.cliProvider === 'codex'
 
-      // [2026-04-28] 获取指定的 profile 或使用全局激活的
-      // [2026-05-27] OFFICIAL_PROFILE_ID 是虚拟 profile，不在 profiles 数组中，需显式处理
-      const profile = profileId
-        ? (profileId === OFFICIAL_PROFILE_ID
-            ? OFFICIAL_PROFILE as unknown as import('./settingsStore').ApiProfile
-            : settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile())
-        : settingsStore.getActiveProfile()
+      // Codex 只使用本机 `codex login` / ~/.codex 的官方登录态。
+      // 工作区中遗留的 Claude profile 仅是旧会话快照，绝不能继续影响
+      // Codex 的启动环境、标签显示或消息代理。
+      const profile = usingCodex
+        ? OFFICIAL_PROFILE as unknown as import('./settingsStore').ApiProfile
+        // [2026-04-28] 获取指定的 profile 或使用全局激活的
+        // [2026-05-27] OFFICIAL_PROFILE_ID 是虚拟 profile，不在 profiles 数组中，需显式处理
+        : profileId
+          ? (profileId === OFFICIAL_PROFILE_ID
+              ? OFFICIAL_PROFILE as unknown as import('./settingsStore').ApiProfile
+              : settings.profiles.find(p => p.id === profileId) ?? settingsStore.getActiveProfile())
+          : settingsStore.getActiveProfile()
 
       // Read scrollback before creating session (file written by previous session's close)
       const scrollback = ptyManager.readScrollback(workdir)
@@ -459,10 +471,12 @@ export function registerIpcHandlers(
         payload.telegramChannel
       )
       // Start watching JSONL for accurate per-session token counting
-      const isClaudeCli = sessionSettings.cliProvider !== 'codex'
+      const isClaudeCli = !usingCodex
       const embedBeta = isClaudeCli && sessionSettings.embedClaudeOutputBeta === true
       if (isClaudeCli) {
         sessionWatcher.watchSession(sessionId, workdir, { scrollbackBase64: embedBeta ? scrollback : null, shellOnly })
+      } else if (!shellOnly) {
+        codexSessionWatcher.watchSession(sessionId, workdir)
       }
       // [2026-04-23] 原先此处同步调用 ensureClaudeHudPluginDefaults()，与上 scheduleEnsureClaudeHudAfterSession 注释所述一致，改为下一事件循环再执行
       // ensureClaudeHudPluginDefaults()
@@ -473,7 +487,7 @@ export function registerIpcHandlers(
         pid: result.pid,
         workdir,
         scrollback,
-        profileId: profile.id,
+        profileId: usingCodex ? OFFICIAL_PROFILE_ID : profile.id,
         telegramChannel: result.telegramChannel,
         iterm2Mode: (result as any).iterm2Mode ?? false,
         cliProvider: sessionSettings.cliProvider === 'codex' ? 'codex' : 'claude'
@@ -488,6 +502,7 @@ export function registerIpcHandlers(
       }
       try {
         sessionWatcher.unwatchSession(sessionId)
+        codexSessionWatcher.unwatchSession(sessionId)
       } catch {
         /* noop */
       }
@@ -504,6 +519,7 @@ export function registerIpcHandlers(
     codexGateway.close(sessionId)
     ptyManager.closeSession(sessionId)
     sessionWatcher.unwatchSession(sessionId)
+    codexSessionWatcher.unwatchSession(sessionId)
     return { success: true }
   })
 
@@ -737,17 +753,17 @@ export function registerIpcHandlers(
   })
 
   // ── Skills ────────────────────────────────────────────────────
-  ipcMain.handle(IPC.SKILLS_LIST, async () => listSkills())
-  ipcMain.handle(IPC.SKILLS_GET, async (_e, { name, source }: { name: string; source?: string }) => getSkillContent(name, source))
-  ipcMain.handle(IPC.SKILLS_SAVE, async (_e, { name, content, isFolder }: { name: string; content: string; isFolder?: boolean }) => {
-    saveSkill(name, content, isFolder ?? false)
+  ipcMain.handle(IPC.SKILLS_LIST, async (_e, { provider }: { provider?: import('../renderer/src/types/settings').CliProvider } = {}) => listSkills(provider))
+  ipcMain.handle(IPC.SKILLS_GET, async (_e, { name, source, provider }: { name: string; source?: string; provider?: import('../renderer/src/types/settings').CliProvider }) => getSkillContent(name, source, provider))
+  ipcMain.handle(IPC.SKILLS_SAVE, async (_e, { name, content, isFolder, provider }: { name: string; content: string; isFolder?: boolean; provider?: import('../renderer/src/types/settings').CliProvider }) => {
+    saveSkill(name, content, isFolder ?? false, provider)
     return { success: true }
   })
-  ipcMain.handle(IPC.SKILLS_DELETE, async (_e, { name, isFolder }: { name: string; isFolder: boolean }) => {
-    deleteSkill(name, isFolder)
+  ipcMain.handle(IPC.SKILLS_DELETE, async (_e, { name, isFolder, provider }: { name: string; isFolder: boolean; provider?: import('../renderer/src/types/settings').CliProvider }) => {
+    deleteSkill(name, isFolder, provider)
     return { success: true }
   })
-  ipcMain.handle(IPC.SKILLS_OPEN_DIR, async () => openSkillsDir())
+  ipcMain.handle(IPC.SKILLS_OPEN_DIR, async (_e, { provider }: { provider?: import('../renderer/src/types/settings').CliProvider } = {}) => openSkillsDir(provider))
 
   // ── Token data persistence ────────────────────────────────────
   ipcMain.handle(IPC.TOKEN_DATA_GET, async () => getTokenData())

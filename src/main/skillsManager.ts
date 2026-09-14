@@ -6,12 +6,20 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { shell } from 'electron'
 import type { SkillEntry } from '../renderer/src/types/ipc'
+import type { CliProvider } from '../renderer/src/types/settings'
 import { SettingsStore } from './settingsStore'
 
 export type { SkillEntry }
 
-function globalCommandsDir(): string {
-  return join(homedir(), '.claude', 'commands')
+function globalSkillsDir(provider: CliProvider): string {
+  return provider === 'codex'
+    ? join(homedir(), '.codex', 'skills')
+    : join(homedir(), '.claude', 'commands')
+}
+
+function normalizeProvider(provider?: CliProvider): CliProvider {
+  if (provider === 'codex') return 'codex'
+  return new SettingsStore().get().cliProvider === 'codex' ? 'codex' : 'claude'
 }
 
 /** Extract title + description from markdown content */
@@ -100,13 +108,14 @@ function scanDir(dir: string, dirLabel: string): { skills: SkillEntry[]; dirLabe
   return { skills, dirLabel }
 }
 
-export function listSkills(): SkillEntry[] {
+export function listSkills(provider?: CliProvider): SkillEntry[] {
   const settings = new SettingsStore()
+  const activeProvider = normalizeProvider(provider)
   const all: SkillEntry[] = []
   const seen = new Set<string>()
 
-  // Global commands dir
-  const globalDir = globalCommandsDir()
+  // Claude commands and Codex Skills use different native directories.
+  const globalDir = globalSkillsDir(activeProvider)
   const { skills: globalSkills } = scanDir(globalDir, 'global')
   for (const s of globalSkills) {
     all.push(s)
@@ -117,11 +126,12 @@ export function listSkills(): SkillEntry[] {
   const extraDir = settings.get().sharedSkillAddDir
   console.log('[Skills] sharedSkillAddDir from settings:', JSON.stringify(extraDir))
   if (extraDir) {
-    // The extra dir itself is passed to claude --add-dir, but skills inside it
-    // may be at root, or in .claude/commands/ or .claude/skills/ subdirs
+    // The extra dir itself is passed to the selected CLI. Scan that CLI's
+    // conventional skill directory before the root as a convenience.
     const possibleDirs = [
-      join(extraDir, '.claude', 'commands'),
-      join(extraDir, '.claude', 'skills'),
+      ...(activeProvider === 'codex'
+        ? [join(extraDir, '.codex', 'skills')]
+        : [join(extraDir, '.claude', 'commands'), join(extraDir, '.claude', 'skills')]),
       extraDir
     ]
     console.log('[Skills] scanning possibleDirs:', possibleDirs)
@@ -144,23 +154,24 @@ export function listSkills(): SkillEntry[] {
   return all.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function getSkillContent(name: string, source?: string): string {
-  const globalDir = globalCommandsDir()
+export function getSkillContent(name: string, source?: string, provider?: CliProvider): string {
+  const activeProvider = normalizeProvider(provider)
+  const globalDir = globalSkillsDir(activeProvider)
   const settings = new SettingsStore()
   const extraDir = settings.get().sharedSkillAddDir
 
   // Resolve target directories based on source
   const dirs: string[] = []
   if (source === 'extra' && extraDir) {
-    dirs.push(join(extraDir, '.claude', 'commands'))
-    dirs.push(join(extraDir, '.claude', 'skills'))
+    if (activeProvider === 'codex') dirs.push(join(extraDir, '.codex', 'skills'))
+    else dirs.push(join(extraDir, '.claude', 'commands'), join(extraDir, '.claude', 'skills'))
     dirs.push(extraDir)
   } else {
     // Default: check global first, then extra
     dirs.push(globalDir)
     if (extraDir) {
-      dirs.push(join(extraDir, '.claude', 'commands'))
-      dirs.push(join(extraDir, '.claude', 'skills'))
+      if (activeProvider === 'codex') dirs.push(join(extraDir, '.codex', 'skills'))
+      else dirs.push(join(extraDir, '.claude', 'commands'), join(extraDir, '.claude', 'skills'))
       dirs.push(extraDir)
     }
   }
@@ -186,10 +197,11 @@ export function getSkillContent(name: string, source?: string): string {
 /**
  * Save a skill. If isFolder, writes to name/SKILL.md; otherwise name.md.
  */
-export function saveSkill(name: string, content: string, isFolder: boolean): void {
-  const dir = globalCommandsDir()
+export function saveSkill(name: string, content: string, isFolder: boolean, provider?: CliProvider): void {
+  const activeProvider = normalizeProvider(provider)
+  const dir = globalSkillsDir(activeProvider)
   mkdirSync(dir, { recursive: true })
-  if (isFolder) {
+  if (isFolder || activeProvider === 'codex') {
     const folderPath = join(dir, name)
     mkdirSync(folderPath, { recursive: true })
     writeFileSync(join(folderPath, 'SKILL.md'), content, 'utf-8')
@@ -198,8 +210,8 @@ export function saveSkill(name: string, content: string, isFolder: boolean): voi
   }
 }
 
-export function deleteSkill(name: string, isFolder: boolean): void {
-  const dir = globalCommandsDir()
+export function deleteSkill(name: string, isFolder: boolean, provider?: CliProvider): void {
+  const dir = globalSkillsDir(normalizeProvider(provider))
   if (isFolder) {
     rmSync(join(dir, name), { recursive: true, force: true })
   } else {
@@ -208,8 +220,8 @@ export function deleteSkill(name: string, isFolder: boolean): void {
   }
 }
 
-export function openSkillsDir(): void {
-  const dir = globalCommandsDir()
+export function openSkillsDir(provider?: CliProvider): void {
+  const dir = globalSkillsDir(normalizeProvider(provider))
   mkdirSync(dir, { recursive: true })
   shell.openPath(dir)
 }

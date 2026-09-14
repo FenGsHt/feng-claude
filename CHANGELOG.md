@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.96] - 2026-09-15
+
+### 新功能 | Features
+- **Codex CLI 集成**：设置中可切换 Claude Code 或 Codex CLI；支持经典终端、消息代理、Token 用量统计、Slash Commands 和 Skills 面板的 Codex 适配
+
+### 修复 | Bug Fixes
+- **Codex 官方登录态**：Codex 会话只使用本机 `codex login` 与 `~/.codex` 配置，不再显示、读取或覆盖 Claude API Profile、模型和推理强度
+- **Codex 会话恢复回退**：`codex resume --last` 命中仍由其他进程写入的会话时，自动改为启动新会话，不再退回空 shell
+
 ## [0.7.95] - 2026-09-09
 
 ### 修复 | Bug Fixes

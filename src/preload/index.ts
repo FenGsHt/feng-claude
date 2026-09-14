@@ -292,13 +292,13 @@ const electronAPI = {
   },
 
   skills: {
-    list: (): Promise<SkillEntry[]> => ipcRenderer.invoke(IPC.SKILLS_LIST),
-    get: (name: string, source?: string): Promise<string> => ipcRenderer.invoke(IPC.SKILLS_GET, { name, source }),
-    save: (name: string, content: string, isFolder?: boolean): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke(IPC.SKILLS_SAVE, { name, content, isFolder }),
-    delete: (name: string, isFolder: boolean): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke(IPC.SKILLS_DELETE, { name, isFolder }),
-    openDir: (): Promise<void> => ipcRenderer.invoke(IPC.SKILLS_OPEN_DIR)
+    list: (provider?: CliProvider): Promise<SkillEntry[]> => ipcRenderer.invoke(IPC.SKILLS_LIST, { provider }),
+    get: (name: string, source?: string, provider?: CliProvider): Promise<string> => ipcRenderer.invoke(IPC.SKILLS_GET, { name, source, provider }),
+    save: (name: string, content: string, isFolder?: boolean, provider?: CliProvider): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.SKILLS_SAVE, { name, content, isFolder, provider }),
+    delete: (name: string, isFolder: boolean, provider?: CliProvider): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC.SKILLS_DELETE, { name, isFolder, provider }),
+    openDir: (provider?: CliProvider): Promise<void> => ipcRenderer.invoke(IPC.SKILLS_OPEN_DIR, { provider })
   },
 
   // Pet Agent

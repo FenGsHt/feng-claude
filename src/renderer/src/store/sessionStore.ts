@@ -75,7 +75,10 @@ function normalizeCreateSessionResult(raw: unknown, fallbackWorkdir: string): Se
       pid: r.pid,
       workdir: typeof r.workdir === 'string' ? r.workdir : fallbackWorkdir,
       scrollback: r.scrollback as SessionCreateOk['scrollback'],
-      profileId: typeof r.profileId === 'string' ? r.profileId : undefined
+      profileId: typeof r.profileId === 'string' ? r.profileId : undefined,
+      telegramChannel: r.telegramChannel as SessionCreateOk['telegramChannel'],
+      iterm2Mode: r.iterm2Mode === true,
+      cliProvider: r.cliProvider === 'codex' ? 'codex' : (r.cliProvider === 'claude' ? 'claude' : undefined)
     }
   }
   if (r.ok === false) {
@@ -95,7 +98,10 @@ function normalizeCreateSessionResult(raw: unknown, fallbackWorkdir: string): Se
       pid: r.pid,
       workdir: typeof r.workdir === 'string' ? r.workdir : fallbackWorkdir,
       scrollback: r.scrollback as SessionCreateOk['scrollback'],
-      profileId: typeof r.profileId === 'string' ? r.profileId : undefined
+      profileId: typeof r.profileId === 'string' ? r.profileId : undefined,
+      telegramChannel: r.telegramChannel as SessionCreateOk['telegramChannel'],
+      iterm2Mode: r.iterm2Mode === true,
+      cliProvider: r.cliProvider === 'codex' ? 'codex' : (r.cliProvider === 'claude' ? 'claude' : undefined)
     }
   }
   return { ok: false, error: 'createSession 返回格式异常', workdir: fallbackWorkdir }
@@ -225,13 +231,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const resolvedWorkdir = result.workdir ?? workdir
     // [2026-04-28] Always use returned profileId (IPC returns active profile if not specified)
     const sessionProfileId = result.profileId
-    // [2026-06-11] 启动时快照 profile 名称，标签徽章用它而非实时读设置
     const launchSettings = await window.electronAPI.settings.get().catch(() => null)
-    const sessionProfileName = launchSettings
-      ? resolveProfileName(launchSettings, sessionProfileId)
-      : undefined
     // [2026-05-11] 新 session 默认继承当前活跃 session 的外嵌/终端模式
     const resolvedCliProvider = cliProvider ?? (launchSettings?.cliProvider === 'codex' ? 'codex' : 'claude')
+    // [2026-06-11] 启动时快照 profile 名称，标签徽章用它而非实时读设置。
+    // Codex 没有 Feng Claude 的 API profile：只使用本机 codex login，因此不显示配置药丸。
+    const actualCliProvider = result.cliProvider ?? resolvedCliProvider
+    const sessionProfileName = actualCliProvider === 'codex' || !launchSettings
+      ? undefined
+      : resolveProfileName(launchSettings, sessionProfileId)
     const usesClaudeCli = resolvedCliProvider === 'claude'
     const defaultEmbedMode = usesClaudeCli
       ? (get().activeSessionId
@@ -249,7 +257,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ptyPid: result.pid,
       profileId: sessionProfileId ?? undefined,
       profileName: sessionProfileName,
-      cliProvider: result.cliProvider ?? resolvedCliProvider,
+      cliProvider: actualCliProvider,
       shellOnly: shellOnly || undefined,
       iterm2Mode: result.iterm2Mode || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel,
@@ -513,9 +521,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const resolvedWorkdir = result.workdir ?? workdir
     // [2026-06-11] restart 是显式切换配置/重启的路径，按当前设置快照 profile 名称
     const restartSettings = await window.electronAPI.settings.get().catch(() => null)
-    const restartProfileName = restartSettings
-      ? resolveProfileName(restartSettings, result.profileId ?? targetProfileId)
-      : sess.profileName
+    const restartCliProvider = result.cliProvider ?? sess.cliProvider ?? 'claude'
+    const restartProfileName = restartCliProvider === 'codex' || !restartSettings
+      ? undefined
+      : resolveProfileName(restartSettings, result.profileId ?? targetProfileId)
     const newSession: Session = {
       id: result.sessionId,
       title: resolvedWorkdir.split(/[/\\]/).pop() ?? resolvedWorkdir,
@@ -527,7 +536,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ptyPid: result.pid,
       profileId: result.profileId ?? targetProfileId,
       profileName: restartProfileName,
-      cliProvider: result.cliProvider ?? sess.cliProvider ?? 'claude',
+      cliProvider: restartCliProvider,
       shellOnly: sess.shellOnly,
       iterm2Mode: result.iterm2Mode || undefined,
       telegramChannel: result.telegramChannel ?? telegramChannel
@@ -593,6 +602,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         if (result.scrollback && !shellOnly) {
           preFillTerminal(result.sessionId, result.scrollback)
         }
+        const restoredCliProvider = result.cliProvider ?? cliProvider ?? 'claude'
         sessions.push({
           id: result.sessionId,
           title: resolvedWd.split(/[/\\]/).pop() ?? resolvedWd,
@@ -603,14 +613,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           updatedAt: Date.now(),
           ptyPid: result.pid,
           profileId: result.profileId ?? profileId,
-          profileName: restoreSettings
-            ? resolveProfileName(restoreSettings, result.profileId ?? profileId)
-            : undefined,
+          profileName: restoredCliProvider === 'codex' || !restoreSettings
+            ? undefined
+            : resolveProfileName(restoreSettings, result.profileId ?? profileId),
           shellOnly: shellOnly || undefined,
           iterm2Mode: result.iterm2Mode || undefined,
           telegramChannel: result.telegramChannel ?? telegramChannel,
           embedMode: pw.embedModeSlots?.[i] ?? undefined,
-          cliProvider: result.cliProvider ?? cliProvider ?? 'claude'
+          cliProvider: restoredCliProvider
         })
       } catch {
         // Directory no longer exists or PTY spawn failed — skip silently

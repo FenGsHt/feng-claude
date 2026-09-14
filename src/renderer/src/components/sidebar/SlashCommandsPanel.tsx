@@ -1,22 +1,25 @@
 import React, { useMemo, useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { SLASH_COMMAND_ITEMS } from '../../lib/claudeSlashCommands'
+import { CODEX_SLASH_COMMAND_ITEMS } from '../../lib/codexSlashCommands'
 import { CC_SLASH_DRAG_MIME, CC_SLASH_PLAIN_PREFIX } from '../../lib/ccSlashDrag'
 import { injectTerminalText } from '../../lib/injectTerminal'
 
 /** Claude Code `/` 命令列表：点击或拖入终端区域注入（不自动回车） */
 export function SlashCommandsPanel(): React.ReactElement {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const cliProvider = useSessionStore((s) => s.sessions.find((session) => session.id === s.activeSessionId)?.cliProvider ?? 'claude')
   const [query, setQuery] = useState('')
+  const commandItems = cliProvider === 'codex' ? CODEX_SLASH_COMMAND_ITEMS : SLASH_COMMAND_ITEMS
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return SLASH_COMMAND_ITEMS
-    return SLASH_COMMAND_ITEMS.filter((it) => {
+    if (!q) return commandItems
+    return commandItems.filter((it) => {
       const desc = it.description.toLowerCase()
       return it.command.toLowerCase().includes(q) || desc.includes(q)
     })
-  }, [query])
+  }, [commandItems, query])
 
   const onPick = (command: string): void => {
     if (!activeSessionId) return
@@ -34,7 +37,7 @@ export function SlashCommandsPanel(): React.ReactElement {
           className="w-full rounded border border-claude-border bg-claude-bg px-2 py-1.5 text-[11px] text-claude-text placeholder:text-claude-muted focus:border-amber-600/50 focus:outline-none"
         />
         <p className="mt-1.5 px-0.5 text-[10px] leading-snug text-claude-muted">
-          官方内置命令摘要；项目中技能/MCP 仍以会话内输入{' '}
+          {cliProvider === 'codex' ? 'Codex TUI 内置指令摘要；Skills 与 MCP 请以会话内输入' : 'Claude Code 内置命令摘要；项目中技能/MCP 仍以会话内输入'}{' '}
           <span className="font-mono text-claude-text">/</span> 为准。
         </p>
       </div>
